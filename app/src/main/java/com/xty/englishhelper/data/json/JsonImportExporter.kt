@@ -5,8 +5,10 @@ import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.SimilarWordInfo
+import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordStudyState
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,7 +18,14 @@ class JsonImportExporter @Inject constructor(
 ) {
     private val adapter = moshi.adapter(DictionaryJsonModel::class.java).indent("  ")
 
-    fun exportToJson(dictionary: Dictionary, words: List<WordDetails>): String {
+    fun exportToJson(
+        dictionary: Dictionary,
+        words: List<WordDetails>,
+        units: List<StudyUnit> = emptyList(),
+        unitWordMap: Map<Long, List<String>> = emptyMap(),
+        studyStates: List<WordStudyState> = emptyList(),
+        wordIdToSpelling: Map<Long, String> = emptyMap()
+    ): String {
         val model = DictionaryJsonModel(
             name = dictionary.name,
             description = dictionary.description,
@@ -34,12 +43,36 @@ class JsonImportExporter @Inject constructor(
                         CognateJsonModel(it.word, it.meaning, it.sharedRoot)
                     }
                 )
+            },
+            units = units.map { unit ->
+                UnitJsonModel(
+                    name = unit.name,
+                    repeatCount = unit.defaultRepeatCount,
+                    wordSpellings = unitWordMap[unit.id] ?: emptyList()
+                )
+            },
+            studyStates = studyStates.mapNotNull { state ->
+                val spelling = wordIdToSpelling[state.wordId] ?: return@mapNotNull null
+                StudyStateJsonModel(
+                    spelling = spelling,
+                    remainingReviews = state.remainingReviews,
+                    easeLevel = state.easeLevel,
+                    nextReviewAt = state.nextReviewAt,
+                    lastReviewedAt = state.lastReviewedAt
+                )
             }
         )
         return adapter.toJson(model)
     }
 
-    fun importFromJson(json: String): Pair<Dictionary, List<WordDetails>> {
+    data class ImportResult(
+        val dictionary: Dictionary,
+        val words: List<WordDetails>,
+        val units: List<UnitJsonModel>,
+        val studyStates: List<StudyStateJsonModel>
+    )
+
+    fun importFromJson(json: String): ImportResult {
         val model = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
         val dictionary = Dictionary(
             name = model.name,
@@ -48,7 +81,7 @@ class JsonImportExporter @Inject constructor(
         )
         val words = model.words.map { word ->
             WordDetails(
-                dictionaryId = 0, // Will be set after dictionary is created
+                dictionaryId = 0,
                 spelling = word.spelling,
                 phonetic = word.phonetic,
                 meanings = word.meanings.map { Meaning(it.pos, it.definition) },
@@ -62,6 +95,11 @@ class JsonImportExporter @Inject constructor(
                 }
             )
         }
-        return dictionary to words
+        return ImportResult(
+            dictionary = dictionary,
+            words = words,
+            units = model.units,
+            studyStates = model.studyStates
+        )
     }
 }

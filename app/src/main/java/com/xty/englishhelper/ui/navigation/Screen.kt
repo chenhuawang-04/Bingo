@@ -19,3 +19,12 @@ data object ImportExportRoute
 
 @Serializable
 data object SettingsRoute
+
+@Serializable
+data class UnitDetailRoute(val unitId: Long, val dictionaryId: Long)
+
+@Serializable
+data class StudySetupRoute(val dictionaryId: Long)
+
+@Serializable
+data class StudyRoute(val unitIds: String)

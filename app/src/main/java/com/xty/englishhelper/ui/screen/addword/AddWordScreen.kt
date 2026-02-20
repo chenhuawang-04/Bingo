@@ -2,6 +2,8 @@ package com.xty.englishhelper.ui.screen.addword
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,10 +21,15 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -35,17 +42,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.Meaning
+import com.xty.englishhelper.domain.model.PartOfSpeech
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.SynonymInfo
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddWordScreen(
     onBack: () -> Unit,
@@ -102,6 +112,28 @@ fun AddWordScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+
+            // Unit selection chips
+            if (state.availableUnits.isNotEmpty()) {
+                item {
+                    Column {
+                        Text("所属单元", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            state.availableUnits.forEach { unit ->
+                                FilterChip(
+                                    selected = unit.id in state.selectedUnitIds,
+                                    onClick = { viewModel.toggleUnitSelection(unit.id) },
+                                    label = { Text(unit.name) }
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             item {
@@ -221,6 +253,7 @@ private fun SectionHeader(title: String, onAdd: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MeaningRow(
     meaning: Meaning,
@@ -229,18 +262,52 @@ private fun MeaningRow(
     onRemove: () -> Unit,
     showRemove: Boolean
 ) {
+    var expanded by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top
     ) {
-        OutlinedTextField(
-            value = meaning.pos,
-            onValueChange = onPosChange,
-            label = { Text("词性") },
-            singleLine = true,
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
             modifier = Modifier.weight(0.3f)
-        )
+        ) {
+            OutlinedTextField(
+                value = meaning.pos,
+                onValueChange = {
+                    onPosChange(it)
+                    expanded = true
+                },
+                label = { Text("词性") },
+                singleLine = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable)
+            )
+            val filtered = if (meaning.pos.isBlank()) {
+                PartOfSpeech.ALL
+            } else {
+                PartOfSpeech.ALL.filter { it.contains(meaning.pos, ignoreCase = true) }
+            }
+            if (filtered.isNotEmpty()) {
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    filtered.forEach { pos ->
+                        DropdownMenuItem(
+                            text = { Text(pos) },
+                            onClick = {
+                                onPosChange(pos)
+                                expanded = false
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                        )
+                    }
+                }
+            }
+        }
         OutlinedTextField(
             value = meaning.definition,
             onValueChange = onDefChange,

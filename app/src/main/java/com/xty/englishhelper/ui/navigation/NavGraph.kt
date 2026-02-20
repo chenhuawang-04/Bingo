@@ -10,6 +10,9 @@ import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
 import com.xty.englishhelper.ui.screen.home.HomeScreen
 import com.xty.englishhelper.ui.screen.importexport.ImportExportScreen
 import com.xty.englishhelper.ui.screen.settings.SettingsScreen
+import com.xty.englishhelper.ui.screen.study.StudyScreen
+import com.xty.englishhelper.ui.screen.study.StudySetupScreen
+import com.xty.englishhelper.ui.screen.unitdetail.UnitDetailScreen
 import com.xty.englishhelper.ui.screen.word.WordDetailScreen
 
 @Composable
@@ -38,6 +41,12 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onAddWord = { dictId ->
                     navController.navigate(AddWordRoute(dictId))
+                },
+                onUnitClick = { unitId, dictId ->
+                    navController.navigate(UnitDetailRoute(unitId, dictId))
+                },
+                onStudy = { dictId ->
+                    navController.navigate(StudySetupRoute(dictId))
                 }
             )
         }
@@ -67,6 +76,33 @@ fun NavGraph(navController: NavHostController) {
 
         composable<SettingsRoute> {
             SettingsScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable<UnitDetailRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<UnitDetailRoute>()
+            UnitDetailScreen(
+                onBack = { navController.popBackStack() },
+                onWordClick = { wordId, dictId ->
+                    navController.navigate(WordDetailRoute(wordId, dictId))
+                }
+            )
+        }
+
+        composable<StudySetupRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<StudySetupRoute>()
+            StudySetupScreen(
+                onBack = { navController.popBackStack() },
+                onStartStudy = { unitIds ->
+                    navController.navigate(StudyRoute(unitIds))
+                }
+            )
+        }
+
+        composable<StudyRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<StudyRoute>()
+            StudyScreen(
                 onBack = { navController.popBackStack() }
             )
         }

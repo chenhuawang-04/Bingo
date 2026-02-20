@@ -3,6 +3,7 @@ package com.xty.englishhelper.ui.screen.addword
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.SimilarWordInfo
+import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 
 data class AddWordUiState(
@@ -17,5 +18,7 @@ data class AddWordUiState(
     val isAiLoading: Boolean = false,
     val isSaving: Boolean = false,
     val error: String? = null,
-    val savedSuccessfully: Boolean = false
+    val savedSuccessfully: Boolean = false,
+    val availableUnits: List<StudyUnit> = emptyList(),
+    val selectedUnitIds: Set<Long> = emptySet()
 )

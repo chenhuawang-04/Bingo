@@ -7,7 +7,9 @@ data class DictionaryJsonModel(
     val name: String = "",
     val description: String = "",
     val version: String = "1.0",
-    val words: List<WordJsonModel> = emptyList()
+    val words: List<WordJsonModel> = emptyList(),
+    val units: List<UnitJsonModel> = emptyList(),
+    val studyStates: List<StudyStateJsonModel> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
@@ -45,4 +47,20 @@ data class CognateJsonModel(
     val word: String = "",
     val meaning: String = "",
     val sharedRoot: String = ""
+)
+
+@JsonClass(generateAdapter = true)
+data class UnitJsonModel(
+    val name: String = "",
+    val repeatCount: Int = 2,
+    val wordSpellings: List<String> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class StudyStateJsonModel(
+    val spelling: String = "",
+    val remainingReviews: Int = 0,
+    val easeLevel: Int = 0,
+    val nextReviewAt: Long = 0,
+    val lastReviewedAt: Long = 0
 )

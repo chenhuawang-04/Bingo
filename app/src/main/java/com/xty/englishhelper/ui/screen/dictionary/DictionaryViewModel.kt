@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.usecase.dictionary.GetDictionaryByIdUseCase
+import com.xty.englishhelper.domain.usecase.unit.CreateUnitUseCase
+import com.xty.englishhelper.domain.usecase.unit.GetUnitsWithWordCountUseCase
 import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
 import com.xty.englishhelper.domain.usecase.word.GetWordsByDictionaryUseCase
 import com.xty.englishhelper.domain.usecase.word.SearchWordsUseCase
@@ -26,7 +28,9 @@ class DictionaryViewModel @Inject constructor(
     private val getDictionaryById: GetDictionaryByIdUseCase,
     private val getWordsByDictionary: GetWordsByDictionaryUseCase,
     private val searchWords: SearchWordsUseCase,
-    private val deleteWord: DeleteWordUseCase
+    private val deleteWord: DeleteWordUseCase,
+    private val getUnitsWithWordCount: GetUnitsWithWordCountUseCase,
+    private val createUnit: CreateUnitUseCase
 ) : ViewModel() {
 
     private val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
@@ -39,6 +43,7 @@ class DictionaryViewModel @Inject constructor(
     init {
         loadDictionary()
         observeWords()
+        observeUnits()
     }
 
     private fun loadDictionary() {
@@ -64,6 +69,18 @@ class DictionaryViewModel @Inject constructor(
         }
     }
 
+    private fun observeUnits() {
+        viewModelScope.launch {
+            getUnitsWithWordCount(dictionaryId)
+                .catch { e ->
+                    _uiState.update { it.copy(error = e.message) }
+                }
+                .collect { units ->
+                    _uiState.update { it.copy(units = units) }
+                }
+        }
+    }
+
     fun onSearchQueryChange(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
         _searchQuery.value = query
@@ -82,6 +99,27 @@ class DictionaryViewModel @Inject constructor(
         viewModelScope.launch {
             deleteWord(target.id, dictionaryId)
             _uiState.update { it.copy(deleteTarget = null) }
+        }
+    }
+
+    fun showCreateUnitDialog() {
+        _uiState.update { it.copy(showCreateUnitDialog = true, newUnitName = "") }
+    }
+
+    fun dismissCreateUnitDialog() {
+        _uiState.update { it.copy(showCreateUnitDialog = false, newUnitName = "") }
+    }
+
+    fun onNewUnitNameChange(name: String) {
+        _uiState.update { it.copy(newUnitName = name) }
+    }
+
+    fun confirmCreateUnit() {
+        val name = _uiState.value.newUnitName.trim()
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            createUnit(dictionaryId, name)
+            _uiState.update { it.copy(showCreateUnitDialog = false, newUnitName = "") }
         }
     }
 

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.xty.englishhelper.util.Constants
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,6 +19,8 @@ class SettingsDataStore @Inject constructor(
         val API_KEY = stringPreferencesKey("api_key")
         val MODEL = stringPreferencesKey("model")
         val BASE_URL = stringPreferencesKey("base_url")
+        private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
+            stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
 
     val apiKey: Flow<String> = dataStore.data.map { it[API_KEY] ?: "" }
@@ -34,5 +37,14 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setBaseUrl(url: String) {
         dataStore.edit { it[BASE_URL] = url }
+    }
+
+    suspend fun getLastSelectedUnitIds(dictionaryId: Long): Set<Long> {
+        val raw = dataStore.data.first()[lastSelectedUnitIdsKey(dictionaryId)] ?: return emptySet()
+        return raw.split(",").mapNotNull { it.toLongOrNull() }.toSet()
+    }
+
+    suspend fun setLastSelectedUnitIds(dictionaryId: Long, ids: Set<Long>) {
+        dataStore.edit { it[lastSelectedUnitIdsKey(dictionaryId)] = ids.joinToString(",") }
     }
 }
