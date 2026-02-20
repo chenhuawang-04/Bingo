@@ -1,4 +1,4 @@
-# EnglishHelper
+# Bingo
 
 [中文](README.md)
 
