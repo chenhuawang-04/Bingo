@@ -110,6 +110,14 @@ class JsonImportExporter @Inject constructor(
             }
         }
 
+        // Validate study state: state must be 1 (Learning), 2 (Review), or 3 (Relearning)
+        val validStates = setOf(1, 2, 3)
+        model.studyStates.forEachIndexed { index, state ->
+            if (state.state !in validStates) {
+                throw IllegalArgumentException("第 ${index + 1} 个学习状态的 state 值无效：${state.state}（需要 1/2/3）")
+            }
+        }
+
         val dictionary = Dictionary(
             name = model.name,
             description = model.description,

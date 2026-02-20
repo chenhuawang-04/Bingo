@@ -62,7 +62,7 @@ class ReviewWordUseCase @Inject constructor(
 class PreviewIntervalsUseCase @Inject constructor(
     private val repository: StudyRepository
 ) {
-    private val engine = FsrsEngine()
+    private val engine = FsrsEngine(enableFuzz = false)
 
     suspend operator fun invoke(wordId: Long): Map<Rating, Long> {
         val existing = repository.getStudyState(wordId)

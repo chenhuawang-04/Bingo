@@ -94,7 +94,7 @@ class FsrsEngine(
             Rating.Hard -> {
                 // Enter Learning, step 0 with slightly longer interval
                 val stepMinutes = learningSteps.getOrElse(0) { 1L }
-                val interval = (stepMinutes * 1.5).toLong() * MINUTE_MS
+                val interval = (stepMinutes * 1.5 * MINUTE_MS).toLong()
                 SchedulingResult(
                     state = CardState.Learning,
                     step = 0,

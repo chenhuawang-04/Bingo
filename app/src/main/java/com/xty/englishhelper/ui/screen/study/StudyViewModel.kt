@@ -10,12 +10,24 @@ import com.xty.englishhelper.domain.usecase.study.GetNewWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.PreviewIntervalsUseCase
 import com.xty.englishhelper.domain.usecase.study.ReviewWordUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/**
+ * A queued word with its earliest eligible display time.
+ * [dueAt] is 0 for initial queue entries (show immediately),
+ * or a future timestamp for Again-rated words that need a wait.
+ */
+private data class QueueEntry(
+    val word: WordDetails,
+    val dueAt: Long = 0
+)
 
 @HiltViewModel
 class StudyViewModel @Inject constructor(
@@ -32,13 +44,14 @@ class StudyViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(StudyUiState())
     val uiState: StateFlow<StudyUiState> = _uiState.asStateFlow()
 
-    private val queue = ArrayDeque<WordDetails>()
-    private var processedWordIds = mutableSetOf<Long>()
+    private val queue = ArrayDeque<QueueEntry>()
+    private val processedWordIds = mutableSetOf<Long>()
     private var againCount = 0
     private var hardCount = 0
     private var goodCount = 0
     private var easyCount = 0
     private var totalUniqueWords = 0
+    private var waitJob: Job? = null
 
     init {
         loadSession()
@@ -56,13 +69,13 @@ class StudyViewModel @Inject constructor(
                 val addedIds = mutableSetOf<Long>()
                 for (word in dueWords) {
                     if (word.id !in addedIds) {
-                        queue.addLast(word)
+                        queue.addLast(QueueEntry(word))
                         addedIds.add(word.id)
                     }
                 }
                 for (word in newWords) {
                     if (word.id !in addedIds) {
-                        queue.addLast(word)
+                        queue.addLast(QueueEntry(word))
                         addedIds.add(word.id)
                     }
                 }
@@ -102,16 +115,33 @@ class StudyViewModel @Inject constructor(
             return
         }
 
-        val word = queue.removeFirst()
-        _uiState.update {
-            it.copy(
-                phase = StudyPhase.Studying,
-                currentWord = word,
-                showAnswer = false,
-                previewIntervals = emptyMap(),
-                progress = processedWordIds.size,
-                total = totalUniqueWords
-            )
+        val now = System.currentTimeMillis()
+
+        // Find first entry that is due now
+        val readyIndex = queue.indexOfFirst { it.dueAt <= now }
+
+        if (readyIndex >= 0) {
+            // Found a ready entry — remove it and show
+            val entry = queue.removeAt(readyIndex)
+            _uiState.update {
+                it.copy(
+                    phase = StudyPhase.Studying,
+                    currentWord = entry.word,
+                    showAnswer = false,
+                    previewIntervals = emptyMap(),
+                    progress = processedWordIds.size,
+                    total = totalUniqueWords
+                )
+            }
+        } else {
+            // All remaining entries are waiting — schedule a delayed show
+            val earliest = queue.minOf { it.dueAt }
+            val waitMs = earliest - now
+            waitJob?.cancel()
+            waitJob = viewModelScope.launch {
+                delay(waitMs)
+                showNextWord()
+            }
         }
     }
 
@@ -131,9 +161,8 @@ class StudyViewModel @Inject constructor(
     fun onRate(rating: Rating) {
         val word = _uiState.value.currentWord ?: return
         viewModelScope.launch {
-            reviewWord(word.id, rating)
+            val result = reviewWord(word.id, rating)
 
-            processedWordIds.add(word.id)
             when (rating) {
                 Rating.Again -> againCount++
                 Rating.Hard -> hardCount++
@@ -141,9 +170,12 @@ class StudyViewModel @Inject constructor(
                 Rating.Easy -> easyCount++
             }
 
-            // Re-queue on Again
             if (rating == Rating.Again) {
-                queue.addLast(word)
+                // Re-queue with the scheduled due time so the word waits
+                queue.addLast(QueueEntry(word, dueAt = result.due))
+            } else {
+                // Only count as fully processed when not re-queued
+                processedWordIds.add(word.id)
             }
 
             showNextWord()
