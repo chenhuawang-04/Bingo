@@ -21,8 +21,7 @@ interface StudyDao {
     suspend fun deleteStudyState(wordId: Long)
 
     /**
-     * Get due words for given unit IDs: words that have a study state with
-     * remaining_reviews > 0 and next_review_at <= now.
+     * Get due words for given unit IDs: words that have a study state with due <= now.
      */
     @Transaction
     @Query(
@@ -31,9 +30,8 @@ interface StudyDao {
         INNER JOIN unit_word_cross_ref ref ON w.id = ref.word_id
         INNER JOIN word_study_state s ON w.id = s.word_id
         WHERE ref.unit_id IN (:unitIds)
-          AND s.remaining_reviews > 0
-          AND s.next_review_at <= :now
-        ORDER BY s.next_review_at ASC
+          AND s.due <= :now
+        ORDER BY s.due ASC
         """
     )
     suspend fun getDueWords(unitIds: List<Long>, now: Long): List<WordWithDetails>
@@ -63,8 +61,7 @@ interface StudyDao {
         INNER JOIN unit_word_cross_ref ref ON w.id = ref.word_id
         INNER JOIN word_study_state s ON w.id = s.word_id
         WHERE ref.unit_id = :unitId
-          AND s.remaining_reviews > 0
-          AND s.next_review_at <= :now
+          AND s.due <= :now
         """
     )
     suspend fun countDueWords(unitId: Long, now: Long): Int

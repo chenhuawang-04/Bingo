@@ -3,7 +3,10 @@ package com.xty.englishhelper.domain.usecase.study
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.repository.StudyRepository
-import com.xty.englishhelper.util.EbbinghausIntervals
+import com.xty.englishhelper.domain.study.CardState
+import com.xty.englishhelper.domain.study.FsrsEngine
+import com.xty.englishhelper.domain.study.Rating
+import com.xty.englishhelper.domain.study.SchedulingResult
 import javax.inject.Inject
 
 class GetStudyStateUseCase @Inject constructor(
@@ -13,53 +16,74 @@ class GetStudyStateUseCase @Inject constructor(
         repository.getStudyState(wordId)
 }
 
-class MarkKnownUseCase @Inject constructor(
+class ReviewWordUseCase @Inject constructor(
     private val repository: StudyRepository
 ) {
-    suspend operator fun invoke(state: WordStudyState): WordStudyState {
-        val newEaseLevel = state.easeLevel + 1
-        val newRemaining = state.remainingReviews - 1
+    private val engine = FsrsEngine()
+
+    suspend operator fun invoke(wordId: Long, rating: Rating): SchedulingResult {
+        val existing = repository.getStudyState(wordId)
         val now = System.currentTimeMillis()
-        val interval = EbbinghausIntervals.getInterval(newEaseLevel)
-        val updated = state.copy(
-            easeLevel = newEaseLevel,
-            remainingReviews = maxOf(0, newRemaining),
-            nextReviewAt = now + interval,
-            lastReviewedAt = now
+
+        val result = if (existing == null) {
+            engine.reviewNew(rating, now)
+        } else {
+            engine.review(
+                state = CardState.fromValue(existing.state),
+                step = existing.step,
+                stability = existing.stability,
+                difficulty = existing.difficulty,
+                lastReviewAt = existing.lastReviewAt,
+                reps = existing.reps,
+                lapses = existing.lapses,
+                rating = rating,
+                now = now
+            )
+        }
+
+        repository.upsertStudyState(
+            WordStudyState(
+                wordId = wordId,
+                state = result.state.value,
+                step = result.step,
+                stability = result.stability,
+                difficulty = result.difficulty,
+                due = result.due,
+                lastReviewAt = result.lastReviewAt,
+                reps = result.reps,
+                lapses = result.lapses
+            )
         )
-        repository.upsertStudyState(updated)
-        return updated
+
+        return result
     }
 }
 
-class MarkUnknownUseCase @Inject constructor(
+class PreviewIntervalsUseCase @Inject constructor(
     private val repository: StudyRepository
 ) {
-    suspend operator fun invoke(state: WordStudyState): WordStudyState {
-        val now = System.currentTimeMillis()
-        val updated = state.copy(
-            easeLevel = maxOf(0, state.easeLevel - 1),
-            nextReviewAt = 0,
-            lastReviewedAt = now
-        )
-        repository.upsertStudyState(updated)
-        return updated
-    }
-}
+    private val engine = FsrsEngine()
 
-class InitStudyStateUseCase @Inject constructor(
-    private val repository: StudyRepository
-) {
-    suspend operator fun invoke(wordId: Long, repeatCount: Int): WordStudyState {
-        val state = WordStudyState(
-            wordId = wordId,
-            remainingReviews = repeatCount,
-            easeLevel = 0,
-            nextReviewAt = 0,
-            lastReviewedAt = 0
-        )
-        repository.upsertStudyState(state)
-        return state
+    suspend operator fun invoke(wordId: Long): Map<Rating, Long> {
+        val existing = repository.getStudyState(wordId)
+        val now = System.currentTimeMillis()
+
+        return if (existing == null) {
+            Rating.entries.associateWith { rating ->
+                engine.reviewNew(rating, now).scheduledInterval
+            }
+        } else {
+            engine.previewIntervals(
+                state = CardState.fromValue(existing.state),
+                step = existing.step,
+                stability = existing.stability,
+                difficulty = existing.difficulty,
+                lastReviewAt = existing.lastReviewAt,
+                reps = existing.reps,
+                lapses = existing.lapses,
+                now = now
+            )
+        }
     }
 }
 

@@ -33,7 +33,7 @@ class JsonImportExporter @Inject constructor(
         val model = DictionaryJsonModel(
             name = dictionary.name,
             description = dictionary.description,
-            schemaVersion = 3,
+            schemaVersion = 4,
             words = words.map { word ->
                 WordJsonModel(
                     spelling = word.spelling,
@@ -64,10 +64,14 @@ class JsonImportExporter @Inject constructor(
                 val uid = wordIdToUid[state.wordId] ?: return@mapNotNull null
                 StudyStateJsonModel(
                     wordUid = uid,
-                    remainingReviews = state.remainingReviews,
-                    easeLevel = state.easeLevel,
-                    nextReviewAt = state.nextReviewAt,
-                    lastReviewedAt = state.lastReviewedAt
+                    state = state.state,
+                    step = state.step,
+                    stability = state.stability,
+                    difficulty = state.difficulty,
+                    due = state.due,
+                    lastReviewAt = state.lastReviewAt,
+                    reps = state.reps,
+                    lapses = state.lapses
                 )
             }
         )
@@ -78,8 +82,8 @@ class JsonImportExporter @Inject constructor(
         val model = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
 
         // Validate schema version
-        if (model.schemaVersion != 3) {
-            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 3）")
+        if (model.schemaVersion != 4) {
+            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4）")
         }
 
         // Validate no empty spellings
@@ -149,10 +153,14 @@ class JsonImportExporter @Inject constructor(
             studyStates = model.studyStates.map {
                 DictionaryImportExporter.ImportedStudyState(
                     wordUid = it.wordUid,
-                    remainingReviews = it.remainingReviews,
-                    easeLevel = it.easeLevel,
-                    nextReviewAt = it.nextReviewAt,
-                    lastReviewedAt = it.lastReviewedAt
+                    state = it.state,
+                    step = it.step,
+                    stability = it.stability,
+                    difficulty = it.difficulty,
+                    due = it.due,
+                    lastReviewAt = it.lastReviewAt,
+                    reps = it.reps,
+                    lapses = it.lapses
                 )
             }
         )

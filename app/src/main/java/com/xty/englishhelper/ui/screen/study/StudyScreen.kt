@@ -14,13 +14,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -32,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.domain.study.Rating
+import com.xty.englishhelper.domain.study.formatInterval
 import com.xty.englishhelper.ui.components.DetailRow
 import com.xty.englishhelper.ui.components.LoadingIndicator
 import com.xty.englishhelper.ui.components.WordDetailSection
@@ -70,9 +72,8 @@ fun StudyScreen(
             StudyPhase.Studying -> {
                 StudyingContent(
                     state = state,
-                    onKnown = viewModel::onKnown,
-                    onUnknown = viewModel::onUnknown,
-                    onNext = viewModel::onNext,
+                    onRevealAnswer = viewModel::onRevealAnswer,
+                    onRate = viewModel::onRate,
                     modifier = Modifier.padding(padding)
                 )
             }
@@ -91,9 +92,8 @@ fun StudyScreen(
 @Composable
 private fun StudyingContent(
     state: StudyUiState,
-    onKnown: () -> Unit,
-    onUnknown: () -> Unit,
-    onNext: () -> Unit,
+    onRevealAnswer: () -> Unit,
+    onRate: (Rating) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val word = state.currentWord ?: return
@@ -136,28 +136,14 @@ private fun StudyingContent(
                 }
             }
 
-            // Buttons
-            Row(
+            // Single "Show Answer" button
+            Button(
+                onClick = onRevealAnswer,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(16.dp)
             ) {
-                OutlinedButton(
-                    onClick = onUnknown,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("不认识")
-                }
-                Button(
-                    onClick = onKnown,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("认识")
-                }
+                Text("显示答案")
             }
         } else {
             // Answer mode: show word details
@@ -265,14 +251,95 @@ private fun StudyingContent(
                 }
             }
 
-            // Next button
-            Button(
-                onClick = onNext,
+            // Four rating buttons with interval previews
+            RatingButtons(
+                previewIntervals = state.previewIntervals,
+                onRate = onRate,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
-            ) {
-                Text("下一个")
+            )
+        }
+    }
+}
+
+@Composable
+private fun RatingButtons(
+    previewIntervals: Map<Rating, Long>,
+    onRate: (Rating) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Again (red)
+        RatingButton(
+            label = "重来",
+            interval = previewIntervals[Rating.Again],
+            onClick = { onRate(Rating.Again) },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error
+            ),
+            modifier = Modifier.weight(1f)
+        )
+        // Hard (tertiary)
+        RatingButton(
+            label = "困难",
+            interval = previewIntervals[Rating.Hard],
+            onClick = { onRate(Rating.Hard) },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.tertiary
+            ),
+            modifier = Modifier.weight(1f)
+        )
+        // Good (primary)
+        RatingButton(
+            label = "良好",
+            interval = previewIntervals[Rating.Good],
+            onClick = { onRate(Rating.Good) },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary
+            ),
+            modifier = Modifier.weight(1f)
+        )
+        // Easy (secondary)
+        RatingButton(
+            label = "简单",
+            interval = previewIntervals[Rating.Easy],
+            onClick = { onRate(Rating.Easy) },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.secondary
+            ),
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun RatingButton(
+    label: String,
+    interval: Long?,
+    onClick: () -> Unit,
+    colors: ButtonColors,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        colors = colors,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium
+            )
+            if (interval != null) {
+                Text(
+                    text = formatInterval(interval),
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
         }
     }
@@ -305,9 +372,10 @@ private fun FinishedContent(
             )
         } else {
             StatRow("总计单词", stats.totalWords.toString())
-            StatRow("认识", stats.knownCount.toString())
-            StatRow("不认识", stats.unknownCount.toString())
-            StatRow("已掌握", stats.masteredCount.toString())
+            StatRow("重来", stats.againCount.toString())
+            StatRow("困难", stats.hardCount.toString())
+            StatRow("良好", stats.goodCount.toString())
+            StatRow("简单", stats.easyCount.toString())
         }
 
         Spacer(modifier = Modifier.height(32.dp))

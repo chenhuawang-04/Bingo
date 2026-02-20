@@ -58,14 +58,23 @@ class JsonImportExporterTest {
         )
         val unitWordMap = mapOf(1L to listOf("uid-1", "uid-2"))
         val studyStates = listOf(
-            WordStudyState(wordId = 1, remainingReviews = 5, easeLevel = 2, nextReviewAt = 1000L, lastReviewedAt = 500L)
+            WordStudyState(
+                wordId = 1,
+                state = 2,
+                stability = 3.173,
+                difficulty = 5.71,
+                due = 1000L,
+                lastReviewAt = 500L,
+                reps = 3,
+                lapses = 1
+            )
         )
         val wordIdToUid = mapOf(1L to "uid-1", 2L to "uid-2")
 
         val json = exporter.exportToJson(dictionary, words, units, unitWordMap, studyStates, wordIdToUid)
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 3"))
+        assertTrue(json.contains("\"schemaVersion\": 4"))
 
         val result = exporter.importFromJson(json)
 
@@ -90,11 +99,16 @@ class JsonImportExporterTest {
         assertEquals(3, result.units[0].repeatCount)
         assertEquals(listOf("uid-1", "uid-2"), result.units[0].wordUids)
 
-        // Study states use wordUid
+        // Study states use FSRS fields
         assertEquals(1, result.studyStates.size)
         assertEquals("uid-1", result.studyStates[0].wordUid)
-        assertEquals(5, result.studyStates[0].remainingReviews)
-        assertEquals(2, result.studyStates[0].easeLevel)
+        assertEquals(2, result.studyStates[0].state)
+        assertEquals(3.173, result.studyStates[0].stability, 0.001)
+        assertEquals(5.71, result.studyStates[0].difficulty, 0.001)
+        assertEquals(1000L, result.studyStates[0].due)
+        assertEquals(500L, result.studyStates[0].lastReviewAt)
+        assertEquals(3, result.studyStates[0].reps)
+        assertEquals(1, result.studyStates[0].lapses)
     }
 
     @Test
@@ -120,8 +134,8 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `import rejects old schemaVersion 2`() {
-        val json = """{"name":"Test","description":"","schemaVersion":2,"words":[]}"""
+    fun `import rejects old schemaVersion 3`() {
+        val json = """{"name":"Test","description":"","schemaVersion":3,"words":[]}"""
         try {
             exporter.importFromJson(json)
             fail("Expected exception for old schemaVersion")
@@ -136,7 +150,7 @@ class JsonImportExporterTest {
         {
             "name": "Test",
             "description": "",
-            "schemaVersion": 3,
+            "schemaVersion": 4,
             "words": [
                 {"spelling": "Hello", "phonetic": "", "wordUid": "uid1"},
                 {"spelling": "hello", "phonetic": "", "wordUid": "uid2"}
@@ -158,7 +172,7 @@ class JsonImportExporterTest {
         {
             "name": "Test",
             "description": "",
-            "schemaVersion": 3,
+            "schemaVersion": 4,
             "words": [
                 {"spelling": "", "phonetic": "", "wordUid": "uid1"}
             ]
@@ -174,10 +188,10 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 3`() {
+    fun `export produces schemaVersion 4`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 3"))
+        assertTrue(json.contains("\"schemaVersion\": 4"))
     }
 
     @Test
@@ -186,7 +200,7 @@ class JsonImportExporterTest {
         {
             "name": "Test",
             "description": "",
-            "schemaVersion": 3,
+            "schemaVersion": 4,
             "words": [
                 {"spelling": "Hello", "phonetic": "", "wordUid": "same-uid"},
                 {"spelling": "World", "phonetic": "", "wordUid": "same-uid"}

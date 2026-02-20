@@ -68,8 +68,12 @@ data class UnitJsonModel(
 @JsonClass(generateAdapter = true)
 data class StudyStateJsonModel(
     val wordUid: String = "",
-    val remainingReviews: Int = 0,
-    val easeLevel: Int = 0,
-    val nextReviewAt: Long = 0,
-    val lastReviewedAt: Long = 0
+    val state: Int = 2,
+    val step: Int? = null,
+    val stability: Double = 0.0,
+    val difficulty: Double = 0.0,
+    val due: Long = 0,
+    val lastReviewAt: Long = 0,
+    val reps: Int = 0,
+    val lapses: Int = 0
 )

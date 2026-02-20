@@ -18,10 +18,14 @@ interface DictionaryImportExporter {
 
     data class ImportedStudyState(
         val wordUid: String,
-        val remainingReviews: Int,
-        val easeLevel: Int,
-        val nextReviewAt: Long,
-        val lastReviewedAt: Long
+        val state: Int,
+        val step: Int?,
+        val stability: Double,
+        val difficulty: Double,
+        val due: Long,
+        val lastReviewAt: Long,
+        val reps: Int,
+        val lapses: Int
     )
 
     data class ImportResult(

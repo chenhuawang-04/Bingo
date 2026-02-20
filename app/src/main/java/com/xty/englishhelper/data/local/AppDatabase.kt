@@ -32,7 +32,7 @@ import java.util.UUID
         WordStudyStateEntity::class,
         WordAssociationEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -141,6 +141,46 @@ abstract class AppDatabase : RoomDatabase() {
                 """.trimIndent())
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_associations_word_id` ON `word_associations` (`word_id`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_associations_associated_word_id` ON `word_associations` (`associated_word_id`)")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create new FSRS-based study state table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `word_study_state_new` (
+                        `word_id` INTEGER NOT NULL PRIMARY KEY,
+                        `state` INTEGER NOT NULL DEFAULT 2,
+                        `step` INTEGER,
+                        `stability` REAL NOT NULL DEFAULT 0.0,
+                        `difficulty` REAL NOT NULL DEFAULT 0.0,
+                        `due` INTEGER NOT NULL DEFAULT 0,
+                        `last_review_at` INTEGER NOT NULL DEFAULT 0,
+                        `reps` INTEGER NOT NULL DEFAULT 0,
+                        `lapses` INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(`word_id`) REFERENCES `words`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+
+                // Migrate old data: map easeLevel to approximate stability
+                db.execSQL("""
+                    INSERT INTO word_study_state_new (word_id, state, stability, difficulty, due, last_review_at, reps)
+                    SELECT word_id, 2,
+                        CASE ease_level
+                            WHEN 0 THEN 0.4 WHEN 1 THEN 0.4 WHEN 2 THEN 0.5
+                            WHEN 3 THEN 1.2 WHEN 4 THEN 3.2 WHEN 5 THEN 4.0
+                            WHEN 6 THEN 7.0 WHEN 7 THEN 15.0 WHEN 8 THEN 30.0
+                            ELSE 60.0
+                        END,
+                        5.0,
+                        next_review_at,
+                        last_reviewed_at,
+                        ease_level
+                    FROM word_study_state
+                """.trimIndent())
+
+                db.execSQL("DROP TABLE word_study_state")
+                db.execSQL("ALTER TABLE word_study_state_new RENAME TO word_study_state")
             }
         }
     }

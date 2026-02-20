@@ -34,16 +34,24 @@ fun StudyUnit.toEntity() = UnitEntity(
 
 fun WordStudyStateEntity.toDomain() = WordStudyState(
     wordId = wordId,
-    remainingReviews = remainingReviews,
-    easeLevel = easeLevel,
-    nextReviewAt = nextReviewAt,
-    lastReviewedAt = lastReviewedAt
+    state = state,
+    step = step,
+    stability = stability,
+    difficulty = difficulty,
+    due = due,
+    lastReviewAt = lastReviewAt,
+    reps = reps,
+    lapses = lapses
 )
 
 fun WordStudyState.toEntity() = WordStudyStateEntity(
     wordId = wordId,
-    remainingReviews = remainingReviews,
-    easeLevel = easeLevel,
-    nextReviewAt = nextReviewAt,
-    lastReviewedAt = lastReviewedAt
+    state = state,
+    step = step,
+    stability = stability,
+    difficulty = difficulty,
+    due = due,
+    lastReviewAt = lastReviewAt,
+    reps = reps,
+    lapses = lapses
 )
