@@ -57,6 +57,9 @@ fun NavGraph(navController: NavHostController) {
                 onBack = { navController.popBackStack() },
                 onEdit = { dictId, wordId ->
                     navController.navigate(AddWordRoute(dictId, wordId))
+                },
+                onWordClick = { wordId, dictId ->
+                    navController.navigate(WordDetailRoute(wordId, dictId))
                 }
             )
         }

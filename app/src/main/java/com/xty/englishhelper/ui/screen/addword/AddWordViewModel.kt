@@ -5,7 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.CognateInfo
+import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Meaning
+import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
@@ -87,6 +89,7 @@ class AddWordViewModel @Inject constructor(
                         phonetic = word.phonetic,
                         meanings = word.meanings.ifEmpty { listOf(Meaning("", "")) },
                         rootExplanation = word.rootExplanation,
+                        decomposition = word.decomposition,
                         synonyms = word.synonyms,
                         similarWords = word.similarWords,
                         cognates = word.cognates
@@ -199,6 +202,27 @@ class AddWordViewModel @Inject constructor(
         }
     }
 
+    // Decomposition
+    fun onDecompositionPartChange(index: Int, part: DecompositionPart) {
+        _uiState.update {
+            val list = it.decomposition.toMutableList()
+            list[index] = part
+            it.copy(decomposition = list)
+        }
+    }
+
+    fun addDecompositionPart() {
+        _uiState.update {
+            it.copy(decomposition = it.decomposition + DecompositionPart(segment = "", role = MorphemeRole.ROOT))
+        }
+    }
+
+    fun removeDecompositionPart(index: Int) {
+        _uiState.update {
+            it.copy(decomposition = it.decomposition.toMutableList().also { list -> list.removeAt(index) })
+        }
+    }
+
     // AI organize
     fun organizeWithAi() {
         val spelling = _uiState.value.spelling.trim()
@@ -226,6 +250,7 @@ class AddWordViewModel @Inject constructor(
                         phonetic = result.phonetic.ifBlank { it.phonetic },
                         meanings = result.meanings.ifEmpty { it.meanings },
                         rootExplanation = result.rootExplanation.ifBlank { it.rootExplanation },
+                        decomposition = result.decomposition.ifEmpty { it.decomposition },
                         synonyms = result.synonyms.ifEmpty { it.synonyms },
                         similarWords = result.similarWords.ifEmpty { it.similarWords },
                         cognates = result.cognates.ifEmpty { it.cognates }
@@ -255,6 +280,7 @@ class AddWordViewModel @Inject constructor(
                     phonetic = state.phonetic.trim(),
                     meanings = state.meanings.filter { it.definition.isNotBlank() },
                     rootExplanation = state.rootExplanation.trim(),
+                    decomposition = state.decomposition.filter { it.segment.isNotBlank() },
                     synonyms = state.synonyms.filter { it.word.isNotBlank() },
                     similarWords = state.similarWords.filter { it.word.isNotBlank() },
                     cognates = state.cognates.filter { it.word.isNotBlank() }

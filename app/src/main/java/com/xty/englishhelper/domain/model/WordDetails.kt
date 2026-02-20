@@ -7,9 +7,12 @@ data class WordDetails(
     val phonetic: String = "",
     val meanings: List<Meaning> = emptyList(),
     val rootExplanation: String = "",
+    val normalizedSpelling: String = "",
+    val wordUid: String = "",
     val synonyms: List<SynonymInfo> = emptyList(),
     val similarWords: List<SimilarWordInfo> = emptyList(),
     val cognates: List<CognateInfo> = emptyList(),
+    val decomposition: List<DecompositionPart> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

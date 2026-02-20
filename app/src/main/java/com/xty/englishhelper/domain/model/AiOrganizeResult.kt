@@ -6,5 +6,6 @@ data class AiOrganizeResult(
     val rootExplanation: String = "",
     val synonyms: List<SynonymInfo> = emptyList(),
     val similarWords: List<SimilarWordInfo> = emptyList(),
-    val cognates: List<CognateInfo> = emptyList()
+    val cognates: List<CognateInfo> = emptyList(),
+    val decomposition: List<DecompositionPart> = emptyList()
 )

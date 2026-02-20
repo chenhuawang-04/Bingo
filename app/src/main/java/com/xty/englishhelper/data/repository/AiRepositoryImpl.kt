@@ -7,7 +7,9 @@ import com.xty.englishhelper.data.remote.dto.AnthropicRequest
 import com.xty.englishhelper.data.remote.dto.MessageDto
 import com.xty.englishhelper.domain.model.AiOrganizeResult
 import com.xty.englishhelper.domain.model.CognateInfo
+import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Meaning
+import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.repository.AiRepository
@@ -80,6 +82,13 @@ class AiRepositoryImpl @Inject constructor(
             },
             cognates = analysis.cognates.map {
                 CognateInfo(word = it.word, meaning = it.meaning, sharedRoot = it.sharedRoot)
+            },
+            decomposition = analysis.decomposition.map {
+                DecompositionPart(
+                    segment = it.segment,
+                    role = runCatching { MorphemeRole.valueOf(it.role) }.getOrDefault(MorphemeRole.OTHER),
+                    meaning = it.meaning
+                )
             }
         )
     }

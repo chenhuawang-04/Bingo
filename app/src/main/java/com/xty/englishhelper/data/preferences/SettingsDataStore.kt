@@ -7,13 +7,15 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.xty.englishhelper.util.Constants
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class SettingsDataStore @Inject constructor(
-    private val dataStore: DataStore<Preferences>
+    private val dataStore: DataStore<Preferences>,
+    private val encryptedApiKeyStore: EncryptedApiKeyStore
 ) {
     companion object {
         val API_KEY = stringPreferencesKey("api_key")
@@ -23,12 +25,12 @@ class SettingsDataStore @Inject constructor(
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
 
-    val apiKey: Flow<String> = dataStore.data.map { it[API_KEY] ?: "" }
+    val apiKey: Flow<String> = flow { emit(encryptedApiKeyStore.getApiKey()) }
     val model: Flow<String> = dataStore.data.map { it[MODEL] ?: Constants.DEFAULT_MODEL }
     val baseUrl: Flow<String> = dataStore.data.map { it[BASE_URL] ?: Constants.ANTHROPIC_BASE_URL }
 
     suspend fun setApiKey(key: String) {
-        dataStore.edit { it[API_KEY] = key }
+        encryptedApiKeyStore.setApiKey(key)
     }
 
     suspend fun setModel(model: String) {
@@ -46,5 +48,18 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setLastSelectedUnitIds(dictionaryId: Long, ids: Set<Long>) {
         dataStore.edit { it[lastSelectedUnitIdsKey(dictionaryId)] = ids.joinToString(",") }
+    }
+
+    /**
+     * Migrates plaintext API key from DataStore to EncryptedSharedPreferences.
+     * Should be called once during app startup.
+     */
+    suspend fun migrateApiKeyIfNeeded() {
+        val prefs = dataStore.data.first()
+        val oldKey = prefs[API_KEY]
+        if (!oldKey.isNullOrBlank()) {
+            encryptedApiKeyStore.setApiKey(oldKey)
+            dataStore.edit { it.remove(API_KEY) }
+        }
     }
 }

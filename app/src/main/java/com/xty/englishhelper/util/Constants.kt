@@ -17,16 +17,20 @@ object Constants {
 请分析以下方面：
 1. 词性和中文释义 — 请使用详细词性标注：vt.（及物动词）、vi.（不及物动词）、vt.&vi.（既可及物也可不及物）、n.[C]（可数名词）、n.[U]（不可数名词）、n.[集合]（集合名词）等。如果无法细分则使用 n. / v. / adj. / adv. / prep. / conj. / pron. / int. / art. / aux. / phr.
 2. 音标（国际音标）
-3. 词根解释（拆解词根词缀，解释构词逻辑）
-4. 近义词（2-4个，附带简要区分说明）
-5. 形近词（1-3个，附带含义和区分方法）
-6. 同根词（2-4个，附带含义和共同词根）
+3. 词根拆解 — 将单词拆分为前缀/词根/后缀等构词成分，每个成分标注类型（PREFIX/ROOT/SUFFIX/STEM/LINKING/OTHER）和含义
+4. 词根解释（用文字说明构词逻辑）
+5. 近义词（2-4个，附带简要区分说明）
+6. 形近词（1-3个，附带含义和区分方法）
+7. 同根词（2-4个，附带含义和共同词根）
 
 请严格按照以下 JSON 格式返回，不要添加任何其他文字：
 {
   "phonetic": "/音标/",
   "meanings": [
     {"pos": "详细词性.", "definition": "中文释义"}
+  ],
+  "decomposition": [
+    {"segment": "构词成分", "role": "PREFIX|ROOT|SUFFIX|STEM|LINKING|OTHER", "meaning": "含义"}
   ],
   "rootExplanation": "词根解释",
   "synonyms": [

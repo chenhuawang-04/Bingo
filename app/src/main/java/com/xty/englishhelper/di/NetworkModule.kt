@@ -2,6 +2,7 @@ package com.xty.englishhelper.di
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.xty.englishhelper.BuildConfig
 import com.xty.englishhelper.data.remote.AnthropicApiService
 import com.xty.englishhelper.data.remote.interceptor.AnthropicHeaderInterceptor
 import com.xty.englishhelper.util.Constants
@@ -31,17 +32,26 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient {
-        return OkHttpClient.Builder()
+        val builder = OkHttpClient.Builder()
             .addInterceptor(AnthropicHeaderInterceptor(Constants.ANTHROPIC_API_VERSION))
-            .addInterceptor(
-                HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BODY
-                }
-            )
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
-            .build()
+
+        if (BuildConfig.DEBUG) {
+            val loggingInterceptor = HttpLoggingInterceptor { message ->
+                val sanitized = message.replace(
+                    Regex("x-api-key:\\s*\\S+", RegexOption.IGNORE_CASE),
+                    "x-api-key: [REDACTED]"
+                )
+                HttpLoggingInterceptor.Logger.DEFAULT.log(sanitized)
+            }.apply {
+                level = HttpLoggingInterceptor.Level.HEADERS
+            }
+            builder.addInterceptor(loggingInterceptor)
+        }
+
+        return builder.build()
     }
 
     @Provides

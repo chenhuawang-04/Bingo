@@ -3,8 +3,8 @@ package com.xty.englishhelper.data.repository
 import com.xty.englishhelper.data.local.dao.DictionaryDao
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.repository.DictionaryRepository
-import com.xty.englishhelper.ui.mapper.toDomain
-import com.xty.englishhelper.ui.mapper.toEntity
+import com.xty.englishhelper.data.mapper.toDomain
+import com.xty.englishhelper.data.mapper.toEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject

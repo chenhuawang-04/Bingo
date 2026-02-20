@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.mapper
+package com.xty.englishhelper.data.mapper
 
 import com.xty.englishhelper.data.local.entity.UnitEntity
 import com.xty.englishhelper.data.local.entity.WordStudyStateEntity

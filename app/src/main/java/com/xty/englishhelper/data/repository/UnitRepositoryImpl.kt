@@ -5,8 +5,8 @@ import com.xty.englishhelper.data.local.entity.UnitWordCrossRef
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.repository.UnitRepository
-import com.xty.englishhelper.ui.mapper.toDomain
-import com.xty.englishhelper.ui.mapper.toEntity
+import com.xty.englishhelper.data.mapper.toDomain
+import com.xty.englishhelper.data.mapper.toEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject

@@ -50,7 +50,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.CognateInfo
+import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Meaning
+import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.PartOfSpeech
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.SynonymInfo
@@ -192,6 +194,20 @@ fun AddWordScreen(
                 )
             }
 
+            // Decomposition
+            item {
+                SectionHeader(title = "词根拆解", onAdd = viewModel::addDecompositionPart)
+            }
+            itemsIndexed(state.decomposition) { index, part ->
+                DecompositionPartRow(
+                    part = part,
+                    onSegmentChange = { viewModel.onDecompositionPartChange(index, part.copy(segment = it)) },
+                    onRoleChange = { viewModel.onDecompositionPartChange(index, part.copy(role = it)) },
+                    onMeaningChange = { viewModel.onDecompositionPartChange(index, part.copy(meaning = it)) },
+                    onRemove = { viewModel.removeDecompositionPart(index) }
+                )
+            }
+
             // Synonyms
             item {
                 SectionHeader(title = "近义词", onAdd = viewModel::addSynonym)
@@ -319,6 +335,82 @@ private fun MeaningRow(
             IconButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
                 Icon(Icons.Default.Close, contentDescription = "删除")
             }
+        }
+    }
+}
+
+private val MORPHEME_ROLE_OPTIONS = listOf(
+    MorphemeRole.PREFIX to "前缀",
+    MorphemeRole.ROOT to "词根",
+    MorphemeRole.SUFFIX to "后缀",
+    MorphemeRole.STEM to "词干",
+    MorphemeRole.LINKING to "连接",
+    MorphemeRole.OTHER to "其他"
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DecompositionPartRow(
+    part: DecompositionPart,
+    onSegmentChange: (String) -> Unit,
+    onRoleChange: (MorphemeRole) -> Unit,
+    onMeaningChange: (String) -> Unit,
+    onRemove: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val roleLabel = MORPHEME_ROLE_OPTIONS.firstOrNull { it.first == part.role }?.second ?: "其他"
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        OutlinedTextField(
+            value = part.segment,
+            onValueChange = onSegmentChange,
+            label = { Text("成分") },
+            singleLine = true,
+            modifier = Modifier.weight(0.25f)
+        )
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+            modifier = Modifier.weight(0.25f)
+        ) {
+            OutlinedTextField(
+                value = roleLabel,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("类型") },
+                singleLine = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                MORPHEME_ROLE_OPTIONS.forEach { (role, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            onRoleChange(role)
+                            expanded = false
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                    )
+                }
+            }
+        }
+        OutlinedTextField(
+            value = part.meaning,
+            onValueChange = onMeaningChange,
+            label = { Text("含义") },
+            singleLine = true,
+            modifier = Modifier.weight(0.35f)
+        )
+        IconButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
+            Icon(Icons.Default.Close, contentDescription = "删除")
         }
     }
 }

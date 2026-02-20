@@ -28,7 +28,8 @@ data class AiWordAnalysis(
     val rootExplanation: String = "",
     val synonyms: List<AiSynonym> = emptyList(),
     val similarWords: List<AiSimilarWord> = emptyList(),
-    val cognates: List<AiCognate> = emptyList()
+    val cognates: List<AiCognate> = emptyList(),
+    val decomposition: List<AiDecompositionPart> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
@@ -55,4 +56,11 @@ data class AiCognate(
     val word: String = "",
     val meaning: String = "",
     val sharedRoot: String = ""
+)
+
+@JsonClass(generateAdapter = true)
+data class AiDecompositionPart(
+    val segment: String = "",
+    val role: String = "",
+    val meaning: String = ""
 )

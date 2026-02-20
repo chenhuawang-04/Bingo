@@ -43,6 +43,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     room {
@@ -92,6 +93,9 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
+    // Security
+    implementation(libs.security.crypto)
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
@@ -101,4 +105,9 @@ dependencies {
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockk)
+    testImplementation(libs.room.testing)
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:runner:1.5.2")
 }

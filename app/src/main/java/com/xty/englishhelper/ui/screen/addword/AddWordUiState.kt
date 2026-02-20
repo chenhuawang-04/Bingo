@@ -1,6 +1,7 @@
 package com.xty.englishhelper.ui.screen.addword
 
 import com.xty.englishhelper.domain.model.CognateInfo
+import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.StudyUnit
@@ -12,6 +13,7 @@ data class AddWordUiState(
     val phonetic: String = "",
     val meanings: List<Meaning> = listOf(Meaning("", "")),
     val rootExplanation: String = "",
+    val decomposition: List<DecompositionPart> = emptyList(),
     val synonyms: List<SynonymInfo> = emptyList(),
     val similarWords: List<SimilarWordInfo> = emptyList(),
     val cognates: List<CognateInfo> = emptyList(),

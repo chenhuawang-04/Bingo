@@ -4,8 +4,8 @@ import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.repository.StudyRepository
-import com.xty.englishhelper.ui.mapper.toDomain
-import com.xty.englishhelper.ui.mapper.toEntity
+import com.xty.englishhelper.data.mapper.toDomain
+import com.xty.englishhelper.data.mapper.toEntity
 import javax.inject.Inject
 import javax.inject.Singleton
 

@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.mapper
+package com.xty.englishhelper.data.mapper
 
 import com.xty.englishhelper.data.local.entity.DictionaryEntity
 import com.xty.englishhelper.domain.model.Dictionary

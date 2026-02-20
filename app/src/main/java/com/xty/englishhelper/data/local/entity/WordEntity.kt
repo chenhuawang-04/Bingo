@@ -16,7 +16,11 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("dictionary_id"), Index("spelling")]
+    indices = [
+        Index("dictionary_id"),
+        Index("spelling"),
+        Index(value = ["dictionary_id", "normalized_spelling"], unique = true)
+    ]
 )
 data class WordEntity(
     @PrimaryKey(autoGenerate = true)
@@ -29,6 +33,12 @@ data class WordEntity(
     val meaningsJson: String = "[]",
     @ColumnInfo(name = "root_explanation")
     val rootExplanation: String = "",
+    @ColumnInfo(name = "normalized_spelling")
+    val normalizedSpelling: String = "",
+    @ColumnInfo(name = "word_uid")
+    val wordUid: String = "",
+    @ColumnInfo(name = "decomposition_json")
+    val decompositionJson: String = "[]",
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "updated_at")

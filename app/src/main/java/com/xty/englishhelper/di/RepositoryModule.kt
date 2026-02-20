@@ -1,13 +1,17 @@
 package com.xty.englishhelper.di
 
+import com.xty.englishhelper.data.json.JsonImportExporter
 import com.xty.englishhelper.data.repository.AiRepositoryImpl
 import com.xty.englishhelper.data.repository.DictionaryRepositoryImpl
+import com.xty.englishhelper.data.repository.RoomTransactionRunner
 import com.xty.englishhelper.data.repository.StudyRepositoryImpl
 import com.xty.englishhelper.data.repository.UnitRepositoryImpl
 import com.xty.englishhelper.data.repository.WordRepositoryImpl
 import com.xty.englishhelper.domain.repository.AiRepository
+import com.xty.englishhelper.domain.repository.DictionaryImportExporter
 import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.StudyRepository
+import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import dagger.Binds
@@ -39,4 +43,12 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindStudyRepository(impl: StudyRepositoryImpl): StudyRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTransactionRunner(impl: RoomTransactionRunner): TransactionRunner
+
+    @Binds
+    @Singleton
+    abstract fun bindDictionaryImportExporter(impl: JsonImportExporter): DictionaryImportExporter
 }
