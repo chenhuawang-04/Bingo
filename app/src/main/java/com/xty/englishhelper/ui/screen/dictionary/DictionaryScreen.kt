@@ -355,7 +355,7 @@ private fun DetailPane(
     wordId: Long,
     dictionaryId: Long,
     onWordClick: (Long, Long) -> Unit,
-    onEdit: (wordId: Long, dictionaryId: Long) -> Unit,
+    onEdit: (dictionaryId: Long, wordId: Long) -> Unit,
     onDeleted: () -> Unit
 ) {
     // Single-instance VM — reused across word selections, no accumulation
@@ -377,7 +377,7 @@ private fun DetailPane(
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.End
             ) {
-                IconButton(onClick = { onEdit(word.id, word.dictionaryId) }) {
+                IconButton(onClick = { onEdit(word.dictionaryId, word.id) }) {
                     Icon(Icons.Default.Edit, contentDescription = "编辑")
                 }
                 IconButton(onClick = detailViewModel::showDeleteDialog) {
