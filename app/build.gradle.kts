@@ -24,17 +24,10 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
-            if (keystorePath != null) {
-                // CI: keystore decoded from secret to a temp file
-                storeFile = file(keystorePath)
-            } else {
-                // Local: keystore beside build.gradle.kts
-                storeFile = file("bingo-release.jks")
-            }
-            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "h5Y_ikF9Iqbd3pSDFMXpYnWonX1_9xFt"
-            keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "bingo"
-            keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: "h5Y_ikF9Iqbd3pSDFMXpYnWonX1_9xFt"
+            storeFile = file(System.getenv("ANDROID_KEYSTORE_PATH") ?: "bingo-release.jks")
+            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: ""
         }
     }
 
