@@ -21,10 +21,20 @@
 - **关联词跳转** — 近义词、形近词、同根词中已存在于辞书的词条可点击直接跳转至详情页
 - **联想词展示** — 详情页底部展示与当前词共享构词成分的联想词列表，均可点击跳转
 
-### 单元与学习
+### 间隔重复学习
 - **单元分组** — 将单词按单元归类，支持多选分配
-- **艾宾浩斯复习** — 基于遗忘曲线的间隔重复算法（5 分钟 → 30 分钟 → 12 小时 → … → 30 天，共 10 级）
-- **学习模式** — 选择单元后进入复习流程，自动调度待复习单词
+- **FSRS-5 算法** — 基于自适应间隔重复算法 FSRS-5 调度复习，替代固定艾宾浩斯曲线
+- **学习仪表板** — 首页展示留存率、到期词数、今日进度、清空预估等 FSRS 统计
+- **学习模式** — 选择单元后进入复习流程，四级评分（重来/困难/良好/简单）并实时预览下次间隔
+
+### 自适应 UI
+- **响应式布局** — 基于 Material 3 Adaptive 框架，按 WindowSizeClass 自动切换手机/平板布局
+- **首页自适应** — 手机：仪表板卡片 + 辞书列表；平板：侧栏仪表板 + 辞书网格
+- **列表-详情分栏** — 平板上辞书页面展示列表-详情分栏，点击单词在右侧面板显示详情
+- **双列表单** — 平板上添加/编辑单词页面采用左右双列布局
+- **学习分栏** — 平板上学习页面左侧主窗格 + 右侧进度/统计面板
+- **大屏限宽** — 设置和导入导出页面在大屏上居中限宽，避免表单过度拉伸
+- **设计令牌系统** — "墨与薄荷"色彩令牌（InkBlue + MintTeal）+ 语义色 + 间距体系 + 响应式 Typography
 
 ### 导入导出
 - **JSON 格式** — 以 JSON 文件导入/导出整本辞书，包含单词、单元、学习状态
@@ -40,7 +50,7 @@
 
 | 层级 | 技术 |
 |------|------|
-| UI | Jetpack Compose + Material 3 |
+| UI | Jetpack Compose + Material 3 + Material 3 Adaptive |
 | 架构 | Clean Architecture（Domain / Data / UI） |
 | 依赖注入 | Hilt |
 | 本地存储 | Room（SQLite），DataStore Preferences |
@@ -49,6 +59,7 @@
 | AI | Anthropic Claude API |
 | 安全 | AndroidX Security Crypto |
 | 异步 | Kotlin Coroutines + Flow |
+| 间隔重复 | FSRS-5 自适应算法 |
 | 测试 | JUnit 4 + MockK + Room Testing |
 
 ## 项目结构
@@ -72,6 +83,7 @@ com.xty.englishhelper/
 ├── domain/                      # 领域层
 │   ├── model/                   # 领域模型
 │   ├── repository/              # Repository 接口
+│   ├── study/                   # FSRS 间隔重复引擎
 │   └── usecase/                 # 用例
 │       ├── ai/
 │       ├── dictionary/
@@ -80,7 +92,11 @@ com.xty.englishhelper/
 │       ├── unit/
 │       └── word/
 ├── ui/                          # UI 层
+│   ├── adaptive/                # WindowSizeClass 工具
 │   ├── components/              # 可复用组件
+│   ├── designsystem/            # 设计系统
+│   │   ├── components/          # 通用组件库（EhCard, EhStatTile 等）
+│   │   └── tokens/              # 设计令牌（色彩/间距/Typography）
 │   ├── navigation/              # 导航图 + 路由定义
 │   ├── screen/                  # 各页面
 │   │   ├── addword/             # 添加/编辑单词
@@ -101,7 +117,7 @@ com.xty.englishhelper/
 
 - Android Studio Hedgehog 或更高版本
 - JDK 17
-- Android SDK 34（compileSdk）
+- Android SDK 35（compileSdk）
 - 最低支持 Android 8.0（API 26）
 
 ### 编译运行
@@ -124,7 +140,7 @@ com.xty.englishhelper/
 3. **添加单词** — 进入辞书，点击「+」输入单词拼写，点击「AI 自动整理」一键填充
 4. **浏览关联** — 在单词详情页查看词根拆解、点击近义词/形近词/同根词跳转、查看联想词
 5. **创建单元** — 在辞书页面管理单元，将单词分配到不同单元
-6. **开始学习** — 选择单元进入复习模式，系统按艾宾浩斯曲线自动调度
+6. **开始学习** — 选择单元进入复习模式，系统按 FSRS-5 算法自适应调度
 
 ## 数据库版本
 

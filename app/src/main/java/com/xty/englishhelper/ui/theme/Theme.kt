@@ -3,42 +3,20 @@ package com.xty.englishhelper.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
-
-private val LightColorScheme = lightColorScheme(
-    primary = Blue40,
-    onPrimary = Gray99,
-    primaryContainer = Blue90,
-    onPrimaryContainer = DarkBlue40,
-    secondary = Teal40,
-    onSecondary = Gray99,
-    background = Gray99,
-    onBackground = Gray10,
-    surface = Gray95,
-    onSurface = Gray10,
-    error = Red40,
-    onError = Gray99
-)
-
-private val DarkColorScheme = darkColorScheme(
-    primary = Blue80,
-    onPrimary = Gray10,
-    primaryContainer = DarkBlue40,
-    onPrimaryContainer = Blue90,
-    secondary = Teal80,
-    onSecondary = Gray10,
-    background = Gray10,
-    onBackground = Gray90,
-    surface = Gray20,
-    onSurface = Gray90,
-    error = Red80,
-    onError = Gray10
-)
+import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
+import com.xty.englishhelper.ui.designsystem.tokens.DarkSemanticColors
+import com.xty.englishhelper.ui.designsystem.tokens.EhDarkColorScheme
+import com.xty.englishhelper.ui.designsystem.tokens.EhLightColorScheme
+import com.xty.englishhelper.ui.designsystem.tokens.EhSpacing
+import com.xty.englishhelper.ui.designsystem.tokens.LightSemanticColors
+import com.xty.englishhelper.ui.designsystem.tokens.LocalEhSemanticColors
+import com.xty.englishhelper.ui.designsystem.tokens.LocalEhSpacing
+import com.xty.englishhelper.ui.designsystem.tokens.adaptiveTypography
 
 @Composable
 fun EnglishHelperTheme(
@@ -51,13 +29,30 @@ fun EnglishHelperTheme(
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> EhDarkColorScheme
+        else -> EhLightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    val semanticColors = if (darkTheme) DarkSemanticColors else LightSemanticColors
+    val windowWidthClass = currentWindowWidthClass()
+    val typography = adaptiveTypography(windowWidthClass)
+
+    CompositionLocalProvider(
+        LocalEhSemanticColors provides semanticColors,
+        LocalEhSpacing provides EhSpacing()
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = typography,
+            content = content
+        )
+    }
+}
+
+object EhTheme {
+    val semanticColors: com.xty.englishhelper.ui.designsystem.tokens.EhSemanticColors
+        @Composable get() = LocalEhSemanticColors.current
+
+    val spacing: EhSpacing
+        @Composable get() = LocalEhSpacing.current
 }

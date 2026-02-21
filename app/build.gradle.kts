@@ -10,12 +10,12 @@ plugins {
 
 android {
     namespace = "com.xty.englishhelper"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.xty.englishhelper"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -95,6 +95,12 @@ dependencies {
 
     // Security
     implementation(libs.security.crypto)
+
+    // Adaptive
+    implementation(libs.m3.adaptive)
+    implementation(libs.m3.adaptive.layout)
+    implementation(libs.m3.adaptive.navigation)
+    implementation(libs.window.manager)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)

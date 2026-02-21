@@ -1,6 +1,7 @@
 package com.xty.englishhelper.ui.screen.dictionary
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,20 +28,29 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
+import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
 import com.xty.englishhelper.ui.components.ConfirmDialog
 import com.xty.englishhelper.ui.components.EmptyState
 import com.xty.englishhelper.ui.components.LoadingIndicator
 import com.xty.englishhelper.ui.components.SearchBar
 import com.xty.englishhelper.ui.components.UnitCard
+import com.xty.englishhelper.ui.components.WordDetailContent
 import com.xty.englishhelper.ui.components.WordListItem
+import com.xty.englishhelper.ui.screen.word.WordDetailViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,11 +64,25 @@ fun DictionaryScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val windowWidthClass = currentWindowWidthClass()
+    val isWide = windowWidthClass.isExpandedOrMedium()
+
+    var selectedWordId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedDictId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(state.error) {
         state.error?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
+        }
+    }
+
+    val handleWordClick: (Long, Long) -> Unit = { wordId, dictId ->
+        if (isWide) {
+            selectedWordId = wordId
+            selectedDictId = dictId
+        } else {
+            onWordClick(wordId, dictId)
         }
     }
 
@@ -89,125 +113,69 @@ fun DictionaryScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            SearchBar(
-                query = state.searchQuery,
-                onQueryChange = viewModel::onSearchQueryChange,
-                placeholder = "搜索单词…",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            when {
-                state.isLoading -> LoadingIndicator()
-                state.searchQuery.isNotEmpty() -> {
-                    // Search mode: show matching words
-                    if (state.words.isEmpty()) {
-                        EmptyState(message = "未找到匹配的单词")
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 80.dp)
-                        ) {
-                            items(state.words, key = { it.id }) { word ->
-                                WordListItem(
-                                    word = word,
-                                    onClick = {
-                                        state.dictionary?.let {
-                                            onWordClick(word.id, it.id)
-                                        }
-                                    }
-                                )
-                                HorizontalDivider()
-                            }
-                        }
-                    }
+        if (isWide) {
+            // List-detail split layout
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                // List pane
+                Column(
+                    modifier = Modifier
+                        .weight(0.4f)
+                        .fillMaxSize()
+                ) {
+                    DictionaryListContent(
+                        state = state,
+                        viewModel = viewModel,
+                        onWordClick = handleWordClick,
+                        onUnitClick = onUnitClick,
+                        selectedWordId = selectedWordId
+                    )
                 }
-                else -> {
-                    // Default mode: show units + all words
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 80.dp),
-                        verticalArrangement = Arrangement.spacedBy(0.dp)
-                    ) {
-                        // Units section
-                        if (state.units.isNotEmpty() || state.words.isNotEmpty()) {
-                            item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "单元",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    TextButton(onClick = viewModel::showCreateUnitDialog) {
-                                        Text("新建单元")
-                                    }
-                                }
-                            }
-                        }
 
-                        if (state.units.isEmpty()) {
-                            item {
-                                Text(
-                                    text = "还没有单元，点击「新建单元」创建",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                )
-                            }
-                        } else {
-                            items(state.units, key = { "unit_${it.id}" }) { unit ->
-                                UnitCard(
-                                    unit = unit,
-                                    onClick = {
-                                        state.dictionary?.let {
-                                            onUnitClick(unit.id, it.id)
-                                        }
-                                    },
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
+                VerticalDivider()
 
-                        // Words section
-                        item {
+                // Detail pane
+                Box(
+                    modifier = Modifier
+                        .weight(0.6f)
+                        .fillMaxSize()
+                ) {
+                    if (selectedWordId != null && selectedDictId != null) {
+                        DetailPane(
+                            wordId = selectedWordId!!,
+                            onWordClick = handleWordClick
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Text(
-                                text = "全部单词 (${state.words.size})",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                text = "选择一个单词查看详情",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-
-                        if (state.words.isEmpty()) {
-                            item {
-                                EmptyState(
-                                    message = "辞书中还没有单词\n点击 + 添加一个吧"
-                                )
-                            }
-                        } else {
-                            items(state.words, key = { "word_${it.id}" }) { word ->
-                                WordListItem(
-                                    word = word,
-                                    onClick = {
-                                        state.dictionary?.let {
-                                            onWordClick(word.id, it.id)
-                                        }
-                                    }
-                                )
-                                HorizontalDivider()
-                            }
-                        }
                     }
                 }
+            }
+        } else {
+            // Compact: single-column list
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                DictionaryListContent(
+                    state = state,
+                    viewModel = viewModel,
+                    onWordClick = handleWordClick,
+                    onUnitClick = onUnitClick,
+                    selectedWordId = null
+                )
             }
         }
     }
@@ -248,5 +216,161 @@ fun DictionaryScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun DictionaryListContent(
+    state: DictionaryUiState,
+    viewModel: DictionaryViewModel,
+    onWordClick: (Long, Long) -> Unit,
+    onUnitClick: (Long, Long) -> Unit,
+    selectedWordId: Long?
+) {
+    SearchBar(
+        query = state.searchQuery,
+        onQueryChange = viewModel::onSearchQueryChange,
+        placeholder = "搜索单词…",
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+    )
+
+    when {
+        state.isLoading -> LoadingIndicator()
+        state.searchQuery.isNotEmpty() -> {
+            if (state.words.isEmpty()) {
+                EmptyState(message = "未找到匹配的单词")
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
+                    items(state.words, key = { it.id }) { word ->
+                        WordListItem(
+                            word = word,
+                            onClick = {
+                                state.dictionary?.let {
+                                    onWordClick(word.id, it.id)
+                                }
+                            },
+                            isSelected = word.id == selectedWordId
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            }
+        }
+        else -> {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 80.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                if (state.units.isNotEmpty() || state.words.isNotEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "单元",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            TextButton(onClick = viewModel::showCreateUnitDialog) {
+                                Text("新建单元")
+                            }
+                        }
+                    }
+                }
+
+                if (state.units.isEmpty()) {
+                    item {
+                        Text(
+                            text = "还没有单元，点击「新建单元」创建",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                } else {
+                    items(state.units, key = { "unit_${it.id}" }) { unit ->
+                        UnitCard(
+                            unit = unit,
+                            onClick = {
+                                state.dictionary?.let {
+                                    onUnitClick(unit.id, it.id)
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                item {
+                    Text(
+                        text = "全部单词 (${state.words.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+
+                if (state.words.isEmpty()) {
+                    item {
+                        EmptyState(
+                            message = "辞书中还没有单词\n点击 + 添加一个吧"
+                        )
+                    }
+                } else {
+                    items(state.words, key = { "word_${it.id}" }) { word ->
+                        WordListItem(
+                            word = word,
+                            onClick = {
+                                state.dictionary?.let {
+                                    onWordClick(word.id, it.id)
+                                }
+                            },
+                            isSelected = word.id == selectedWordId
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailPane(
+    wordId: Long,
+    onWordClick: (Long, Long) -> Unit
+) {
+    val detailViewModel: WordDetailViewModel = hiltViewModel(key = "detail_$wordId")
+    val detailState by detailViewModel.uiState.collectAsState()
+
+    when {
+        detailState.isLoading -> LoadingIndicator()
+        detailState.word == null -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "单词不存在",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        else -> {
+            WordDetailContent(
+                word = detailState.word!!,
+                associatedWords = detailState.associatedWords,
+                linkedWordIds = detailState.linkedWordIds,
+                onWordClick = onWordClick
+            )
+        }
     }
 }

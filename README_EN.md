@@ -21,10 +21,20 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 - **Linked word navigation** — Synonyms, similar words, and cognates that exist in the dictionary are clickable, navigating directly to their detail page
 - **Association display** — Bottom of detail page shows associated words sharing morphemes with the current word, all clickable
 
-### Units & Study
+### Spaced Repetition Study
 - **Unit grouping** — Organize words into units with multi-select assignment
-- **Ebbinghaus review** — Spaced repetition algorithm based on the forgetting curve (5 min → 30 min → 12 hours → … → 30 days, 10 levels)
-- **Study mode** — Select units to enter review flow with automatic scheduling of due words
+- **FSRS-5 algorithm** — Adaptive spaced repetition scheduling using FSRS-5, replacing fixed Ebbinghaus intervals
+- **Learning dashboard** — Home screen shows retention rate, due word count, today's progress, and estimated clear time
+- **Study mode** — Select units to enter review flow with four-level ratings (Again/Hard/Good/Easy) and real-time next-interval preview
+
+### Adaptive UI
+- **Responsive layouts** — Built on Material 3 Adaptive framework, automatically switches between phone and tablet layouts based on WindowSizeClass
+- **Adaptive home** — Phone: dashboard card + dictionary list; Tablet: sidebar dashboard + dictionary grid
+- **List-detail split** — Tablet dictionary screen shows list-detail split pane; tapping a word displays details in the right panel
+- **Dual-column form** — Tablet add/edit word screen uses side-by-side two-column layout
+- **Study split pane** — Tablet study screen with main pane on the left + progress/stats panel on the right
+- **Large screen max-width** — Settings and import/export screens are centered and width-constrained on large screens
+- **Design token system** — "Ink & Mint" color tokens (InkBlue + MintTeal) + semantic colors + spacing system + responsive Typography
 
 ### Import / Export
 - **JSON format** — Import/export entire dictionaries as JSON files, including words, units, and study states
@@ -40,7 +50,7 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 
 | Layer | Technology |
 |-------|-----------|
-| UI | Jetpack Compose + Material 3 |
+| UI | Jetpack Compose + Material 3 + Material 3 Adaptive |
 | Architecture | Clean Architecture (Domain / Data / UI) |
 | DI | Hilt |
 | Local Storage | Room (SQLite), DataStore Preferences |
@@ -49,6 +59,7 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 | AI | Anthropic Claude API |
 | Security | AndroidX Security Crypto |
 | Async | Kotlin Coroutines + Flow |
+| Spaced Repetition | FSRS-5 adaptive algorithm |
 | Testing | JUnit 4 + MockK + Room Testing |
 
 ## Project Structure
@@ -72,6 +83,7 @@ com.xty.englishhelper/
 ├── domain/                      # Domain layer
 │   ├── model/                   # Domain models
 │   ├── repository/              # Repository interfaces
+│   ├── study/                   # FSRS spaced repetition engine
 │   └── usecase/                 # Use cases
 │       ├── ai/
 │       ├── dictionary/
@@ -80,7 +92,11 @@ com.xty.englishhelper/
 │       ├── unit/
 │       └── word/
 ├── ui/                          # UI layer
+│   ├── adaptive/                # WindowSizeClass utilities
 │   ├── components/              # Reusable components
+│   ├── designsystem/            # Design system
+│   │   ├── components/          # Common component library (EhCard, EhStatTile, etc.)
+│   │   └── tokens/              # Design tokens (color/spacing/Typography)
 │   ├── navigation/              # Nav graph + route definitions
 │   ├── screen/                  # Screen pages
 │   │   ├── addword/             # Add/edit word
@@ -101,7 +117,7 @@ com.xty.englishhelper/
 
 - Android Studio Hedgehog or later
 - JDK 17
-- Android SDK 34 (compileSdk)
+- Android SDK 35 (compileSdk)
 - Minimum Android 8.0 (API 26)
 
 ### Compile & Run
@@ -124,7 +140,7 @@ com.xty.englishhelper/
 3. **Add words** — Enter the dictionary, tap "+", type a word, and tap "AI Auto-Organize" to auto-fill
 4. **Browse associations** — On the word detail page, view morpheme decomposition, tap synonyms/similar words/cognates to navigate, and browse associated words
 5. **Create units** — Manage units on the dictionary page and assign words to different units
-6. **Start studying** — Select units to enter review mode; the system schedules reviews following the Ebbinghaus curve
+6. **Start studying** — Select units to enter review mode; the system schedules reviews using the FSRS-5 adaptive algorithm
 
 ## Database Versions
 

@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.util.Constants
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,85 +70,88 @@ fun SettingsScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        Column(
+        EhMaxWidthContainer(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+                .padding(padding),
+            maxWidth = 560.dp
         ) {
-            // API Key
-            Text("Anthropic API", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = state.baseUrl,
-                onValueChange = viewModel::onBaseUrlChange,
-                label = { Text("Base URL") },
-                placeholder = { Text("https://api.anthropic.com/") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = state.apiKey,
-                onValueChange = viewModel::onApiKeyChange,
-                label = { Text("API Key") },
-                placeholder = { Text("sk-ant-...") },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // Model selection
-            val currentModelName = Constants.AVAILABLE_MODELS
-                .find { it.first == state.selectedModel }?.second ?: state.selectedModel
-
-            ExposedDropdownMenuBox(
-                expanded = modelExpanded,
-                onExpandedChange = { modelExpanded = it }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
+                Text("Anthropic API", style = MaterialTheme.typography.titleMedium)
+
                 OutlinedTextField(
-                    value = currentModelName,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("模型选择") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                    value = state.baseUrl,
+                    onValueChange = viewModel::onBaseUrlChange,
+                    label = { Text("Base URL") },
+                    placeholder = { Text("https://api.anthropic.com/") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                ExposedDropdownMenu(
+
+                OutlinedTextField(
+                    value = state.apiKey,
+                    onValueChange = viewModel::onApiKeyChange,
+                    label = { Text("API Key") },
+                    placeholder = { Text("sk-ant-...") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                val currentModelName = Constants.AVAILABLE_MODELS
+                    .find { it.first == state.selectedModel }?.second ?: state.selectedModel
+
+                ExposedDropdownMenuBox(
                     expanded = modelExpanded,
-                    onDismissRequest = { modelExpanded = false }
+                    onExpandedChange = { modelExpanded = it }
                 ) {
-                    Constants.AVAILABLE_MODELS.forEach { (modelId, modelName) ->
-                        DropdownMenuItem(
-                            text = { Text(modelName) },
-                            onClick = {
-                                viewModel.onModelChange(modelId)
-                                modelExpanded = false
-                            }
-                        )
+                    OutlinedTextField(
+                        value = currentModelName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("模型选择") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                    )
+                    ExposedDropdownMenu(
+                        expanded = modelExpanded,
+                        onDismissRequest = { modelExpanded = false }
+                    ) {
+                        Constants.AVAILABLE_MODELS.forEach { (modelId, modelName) ->
+                            DropdownMenuItem(
+                                text = { Text(modelName) },
+                                onClick = {
+                                    viewModel.onModelChange(modelId)
+                                    modelExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
-            }
 
-            // Test connection
-            Button(
-                onClick = viewModel::testConnection,
-                enabled = !state.isTesting && state.apiKey.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (state.isTesting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Text("  正在测试…")
-                } else {
-                    Text("测试连接")
+                Button(
+                    onClick = viewModel::testConnection,
+                    enabled = !state.isTesting && state.apiKey.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (state.isTesting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Text("  正在测试…")
+                    } else {
+                        Text("测试连接")
+                    }
                 }
             }
         }

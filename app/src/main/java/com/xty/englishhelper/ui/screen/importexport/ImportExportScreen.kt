@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,72 +92,75 @@ fun ImportExportScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        Column(
+        EhMaxWidthContainer(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding),
+            maxWidth = 560.dp
         ) {
-            if (state.isLoading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth()
             ) {
-                // Import section
-                item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("导入辞书", style = MaterialTheme.typography.titleMedium)
+                if (state.isLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("导入辞书", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "从 JSON 文件导入辞书和单词数据",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                OutlinedButton(
+                                    onClick = { importLauncher.launch("application/json") },
+                                    enabled = !state.isLoading
+                                ) {
+                                    Icon(Icons.Default.Upload, contentDescription = null)
+                                    Text("  选择 JSON 文件")
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Text("导出辞书", style = MaterialTheme.typography.titleMedium)
+                        if (state.dictionaries.isEmpty()) {
                             Text(
-                                "从 JSON 文件导入辞书和单词数据",
+                                "没有可导出的辞书",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            OutlinedButton(
-                                onClick = { importLauncher.launch("application/json") },
-                                enabled = !state.isLoading
-                            ) {
-                                Icon(Icons.Default.Upload, contentDescription = null)
-                                Text("  选择 JSON 文件")
-                            }
                         }
                     }
-                }
 
-                // Export section
-                item {
-                    Text("导出辞书", style = MaterialTheme.typography.titleMedium)
-                    if (state.dictionaries.isEmpty()) {
-                        Text(
-                            "没有可导出的辞书",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    items(state.dictionaries) { dict ->
+                        ListItem(
+                            headlineContent = { Text(dict.name) },
+                            supportingContent = { Text("${dict.wordCount} 个单词") },
+                            trailingContent = {
+                                IconButton(
+                                    onClick = {
+                                        exportTarget = dict
+                                        exportLauncher.launch("${dict.name}.json")
+                                    },
+                                    enabled = !state.isLoading
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = "导出")
+                                }
+                            },
+                            modifier = Modifier.clickable(enabled = !state.isLoading) {
+                                exportTarget = dict
+                                exportLauncher.launch("${dict.name}.json")
+                            }
                         )
                     }
-                }
-
-                items(state.dictionaries) { dict ->
-                    ListItem(
-                        headlineContent = { Text(dict.name) },
-                        supportingContent = { Text("${dict.wordCount} 个单词") },
-                        trailingContent = {
-                            IconButton(
-                                onClick = {
-                                    exportTarget = dict
-                                    exportLauncher.launch("${dict.name}.json")
-                                },
-                                enabled = !state.isLoading
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = "导出")
-                            }
-                        },
-                        modifier = Modifier.clickable(enabled = !state.isLoading) {
-                            exportTarget = dict
-                            exportLauncher.launch("${dict.name}.json")
-                        }
-                    )
                 }
             }
         }

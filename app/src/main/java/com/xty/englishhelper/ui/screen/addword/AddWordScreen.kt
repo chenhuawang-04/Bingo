@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -56,6 +58,9 @@ import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.PartOfSpeech
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.SynonymInfo
+import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
+import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
+import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -65,6 +70,8 @@ fun AddWordScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val windowWidthClass = currentWindowWidthClass()
+    val isWide = windowWidthClass.isExpandedOrMedium()
 
     LaunchedEffect(state.error) {
         state.error?.let {
@@ -98,158 +105,302 @@ fun AddWordScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Spelling + AI button
-            item {
-                OutlinedTextField(
-                    value = state.spelling,
-                    onValueChange = viewModel::onSpellingChange,
-                    label = { Text("单词拼写") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+        if (isWide) {
+            // Dual-column layout for medium/expanded
+            EhMaxWidthContainer(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                maxWidth = 900.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Left column: basic fields
+                    Column(
+                        modifier = Modifier
+                            .weight(0.5f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = state.spelling,
+                            onValueChange = viewModel::onSpellingChange,
+                            label = { Text("单词拼写") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
-            // Unit selection chips
-            if (state.availableUnits.isNotEmpty()) {
-                item {
-                    Column {
-                        Text("所属单元", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        if (state.availableUnits.isNotEmpty()) {
+                            Column {
+                                Text("所属单元", style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.height(8.dp))
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    state.availableUnits.forEach { unit ->
+                                        FilterChip(
+                                            selected = unit.id in state.selectedUnitIds,
+                                            onClick = { viewModel.toggleUnitSelection(unit.id) },
+                                            label = { Text(unit.name) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = viewModel::organizeWithAi,
+                            enabled = !state.isAiLoading && state.spelling.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            state.availableUnits.forEach { unit ->
-                                FilterChip(
-                                    selected = unit.id in state.selectedUnitIds,
-                                    onClick = { viewModel.toggleUnitSelection(unit.id) },
-                                    label = { Text(unit.name) }
+                            if (state.isAiLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
                                 )
+                                Text("  正在整理…")
+                            } else {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                                Text("  AI 自动整理")
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = state.phonetic,
+                            onValueChange = viewModel::onPhoneticChange,
+                            label = { Text("音标") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        SectionHeader(title = "词性与词义", onAdd = viewModel::addMeaning)
+                        state.meanings.forEachIndexed { index, meaning ->
+                            MeaningRow(
+                                meaning = meaning,
+                                onPosChange = { viewModel.onMeaningChange(index, meaning.copy(pos = it)) },
+                                onDefChange = { viewModel.onMeaningChange(index, meaning.copy(definition = it)) },
+                                onRemove = { viewModel.removeMeaning(index) },
+                                showRemove = state.meanings.size > 1
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = state.rootExplanation,
+                            onValueChange = viewModel::onRootExplanationChange,
+                            label = { Text("词根解释") },
+                            minLines = 2,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(Modifier.height(80.dp))
+                    }
+
+                    // Right column: word relationships
+                    Column(
+                        modifier = Modifier
+                            .weight(0.5f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        SectionHeader(title = "词根拆解", onAdd = viewModel::addDecompositionPart)
+                        state.decomposition.forEachIndexed { index, part ->
+                            DecompositionPartRow(
+                                part = part,
+                                onSegmentChange = { viewModel.onDecompositionPartChange(index, part.copy(segment = it)) },
+                                onRoleChange = { viewModel.onDecompositionPartChange(index, part.copy(role = it)) },
+                                onMeaningChange = { viewModel.onDecompositionPartChange(index, part.copy(meaning = it)) },
+                                onRemove = { viewModel.removeDecompositionPart(index) }
+                            )
+                        }
+
+                        SectionHeader(title = "近义词", onAdd = viewModel::addSynonym)
+                        state.synonyms.forEachIndexed { index, syn ->
+                            SynonymRow(
+                                synonym = syn,
+                                onWordChange = { viewModel.onSynonymChange(index, syn.copy(word = it)) },
+                                onExplanationChange = { viewModel.onSynonymChange(index, syn.copy(explanation = it)) },
+                                onRemove = { viewModel.removeSynonym(index) }
+                            )
+                        }
+
+                        SectionHeader(title = "形近词", onAdd = viewModel::addSimilarWord)
+                        state.similarWords.forEachIndexed { index, sim ->
+                            SimilarWordRow(
+                                similarWord = sim,
+                                onWordChange = { viewModel.onSimilarWordChange(index, sim.copy(word = it)) },
+                                onMeaningChange = { viewModel.onSimilarWordChange(index, sim.copy(meaning = it)) },
+                                onExplanationChange = { viewModel.onSimilarWordChange(index, sim.copy(explanation = it)) },
+                                onRemove = { viewModel.removeSimilarWord(index) }
+                            )
+                        }
+
+                        SectionHeader(title = "同根词", onAdd = viewModel::addCognate)
+                        state.cognates.forEachIndexed { index, cog ->
+                            CognateRow(
+                                cognate = cog,
+                                onWordChange = { viewModel.onCognateChange(index, cog.copy(word = it)) },
+                                onMeaningChange = { viewModel.onCognateChange(index, cog.copy(meaning = it)) },
+                                onSharedRootChange = { viewModel.onCognateChange(index, cog.copy(sharedRoot = it)) },
+                                onRemove = { viewModel.removeCognate(index) }
+                            )
+                        }
+
+                        Spacer(Modifier.height(80.dp))
+                    }
+                }
+            }
+        } else {
+            // Compact: original single-column LazyColumn
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    OutlinedTextField(
+                        value = state.spelling,
+                        onValueChange = viewModel::onSpellingChange,
+                        label = { Text("单词拼写") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                if (state.availableUnits.isNotEmpty()) {
+                    item {
+                        Column {
+                            Text("所属单元", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(8.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                state.availableUnits.forEach { unit ->
+                                    FilterChip(
+                                        selected = unit.id in state.selectedUnitIds,
+                                        onClick = { viewModel.toggleUnitSelection(unit.id) },
+                                        label = { Text(unit.name) }
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            item {
-                Button(
-                    onClick = viewModel::organizeWithAi,
-                    enabled = !state.isAiLoading && state.spelling.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (state.isAiLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                        Text("  正在整理…")
-                    } else {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null)
-                        Text("  AI 自动整理")
+                item {
+                    Button(
+                        onClick = viewModel::organizeWithAi,
+                        enabled = !state.isAiLoading && state.spelling.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (state.isAiLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Text("  正在整理…")
+                        } else {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                            Text("  AI 自动整理")
+                        }
                     }
                 }
-            }
 
-            // Phonetic
-            item {
-                OutlinedTextField(
-                    value = state.phonetic,
-                    onValueChange = viewModel::onPhoneticChange,
-                    label = { Text("音标") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+                item {
+                    OutlinedTextField(
+                        value = state.phonetic,
+                        onValueChange = viewModel::onPhoneticChange,
+                        label = { Text("音标") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
-            // Meanings
-            item {
-                SectionHeader(title = "词性与词义", onAdd = viewModel::addMeaning)
-            }
-            itemsIndexed(state.meanings) { index, meaning ->
-                MeaningRow(
-                    meaning = meaning,
-                    onPosChange = { viewModel.onMeaningChange(index, meaning.copy(pos = it)) },
-                    onDefChange = { viewModel.onMeaningChange(index, meaning.copy(definition = it)) },
-                    onRemove = { viewModel.removeMeaning(index) },
-                    showRemove = state.meanings.size > 1
-                )
-            }
+                item {
+                    SectionHeader(title = "词性与词义", onAdd = viewModel::addMeaning)
+                }
+                itemsIndexed(state.meanings) { index, meaning ->
+                    MeaningRow(
+                        meaning = meaning,
+                        onPosChange = { viewModel.onMeaningChange(index, meaning.copy(pos = it)) },
+                        onDefChange = { viewModel.onMeaningChange(index, meaning.copy(definition = it)) },
+                        onRemove = { viewModel.removeMeaning(index) },
+                        showRemove = state.meanings.size > 1
+                    )
+                }
 
-            // Root explanation
-            item {
-                OutlinedTextField(
-                    value = state.rootExplanation,
-                    onValueChange = viewModel::onRootExplanationChange,
-                    label = { Text("词根解释") },
-                    minLines = 2,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+                item {
+                    OutlinedTextField(
+                        value = state.rootExplanation,
+                        onValueChange = viewModel::onRootExplanationChange,
+                        label = { Text("词根解释") },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
-            // Decomposition
-            item {
-                SectionHeader(title = "词根拆解", onAdd = viewModel::addDecompositionPart)
-            }
-            itemsIndexed(state.decomposition) { index, part ->
-                DecompositionPartRow(
-                    part = part,
-                    onSegmentChange = { viewModel.onDecompositionPartChange(index, part.copy(segment = it)) },
-                    onRoleChange = { viewModel.onDecompositionPartChange(index, part.copy(role = it)) },
-                    onMeaningChange = { viewModel.onDecompositionPartChange(index, part.copy(meaning = it)) },
-                    onRemove = { viewModel.removeDecompositionPart(index) }
-                )
-            }
+                item {
+                    SectionHeader(title = "词根拆解", onAdd = viewModel::addDecompositionPart)
+                }
+                itemsIndexed(state.decomposition) { index, part ->
+                    DecompositionPartRow(
+                        part = part,
+                        onSegmentChange = { viewModel.onDecompositionPartChange(index, part.copy(segment = it)) },
+                        onRoleChange = { viewModel.onDecompositionPartChange(index, part.copy(role = it)) },
+                        onMeaningChange = { viewModel.onDecompositionPartChange(index, part.copy(meaning = it)) },
+                        onRemove = { viewModel.removeDecompositionPart(index) }
+                    )
+                }
 
-            // Synonyms
-            item {
-                SectionHeader(title = "近义词", onAdd = viewModel::addSynonym)
-            }
-            itemsIndexed(state.synonyms) { index, syn ->
-                SynonymRow(
-                    synonym = syn,
-                    onWordChange = { viewModel.onSynonymChange(index, syn.copy(word = it)) },
-                    onExplanationChange = { viewModel.onSynonymChange(index, syn.copy(explanation = it)) },
-                    onRemove = { viewModel.removeSynonym(index) }
-                )
-            }
+                item {
+                    SectionHeader(title = "近义词", onAdd = viewModel::addSynonym)
+                }
+                itemsIndexed(state.synonyms) { index, syn ->
+                    SynonymRow(
+                        synonym = syn,
+                        onWordChange = { viewModel.onSynonymChange(index, syn.copy(word = it)) },
+                        onExplanationChange = { viewModel.onSynonymChange(index, syn.copy(explanation = it)) },
+                        onRemove = { viewModel.removeSynonym(index) }
+                    )
+                }
 
-            // Similar words
-            item {
-                SectionHeader(title = "形近词", onAdd = viewModel::addSimilarWord)
-            }
-            itemsIndexed(state.similarWords) { index, sim ->
-                SimilarWordRow(
-                    similarWord = sim,
-                    onWordChange = { viewModel.onSimilarWordChange(index, sim.copy(word = it)) },
-                    onMeaningChange = { viewModel.onSimilarWordChange(index, sim.copy(meaning = it)) },
-                    onExplanationChange = { viewModel.onSimilarWordChange(index, sim.copy(explanation = it)) },
-                    onRemove = { viewModel.removeSimilarWord(index) }
-                )
-            }
+                item {
+                    SectionHeader(title = "形近词", onAdd = viewModel::addSimilarWord)
+                }
+                itemsIndexed(state.similarWords) { index, sim ->
+                    SimilarWordRow(
+                        similarWord = sim,
+                        onWordChange = { viewModel.onSimilarWordChange(index, sim.copy(word = it)) },
+                        onMeaningChange = { viewModel.onSimilarWordChange(index, sim.copy(meaning = it)) },
+                        onExplanationChange = { viewModel.onSimilarWordChange(index, sim.copy(explanation = it)) },
+                        onRemove = { viewModel.removeSimilarWord(index) }
+                    )
+                }
 
-            // Cognates
-            item {
-                SectionHeader(title = "同根词", onAdd = viewModel::addCognate)
-            }
-            itemsIndexed(state.cognates) { index, cog ->
-                CognateRow(
-                    cognate = cog,
-                    onWordChange = { viewModel.onCognateChange(index, cog.copy(word = it)) },
-                    onMeaningChange = { viewModel.onCognateChange(index, cog.copy(meaning = it)) },
-                    onSharedRootChange = { viewModel.onCognateChange(index, cog.copy(sharedRoot = it)) },
-                    onRemove = { viewModel.removeCognate(index) }
-                )
-            }
+                item {
+                    SectionHeader(title = "同根词", onAdd = viewModel::addCognate)
+                }
+                itemsIndexed(state.cognates) { index, cog ->
+                    CognateRow(
+                        cognate = cog,
+                        onWordChange = { viewModel.onCognateChange(index, cog.copy(word = it)) },
+                        onMeaningChange = { viewModel.onCognateChange(index, cog.copy(meaning = it)) },
+                        onSharedRootChange = { viewModel.onCognateChange(index, cog.copy(sharedRoot = it)) },
+                        onRemove = { viewModel.removeCognate(index) }
+                    )
+                }
 
-            item { Spacer(Modifier.height(80.dp)) }
+                item { Spacer(Modifier.height(80.dp)) }
+            }
         }
     }
 }
