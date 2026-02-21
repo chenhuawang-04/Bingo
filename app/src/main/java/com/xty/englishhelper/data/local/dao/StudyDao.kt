@@ -103,4 +103,22 @@ interface StudyDao {
         """
     )
     suspend fun getStudyStatesForDictionary(dictionaryId: Long): List<WordStudyStateEntity>
+
+    /**
+     * Count all due words globally.
+     */
+    @Query("SELECT COUNT(*) FROM word_study_state WHERE due <= :now")
+    suspend fun countAllDueWords(now: Long): Int
+
+    /**
+     * Count words reviewed today (between todayStart and now).
+     */
+    @Query("SELECT COUNT(*) FROM word_study_state WHERE last_review_at BETWEEN :todayStart AND :now")
+    suspend fun countReviewedToday(todayStart: Long, now: Long): Int
+
+    /**
+     * Get all study states with stability > 0 (actively learned words).
+     */
+    @Query("SELECT * FROM word_study_state WHERE stability > 0")
+    suspend fun getAllActiveStudyStates(): List<WordStudyStateEntity>
 }

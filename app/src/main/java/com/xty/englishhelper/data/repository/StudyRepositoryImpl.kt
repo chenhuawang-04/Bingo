@@ -34,4 +34,13 @@ class StudyRepositoryImpl @Inject constructor(
 
     override suspend fun getStudyStatesForDictionary(dictionaryId: Long): List<WordStudyState> =
         studyDao.getStudyStatesForDictionary(dictionaryId).map { it.toDomain() }
+
+    override suspend fun countAllDueWords(now: Long): Int =
+        studyDao.countAllDueWords(now)
+
+    override suspend fun countReviewedToday(todayStart: Long, now: Long): Int =
+        studyDao.countReviewedToday(todayStart, now)
+
+    override suspend fun getAllActiveStudyStates(): List<WordStudyState> =
+        studyDao.getAllActiveStudyStates().map { it.toDomain() }
 }

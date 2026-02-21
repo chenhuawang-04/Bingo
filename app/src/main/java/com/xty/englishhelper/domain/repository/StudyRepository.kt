@@ -11,4 +11,7 @@ interface StudyRepository {
     suspend fun countDueWords(unitId: Long, now: Long): Int
     suspend fun countNewWords(unitId: Long): Int
     suspend fun getStudyStatesForDictionary(dictionaryId: Long): List<WordStudyState>
+    suspend fun countAllDueWords(now: Long): Int
+    suspend fun countReviewedToday(todayStart: Long, now: Long): Int
+    suspend fun getAllActiveStudyStates(): List<WordStudyState>
 }
