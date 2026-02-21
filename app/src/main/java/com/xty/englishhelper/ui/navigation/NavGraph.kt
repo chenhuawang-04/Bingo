@@ -42,6 +42,9 @@ fun NavGraph(navController: NavHostController) {
                 onAddWord = { dictId ->
                     navController.navigate(AddWordRoute(dictId))
                 },
+                onEditWord = { dictId, wordId ->
+                    navController.navigate(AddWordRoute(dictId, wordId))
+                },
                 onUnitClick = { unitId, dictId ->
                     navController.navigate(UnitDetailRoute(unitId, dictId))
                 },

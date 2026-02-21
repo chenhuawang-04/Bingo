@@ -24,13 +24,25 @@ class WordDetailViewModel @Inject constructor(
     private val getAssociatedWords: GetAssociatedWordsUseCase
 ) : ViewModel() {
 
-    private val wordId: Long = savedStateHandle["wordId"] ?: 0L
-    private val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
+    private var wordId: Long = savedStateHandle["wordId"] ?: 0L
+    private var dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
 
     private val _uiState = MutableStateFlow(WordDetailUiState())
     val uiState: StateFlow<WordDetailUiState> = _uiState.asStateFlow()
 
     init {
+        if (wordId != 0L) {
+            loadWord()
+        }
+    }
+
+    /**
+     * Explicitly load a word by ID. Used by the wide-screen detail pane
+     * where wordId/dictionaryId are not available from SavedStateHandle.
+     */
+    fun loadWord(wordId: Long, dictionaryId: Long) {
+        this.wordId = wordId
+        this.dictionaryId = dictionaryId
         loadWord()
     }
 

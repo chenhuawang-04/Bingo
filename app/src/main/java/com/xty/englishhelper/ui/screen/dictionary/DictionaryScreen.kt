@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,6 +60,7 @@ fun DictionaryScreen(
     onBack: () -> Unit,
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
     onAddWord: (dictionaryId: Long) -> Unit,
+    onEditWord: (dictionaryId: Long, wordId: Long) -> Unit,
     onUnitClick: (unitId: Long, dictionaryId: Long) -> Unit,
     onStudy: (dictionaryId: Long) -> Unit,
     viewModel: DictionaryViewModel = hiltViewModel()
@@ -68,7 +71,6 @@ fun DictionaryScreen(
     val isWide = windowWidthClass.isExpandedOrMedium()
 
     var selectedWordId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var selectedDictId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(state.error) {
         state.error?.let {
@@ -77,12 +79,13 @@ fun DictionaryScreen(
         }
     }
 
-    val handleWordClick: (Long, Long) -> Unit = { wordId, dictId ->
+    val dictionaryId = state.dictionary?.id
+
+    val handleWordClick: (Long, Long) -> Unit = { wordId, _ ->
         if (isWide) {
             selectedWordId = wordId
-            selectedDictId = dictId
         } else {
-            onWordClick(wordId, dictId)
+            dictionaryId?.let { onWordClick(wordId, it) }
         }
     }
 
@@ -143,10 +146,15 @@ fun DictionaryScreen(
                         .weight(0.6f)
                         .fillMaxSize()
                 ) {
-                    if (selectedWordId != null && selectedDictId != null) {
+                    val wordId = selectedWordId
+                    val dictId = dictionaryId
+                    if (wordId != null && dictId != null) {
                         DetailPane(
-                            wordId = selectedWordId!!,
-                            onWordClick = handleWordClick
+                            wordId = wordId,
+                            dictionaryId = dictId,
+                            onWordClick = handleWordClick,
+                            onEdit = onEditWord,
+                            onDeleted = { selectedWordId = null }
                         )
                     } else {
                         Box(
@@ -345,32 +353,75 @@ private fun DictionaryListContent(
 @Composable
 private fun DetailPane(
     wordId: Long,
-    onWordClick: (Long, Long) -> Unit
+    dictionaryId: Long,
+    onWordClick: (Long, Long) -> Unit,
+    onEdit: (wordId: Long, dictionaryId: Long) -> Unit,
+    onDeleted: () -> Unit
 ) {
-    val detailViewModel: WordDetailViewModel = hiltViewModel(key = "detail_$wordId")
+    // Single-instance VM — reused across word selections, no accumulation
+    val detailViewModel: WordDetailViewModel = hiltViewModel(key = "dict_detail_pane")
     val detailState by detailViewModel.uiState.collectAsState()
 
-    when {
-        detailState.isLoading -> LoadingIndicator()
-        detailState.word == null -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+    // Reload whenever wordId changes
+    LaunchedEffect(wordId, dictionaryId) {
+        detailViewModel.loadWord(wordId, dictionaryId)
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Action bar for edit/delete
+        val word = detailState.word
+        if (word != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End
             ) {
-                Text(
-                    text = "单词不存在",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                IconButton(onClick = { onEdit(word.id, word.dictionaryId) }) {
+                    Icon(Icons.Default.Edit, contentDescription = "编辑")
+                }
+                IconButton(onClick = detailViewModel::showDeleteDialog) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "删除",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+            HorizontalDivider()
+        }
+
+        when {
+            detailState.isLoading -> LoadingIndicator()
+            word == null -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "单词不存在",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            else -> {
+                WordDetailContent(
+                    word = word,
+                    associatedWords = detailState.associatedWords,
+                    linkedWordIds = detailState.linkedWordIds,
+                    onWordClick = onWordClick
                 )
             }
         }
-        else -> {
-            WordDetailContent(
-                word = detailState.word!!,
-                associatedWords = detailState.associatedWords,
-                linkedWordIds = detailState.linkedWordIds,
-                onWordClick = onWordClick
-            )
-        }
+    }
+
+    if (detailState.showDeleteDialog) {
+        ConfirmDialog(
+            title = "删除单词",
+            message = "确定要删除单词「${detailState.word?.spelling}」吗？",
+            onConfirm = { detailViewModel.confirmDelete(onDeleted) },
+            onDismiss = detailViewModel::dismissDeleteDialog
+        )
     }
 }
