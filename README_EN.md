@@ -2,24 +2,34 @@
 
 [中文](README.md)
 
-An AI-powered English vocabulary learning app for Android that helps you systematically memorize and understand English words.
+An AI-powered English vocabulary learning app for Android that helps you systematically master English words through a complete workflow: look up → decompose → read → review.
 
 ## Features
 
 ### Vocabulary Management
 - **Dictionary system** — Create multiple dictionaries to organize vocabulary from different sources
-- **Word entry** — Manually add words with spelling, phonetics, POS & definitions, root explanation, etc.
-- **AI auto-organize** — One-click Claude API call to auto-fill phonetics, definitions, decomposition, synonyms, similar words, and cognates
+- **Word entry** — Manually add words with spelling, phonetics, POS & definitions, root explanation, inflections, and more
+- **AI auto-organize** — One-click Claude API call to auto-fill phonetics, definitions, decomposition, synonyms, similar words, cognates, and inflections
 - **Deduplication** — Automatic duplicate detection based on normalized spelling (lowercase + trimmed), with upsert semantics
+- **Inflections** — Track plural, past tense, past participle, present participle, third person, comparative, and superlative forms
 
 ### Morpheme Decomposition
-- **Structured decomposition** — Break words into prefixes, roots, suffixes and other morphemes, each labeled with role and meaning
+- **Structured decomposition** — Break words into prefixes, roots, suffixes, stems, linking elements and other morphemes, each labeled with role and meaning
 - **Visual display** — Detail page shows decomposition as structured cards with root segments bolded and highlighted
 
 ### Word Association Network
 - **Associated words** — Automatically computes inter-word associations using Jaccard similarity on decomposition segments with a root bonus, recalculated on every save
 - **Linked word navigation** — Synonyms, similar words, and cognates that exist in the dictionary are clickable, navigating directly to their detail page
 - **Association display** — Bottom of detail page shows associated words sharing morphemes with the current word, all clickable
+
+### Article Reading & Vocabulary Linking
+- **Article management** — Manually enter articles or upload photos for AI OCR extraction of title, content, domain, and difficulty level
+- **Automatic parsing** — After saving, articles enter a background pipeline: sentence splitting, tokenization, and word frequency statistics
+- **Vocabulary highlighting** — Dictionary words are automatically highlighted in the reader (including inflection matching); tap any highlighted word to jump to its detail page
+- **Bidirectional linking** — Matched vocabulary automatically creates Article ↔ Word links; saving or editing a word automatically backfills new links to matching articles
+- **Example extraction** — Automatically extracts example sentences containing target words from articles, labeled with source (e.g., "「Article Title」例句"), displayed on word detail pages
+- **Sentence analysis** — Long-press any sentence for AI analysis: Chinese translation, grammar points, and key vocabulary; results are cached per model version to avoid duplicate requests
+- **Parse status** — Article cards show real-time parsing progress (Pending / Processing / Done / Failed)
 
 ### Spaced Repetition Study
 - **Unit grouping** — Organize words into units with multi-select assignment
@@ -29,10 +39,12 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 
 ### Adaptive UI
 - **Responsive layouts** — Built on Material 3 Adaptive framework, automatically switches between phone and tablet layouts based on WindowSizeClass
+- **Bottom navigation** — Dictionary tab + Article tab with NavigationBar (compact) or NavigationRail (expanded)
 - **Adaptive home** — Phone: dashboard card + dictionary list; Tablet: sidebar dashboard + dictionary grid
 - **List-detail split** — Tablet dictionary screen shows list-detail split pane; tapping a word displays details in the right panel
 - **Dual-column form** — Tablet add/edit word screen uses side-by-side two-column layout
 - **Study split pane** — Tablet study screen with main pane on the left + progress/stats panel on the right
+- **Reader split pane** — Tablet article reader with main pane + statistics sidebar
 - **Large screen max-width** — Settings and import/export screens are centered and width-constrained on large screens
 - **Design token system** — "Ink & Mint" color tokens (InkBlue + MintTeal) + semantic colors + spacing system + responsive Typography
 
@@ -40,12 +52,6 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 - **JSON format** — Import/export entire dictionaries as JSON files, including words, units, and study states
 - **Schema versioning** — Current version schemaVersion: 3, includes decomposition data
 - **Post-import rebuild** — Automatically batch-computes word associations after importing a dictionary
-
-### Article Reading
-- **Article management** — Manually enter or use AI OCR to extract English articles, with automatic sentence splitting and word frequency statistics
-- **Vocabulary linking** — Automatically matches dictionary words (including inflections) found in article sentences, creating bidirectional links
-- **Example extraction** — Automatically extracts example sentences containing target words from articles, labeled with source article
-- **Sentence analysis** — AI-powered sentence meaning, grammar points and key vocabulary analysis, cached per model version
 
 ### Settings
 - **API configuration** — Custom API Key, model selection (Haiku / Sonnet / Opus), custom Base URL
@@ -57,16 +63,17 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 | Layer | Technology |
 |-------|-----------|
 | UI | Jetpack Compose + Material 3 + Material 3 Adaptive |
-| Architecture | Clean Architecture (Domain / Data / UI) |
+| Architecture | Clean Architecture (Domain / Data / UI), Screen three-layer split (Container/Content/Components) |
 | DI | Hilt |
 | Local Storage | Room (SQLite), DataStore Preferences |
 | Network | Retrofit + OkHttp + Moshi |
-| Navigation | Navigation Compose (type-safe routes) |
-| AI | Anthropic Claude API |
+| Navigation | Navigation Compose (type-safe routes + dual-tab navigation) |
+| AI | Anthropic Claude API (auto-organize, OCR extraction, sentence analysis) |
 | Security | AndroidX Security Crypto |
 | Async | Kotlin Coroutines + Flow |
 | Spaced Repetition | FSRS-5 adaptive algorithm |
-| Testing | JUnit 4 + MockK + Room Testing |
+| NLP | Sentence splitting, tokenization, dictionary matching (pre-compiled Regex + inflection index) |
+| Testing | JUnit 4 + MockK + Room Testing + CI (GitHub Actions) |
 
 ## Project Structure
 
@@ -88,34 +95,35 @@ com.xty.englishhelper/
 ├── di/                          # Hilt DI modules
 ├── domain/                      # Domain layer
 │   ├── article/                 # Article parsing tools (sentence splitting, tokenization, dictionary matching)
-│   ├── model/                   # Domain models
+│   ├── model/                   # Domain models (incl. WordExampleSourceType enum)
 │   ├── repository/              # Repository interfaces
 │   ├── study/                   # FSRS spaced repetition engine
 │   └── usecase/                 # Use cases
-│       ├── ai/
-│       ├── article/
-│       ├── dictionary/
-│       ├── importexport/
-│       ├── study/
-│       ├── unit/
-│       └── word/
+│       ├── ai/                  # AI auto-organize
+│       ├── article/             # Article parsing, sentence analysis, vocabulary backfill
+│       ├── dictionary/          # Dictionary CRUD
+│       ├── importexport/        # Import/export
+│       ├── study/               # Study scheduling
+│       ├── unit/                # Unit management
+│       └── word/                # Word save (with automatic article linking)
 ├── ui/                          # UI layer
 │   ├── adaptive/                # WindowSizeClass utilities
 │   ├── components/              # Reusable components
 │   ├── designsystem/            # Design system
-│   │   ├── components/          # Common component library (EhCard, EhStatTile, etc.)
+│   │   ├── components/          # Common component library (EhCard, EhStatTile, EhStudyRatingBar, etc.)
 │   │   └── tokens/              # Design tokens (color/spacing/Typography)
-│   ├── navigation/              # Nav graph + route definitions
+│   ├── navigation/              # Nav graph + route definitions (dual-tab)
 │   ├── screen/                  # Screen pages (container/content/component split)
 │   │   ├── addword/             # Add/edit word
-│   │   ├── article/             # Article list/editor/reader
+│   │   ├── article/             # Article list/editor/reader/sentence analysis
 │   │   ├── dictionary/          # Dictionary detail
-│   │   ├── home/                # Home
+│   │   ├── home/                # Home + dashboard
 │   │   ├── importexport/        # Import/export
+│   │   ├── main/                # Main scaffold + bottom/rail navigation
 │   │   ├── settings/            # Settings
 │   │   ├── study/               # Study mode
 │   │   ├── unitdetail/          # Unit detail
-│   │   └── word/                # Word detail
+│   │   └── word/                # Word detail (incl. article examples)
 │   └── theme/                   # Material theme
 └── util/                        # Utilities
 ```
@@ -138,18 +146,21 @@ com.xty.englishhelper/
 # Run unit tests
 ./gradlew testDebugUnitTest
 
-# Run instrumented tests
+# Run instrumented tests (requires device or emulator)
 ./gradlew connectedDebugAndroidTest
 ```
 
 ## Usage
 
 1. **Configure API** — Go to Settings, enter your Anthropic API Key, select a model, and test the connection
-2. **Create a dictionary** — Tap "+" on the home page to create a dictionary
+2. **Create a dictionary** — On the Dictionary tab, tap "+" to create a dictionary
 3. **Add words** — Enter the dictionary, tap "+", type a word, and tap "AI Auto-Organize" to auto-fill
 4. **Browse associations** — On the word detail page, view morpheme decomposition, tap synonyms/similar words/cognates to navigate, and browse associated words
 5. **Create units** — Manage units on the dictionary page and assign words to different units
 6. **Start studying** — Select units to enter review mode; the system schedules reviews using the FSRS-5 adaptive algorithm
+7. **Add articles** — Switch to the Article tab, tap "+" to enter manually or upload photos for AI extraction
+8. **Read articles** — Tap an article card to open the reader; dictionary words are highlighted automatically; tap any highlighted word to jump to its detail page
+9. **Analyze sentences** — Long-press any sentence in the reader for AI-powered translation, grammar, and vocabulary analysis
 
 ## Database Versions
 
