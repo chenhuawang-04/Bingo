@@ -47,7 +47,7 @@ import java.util.UUID
         SentenceAnalysisCacheEntity::class,
         WordExampleEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -323,6 +323,15 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_word_stats_normalized_token` ON `article_word_stats`(`normalized_token`)")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sentence_analysis_cache ADD COLUMN model_key TEXT NOT NULL DEFAULT ''")
+                db.execSQL("DROP INDEX IF EXISTS index_sentence_analysis_cache_article_id_sentence_id_sentence_hash")
+                db.execSQL("CREATE UNIQUE INDEX `index_sentence_analysis_cache_article_id_sentence_id_sentence_hash_model_key` ON `sentence_analysis_cache`(`article_id`, `sentence_id`, `sentence_hash`, `model_key`)")
+                db.execSQL("DELETE FROM sentence_analysis_cache")
             }
         }
     }

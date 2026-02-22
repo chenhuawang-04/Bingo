@@ -74,8 +74,8 @@ interface ArticleDao {
     suspend fun getWordLinksByWord(wordId: Long): List<ArticleWordLinkEntity>
 
     // Sentence analysis cache
-    @Query("SELECT * FROM sentence_analysis_cache WHERE article_id = :articleId AND sentence_id = :sentenceId AND sentence_hash = :hash LIMIT 1")
-    suspend fun getAnalysisCache(articleId: Long, sentenceId: Long, hash: String): SentenceAnalysisCacheEntity?
+    @Query("SELECT * FROM sentence_analysis_cache WHERE article_id = :articleId AND sentence_id = :sentenceId AND sentence_hash = :hash AND model_key = :modelKey LIMIT 1")
+    suspend fun getAnalysisCache(articleId: Long, sentenceId: Long, hash: String, modelKey: String): SentenceAnalysisCacheEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAnalysisCache(entity: SentenceAnalysisCacheEntity)

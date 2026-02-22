@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.addword
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -73,8 +74,8 @@ class AddWordViewModel @Inject constructor(
                         selectedUnitIds = initialSelected
                     )
                 }
-            } catch (_: Exception) {
-                // Units are optional; silently ignore errors
+            } catch (e: Exception) {
+                Log.w("AddWordVM", "Units loading failed", e)
             }
         }
     }

@@ -4,13 +4,14 @@ import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleSentence
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ArticleWordStat
+import com.xty.englishhelper.domain.model.WordExampleSourceType
 import kotlinx.coroutines.flow.Flow
 
 data class WordExample(
     val id: Long = 0,
     val wordId: Long,
     val sentence: String,
-    val sourceType: Int = 0,
+    val sourceType: WordExampleSourceType = WordExampleSourceType.MANUAL,
     val sourceArticleId: Long? = null,
     val sourceSentenceId: Long? = null,
     val sourceLabel: String? = null,
@@ -52,8 +53,8 @@ interface ArticleRepository {
     suspend fun getWordLinks(articleId: Long): List<ArticleWordLink>
     suspend fun getWordLinksByWord(wordId: Long): List<ArticleWordLink>
 
-    suspend fun getAnalysisCache(articleId: Long, sentenceId: Long, hash: String): SentenceAnalysisCache?
-    suspend fun insertAnalysisCache(articleId: Long, sentenceId: Long, hash: String, cache: SentenceAnalysisCache)
+    suspend fun getAnalysisCache(articleId: Long, sentenceId: Long, hash: String, modelKey: String): SentenceAnalysisCache?
+    suspend fun insertAnalysisCache(articleId: Long, sentenceId: Long, hash: String, modelKey: String, cache: SentenceAnalysisCache)
 
     suspend fun getExamplesForWord(wordId: Long): List<WordExample>
     suspend fun insertExamples(examples: List<WordExample>)

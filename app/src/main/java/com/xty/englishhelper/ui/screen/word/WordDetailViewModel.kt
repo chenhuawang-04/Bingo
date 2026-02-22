@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.word
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -73,8 +74,8 @@ class WordDetailViewModel @Inject constructor(
                     try {
                         val examples = getWordExamples(wordId)
                         _uiState.update { it.copy(examples = examples) }
-                    } catch (_: Exception) {
-                        // Example loading failure is non-critical
+                    } catch (e: Exception) {
+                        Log.w("WordDetailVM", "Examples loading failed for wordId=$wordId", e)
                     }
                 }
             } catch (e: Exception) {

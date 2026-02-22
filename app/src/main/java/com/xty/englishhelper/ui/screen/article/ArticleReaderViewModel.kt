@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.article
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -87,8 +88,8 @@ class ArticleReaderViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(sentences = sentences, wordLinks = wordLinks)
                     }
-                } catch (_: Exception) {
-                    // Data loading failure is non-critical
+                } catch (e: Exception) {
+                    Log.w("ArticleReaderVM", "Data loading failed for articleId=$articleId", e)
                 }
             }
         }
@@ -105,8 +106,8 @@ class ArticleReaderViewModel @Inject constructor(
                     it.copy(sentences = sentences, wordLinks = wordLinks)
                 }
             }
-        } catch (_: Exception) {
-            // Loading failure is non-critical
+        } catch (e: Exception) {
+            Log.w("ArticleReaderVM", "Loading failure for articleId=$articleId", e)
         }
     }
 
@@ -115,8 +116,8 @@ class ArticleReaderViewModel @Inject constructor(
             try {
                 val stats = getStatistics(articleId)
                 _uiState.update { it.copy(statistics = stats) }
-            } catch (_: Exception) {
-                // Stats loading failure is non-critical
+            } catch (e: Exception) {
+                Log.w("ArticleReaderVM", "Stats loading failed for articleId=$articleId", e)
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.xty.englishhelper.ui.screen.article
 
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -169,8 +170,8 @@ class ArticleEditorViewModel @Inject constructor(
                 viewModelScope.launch {
                     try {
                         parseArticle(savedId)
-                    } catch (_: Exception) {
-                        // Parse failure is handled by parse status
+                    } catch (e: Exception) {
+                        Log.w("ArticleEditorVM", "Parse failed for articleId=$savedId", e)
                     }
                 }
 

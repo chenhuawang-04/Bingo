@@ -215,8 +215,8 @@ private fun ArticleReaderContent(
     modifier: Modifier = Modifier,
     listState: LazyListState
 ) {
-    // Build word link map: sentenceId -> List<ArticleWordLink>
-    val wordLinksBySentence = wordLinks.groupBy { it.sentenceId }
+    // Build word link map: sentenceId -> List<ArticleWordLink> (with remember to avoid rebuilding)
+    val wordLinksBySentence = remember(wordLinks) { wordLinks.groupBy { it.sentenceId } }
 
     LazyColumn(
         state = listState,
@@ -231,7 +231,7 @@ private fun ArticleReaderContent(
             }
         }
 
-        items(sentences) { sentence ->
+        items(sentences, key = { it.id }) { sentence ->
             SentenceRow(
                 sentenceId = sentence.id,
                 sentenceText = sentence.text,
@@ -257,27 +257,52 @@ private fun SentenceRow(
     onWordClick: (Long, Long) -> Unit
 ) {
     // Build list of (text, wordLink) for rendering - split sentence into highlighted and non-highlighted parts
-    val parts = mutableListOf<Pair<String, ArticleWordLink?>>()
-    var lastEnd = 0
+    // Cache this to avoid rebuilding on every recomposition
+    val parts = remember(sentenceId, sentenceText, wordLinks) {
+        val partsList = mutableListOf<Pair<String, ArticleWordLink?>>()
+        var lastEnd = 0
 
-    wordLinks.forEach { link ->
-        val lowerText = sentenceText.lowercase()
-        val matchedToken = link.matchedToken.lowercase()
-        val startPos = lowerText.indexOf(matchedToken, startIndex = lastEnd)
-        if (startPos >= 0 && startPos < sentenceText.length) {
-            val endPos = minOf(startPos + matchedToken.length, sentenceText.length)
-            // Add non-highlighted text before word
-            if (lastEnd < startPos) {
-                parts.add(sentenceText.substring(lastEnd, startPos) to null)
+        wordLinks.forEach { link ->
+            val lowerText = sentenceText.lowercase()
+            val matchedToken = link.matchedToken.lowercase()
+            val startPos = lowerText.indexOf(matchedToken, startIndex = lastEnd)
+            if (startPos >= 0 && startPos < sentenceText.length) {
+                val endPos = minOf(startPos + matchedToken.length, sentenceText.length)
+                // Add non-highlighted text before word
+                if (lastEnd < startPos) {
+                    partsList.add(sentenceText.substring(lastEnd, startPos) to null)
+                }
+                // Add highlighted word
+                partsList.add(sentenceText.substring(startPos, endPos) to link)
+                lastEnd = endPos
             }
-            // Add highlighted word
-            parts.add(sentenceText.substring(startPos, endPos) to link)
-            lastEnd = endPos
         }
+        // Add remaining text
+        if (lastEnd < sentenceText.length) {
+            partsList.add(sentenceText.substring(lastEnd) to null)
+        }
+        partsList
     }
-    // Add remaining text
-    if (lastEnd < sentenceText.length) {
-        parts.add(sentenceText.substring(lastEnd) to null)
+
+    // Cache the AnnotatedString to avoid rebuilding every recomposition
+    val highlightStyle = SpanStyle(
+        background = MaterialTheme.colorScheme.primaryContainer,
+        color = MaterialTheme.colorScheme.onPrimaryContainer
+    )
+    val annotatedString = remember(parts, highlightStyle) {
+        buildAnnotatedString {
+            parts.forEach { (text, link) ->
+                if (link != null) {
+                    pushStringAnnotation(tag = "word", annotation = "${link.wordId}:${link.dictionaryId}")
+                    withStyle(highlightStyle) {
+                        append(text)
+                    }
+                    pop()
+                } else {
+                    append(text)
+                }
+            }
+        }
     }
 
     Column(
@@ -290,24 +315,7 @@ private fun SentenceRow(
         var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
         Text(
-            buildAnnotatedString {
-                parts.forEach { (text, link) ->
-                    if (link != null) {
-                        pushStringAnnotation(tag = "word", annotation = "${link.wordId}:${link.dictionaryId}")
-                        withStyle(
-                            style = SpanStyle(
-                                background = MaterialTheme.colorScheme.primaryContainer,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        ) {
-                            append(text)
-                        }
-                        pop()
-                    } else {
-                        append(text)
-                    }
-                }
-            },
+            annotatedString,
             style = MaterialTheme.typography.bodyMedium,
             onTextLayout = { textLayoutResult = it },
             modifier = Modifier
@@ -317,20 +325,13 @@ private fun SentenceRow(
                         onTap = { tapOffset ->
                             textLayoutResult?.let { layout ->
                                 val charOffset = layout.getOffsetForPosition(tapOffset)
-                                buildAnnotatedString {
-                                    parts.forEach { (text, link) ->
-                                        if (link != null) {
-                                            pushStringAnnotation(tag = "word", annotation = "${link.wordId}:${link.dictionaryId}")
-                                            append(text)
-                                            pop()
-                                        } else {
-                                            append(text)
-                                        }
+                                // Use cached annotatedString directly - no need to rebuild
+                                annotatedString
+                                    .getStringAnnotations("word", charOffset, charOffset)
+                                    .firstOrNull()?.let { ann ->
+                                        val (wId, dId) = ann.item.split(":")
+                                        onWordClick(wId.toLong(), dId.toLong())
                                     }
-                                }.getStringAnnotations("word", charOffset, charOffset).firstOrNull()?.let { ann ->
-                                    val (wId, dId) = ann.item.split(":")
-                                    onWordClick(wId.toLong(), dId.toLong())
-                                }
                             }
                         },
                         onLongPress = { onAnalyze() }

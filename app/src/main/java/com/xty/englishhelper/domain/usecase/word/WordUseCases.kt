@@ -75,7 +75,7 @@ class SaveWordUseCase @Inject constructor(
         try {
             val savedWord = wordRepository.getWordById(savedId)
             if (savedWord != null) {
-                linkWordToArticles(savedId, word.dictionaryId, word.spelling, word.inflections)
+                linkWordToArticles(savedId, savedWord.dictionaryId, savedWord.spelling, savedWord.inflections)
             }
         } catch (e: Exception) {
             // Linkage failure is non-critical, don't affect word save

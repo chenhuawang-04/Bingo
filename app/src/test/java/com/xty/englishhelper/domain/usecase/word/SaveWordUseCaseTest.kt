@@ -3,6 +3,7 @@ package com.xty.englishhelper.domain.usecase.word
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.WordRepository
+import com.xty.englishhelper.domain.usecase.article.LinkWordToArticlesUseCase
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -16,13 +17,15 @@ class SaveWordUseCaseTest {
 
     private lateinit var wordRepository: WordRepository
     private lateinit var dictionaryRepository: DictionaryRepository
+    private lateinit var linkWordToArticles: LinkWordToArticlesUseCase
     private lateinit var saveWordUseCase: SaveWordUseCase
 
     @Before
     fun setUp() {
         wordRepository = mockk(relaxed = true)
         dictionaryRepository = mockk(relaxed = true)
-        saveWordUseCase = SaveWordUseCase(wordRepository, dictionaryRepository)
+        linkWordToArticles = mockk(relaxed = true)
+        saveWordUseCase = SaveWordUseCase(wordRepository, dictionaryRepository, linkWordToArticles)
     }
 
     @Test

@@ -8,7 +8,7 @@ import androidx.room.PrimaryKey
 @Entity(
     tableName = "sentence_analysis_cache",
     indices = [
-        Index(value = ["article_id", "sentence_id", "sentence_hash"], unique = true)
+        Index(value = ["article_id", "sentence_id", "sentence_hash", "model_key"], unique = true, name = "index_sentence_analysis_cache_article_id_sentence_id_sentence_hash_model_key")
     ]
 )
 data class SentenceAnalysisCacheEntity(
@@ -20,6 +20,8 @@ data class SentenceAnalysisCacheEntity(
     val sentenceId: Long,
     @ColumnInfo(name = "sentence_hash")
     val sentenceHash: String,
+    @ColumnInfo(name = "model_key")
+    val modelKey: String = "",
     @ColumnInfo(name = "meaning_zh")
     val meaningZh: String,
     @ColumnInfo(name = "grammar_json")

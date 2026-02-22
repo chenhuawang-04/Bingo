@@ -13,10 +13,15 @@ import com.xty.englishhelper.domain.model.ArticleStatistics
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ArticleWordStat
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
+import com.xty.englishhelper.domain.model.WordExampleSourceType
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.WordExample
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import java.security.MessageDigest
 import javax.inject.Inject
 
 class CreateArticleUseCase @Inject constructor(
@@ -166,7 +171,7 @@ class ParseArticleUseCase @Inject constructor(
                 WordExample(
                     wordId = link.wordId,
                     sentence = sentence?.text ?: "",
-                    sourceType = 1,
+                    sourceType = WordExampleSourceType.ARTICLE,
                     sourceArticleId = articleId,
                     sourceSentenceId = link.sentenceId,
                     sourceLabel = "$articleTitle 例句"
@@ -187,6 +192,8 @@ class AnalyzeSentenceUseCase @Inject constructor(
     private val repository: ArticleRepository,
     private val aiRepository: ArticleAiRepository
 ) {
+    private val json = Json { ignoreUnknownKeys = true }
+
     suspend operator fun invoke(
         articleId: Long,
         sentenceId: Long,
@@ -195,10 +202,11 @@ class AnalyzeSentenceUseCase @Inject constructor(
         model: String,
         baseUrl: String
     ): SentenceAnalysisResult {
-        val hash = sentenceText.hashCode().toString()
+        val hash = computeSentenceHash(sentenceText)
+        val modelKey = "$model|$CACHE_VERSION"
 
         // Check cache first
-        val cached = repository.getAnalysisCache(articleId, sentenceId, hash)
+        val cached = repository.getAnalysisCache(articleId, sentenceId, hash, modelKey)
         if (cached != null) {
             return parseCachedResult(cached)
         }
@@ -208,7 +216,7 @@ class AnalyzeSentenceUseCase @Inject constructor(
 
         // Store in cache
         repository.insertAnalysisCache(
-            articleId, sentenceId, hash,
+            articleId, sentenceId, hash, modelKey,
             com.xty.englishhelper.domain.repository.SentenceAnalysisCache(
                 meaningZh = result.meaningZh,
                 grammarJson = grammarPointsToJson(result.grammarPoints),
@@ -217,6 +225,12 @@ class AnalyzeSentenceUseCase @Inject constructor(
         )
 
         return result
+    }
+
+    private fun computeSentenceHash(sentenceText: String): String {
+        val input = "$sentenceText|$CACHE_VERSION"
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 
     private fun parseCachedResult(cache: com.xty.englishhelper.domain.repository.SentenceAnalysisCache): SentenceAnalysisResult {
@@ -228,27 +242,25 @@ class AnalyzeSentenceUseCase @Inject constructor(
     }
 
     private fun grammarPointsToJson(points: List<com.xty.englishhelper.domain.model.GrammarPoint>): String {
-        return points.joinToString(separator = "|||") { "${it.title}::${it.explanation}" }
+        return json.encodeToString(points)
     }
 
     private fun keyWordsToJson(keywords: List<com.xty.englishhelper.domain.model.KeyWord>): String {
-        return keywords.joinToString(separator = "|||") { "${it.word}::${it.meaning}" }
+        return json.encodeToString(keywords)
     }
 
-    private fun parseGrammarPoints(json: String): List<com.xty.englishhelper.domain.model.GrammarPoint> {
-        if (json.isBlank()) return emptyList()
-        return json.split("|||").mapNotNull { entry ->
-            val parts = entry.split("::", limit = 2)
-            if (parts.size == 2) com.xty.englishhelper.domain.model.GrammarPoint(parts[0], parts[1]) else null
-        }
+    private fun parseGrammarPoints(jsonStr: String): List<com.xty.englishhelper.domain.model.GrammarPoint> {
+        if (jsonStr.isBlank()) return emptyList()
+        return runCatching { json.decodeFromString<List<com.xty.englishhelper.domain.model.GrammarPoint>>(jsonStr) }.getOrDefault(emptyList())
     }
 
-    private fun parseKeyWords(json: String): List<com.xty.englishhelper.domain.model.KeyWord> {
-        if (json.isBlank()) return emptyList()
-        return json.split("|||").mapNotNull { entry ->
-            val parts = entry.split("::", limit = 2)
-            if (parts.size == 2) com.xty.englishhelper.domain.model.KeyWord(parts[0], parts[1]) else null
-        }
+    private fun parseKeyWords(jsonStr: String): List<com.xty.englishhelper.domain.model.KeyWord> {
+        if (jsonStr.isBlank()) return emptyList()
+        return runCatching { json.decodeFromString<List<com.xty.englishhelper.domain.model.KeyWord>>(jsonStr) }.getOrDefault(emptyList())
+    }
+
+    companion object {
+        private const val CACHE_VERSION = "v1"
     }
 }
 class ExtractArticleFromImagesUseCase @Inject constructor(

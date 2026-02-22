@@ -21,9 +21,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,8 +49,18 @@ fun ArticleListScreen(
     viewModel: ArticleListViewModel = hiltViewModel()
 ) {
     val articles by viewModel.getArticles().collectAsState(emptyList())
+    val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
     val windowWidthClass = currentWindowWidthClass()
     val isWide = windowWidthClass.isExpandedOrMedium()
+
+    // Show snackbar when error occurs
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearError()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -64,7 +77,8 @@ fun ArticleListScreen(
             FloatingActionButton(onClick = onCreateArticle) {
                 Icon(Icons.Default.Add, contentDescription = "创建文章")
             }
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         if (articles.isEmpty()) {
             Column(

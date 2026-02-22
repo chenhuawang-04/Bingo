@@ -2,6 +2,7 @@ package com.xty.englishhelper.domain.usecase.article
 
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.Inflection
+import com.xty.englishhelper.domain.model.WordExampleSourceType
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.WordExample
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +18,7 @@ class LinkWordToArticlesUseCase @Inject constructor(
         spelling: String,
         inflections: List<Inflection>
     ) {
-        withContext(Dispatchers.Default) {
+        withContext(Dispatchers.IO) {
             try {
                 // 先清理该词的旧链接和旧例句，确保更新词形后不残留
                 repository.deleteWordLinksByWord(wordId)
@@ -27,6 +28,11 @@ class LinkWordToArticlesUseCase @Inject constructor(
                 val normalizedTokens = buildSet {
                     add(spelling.trim().lowercase())
                     inflections.forEach { add(it.form.trim().lowercase()) }
+                }
+
+                // Pre-compile regex patterns for all tokens (outside loops for efficiency)
+                val regexByToken: Map<String, Regex> = normalizedTokens.associateWith { token ->
+                    Regex("\\b${Regex.escape(token)}\\b", RegexOption.IGNORE_CASE)
                 }
 
                 // Query articles that contain these tokens
@@ -40,13 +46,12 @@ class LinkWordToArticlesUseCase @Inject constructor(
                 for (articleId in articleIds) {
                     try {
                         val article = repository.getArticleByIdOnce(articleId) ?: continue
-                        val sourceLabel = "「${article.title}」"
+                        val sourceLabel = "「${article.title}」例句"
                         val sentences = repository.getSentences(articleId)
 
                         for (sentence in sentences) {
-                            for (token in normalizedTokens) {
-                                // Word boundary detection using regex
-                                val pattern = Regex("\\b${Regex.escape(token)}\\b", RegexOption.IGNORE_CASE)
+                            for ((token, pattern) in regexByToken) {
+                                // Use pre-compiled regex pattern (created once, reused many times)
                                 val matchResult = pattern.find(sentence.text)
 
                                 if (matchResult != null) {
@@ -66,7 +71,7 @@ class LinkWordToArticlesUseCase @Inject constructor(
                                         WordExample(
                                             wordId = wordId,
                                             sentence = sentence.text,
-                                            sourceType = 1,  // Article source
+                                            sourceType = WordExampleSourceType.ARTICLE,
                                             sourceArticleId = articleId,
                                             sourceSentenceId = sentence.id,
                                             sourceLabel = sourceLabel,

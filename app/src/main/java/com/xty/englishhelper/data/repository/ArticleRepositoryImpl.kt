@@ -17,6 +17,7 @@ import com.xty.englishhelper.domain.model.ArticleSentence
 import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ArticleWordStat
+import com.xty.englishhelper.domain.model.WordExampleSourceType
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.SentenceAnalysisCache
 import com.xty.englishhelper.domain.repository.WordExample
@@ -100,8 +101,8 @@ class ArticleRepositoryImpl @Inject constructor(
         return articleDao.getWordLinksByWord(wordId).map { it.toDomain() }
     }
 
-    override suspend fun getAnalysisCache(articleId: Long, sentenceId: Long, hash: String): SentenceAnalysisCache? {
-        return articleDao.getAnalysisCache(articleId, sentenceId, hash)?.let {
+    override suspend fun getAnalysisCache(articleId: Long, sentenceId: Long, hash: String, modelKey: String): SentenceAnalysisCache? {
+        return articleDao.getAnalysisCache(articleId, sentenceId, hash, modelKey)?.let {
             SentenceAnalysisCache(
                 meaningZh = it.meaningZh,
                 grammarJson = it.grammarJson,
@@ -110,12 +111,13 @@ class ArticleRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun insertAnalysisCache(articleId: Long, sentenceId: Long, hash: String, cache: SentenceAnalysisCache) {
+    override suspend fun insertAnalysisCache(articleId: Long, sentenceId: Long, hash: String, modelKey: String, cache: SentenceAnalysisCache) {
         articleDao.insertAnalysisCache(
             SentenceAnalysisCacheEntity(
                 articleId = articleId,
                 sentenceId = sentenceId,
                 sentenceHash = hash,
+                modelKey = modelKey,
                 meaningZh = cache.meaningZh,
                 grammarJson = cache.grammarJson,
                 keywordsJson = cache.keywordsJson
@@ -253,7 +255,7 @@ class ArticleRepositoryImpl @Inject constructor(
         id = id,
         wordId = wordId,
         sentence = sentence,
-        sourceType = sourceType,
+        sourceType = WordExampleSourceType.fromValue(sourceType),
         sourceArticleId = sourceArticleId,
         sourceSentenceId = sourceSentenceId,
         sourceLabel = sourceLabel,
@@ -264,7 +266,7 @@ class ArticleRepositoryImpl @Inject constructor(
         id = id,
         wordId = wordId,
         sentence = sentence,
-        sourceType = sourceType,
+        sourceType = sourceType.value,
         sourceArticleId = sourceArticleId,
         sourceSentenceId = sourceSentenceId,
         sourceLabel = sourceLabel,

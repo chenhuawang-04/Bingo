@@ -41,6 +41,12 @@
 - **Schema 版本控制** — 当前版本 schemaVersion: 3，包含词根拆解数据
 - **导入后自动重建** — 导入辞书后自动批量计算联想词关联
 
+### 文章阅读
+- **文章管理** — 手动录入或 AI OCR 提取英文文章，自动拆句、词频统计
+- **词汇链接** — 自动匹配文章句子中出现的辞书词汇（含词形变化），建立双向链接
+- **例句提取** — 从文章中自动提取包含目标单词的例句，标注来源文章
+- **句子分析** — AI 分析句子含义、语法点和关键词汇，结果按模型版本缓存
+
 ### 设置
 - **API 配置** — 支持自定义 API Key、模型选择（Haiku / Sonnet / Opus）、自定义 Base URL
 - **API Key 加密存储** — 使用 AndroidX Security Crypto 加密保存
@@ -81,11 +87,13 @@ com.xty.englishhelper/
 │   └── repository/              # Repository 实现
 ├── di/                          # Hilt 依赖注入模块
 ├── domain/                      # 领域层
+│   ├── article/                 # 文章解析工具（分句、分词、词典匹配）
 │   ├── model/                   # 领域模型
 │   ├── repository/              # Repository 接口
 │   ├── study/                   # FSRS 间隔重复引擎
 │   └── usecase/                 # 用例
 │       ├── ai/
+│       ├── article/
 │       ├── dictionary/
 │       ├── importexport/
 │       ├── study/
@@ -98,8 +106,9 @@ com.xty.englishhelper/
 │   │   ├── components/          # 通用组件库（EhCard, EhStatTile 等）
 │   │   └── tokens/              # 设计令牌（色彩/间距/Typography）
 │   ├── navigation/              # 导航图 + 路由定义
-│   ├── screen/                  # 各页面
+│   ├── screen/                  # 各页面（容器/内容/组件三层拆分）
 │   │   ├── addword/             # 添加/编辑单词
+│   │   ├── article/             # 文章列表/编辑/阅读
 │   │   ├── dictionary/          # 辞书详情
 │   │   ├── home/                # 首页
 │   │   ├── importexport/        # 导入导出
@@ -150,6 +159,10 @@ com.xty.englishhelper/
 | 2 | 新增 units, unit_word_cross_ref, word_study_state |
 | 3 | words 表新增 normalized_spelling, word_uid 列 + 唯一索引 |
 | 4 | words 表新增 decomposition_json 列；新增 word_associations 表 |
+| 5 | word_study_state 迁移至 FSRS-5 字段（stability/difficulty/due/reps/lapses） |
+| 6 | words 新增 inflections_json；新增文章模块（articles, article_sentences, article_word_stats, article_word_links, sentence_analysis_cache, word_examples, article_images） |
+| 7 | article_word_stats 新增 normalized_token 索引 |
+| 8 | sentence_analysis_cache 新增 model_key 列 + 复合唯一索引 |
 
 ## 许可证
 

@@ -41,6 +41,12 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 - **Schema versioning** — Current version schemaVersion: 3, includes decomposition data
 - **Post-import rebuild** — Automatically batch-computes word associations after importing a dictionary
 
+### Article Reading
+- **Article management** — Manually enter or use AI OCR to extract English articles, with automatic sentence splitting and word frequency statistics
+- **Vocabulary linking** — Automatically matches dictionary words (including inflections) found in article sentences, creating bidirectional links
+- **Example extraction** — Automatically extracts example sentences containing target words from articles, labeled with source article
+- **Sentence analysis** — AI-powered sentence meaning, grammar points and key vocabulary analysis, cached per model version
+
 ### Settings
 - **API configuration** — Custom API Key, model selection (Haiku / Sonnet / Opus), custom Base URL
 - **Encrypted API Key storage** — Stored using AndroidX Security Crypto
@@ -81,11 +87,13 @@ com.xty.englishhelper/
 │   └── repository/              # Repository implementations
 ├── di/                          # Hilt DI modules
 ├── domain/                      # Domain layer
+│   ├── article/                 # Article parsing tools (sentence splitting, tokenization, dictionary matching)
 │   ├── model/                   # Domain models
 │   ├── repository/              # Repository interfaces
 │   ├── study/                   # FSRS spaced repetition engine
 │   └── usecase/                 # Use cases
 │       ├── ai/
+│       ├── article/
 │       ├── dictionary/
 │       ├── importexport/
 │       ├── study/
@@ -98,8 +106,9 @@ com.xty.englishhelper/
 │   │   ├── components/          # Common component library (EhCard, EhStatTile, etc.)
 │   │   └── tokens/              # Design tokens (color/spacing/Typography)
 │   ├── navigation/              # Nav graph + route definitions
-│   ├── screen/                  # Screen pages
+│   ├── screen/                  # Screen pages (container/content/component split)
 │   │   ├── addword/             # Add/edit word
+│   │   ├── article/             # Article list/editor/reader
 │   │   ├── dictionary/          # Dictionary detail
 │   │   ├── home/                # Home
 │   │   ├── importexport/        # Import/export
@@ -150,6 +159,10 @@ com.xty.englishhelper/
 | 2 | Added units, unit_word_cross_ref, word_study_state |
 | 3 | Added normalized_spelling, word_uid columns to words + unique index |
 | 4 | Added decomposition_json column to words; new word_associations table |
+| 5 | Migrated word_study_state to FSRS-5 fields (stability/difficulty/due/reps/lapses) |
+| 6 | Added inflections_json to words; new article module (articles, article_sentences, article_word_stats, article_word_links, sentence_analysis_cache, word_examples, article_images) |
+| 7 | Added normalized_token index to article_word_stats |
+| 8 | Added model_key column + composite unique index to sentence_analysis_cache |
 
 ## License
 
