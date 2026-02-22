@@ -68,7 +68,6 @@ import com.xty.englishhelper.ui.theme.EhTheme
 @Composable
 fun HomeScreen(
     onDictionaryClick: (Long) -> Unit,
-    onArticlesClick: () -> Unit,
     onImportExport: () -> Unit,
     onSettings: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
@@ -147,16 +146,6 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            item(key = "articles") {
-                                EhCard(modifier = Modifier.clickable { onArticlesClick() }) {
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Text("📚 文章阅读", style = MaterialTheme.typography.titleMedium)
-                                        Text("英文文章解析与学习", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            }
                             items(state.dictionaries, key = { it.id }) { dict ->
                                 DictionaryCard(
                                     dictionary = dict,
@@ -178,16 +167,6 @@ fun HomeScreen(
                         if (state.dashboard.hasData) {
                             item(key = "dashboard") {
                                 DashboardCard(state.dashboard)
-                            }
-                        }
-                        item(key = "articles") {
-                            EhCard(modifier = Modifier.clickable { onArticlesClick() }) {
-                                Column(
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text("📚 文章阅读", style = MaterialTheme.typography.titleMedium)
-                                    Text("英文文章解析与学习", style = MaterialTheme.typography.bodySmall)
-                                }
                             }
                         }
                         items(state.dictionaries, key = { it.id }) { dict ->

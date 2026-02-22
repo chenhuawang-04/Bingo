@@ -3,6 +3,15 @@ package com.xty.englishhelper.ui.navigation
 import kotlinx.serialization.Serializable
 
 @Serializable
+sealed class TopLevelRoute {
+    @Serializable
+    data object Dictionary : TopLevelRoute()
+
+    @Serializable
+    data object Article : TopLevelRoute()
+}
+
+@Serializable
 data object HomeRoute
 
 @Serializable

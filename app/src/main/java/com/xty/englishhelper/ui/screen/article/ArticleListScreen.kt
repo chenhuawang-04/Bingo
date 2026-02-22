@@ -11,9 +11,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -40,9 +40,9 @@ import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArticleListScreen(
-    onBack: () -> Unit,
     onCreateArticle: () -> Unit,
     onReadArticle: (Long) -> Unit,
+    onSettings: () -> Unit,
     viewModel: ArticleListViewModel = hiltViewModel()
 ) {
     val articles by viewModel.getArticles().collectAsState(emptyList())
@@ -53,9 +53,9 @@ fun ArticleListScreen(
         topBar = {
             TopAppBar(
                 title = { Text("文章阅读") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                actions = {
+                    IconButton(onClick = onSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "设置")
                     }
                 }
             )

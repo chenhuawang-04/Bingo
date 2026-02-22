@@ -18,7 +18,8 @@ import androidx.room.PrimaryKey
     ],
     indices = [
         Index(value = ["article_id", "normalized_token"], unique = true),
-        Index(value = ["article_id", "frequency"])
+        Index(value = ["article_id", "frequency"]),
+        Index(value = ["normalized_token"])
     ]
 )
 data class ArticleWordStatEntity(

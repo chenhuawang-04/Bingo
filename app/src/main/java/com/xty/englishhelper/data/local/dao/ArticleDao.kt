@@ -5,6 +5,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.xty.englishhelper.data.local.entity.ArticleEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
 import com.xty.englishhelper.data.local.entity.ArticleSentenceEntity
@@ -59,6 +60,9 @@ interface ArticleDao {
     @Query("DELETE FROM article_word_stats WHERE article_id = :articleId")
     suspend fun deleteWordStatsByArticle(articleId: Long)
 
+    @Query("SELECT DISTINCT article_id FROM article_word_stats WHERE normalized_token IN (:tokens)")
+    suspend fun getArticleIdsByTokens(tokens: List<String>): List<Long>
+
     // Word links
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertWordLinks(links: List<ArticleWordLinkEntity>)
@@ -95,6 +99,18 @@ interface ArticleDao {
 
     @Query("DELETE FROM word_examples WHERE source_article_id = :articleId")
     suspend fun deleteExamplesByArticle(articleId: Long)
+
+    @Transaction
+    suspend fun deleteArticleWithExamples(articleId: Long) {
+        deleteExamplesByArticle(articleId)
+        deleteArticle(articleId)
+    }
+
+    @Query("DELETE FROM article_word_links WHERE word_id = :wordId")
+    suspend fun deleteWordLinksByWord(wordId: Long)
+
+    @Query("DELETE FROM word_examples WHERE word_id = :wordId")
+    suspend fun deleteExamplesByWord(wordId: Long)
 }
 
 data class WordMatchProjection(

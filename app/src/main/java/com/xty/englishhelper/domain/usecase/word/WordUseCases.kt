@@ -4,6 +4,7 @@ import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.WordRepository
+import com.xty.englishhelper.domain.usecase.article.LinkWordToArticlesUseCase
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import javax.inject.Inject
@@ -30,13 +31,14 @@ class GetWordByIdUseCase @Inject constructor(
 
 class SaveWordUseCase @Inject constructor(
     private val wordRepository: WordRepository,
-    private val dictionaryRepository: DictionaryRepository
+    private val dictionaryRepository: DictionaryRepository,
+    private val linkWordToArticles: LinkWordToArticlesUseCase
 ) {
     suspend operator fun invoke(word: WordDetails): Long {
         val normalized = word.spelling.trim().lowercase()
         val wordWithNormalized = word.copy(normalizedSpelling = normalized)
 
-        if (word.id == 0L) {
+        val savedId = if (word.id == 0L) {
             // Insert mode: check for existing word with same normalized spelling
             val existing = wordRepository.findByNormalizedSpelling(word.dictionaryId, normalized)
             if (existing != null) {
@@ -47,14 +49,14 @@ class SaveWordUseCase @Inject constructor(
                 )
                 wordRepository.updateWord(merged)
                 wordRepository.recomputeAssociations(existing.id, word.dictionaryId)
-                return existing.id
+                existing.id
             } else {
                 // Truly new: generate UUID
                 val newWord = wordWithNormalized.copy(wordUid = UUID.randomUUID().toString())
                 val id = wordRepository.insertWord(newWord)
                 dictionaryRepository.updateWordCount(word.dictionaryId)
                 wordRepository.recomputeAssociations(id, word.dictionaryId)
-                return id
+                id
             }
         } else {
             // Edit mode: fetch existing record to preserve wordUid and createdAt
@@ -66,8 +68,20 @@ class SaveWordUseCase @Inject constructor(
             wordRepository.updateWord(preserved)
             dictionaryRepository.updateWordCount(word.dictionaryId)
             wordRepository.recomputeAssociations(word.id, word.dictionaryId)
-            return word.id
+            word.id
         }
+
+        // Link word to articles asynchronously (non-blocking)
+        try {
+            val savedWord = wordRepository.getWordById(savedId)
+            if (savedWord != null) {
+                linkWordToArticles(savedId, word.dictionaryId, word.spelling, word.inflections)
+            }
+        } catch (e: Exception) {
+            // Linkage failure is non-critical, don't affect word save
+        }
+
+        return savedId
     }
 }
 

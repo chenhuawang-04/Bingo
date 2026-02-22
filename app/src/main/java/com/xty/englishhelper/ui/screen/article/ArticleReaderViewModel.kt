@@ -17,6 +17,7 @@ import com.xty.englishhelper.domain.usecase.article.GetArticleStatisticsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,6 +52,9 @@ class ArticleReaderViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ArticleReaderUiState())
     val uiState: StateFlow<ArticleReaderUiState> = _uiState.asStateFlow()
 
+    private val _navigateBack = MutableSharedFlow<Unit>(replay = 0)
+    val navigateBack: Flow<Unit> = _navigateBack
+
     private var pollStarted = false
 
     init {
@@ -70,17 +74,21 @@ class ArticleReaderViewModel @Inject constructor(
             getArticleDetail(articleId).collect { article ->
                 _uiState.update { it.copy(article = article) }
 
+                // If article is deleted, emit navigation back event
+                if (article == null) {
+                    _navigateBack.emit(Unit)
+                    return@collect
+                }
+
                 // Load sentences and word links from database
-                if (article != null) {
-                    try {
-                        val sentences = repository.getSentences(articleId)
-                        val wordLinks = repository.getWordLinks(articleId)
-                        _uiState.update {
-                            it.copy(sentences = sentences, wordLinks = wordLinks)
-                        }
-                    } catch (_: Exception) {
-                        // Data loading failure is non-critical
+                try {
+                    val sentences = repository.getSentences(articleId)
+                    val wordLinks = repository.getWordLinks(articleId)
+                    _uiState.update {
+                        it.copy(sentences = sentences, wordLinks = wordLinks)
                     }
+                } catch (_: Exception) {
+                    // Data loading failure is non-critical
                 }
             }
         }
@@ -120,7 +128,9 @@ class ArticleReaderViewModel @Inject constructor(
         viewModelScope.launch {
             while (true) {
                 val article = _uiState.value.article
-                if (article?.parseStatus == ArticleParseStatus.DONE || article?.parseStatus == ArticleParseStatus.FAILED) {
+                if (article == null ||
+                    article.parseStatus == ArticleParseStatus.DONE ||
+                    article.parseStatus == ArticleParseStatus.FAILED) {
                     break
                 }
                 delay(2000)

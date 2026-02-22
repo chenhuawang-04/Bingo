@@ -46,6 +46,7 @@ interface ArticleRepository {
     suspend fun upsertWordStats(articleId: Long, stats: List<ArticleWordStat>)
     suspend fun getWordStats(articleId: Long): List<ArticleWordStat>
     suspend fun deleteWordStatsByArticle(articleId: Long)
+    suspend fun getArticleIdsByTokens(tokens: List<String>): List<Long>
 
     suspend fun upsertWordLinks(links: List<ArticleWordLink>)
     suspend fun getWordLinks(articleId: Long): List<ArticleWordLink>
@@ -57,6 +58,8 @@ interface ArticleRepository {
     suspend fun getExamplesForWord(wordId: Long): List<WordExample>
     suspend fun insertExamples(examples: List<WordExample>)
     suspend fun deleteExamplesByArticle(articleId: Long)
+    suspend fun deleteWordLinksByWord(wordId: Long)
+    suspend fun deleteExamplesByWord(wordId: Long)
 
     suspend fun getAllWordsForMatching(): List<WordMatchInfo>
 

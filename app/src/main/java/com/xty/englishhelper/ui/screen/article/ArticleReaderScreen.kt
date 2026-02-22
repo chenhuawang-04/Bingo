@@ -2,6 +2,7 @@ package com.xty.englishhelper.ui.screen.article
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -38,8 +39,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -79,6 +82,12 @@ fun ArticleReaderScreen(
                 // +1 to account for the title item
                 listState.animateScrollToItem(targetIndex + 1)
             }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.navigateBack.collect {
+            onBack()
         }
     }
 
@@ -277,7 +286,9 @@ private fun SentenceRow(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // Render highlighted text using buildAnnotatedString
+        // Render highlighted text with tap and long-press gestures
+        var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+
         Text(
             buildAnnotatedString {
                 parts.forEach { (text, link) ->
@@ -298,39 +309,34 @@ private fun SentenceRow(
                 }
             },
             style = MaterialTheme.typography.bodyMedium,
+            onTextLayout = { textLayoutResult = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    // For now, just trigger analysis on click
-                    // Detailed word detection would require more complex text layout handling
-                    onAnalyze()
+                .pointerInput(wordLinks) {
+                    detectTapGestures(
+                        onTap = { tapOffset ->
+                            textLayoutResult?.let { layout ->
+                                val charOffset = layout.getOffsetForPosition(tapOffset)
+                                buildAnnotatedString {
+                                    parts.forEach { (text, link) ->
+                                        if (link != null) {
+                                            pushStringAnnotation(tag = "word", annotation = "${link.wordId}:${link.dictionaryId}")
+                                            append(text)
+                                            pop()
+                                        } else {
+                                            append(text)
+                                        }
+                                    }
+                                }.getStringAnnotations("word", charOffset, charOffset).firstOrNull()?.let { ann ->
+                                    val (wId, dId) = ann.item.split(":")
+                                    onWordClick(wId.toLong(), dId.toLong())
+                                }
+                            }
+                        },
+                        onLongPress = { onAnalyze() }
+                    )
                 }
         )
-
-        // Fallback: create clickable word chips for precise click detection
-        if (wordLinks.isNotEmpty()) {
-            androidx.compose.foundation.layout.Column(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("词汇: ", style = MaterialTheme.typography.labelSmall)
-                androidx.compose.foundation.layout.FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    wordLinks.forEach { link ->
-                        androidx.compose.material3.FilterChip(
-                            selected = false,
-                            onClick = { onWordClick(link.wordId, link.dictionaryId) },
-                            label = { Text(link.matchedToken, style = MaterialTheme.typography.labelSmall) },
-                            modifier = Modifier.padding(2.dp)
-                        )
-                    }
-                }
-            }
-        }
 
         if (isAnalyzing) {
             Row(

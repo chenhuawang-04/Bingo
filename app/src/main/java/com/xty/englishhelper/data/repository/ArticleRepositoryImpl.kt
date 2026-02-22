@@ -1,5 +1,6 @@
 package com.xty.englishhelper.data.repository
 
+import androidx.room.Transaction
 import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
@@ -52,7 +53,7 @@ class ArticleRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteArticle(articleId: Long) {
-        articleDao.deleteArticle(articleId)
+        articleDao.deleteArticleWithExamples(articleId)
     }
 
     override fun getArticleCount(): Flow<Int> {
@@ -81,6 +82,10 @@ class ArticleRepositoryImpl @Inject constructor(
 
     override suspend fun deleteWordStatsByArticle(articleId: Long) {
         articleDao.deleteWordStatsByArticle(articleId)
+    }
+
+    override suspend fun getArticleIdsByTokens(tokens: List<String>): List<Long> {
+        return articleDao.getArticleIdsByTokens(tokens)
     }
 
     override suspend fun upsertWordLinks(links: List<ArticleWordLink>) {
@@ -129,6 +134,12 @@ class ArticleRepositoryImpl @Inject constructor(
     override suspend fun deleteExamplesByArticle(articleId: Long) {
         articleDao.deleteExamplesByArticle(articleId)
     }
+
+    override suspend fun deleteWordLinksByWord(wordId: Long) =
+        articleDao.deleteWordLinksByWord(wordId)
+
+    override suspend fun deleteExamplesByWord(wordId: Long) =
+        articleDao.deleteExamplesByWord(wordId)
 
     override suspend fun getAllWordsForMatching(): List<WordMatchInfo> {
         return wordDao.getAllWordsForMatching().map { proj ->
