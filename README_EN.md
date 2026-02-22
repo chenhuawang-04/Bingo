@@ -1,6 +1,12 @@
-# Bingo
+<p align="center">
+  <img src="bingo.png" alt="Bingo" width="128" />
+</p>
 
-[中文](README.md)
+<h1 align="center">Bingo</h1>
+
+<p align="center">
+  <a href="README.md">中文</a>
+</p>
 
 An AI-powered English vocabulary learning app for Android that helps you systematically master English words through a complete workflow: look up → decompose → read → review.
 
@@ -177,4 +183,4 @@ com.xty.englishhelper/
 
 ## License
 
-This project is for learning and educational purposes only.
+This project is licensed under the [MIT License](LICENSE).

@@ -1,6 +1,12 @@
-# Bingo
+<p align="center">
+  <img src="bingo.png" alt="Bingo" width="128" />
+</p>
 
-[English](README_EN.md)
+<h1 align="center">Bingo</h1>
+
+<p align="center">
+  <a href="README_EN.md">English</a>
+</p>
 
 一款基于 AI 的英语词汇学习 Android 应用，帮助你从「查词 → 拆词 → 阅读 → 复习」全流程系统性掌握英语词汇。
 
@@ -177,4 +183,4 @@ com.xty.englishhelper/
 
 ## 许可证
 
-本项目仅供学习交流使用。
+本项目基于 [MIT License](LICENSE) 开源。
