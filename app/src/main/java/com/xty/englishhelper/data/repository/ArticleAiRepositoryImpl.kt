@@ -53,7 +53,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
         )
 
         val url = buildMessagesUrl(baseUrl)
-        val response = apiService.createMultimodalMessage(url, apiKey, requestBody)
+        val response = apiService.createMultimodalMessage(url, "Bearer $apiKey", requestBody)
         val responseText = response.content.firstOrNull()?.text.orEmpty()
 
         return parseJsonPayload(responseText, ArticleOcrResult::class.java)
@@ -91,7 +91,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
         )
 
         val url = buildMessagesUrl(baseUrl)
-        val response = apiService.createMessage(url, apiKey, request)
+        val response = apiService.createMessage(url, "Bearer $apiKey", request)
         val responseText = response.content.firstOrNull()?.text.orEmpty()
 
         return parseJsonPayload(responseText, SentenceAnalysisResult::class.java)

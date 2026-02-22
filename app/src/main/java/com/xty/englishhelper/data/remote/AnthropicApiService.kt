@@ -12,14 +12,14 @@ interface AnthropicApiService {
     @POST
     suspend fun createMessage(
         @Url url: String,
-        @Header("x-api-key") apiKey: String,
+        @Header("Authorization") authHeader: String,
         @Body request: AnthropicRequest
     ): AnthropicResponse
 
     @POST
     suspend fun createMultimodalMessage(
         @Url url: String,
-        @Header("x-api-key") apiKey: String,
+        @Header("Authorization") authHeader: String,
         @Body body: RequestBody
     ): AnthropicResponse
 }

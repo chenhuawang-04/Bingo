@@ -37,7 +37,7 @@ class AiRepositoryImpl @Inject constructor(
         )
 
         val url = buildUrl(baseUrl)
-        val response = apiService.createMessage(url, apiKey, request)
+        val response = apiService.createMessage(url, "Bearer $apiKey", request)
         val text = response.content.firstOrNull()?.text
             ?: throw IllegalStateException("Empty response from AI")
 
@@ -53,7 +53,7 @@ class AiRepositoryImpl @Inject constructor(
             )
         )
         val url = buildUrl(baseUrl)
-        val response = apiService.createMessage(url, apiKey, request)
+        val response = apiService.createMessage(url, "Bearer $apiKey", request)
         return response.content.isNotEmpty()
     }
 

@@ -35,14 +35,14 @@ object NetworkModule {
         val builder = OkHttpClient.Builder()
             .addInterceptor(AnthropicHeaderInterceptor(Constants.ANTHROPIC_API_VERSION))
             .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
+            .readTimeout(300, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
 
         if (BuildConfig.DEBUG) {
             val loggingInterceptor = HttpLoggingInterceptor { message ->
                 val sanitized = message.replace(
-                    Regex("x-api-key:\\s*\\S+", RegexOption.IGNORE_CASE),
-                    "x-api-key: [REDACTED]"
+                    Regex("Authorization:\\s*Bearer\\s*\\S+", RegexOption.IGNORE_CASE),
+                    "Authorization: Bearer [REDACTED]"
                 )
                 HttpLoggingInterceptor.Logger.DEFAULT.log(sanitized)
             }.apply {

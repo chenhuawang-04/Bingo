@@ -3,6 +3,7 @@ package com.xty.englishhelper.util
 object Constants {
     const val ANTHROPIC_BASE_URL = "https://api.anthropic.com/"
     const val ANTHROPIC_API_VERSION = "2023-06-01"
+    const val ANTHROPIC_USER_AGENT = "claude-cli/2.1.50 (external, cli)"
 
     val AVAILABLE_MODELS = listOf(
         "claude-haiku-4-5-20251001" to "Claude Haiku 4.5",
