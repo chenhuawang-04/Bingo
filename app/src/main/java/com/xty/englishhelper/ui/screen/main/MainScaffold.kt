@@ -19,58 +19,49 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.window.core.layout.WindowWidthSizeClass
-import com.xty.englishhelper.ui.navigation.AddWordRoute
 import com.xty.englishhelper.ui.navigation.ArticleEditorRoute
 import com.xty.englishhelper.ui.navigation.ArticleListRoute
 import com.xty.englishhelper.ui.navigation.ArticleReaderRoute
+import com.xty.englishhelper.ui.navigation.AddWordRoute
 import com.xty.englishhelper.ui.navigation.DictionaryRoute
 import com.xty.englishhelper.ui.navigation.HomeRoute
 import com.xty.englishhelper.ui.navigation.StudyRoute
 import com.xty.englishhelper.ui.navigation.StudySetupRoute
 import com.xty.englishhelper.ui.navigation.UnitDetailRoute
 import com.xty.englishhelper.ui.navigation.WordDetailRoute
+import kotlin.reflect.KClass
+
+private val DICTIONARY_TAB_ROUTES: Set<String> = setOf(
+    HomeRoute::class,
+    DictionaryRoute::class,
+    WordDetailRoute::class,
+    AddWordRoute::class,
+    UnitDetailRoute::class,
+    StudySetupRoute::class,
+    StudyRoute::class
+).mapNotNull { it.qualifiedName }.toSet()
+
+private val ARTICLE_TAB_ROUTES: Set<String> = setOf(
+    ArticleListRoute::class,
+    ArticleEditorRoute::class,
+    ArticleReaderRoute::class
+).mapNotNull { it.qualifiedName }.toSet()
+
+private fun matchesTab(currentRoute: String?, prefixes: Set<String>): Boolean =
+    currentRoute != null && prefixes.any { currentRoute.startsWith(it) }
 
 @Composable
 fun MainScaffold(
     navController: NavController,
     content: @Composable (PaddingValues) -> Unit
 ) {
-    // Determine current tab based on current destination route
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
 
-    // Map routes to tabs
-    val dictionaryTabRoutes = listOf(
-        "com.xty.englishhelper.ui.navigation.HomeRoute",
-        "com.xty.englishhelper.ui.navigation.DictionaryRoute",
-        "com.xty.englishhelper.ui.navigation.WordDetailRoute",
-        "com.xty.englishhelper.ui.navigation.AddWordRoute",
-        "com.xty.englishhelper.ui.navigation.UnitDetailRoute",
-        "com.xty.englishhelper.ui.navigation.StudySetupRoute",
-        "com.xty.englishhelper.ui.navigation.StudyRoute"
-    )
-
-    val articleTabRoutes = listOf(
-        "com.xty.englishhelper.ui.navigation.ArticleListRoute",
-        "com.xty.englishhelper.ui.navigation.ArticleEditorRoute",
-        "com.xty.englishhelper.ui.navigation.ArticleReaderRoute"
-    )
-
-    val isInDictionaryTab = currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.HomeRoute") == true ||
-            currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.DictionaryRoute") == true ||
-            currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.WordDetailRoute") == true ||
-            currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.AddWordRoute") == true ||
-            currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.UnitDetailRoute") == true ||
-            currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.StudySetupRoute") == true ||
-            currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.StudyRoute") == true
-
-    val isInArticleTab = currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.ArticleListRoute") == true ||
-            currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.ArticleEditorRoute") == true ||
-            currentRoute?.startsWith("com.xty.englishhelper.ui.navigation.ArticleReaderRoute") == true
-
+    val isInDictionaryTab = matchesTab(currentRoute, DICTIONARY_TAB_ROUTES)
+    val isInArticleTab = matchesTab(currentRoute, ARTICLE_TAB_ROUTES)
     val showBottomBar = isInDictionaryTab || isInArticleTab
 
-    // Navigation helper functions for Tab switching with state preservation
     fun navigateToDictionaryTab() {
         navController.navigate(HomeRoute) {
             popUpTo<HomeRoute> { saveState = true }
@@ -90,7 +81,6 @@ fun MainScaffold(
     val isCompact = currentWindowAdaptiveInfo().windowSizeClass.windowWidthSizeClass == WindowWidthSizeClass.COMPACT
 
     if (isCompact) {
-        // Compact layout: BottomBar
         Scaffold(
             bottomBar = {
                 if (showBottomBar) {
@@ -114,7 +104,6 @@ fun MainScaffold(
             content(innerPadding)
         }
     } else {
-        // Medium/Expanded layout: NavigationRail
         Row {
             if (showBottomBar) {
                 NavigationRail {

@@ -37,12 +37,12 @@ class DictionaryMatcher(
 
     fun match(tokens: List<TokenOccurrence>): List<WordMatchResult> {
         val matches = mutableListOf<WordMatchResult>()
-        val seen = mutableSetOf<Triple<Int, Int, Long>>() // sentenceIndex, matchType, wordId
+        val seen = mutableSetOf<Triple<Int, String, Long>>() // sentenceIndex, normalizedToken, wordId
 
         tokens.forEach { token ->
             val candidates = index[token.normalizedToken] ?: return@forEach
             candidates.forEach { wordRef ->
-                val key = Triple(token.sentenceIndex, token.normalizedToken.hashCode(), wordRef.wordId)
+                val key = Triple(token.sentenceIndex, token.normalizedToken, wordRef.wordId)
                 if (key !in seen) {
                     seen.add(key)
                     matches.add(

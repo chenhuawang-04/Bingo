@@ -62,7 +62,7 @@ fun ArticleReaderScreen(
     viewModel: ArticleReaderViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val article by viewModel.getArticleFlow().collectAsState(null)
+    val article = uiState.article
     val snackbarHostState = remember { SnackbarHostState() }
     val windowWidthClass = currentWindowWidthClass()
     val isWide = windowWidthClass.isExpandedOrMedium()

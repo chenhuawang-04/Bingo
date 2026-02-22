@@ -5,6 +5,7 @@ import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.usecase.article.LinkWordToArticlesUseCase
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import javax.inject.Inject
@@ -78,7 +79,7 @@ class SaveWordUseCase @Inject constructor(
                 linkWordToArticles(savedId, savedWord.dictionaryId, savedWord.spelling, savedWord.inflections)
             }
         } catch (e: Exception) {
-            // Linkage failure is non-critical, don't affect word save
+            Log.w("SaveWordUseCase", "Article linkage failed for wordId=$savedId", e)
         }
 
         return savedId

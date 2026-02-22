@@ -5,6 +5,7 @@ import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.WordExampleSourceType
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.WordExample
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -85,7 +86,7 @@ class LinkWordToArticlesUseCase @Inject constructor(
                             }
                         }
                     } catch (e: Exception) {
-                        // Log article processing error but continue
+                        Log.w("LinkWordToArticles", "Failed to process articleId=$articleId for wordId=$wordId", e)
                     }
                 }
 
@@ -97,7 +98,7 @@ class LinkWordToArticlesUseCase @Inject constructor(
                     repository.insertExamples(examples)
                 }
             } catch (e: Exception) {
-                // Linkage failure is non-critical, don't propagate
+                Log.w("LinkWordToArticles", "Linkage failed for wordId=$wordId", e)
             }
         }
     }

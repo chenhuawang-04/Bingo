@@ -66,10 +66,6 @@ class ArticleReaderViewModel @Inject constructor(
         }
     }
 
-    fun getArticleFlow(): Flow<Article?> {
-        return getArticleDetail(articleId)
-    }
-
     private fun subscribeToArticleUpdates() {
         viewModelScope.launch {
             getArticleDetail(articleId).collect { article ->

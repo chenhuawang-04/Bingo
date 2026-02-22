@@ -174,7 +174,7 @@ class ParseArticleUseCase @Inject constructor(
                     sourceType = WordExampleSourceType.ARTICLE,
                     sourceArticleId = articleId,
                     sourceSentenceId = link.sentenceId,
-                    sourceLabel = "$articleTitle 例句"
+                    sourceLabel = "「$articleTitle」例句"
                 )
             }.filter { it.sentence.isNotBlank() }
             examples.chunked(300).forEach { chunk ->
