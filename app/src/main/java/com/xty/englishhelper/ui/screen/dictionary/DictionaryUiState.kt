@@ -13,5 +13,10 @@ data class DictionaryUiState(
     val deleteTarget: WordDetails? = null,
     val showCreateUnitDialog: Boolean = false,
     val newUnitName: String = "",
-    val error: String? = null
-)
+    val error: String? = null,
+    val currentPage: Int = 0,
+    val pageSize: Int = 10
+) {
+    val totalPages: Int get() = if (words.isEmpty()) 1 else (words.size + pageSize - 1) / pageSize
+    val pagedWords: List<WordDetails> get() = words.drop(currentPage * pageSize).take(pageSize)
+}

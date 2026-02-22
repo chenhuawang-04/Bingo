@@ -64,7 +64,10 @@ class DictionaryViewModel @Inject constructor(
             }.catch { e ->
                 _uiState.update { it.copy(error = e.message, isLoading = false) }
             }.collect { words ->
-                _uiState.update { it.copy(words = words, isLoading = false) }
+                _uiState.update {
+                    val maxPage = if (words.isEmpty()) 0 else (words.size + it.pageSize - 1) / it.pageSize - 1
+                    it.copy(words = words, isLoading = false, currentPage = it.currentPage.coerceAtMost(maxPage.coerceAtLeast(0)))
+                }
             }
         }
     }
@@ -82,7 +85,7 @@ class DictionaryViewModel @Inject constructor(
     }
 
     fun onSearchQueryChange(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
+        _uiState.update { it.copy(searchQuery = query, currentPage = 0) }
         _searchQuery.value = query
     }
 
@@ -122,6 +125,16 @@ class DictionaryViewModel @Inject constructor(
             _uiState.update { it.copy(showCreateUnitDialog = false, newUnitName = "") }
         }
     }
+
+    fun goToPage(page: Int) {
+        _uiState.update {
+            val maxPage = (it.totalPages - 1).coerceAtLeast(0)
+            it.copy(currentPage = page.coerceIn(0, maxPage))
+        }
+    }
+
+    fun nextPage() = goToPage(_uiState.value.currentPage + 1)
+    fun previousPage() = goToPage(_uiState.value.currentPage - 1)
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }

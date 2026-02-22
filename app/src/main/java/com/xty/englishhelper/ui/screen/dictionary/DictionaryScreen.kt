@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -248,104 +250,153 @@ private fun DictionaryListContent(
             if (state.words.isEmpty()) {
                 EmptyState(message = "未找到匹配的单词")
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                ) {
-                    items(state.words, key = { it.id }) { word ->
-                        WordListItem(
-                            word = word,
-                            onClick = {
-                                state.dictionary?.let {
-                                    onWordClick(word.id, it.id)
-                                }
-                            },
-                            isSelected = word.id == selectedWordId
+                Column(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(bottom = 8.dp)
+                    ) {
+                        items(state.pagedWords, key = { it.id }) { word ->
+                            WordListItem(
+                                word = word,
+                                onClick = {
+                                    state.dictionary?.let {
+                                        onWordClick(word.id, it.id)
+                                    }
+                                },
+                                isSelected = word.id == selectedWordId
+                            )
+                            HorizontalDivider()
+                        }
+                    }
+                    if (state.totalPages > 1) {
+                        PaginationBar(
+                            currentPage = state.currentPage,
+                            totalPages = state.totalPages,
+                            onPrevious = viewModel::previousPage,
+                            onNext = viewModel::nextPage
                         )
-                        HorizontalDivider()
                     }
                 }
             }
         }
         else -> {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                if (state.units.isNotEmpty() || state.words.isNotEmpty()) {
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "单元",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            TextButton(onClick = viewModel::showCreateUnitDialog) {
-                                Text("新建单元")
+            Column(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    if (state.units.isNotEmpty() || state.words.isNotEmpty()) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "单元",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                TextButton(onClick = viewModel::showCreateUnitDialog) {
+                                    Text("新建单元")
+                                }
                             }
                         }
                     }
-                }
 
-                if (state.units.isEmpty()) {
+                    if (state.units.isEmpty()) {
+                        item {
+                            Text(
+                                text = "还没有单元，点击「新建单元」创建",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                    } else {
+                        items(state.units, key = { "unit_${it.id}" }) { unit ->
+                            UnitCard(
+                                unit = unit,
+                                onClick = {
+                                    state.dictionary?.let {
+                                        onUnitClick(unit.id, it.id)
+                                    }
+                                },
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
                     item {
                         Text(
-                            text = "还没有单元，点击「新建单元」创建",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = "全部单词 (${state.words.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
-                } else {
-                    items(state.units, key = { "unit_${it.id}" }) { unit ->
-                        UnitCard(
-                            unit = unit,
-                            onClick = {
-                                state.dictionary?.let {
-                                    onUnitClick(unit.id, it.id)
-                                }
-                            },
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        )
+
+                    if (state.words.isEmpty()) {
+                        item {
+                            EmptyState(
+                                message = "辞书中还没有单词\n点击 + 添加一个吧"
+                            )
+                        }
+                    } else {
+                        items(state.pagedWords, key = { "word_${it.id}" }) { word ->
+                            WordListItem(
+                                word = word,
+                                onClick = {
+                                    state.dictionary?.let {
+                                        onWordClick(word.id, it.id)
+                                    }
+                                },
+                                isSelected = word.id == selectedWordId
+                            )
+                            HorizontalDivider()
+                        }
                     }
                 }
-
-                item {
-                    Text(
-                        text = "全部单词 (${state.words.size})",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                if (state.words.isNotEmpty() && state.totalPages > 1) {
+                    PaginationBar(
+                        currentPage = state.currentPage,
+                        totalPages = state.totalPages,
+                        onPrevious = viewModel::previousPage,
+                        onNext = viewModel::nextPage
                     )
                 }
-
-                if (state.words.isEmpty()) {
-                    item {
-                        EmptyState(
-                            message = "辞书中还没有单词\n点击 + 添加一个吧"
-                        )
-                    }
-                } else {
-                    items(state.words, key = { "word_${it.id}" }) { word ->
-                        WordListItem(
-                            word = word,
-                            onClick = {
-                                state.dictionary?.let {
-                                    onWordClick(word.id, it.id)
-                                }
-                            },
-                            isSelected = word.id == selectedWordId
-                        )
-                        HorizontalDivider()
-                    }
-                }
             }
+        }
+    }
+}
+
+@Composable
+private fun PaginationBar(
+    currentPage: Int,
+    totalPages: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onPrevious, enabled = currentPage > 0) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "上一页")
+        }
+        Text(
+            text = "第 ${currentPage + 1}/$totalPages 页",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        IconButton(onClick = onNext, enabled = currentPage < totalPages - 1) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下一页")
         }
     }
 }
