@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">英语助手</string>
+    <string name="app_name">Bingo</string>
 
     <!-- Home -->
     <string name="home_title">我的辞书</string>
