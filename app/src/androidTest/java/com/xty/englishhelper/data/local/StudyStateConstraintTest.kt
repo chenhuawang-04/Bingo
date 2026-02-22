@@ -1,8 +1,7 @@
 package com.xty.englishhelper.data.local
 
-import android.content.ContentValues
-import android.database.sqlite.SQLiteDatabase
 import androidx.room.testing.MigrationTestHelper
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -21,7 +20,7 @@ class StudyStateConstraintTest {
         AppDatabase::class.java
     )
 
-    private fun createV3Database(): android.database.sqlite.SQLiteDatabase {
+    private fun createV3Database(): SupportSQLiteDatabase {
         // Create v2 first, then migrate to v3
         val db = helper.createDatabase(testDbName, 2)
         db.close()
