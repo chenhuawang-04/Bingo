@@ -6,6 +6,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.xty.englishhelper.ui.screen.addword.AddWordScreen
+import com.xty.englishhelper.ui.screen.article.ArticleEditorScreen
+import com.xty.englishhelper.ui.screen.article.ArticleListScreen
+import com.xty.englishhelper.ui.screen.article.ArticleReaderScreen
 import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
 import com.xty.englishhelper.ui.screen.home.HomeScreen
 import com.xty.englishhelper.ui.screen.importexport.ImportExportScreen
@@ -22,6 +25,9 @@ fun NavGraph(navController: NavHostController) {
             HomeScreen(
                 onDictionaryClick = { dictId ->
                     navController.navigate(DictionaryRoute(dictId))
+                },
+                onArticlesClick = {
+                    navController.navigate(ArticleListRoute)
                 },
                 onImportExport = {
                     navController.navigate(ImportExportRoute)
@@ -63,6 +69,9 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onWordClick = { wordId, dictId ->
                     navController.navigate(WordDetailRoute(wordId, dictId))
+                },
+                onArticleClick = { articleId, sentenceId ->
+                    navController.navigate(ArticleReaderRoute(articleId, sentenceId))
                 }
             )
         }
@@ -110,6 +119,39 @@ fun NavGraph(navController: NavHostController) {
             val route = backStackEntry.toRoute<StudyRoute>()
             StudyScreen(
                 onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable<ArticleListRoute> {
+            ArticleListScreen(
+                onBack = { navController.popBackStack() },
+                onCreateArticle = {
+                    navController.navigate(ArticleEditorRoute())
+                },
+                onReadArticle = { articleId ->
+                    navController.navigate(ArticleReaderRoute(articleId))
+                }
+            )
+        }
+
+        composable<ArticleEditorRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<ArticleEditorRoute>()
+            ArticleEditorScreen(
+                onBack = { navController.popBackStack() },
+                onSaved = { articleId ->
+                    navController.popBackStack()
+                    navController.navigate(ArticleReaderRoute(articleId))
+                }
+            )
+        }
+
+        composable<ArticleReaderRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<ArticleReaderRoute>()
+            ArticleReaderScreen(
+                onBack = { navController.popBackStack() },
+                onWordClick = { wordId, dictionaryId ->
+                    navController.navigate(WordDetailRoute(wordId, dictionaryId))
+                }
             )
         }
     }

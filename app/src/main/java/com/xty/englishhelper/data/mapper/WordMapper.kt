@@ -12,6 +12,7 @@ import com.xty.englishhelper.data.local.entity.WordEntity
 import com.xty.englishhelper.data.local.relation.WordWithDetails
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
+import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.SimilarWordInfo
@@ -33,6 +34,15 @@ private val decompositionListType = Types.newParameterizedType(List::class.java,
 private val decompositionAdapter = moshi.adapter<List<DecompositionPartJson>>(decompositionListType)
 private val stringListType = Types.newParameterizedType(List::class.java, String::class.java)
 private val stringListAdapter = moshi.adapter<List<String>>(stringListType)
+
+@JsonClass(generateAdapter = true)
+data class InflectionJson(
+    val form: String = "",
+    val formType: String = ""
+)
+
+private val inflectionListType = Types.newParameterizedType(List::class.java, InflectionJson::class.java)
+private val inflectionAdapter = moshi.adapter<List<InflectionJson>>(inflectionListType)
 
 fun parseDecomposition(json: String): List<DecompositionPart> {
     return try {
@@ -68,6 +78,20 @@ fun commonSegmentsToJson(segments: List<String>): String {
     return stringListAdapter.toJson(segments)
 }
 
+fun parseInflections(json: String): List<Inflection> {
+    return try {
+        val list = inflectionAdapter.fromJson(json) ?: emptyList()
+        list.map { Inflection(form = it.form, formType = it.formType) }
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
+
+fun inflectionsToJson(inflections: List<Inflection>): String {
+    val list = inflections.map { InflectionJson(form = it.form, formType = it.formType) }
+    return inflectionAdapter.toJson(list)
+}
+
 fun WordWithDetails.toDomain() = WordDetails(
     id = word.id,
     dictionaryId = word.dictionaryId,
@@ -81,6 +105,7 @@ fun WordWithDetails.toDomain() = WordDetails(
     similarWords = similarWords.map { it.toDomain() },
     cognates = cognates.map { it.toDomain() },
     decomposition = parseDecomposition(word.decompositionJson),
+    inflections = parseInflections(word.inflectionsJson),
     createdAt = word.createdAt,
     updatedAt = word.updatedAt
 )
@@ -95,6 +120,7 @@ fun WordDetails.toEntity() = WordEntity(
     normalizedSpelling = normalizedSpelling,
     wordUid = wordUid,
     decompositionJson = decompositionToJson(decomposition),
+    inflectionsJson = inflectionsToJson(inflections),
     createdAt = createdAt,
     updatedAt = System.currentTimeMillis()
 )

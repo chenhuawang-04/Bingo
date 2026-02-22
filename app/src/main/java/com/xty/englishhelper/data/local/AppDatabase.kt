@@ -5,18 +5,26 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.DictionaryDao
 import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
+import com.xty.englishhelper.data.local.entity.ArticleEntity
+import com.xty.englishhelper.data.local.entity.ArticleImageEntity
+import com.xty.englishhelper.data.local.entity.ArticleSentenceEntity
+import com.xty.englishhelper.data.local.entity.ArticleWordLinkEntity
+import com.xty.englishhelper.data.local.entity.ArticleWordStatEntity
 import com.xty.englishhelper.data.local.entity.CognateEntity
 import com.xty.englishhelper.data.local.entity.DictionaryEntity
+import com.xty.englishhelper.data.local.entity.SentenceAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.SimilarWordEntity
 import com.xty.englishhelper.data.local.entity.SynonymEntity
 import com.xty.englishhelper.data.local.entity.UnitEntity
 import com.xty.englishhelper.data.local.entity.UnitWordCrossRef
 import com.xty.englishhelper.data.local.entity.WordAssociationEntity
 import com.xty.englishhelper.data.local.entity.WordEntity
+import com.xty.englishhelper.data.local.entity.WordExampleEntity
 import com.xty.englishhelper.data.local.entity.WordStudyStateEntity
 import java.util.UUID
 
@@ -30,9 +38,16 @@ import java.util.UUID
         UnitEntity::class,
         UnitWordCrossRef::class,
         WordStudyStateEntity::class,
-        WordAssociationEntity::class
+        WordAssociationEntity::class,
+        ArticleEntity::class,
+        ArticleImageEntity::class,
+        ArticleSentenceEntity::class,
+        ArticleWordStatEntity::class,
+        ArticleWordLinkEntity::class,
+        SentenceAnalysisCacheEntity::class,
+        WordExampleEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -40,6 +55,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun wordDao(): WordDao
     abstract fun unitDao(): UnitDao
     abstract fun studyDao(): StudyDao
+    abstract fun articleDao(): ArticleDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -181,6 +197,126 @@ abstract class AppDatabase : RoomDatabase() {
 
                 db.execSQL("DROP TABLE word_study_state")
                 db.execSQL("ALTER TABLE word_study_state_new RENAME TO word_study_state")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add inflections_json to words table
+                db.execSQL("ALTER TABLE words ADD COLUMN inflections_json TEXT NOT NULL DEFAULT '[]'")
+
+                // Create articles table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `articles` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `domain` TEXT NOT NULL DEFAULT '',
+                        `difficulty_ai` REAL NOT NULL DEFAULT 0,
+                        `difficulty_local` REAL NOT NULL DEFAULT 0,
+                        `difficulty_final` REAL NOT NULL DEFAULT 0,
+                        `source_type` INTEGER NOT NULL DEFAULT 1,
+                        `parse_status` INTEGER NOT NULL DEFAULT 0,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_articles_updated_at` ON `articles` (`updated_at`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_articles_title` ON `articles` (`title`)")
+
+                // Create article_images table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `article_images` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `article_id` INTEGER NOT NULL,
+                        `local_uri` TEXT NOT NULL,
+                        `order_index` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`article_id`) REFERENCES `articles`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_article_images_article_id_order_index` ON `article_images` (`article_id`, `order_index`)")
+
+                // Create article_sentences table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `article_sentences` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `article_id` INTEGER NOT NULL,
+                        `sentence_index` INTEGER NOT NULL,
+                        `text` TEXT NOT NULL,
+                        `char_start` INTEGER NOT NULL,
+                        `char_end` INTEGER NOT NULL,
+                        FOREIGN KEY(`article_id`) REFERENCES `articles`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_sentences_article_id` ON `article_sentences` (`article_id`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_article_sentences_article_id_sentence_index` ON `article_sentences` (`article_id`, `sentence_index`)")
+
+                // Create article_word_stats table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `article_word_stats` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `article_id` INTEGER NOT NULL,
+                        `normalized_token` TEXT NOT NULL,
+                        `display_token` TEXT NOT NULL,
+                        `frequency` INTEGER NOT NULL,
+                        FOREIGN KEY(`article_id`) REFERENCES `articles`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_article_word_stats_article_id_normalized_token` ON `article_word_stats` (`article_id`, `normalized_token`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_word_stats_article_id_frequency` ON `article_word_stats` (`article_id`, `frequency`)")
+
+                // Create article_word_links table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `article_word_links` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `article_id` INTEGER NOT NULL,
+                        `sentence_id` INTEGER NOT NULL,
+                        `word_id` INTEGER NOT NULL,
+                        `dictionary_id` INTEGER NOT NULL,
+                        `matched_token` TEXT NOT NULL,
+                        FOREIGN KEY(`article_id`) REFERENCES `articles`(`id`) ON DELETE CASCADE,
+                        FOREIGN KEY(`sentence_id`) REFERENCES `article_sentences`(`id`) ON DELETE CASCADE,
+                        FOREIGN KEY(`word_id`) REFERENCES `words`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_word_links_article_id` ON `article_word_links` (`article_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_word_links_word_id` ON `article_word_links` (`word_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_word_links_dictionary_id` ON `article_word_links` (`dictionary_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_word_links_sentence_id` ON `article_word_links` (`sentence_id`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_article_word_links_article_id_sentence_id_word_id` ON `article_word_links` (`article_id`, `sentence_id`, `word_id`)")
+
+                // Create sentence_analysis_cache table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `sentence_analysis_cache` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `article_id` INTEGER NOT NULL,
+                        `sentence_id` INTEGER NOT NULL,
+                        `sentence_hash` TEXT NOT NULL,
+                        `meaning_zh` TEXT NOT NULL,
+                        `grammar_json` TEXT NOT NULL,
+                        `keywords_json` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_sentence_analysis_cache_article_id_sentence_id_sentence_hash` ON `sentence_analysis_cache` (`article_id`, `sentence_id`, `sentence_hash`)")
+
+                // Create word_examples table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `word_examples` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `word_id` INTEGER NOT NULL,
+                        `sentence` TEXT NOT NULL,
+                        `source_type` INTEGER NOT NULL DEFAULT 0,
+                        `source_article_id` INTEGER,
+                        `source_sentence_id` INTEGER,
+                        `source_label` TEXT,
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`word_id`) REFERENCES `words`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_examples_word_id` ON `word_examples` (`word_id`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_word_examples_word_id_source_type_source_article_id_source_sentence_id` ON `word_examples` (`word_id`, `source_type`, `source_article_id`, `source_sentence_id`)")
             }
         }
     }

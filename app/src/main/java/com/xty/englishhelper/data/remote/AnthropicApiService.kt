@@ -2,6 +2,7 @@ package com.xty.englishhelper.data.remote
 
 import com.xty.englishhelper.data.remote.dto.AnthropicRequest
 import com.xty.englishhelper.data.remote.dto.AnthropicResponse
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
@@ -13,5 +14,12 @@ interface AnthropicApiService {
         @Url url: String,
         @Header("x-api-key") apiKey: String,
         @Body request: AnthropicRequest
+    ): AnthropicResponse
+
+    @POST
+    suspend fun createMultimodalMessage(
+        @Url url: String,
+        @Header("x-api-key") apiKey: String,
+        @Body body: RequestBody
     ): AnthropicResponse
 }

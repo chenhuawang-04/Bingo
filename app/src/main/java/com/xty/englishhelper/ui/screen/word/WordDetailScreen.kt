@@ -28,6 +28,7 @@ fun WordDetailScreen(
     onBack: () -> Unit,
     onEdit: (dictionaryId: Long, wordId: Long) -> Unit,
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
+    onArticleClick: (articleId: Long, sentenceId: Long) -> Unit = { _, _ -> },
     viewModel: WordDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -71,7 +72,9 @@ fun WordDetailScreen(
                     associatedWords = state.associatedWords,
                     linkedWordIds = state.linkedWordIds,
                     onWordClick = onWordClick,
-                    modifier = Modifier.padding(padding)
+                    modifier = Modifier.padding(padding),
+                    examples = state.examples,
+                    onArticleClick = onArticleClick
                 )
             }
         }

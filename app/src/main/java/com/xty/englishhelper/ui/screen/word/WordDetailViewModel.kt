@@ -3,6 +3,7 @@ package com.xty.englishhelper.ui.screen.word
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
 import com.xty.englishhelper.domain.usecase.word.GetAssociatedWordsUseCase
 import com.xty.englishhelper.domain.usecase.word.GetWordByIdUseCase
@@ -21,7 +22,8 @@ class WordDetailViewModel @Inject constructor(
     private val getWordById: GetWordByIdUseCase,
     private val deleteWord: DeleteWordUseCase,
     private val resolveLinkedWords: ResolveLinkedWordsUseCase,
-    private val getAssociatedWords: GetAssociatedWordsUseCase
+    private val getAssociatedWords: GetAssociatedWordsUseCase,
+    private val getWordExamples: GetWordExamplesUseCase
 ) : ViewModel() {
 
     private var wordId: Long = savedStateHandle["wordId"] ?: 0L
@@ -66,6 +68,14 @@ class WordDetailViewModel @Inject constructor(
                     // Load associated words
                     val associated = getAssociatedWords(wordId)
                     _uiState.update { it.copy(associatedWords = associated) }
+
+                    // Load word examples from articles
+                    try {
+                        val examples = getWordExamples(wordId)
+                        _uiState.update { it.copy(examples = examples) }
+                    } catch (_: Exception) {
+                        // Example loading failure is non-critical
+                    }
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, isLoading = false) }

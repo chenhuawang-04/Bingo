@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
+import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
@@ -37,7 +38,9 @@ fun WordDetailContent(
     associatedWords: List<AssociatedWordInfo>,
     linkedWordIds: Map<String, Long>,
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    examples: List<com.xty.englishhelper.domain.repository.WordExample> = emptyList(),
+    onArticleClick: (articleId: Long, sentenceId: Long) -> Unit = { _, _ -> }
 ) {
     val windowWidthClass = currentWindowWidthClass()
     val isWide = windowWidthClass.isExpandedOrMedium()
@@ -91,6 +94,13 @@ fun WordDetailContent(
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+                if (word.inflections.isNotEmpty()) {
+                    item {
+                        WordDetailSection(title = "词形变化") {
+                            InflectionsDisplay(inflections = word.inflections)
                         }
                     }
                 }
@@ -215,6 +225,40 @@ fun WordDetailContent(
                         }
                     }
                 }
+                if (examples.isNotEmpty()) {
+                    item {
+                        WordDetailSection(title = "文章例句") {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                examples.forEach { example ->
+                                    androidx.compose.material3.Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                onArticleClick(
+                                                    example.sourceArticleId ?: 0L,
+                                                    example.sourceSentenceId ?: 0L
+                                                )
+                                            }
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            if (!example.sourceLabel.isNullOrBlank()) {
+                                                Text(
+                                                    example.sourceLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                            Text(
+                                                example.sentence,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     } else {
@@ -264,6 +308,13 @@ fun WordDetailContent(
                                 )
                             }
                         }
+                    }
+                }
+            }
+            if (word.inflections.isNotEmpty()) {
+                item {
+                    WordDetailSection(title = "词形变化") {
+                        InflectionsDisplay(inflections = word.inflections)
                     }
                 }
             }
@@ -381,6 +432,40 @@ fun WordDetailContent(
                     }
                 }
             }
+            if (examples.isNotEmpty()) {
+                item {
+                    WordDetailSection(title = "文章例句") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            examples.forEach { example ->
+                                androidx.compose.material3.Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onArticleClick(
+                                                example.sourceArticleId ?: 0L,
+                                                example.sourceSentenceId ?: 0L
+                                            )
+                                        }
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        if (!example.sourceLabel.isNullOrBlank()) {
+                                            Text(
+                                                example.sourceLabel,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        Text(
+                                            example.sentence,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -478,4 +563,37 @@ private fun roleLabel(role: MorphemeRole): String = when (role) {
     MorphemeRole.STEM -> "词干"
     MorphemeRole.LINKING -> "连接"
     MorphemeRole.OTHER -> "其他"
+}
+
+private fun inflectionTypeLabel(formType: String): String = when (formType) {
+    "plural" -> "复数"
+    "past_tense" -> "过去式"
+    "past_participle" -> "过去分词"
+    "present_participle" -> "现在分词"
+    "third_person" -> "第三人称"
+    "comparative" -> "比较级"
+    "superlative" -> "最高级"
+    else -> formType
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun InflectionsDisplay(inflections: List<Inflection>) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        inflections.forEach { inflection ->
+            AssistChip(
+                onClick = {},
+                label = {
+                    Text(
+                        "${inflectionTypeLabel(inflection.formType)}: ${inflection.form}",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            )
+        }
+    }
 }

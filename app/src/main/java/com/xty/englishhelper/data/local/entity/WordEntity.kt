@@ -39,6 +39,8 @@ data class WordEntity(
     val wordUid: String = "",
     @ColumnInfo(name = "decomposition_json")
     val decompositionJson: String = "[]",
+    @ColumnInfo(name = "inflections_json")
+    val inflectionsJson: String = "[]",
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "updated_at")

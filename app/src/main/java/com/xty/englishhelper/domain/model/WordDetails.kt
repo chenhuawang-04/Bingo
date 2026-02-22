@@ -13,6 +13,7 @@ data class WordDetails(
     val similarWords: List<SimilarWordInfo> = emptyList(),
     val cognates: List<CognateInfo> = emptyList(),
     val decomposition: List<DecompositionPart> = emptyList(),
+    val inflections: List<Inflection> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

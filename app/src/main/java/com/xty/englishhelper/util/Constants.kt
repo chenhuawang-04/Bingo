@@ -19,9 +19,10 @@ object Constants {
 2. 音标（国际音标）
 3. 词根拆解 — 将单词拆分为前缀/词根/后缀等构词成分，每个成分标注类型（PREFIX/ROOT/SUFFIX/STEM/LINKING/OTHER）和含义
 4. 词根解释（用文字说明构词逻辑）
-5. 近义词（2-4个，附带简要区分说明）
-6. 形近词（1-3个，附带含义和区分方法）
-7. 同根词（2-4个，附带含义和共同词根）
+5. 词形变化 — 列出该单词的所有常见屈折变化形式，包括：复数(plural)、过去式(past_tense)、过去分词(past_participle)、现在分词(present_participle)、第三人称单数(third_person)、比较级(comparative)、最高级(superlative)。仅列出适用于该词性的变形。
+6. 近义词（2-4个，附带简要区分说明）
+7. 形近词（1-3个，附带含义和区分方法）
+8. 同根词（2-4个，附带含义和共同词根）
 
 请严格按照以下 JSON 格式返回，不要添加任何其他文字：
 {
@@ -33,6 +34,9 @@ object Constants {
     {"segment": "构词成分", "role": "PREFIX|ROOT|SUFFIX|STEM|LINKING|OTHER", "meaning": "含义"}
   ],
   "rootExplanation": "词根解释",
+  "inflections": [
+    {"form": "变形拼写", "formType": "plural|past_tense|past_participle|present_participle|third_person|comparative|superlative"}
+  ],
   "synonyms": [
     {"word": "近义词", "explanation": "区分说明"}
   ],

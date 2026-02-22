@@ -29,7 +29,8 @@ data class AiWordAnalysis(
     val synonyms: List<AiSynonym> = emptyList(),
     val similarWords: List<AiSimilarWord> = emptyList(),
     val cognates: List<AiCognate> = emptyList(),
-    val decomposition: List<AiDecompositionPart> = emptyList()
+    val decomposition: List<AiDecompositionPart> = emptyList(),
+    val inflections: List<AiInflection> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
@@ -63,4 +64,10 @@ data class AiDecompositionPart(
     val segment: String = "",
     val role: String = "",
     val meaning: String = ""
+)
+
+@JsonClass(generateAdapter = true)
+data class AiInflection(
+    val form: String = "",
+    val formType: String = ""
 )

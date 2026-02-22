@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
+import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.PartOfSpeech
@@ -219,6 +220,16 @@ fun AddWordScreen(
                             )
                         }
 
+                        SectionHeader(title = "词形变化", onAdd = viewModel::addInflection)
+                        state.inflections.forEachIndexed { index, inflection ->
+                            InflectionRow(
+                                inflection = inflection,
+                                onFormChange = { viewModel.onInflectionChange(index, inflection.copy(form = it)) },
+                                onFormTypeChange = { viewModel.onInflectionChange(index, inflection.copy(formType = it)) },
+                                onRemove = { viewModel.removeInflection(index) }
+                            )
+                        }
+
                         SectionHeader(title = "近义词", onAdd = viewModel::addSynonym)
                         state.synonyms.forEachIndexed { index, syn ->
                             SynonymRow(
@@ -358,6 +369,18 @@ fun AddWordScreen(
                         onRoleChange = { viewModel.onDecompositionPartChange(index, part.copy(role = it)) },
                         onMeaningChange = { viewModel.onDecompositionPartChange(index, part.copy(meaning = it)) },
                         onRemove = { viewModel.removeDecompositionPart(index) }
+                    )
+                }
+
+                item {
+                    SectionHeader(title = "词形变化", onAdd = viewModel::addInflection)
+                }
+                itemsIndexed(state.inflections) { index, inflection ->
+                    InflectionRow(
+                        inflection = inflection,
+                        onFormChange = { viewModel.onInflectionChange(index, inflection.copy(form = it)) },
+                        onFormTypeChange = { viewModel.onInflectionChange(index, inflection.copy(formType = it)) },
+                        onRemove = { viewModel.removeInflection(index) }
                     )
                 }
 
@@ -679,5 +702,74 @@ private fun CognateRow(
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+private val INFLECTION_TYPE_OPTIONS = listOf(
+    "plural" to "复数",
+    "past_tense" to "过去式",
+    "past_participle" to "过去分词",
+    "present_participle" to "现在分词",
+    "third_person" to "第三人称",
+    "comparative" to "比较级",
+    "superlative" to "最高级"
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun InflectionRow(
+    inflection: Inflection,
+    onFormChange: (String) -> Unit,
+    onFormTypeChange: (String) -> Unit,
+    onRemove: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val typeLabel = INFLECTION_TYPE_OPTIONS.firstOrNull { it.first == inflection.formType }?.second ?: inflection.formType.ifBlank { "类型" }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        OutlinedTextField(
+            value = inflection.form,
+            onValueChange = onFormChange,
+            label = { Text("变形") },
+            singleLine = true,
+            modifier = Modifier.weight(0.4f)
+        )
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+            modifier = Modifier.weight(0.45f)
+        ) {
+            OutlinedTextField(
+                value = typeLabel,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("类型") },
+                singleLine = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                INFLECTION_TYPE_OPTIONS.forEach { (type, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            onFormTypeChange(type)
+                            expanded = false
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                    )
+                }
+            }
+        }
+        IconButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
+            Icon(Icons.Default.Close, contentDescription = "删除")
+        }
     }
 }

@@ -28,3 +28,12 @@ data class StudySetupRoute(val dictionaryId: Long)
 
 @Serializable
 data class StudyRoute(val unitIds: String)
+
+@Serializable
+data object ArticleListRoute
+
+@Serializable
+data class ArticleEditorRoute(val articleId: Long = 0L)
+
+@Serializable
+data class ArticleReaderRoute(val articleId: Long, val scrollToSentenceId: Long = 0L)

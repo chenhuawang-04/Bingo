@@ -2,6 +2,7 @@ package com.xty.englishhelper.ui.screen.addword
 
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
+import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.StudyUnit
@@ -17,6 +18,7 @@ data class AddWordUiState(
     val synonyms: List<SynonymInfo> = emptyList(),
     val similarWords: List<SimilarWordInfo> = emptyList(),
     val cognates: List<CognateInfo> = emptyList(),
+    val inflections: List<Inflection> = emptyList(),
     val isAiLoading: Boolean = false,
     val isSaving: Boolean = false,
     val error: String? = null,

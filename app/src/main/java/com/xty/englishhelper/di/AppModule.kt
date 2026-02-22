@@ -7,6 +7,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import com.xty.englishhelper.data.local.AppDatabase
 import com.xty.englishhelper.data.local.dao.DictionaryDao
+import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
@@ -31,7 +32,7 @@ object AppModule {
             AppDatabase::class.java,
             "english_helper.db"
         )
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .build()
     }
 
@@ -46,6 +47,9 @@ object AppModule {
 
     @Provides
     fun provideStudyDao(db: AppDatabase): StudyDao = db.studyDao()
+
+    @Provides
+    fun provideArticleDao(db: AppDatabase): ArticleDao = db.articleDao()
 
     @Provides
     @Singleton

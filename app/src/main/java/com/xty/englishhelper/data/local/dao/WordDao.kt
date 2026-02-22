@@ -95,6 +95,10 @@ interface WordDao {
     // Delete all associations in dictionary (for batch import)
     @Query("DELETE FROM word_associations WHERE word_id IN (SELECT id FROM words WHERE dictionary_id = :dictionaryId)")
     suspend fun deleteAllAssociationsInDictionary(dictionaryId: Long)
+
+    // For article matching: load all words' id, dictionaryId, normalizedSpelling, inflectionsJson
+    @Query("SELECT id, dictionary_id, normalized_spelling, inflections_json FROM words")
+    suspend fun getAllWordsForMatching(): List<WordMatchProjection>
 }
 
 data class WordIdSpelling(val id: Long, @ColumnInfo(name = "normalized_spelling") val normalizedSpelling: String)

@@ -8,6 +8,7 @@ import com.xty.englishhelper.data.remote.dto.MessageDto
 import com.xty.englishhelper.domain.model.AiOrganizeResult
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
+import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.SimilarWordInfo
@@ -58,7 +59,11 @@ class AiRepositoryImpl @Inject constructor(
 
     private fun buildUrl(baseUrl: String): String {
         val base = baseUrl.trimEnd('/')
-        return "$base/v1/messages"
+        return when {
+            base.endsWith("/v1/messages") -> base
+            base.endsWith("/v1") -> "$base/messages"
+            else -> "$base/v1/messages"
+        }
     }
 
     private fun parseAiResponse(text: String): AiOrganizeResult {
@@ -89,6 +94,9 @@ class AiRepositoryImpl @Inject constructor(
                     role = runCatching { MorphemeRole.valueOf(it.role) }.getOrDefault(MorphemeRole.OTHER),
                     meaning = it.meaning
                 )
+            },
+            inflections = analysis.inflections.map {
+                Inflection(form = it.form, formType = it.formType)
             }
         )
     }

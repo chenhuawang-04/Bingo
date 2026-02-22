@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
+import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.SimilarWordInfo
@@ -92,7 +93,8 @@ class AddWordViewModel @Inject constructor(
                         decomposition = word.decomposition,
                         synonyms = word.synonyms,
                         similarWords = word.similarWords,
-                        cognates = word.cognates
+                        cognates = word.cognates,
+                        inflections = word.inflections
                     )
                 }
             } catch (e: Exception) {
@@ -223,6 +225,27 @@ class AddWordViewModel @Inject constructor(
         }
     }
 
+    // Inflections
+    fun onInflectionChange(index: Int, inflection: Inflection) {
+        _uiState.update {
+            val list = it.inflections.toMutableList()
+            list[index] = inflection
+            it.copy(inflections = list)
+        }
+    }
+
+    fun addInflection() {
+        _uiState.update {
+            it.copy(inflections = it.inflections + Inflection(form = "", formType = ""))
+        }
+    }
+
+    fun removeInflection(index: Int) {
+        _uiState.update {
+            it.copy(inflections = it.inflections.toMutableList().also { list -> list.removeAt(index) })
+        }
+    }
+
     // AI organize
     fun organizeWithAi() {
         val spelling = _uiState.value.spelling.trim()
@@ -253,7 +276,8 @@ class AddWordViewModel @Inject constructor(
                         decomposition = result.decomposition.ifEmpty { it.decomposition },
                         synonyms = result.synonyms.ifEmpty { it.synonyms },
                         similarWords = result.similarWords.ifEmpty { it.similarWords },
-                        cognates = result.cognates.ifEmpty { it.cognates }
+                        cognates = result.cognates.ifEmpty { it.cognates },
+                        inflections = result.inflections.ifEmpty { it.inflections }
                     )
                 }
             } catch (e: Exception) {
@@ -283,7 +307,8 @@ class AddWordViewModel @Inject constructor(
                     decomposition = state.decomposition.filter { it.segment.isNotBlank() },
                     synonyms = state.synonyms.filter { it.word.isNotBlank() },
                     similarWords = state.similarWords.filter { it.word.isNotBlank() },
-                    cognates = state.cognates.filter { it.word.isNotBlank() }
+                    cognates = state.cognates.filter { it.word.isNotBlank() },
+                    inflections = state.inflections.filter { it.form.isNotBlank() }
                 )
                 val savedWordId = saveWord(word)
 
