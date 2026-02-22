@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="bingo.png" alt="Bingo" width="128" />
+  <img src="bingo.ico" alt="Bingo" width="128" />
 </p>
 
 <h1 align="center">Bingo</h1>
