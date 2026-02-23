@@ -108,6 +108,7 @@ class ArticleEditorViewModel @Inject constructor(
                 val apiKey = settingsDataStore.apiKey.first()
                 val model = settingsDataStore.model.first()
                 val baseUrl = settingsDataStore.baseUrl.first()
+                val provider = settingsDataStore.provider.first()
 
                 if (apiKey.isBlank()) {
                     _uiState.update { it.copy(isOcrLoading = false, error = "请先在设置中配置 API Key") }
@@ -115,7 +116,7 @@ class ArticleEditorViewModel @Inject constructor(
                 }
 
                 val imageBytesList = uris.map { readImageBytes(it) }
-                val result = extractFromImages(imageBytesList, _uiState.value.title.ifBlank { null }, apiKey, model, baseUrl)
+                val result = extractFromImages(imageBytesList, _uiState.value.title.ifBlank { null }, apiKey, model, baseUrl, provider)
 
                 _uiState.update {
                     it.copy(

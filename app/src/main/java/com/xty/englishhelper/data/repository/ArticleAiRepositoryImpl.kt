@@ -1,21 +1,18 @@
 package com.xty.englishhelper.data.repository
 
 import com.squareup.moshi.Moshi
-import com.xty.englishhelper.data.remote.AnthropicApiService
-import com.xty.englishhelper.data.remote.dto.AnthropicRequest
-import com.xty.englishhelper.data.remote.dto.MessageDto
+import com.xty.englishhelper.data.remote.AiApiClientProvider
+import com.xty.englishhelper.data.remote.ChatMessage
+import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.ArticleOcrResult
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class ArticleAiRepositoryImpl @Inject constructor(
-    private val apiService: AnthropicApiService,
+    private val clientProvider: AiApiClientProvider,
     private val moshi: Moshi
 ) : ArticleAiRepository {
 
@@ -24,7 +21,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         hint: String?,
         apiKey: String,
         model: String,
-        baseUrl: String
+        baseUrl: String,
+        provider: AiProvider
     ): ArticleOcrResult {
         val prompt = buildString {
             append("Use OCR to transcribe all visible English text from these images faithfully. ")
@@ -46,15 +44,15 @@ class ArticleAiRepositoryImpl @Inject constructor(
             }
         }
 
-        val requestBody = buildMultimodalRequest(
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMultimodalMessage(
+            url = baseUrl,
+            apiKey = apiKey,
             model = model,
             imageBytes = imageBytes,
-            prompt = prompt
+            prompt = prompt,
+            maxTokens = 2048
         )
-
-        val url = buildMessagesUrl(baseUrl)
-        val response = apiService.createMultimodalMessage(url, "Bearer $apiKey", requestBody)
-        val responseText = response.content.firstOrNull()?.text.orEmpty()
 
         return parseJsonPayload(responseText, ArticleOcrResult::class.java)
             ?: ArticleOcrResult(confidence = 0f)
@@ -64,7 +62,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         sentence: String,
         apiKey: String,
         model: String,
-        baseUrl: String
+        baseUrl: String,
+        provider: AiProvider
     ): SentenceAnalysisResult {
         val systemPrompt =
             """
@@ -81,45 +80,20 @@ class ArticleAiRepositoryImpl @Inject constructor(
             }
             """.trimIndent()
 
-        val request = AnthropicRequest(
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
             model = model,
-            maxTokens = 1024,
-            system = systemPrompt,
+            systemPrompt = systemPrompt,
             messages = listOf(
-                MessageDto(role = "user", content = "Analyze this sentence: $sentence")
-            )
+                ChatMessage(role = "user", content = "Analyze this sentence: $sentence")
+            ),
+            maxTokens = 1024
         )
-
-        val url = buildMessagesUrl(baseUrl)
-        val response = apiService.createMessage(url, "Bearer $apiKey", request)
-        val responseText = response.content.firstOrNull()?.text.orEmpty()
 
         return parseJsonPayload(responseText, SentenceAnalysisResult::class.java)
             ?: SentenceAnalysisResult()
-    }
-
-    private fun buildMultimodalRequest(
-        model: String,
-        imageBytes: List<ByteArray>,
-        prompt: String
-    ): RequestBody {
-        val sb = StringBuilder()
-        sb.append("""{"model":"$model","max_tokens":2048,"messages":[{"role":"user","content":[""")
-
-        sb.append("""{"type":"text","text":""")
-        val escapedPrompt = escapeJson(prompt)
-        sb.append("\"$escapedPrompt\"")
-        sb.append("}")
-
-        imageBytes.forEach { bytes ->
-            val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-            sb.append(""",{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":""")
-            sb.append("\"$base64\"")
-            sb.append("}}")
-        }
-
-        sb.append("""]}]}""")
-        return sb.toString().toRequestBody("application/json".toMediaType())
     }
 
     private fun <T> parseJsonPayload(responseText: String, clazz: Class<T>): T? {
@@ -166,29 +140,5 @@ class ArticleAiRepositoryImpl @Inject constructor(
 
     private fun removeTrailingCommas(json: String): String {
         return json.replace(Regex(",\\s*([}\\]])"), "$1")
-    }
-
-    private fun escapeJson(raw: String): String {
-        val out = StringBuilder(raw.length + 32)
-        raw.forEach { ch ->
-            when (ch) {
-                '\\' -> out.append("\\\\")
-                '"' -> out.append("\\\"")
-                '\n' -> out.append("\\n")
-                '\r' -> out.append("\\r")
-                '\t' -> out.append("\\t")
-                else -> out.append(ch)
-            }
-        }
-        return out.toString()
-    }
-
-    private fun buildMessagesUrl(baseUrl: String): String {
-        val base = baseUrl.trimEnd('/')
-        return when {
-            base.endsWith("/v1/messages") -> base
-            base.endsWith("/v1") -> "$base/messages"
-            else -> "$base/v1/messages"
-        }
     }
 }

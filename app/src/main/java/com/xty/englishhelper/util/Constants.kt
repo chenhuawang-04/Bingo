@@ -5,13 +5,24 @@ object Constants {
     const val ANTHROPIC_API_VERSION = "2023-06-01"
     const val ANTHROPIC_USER_AGENT = "claude-cli/2.1.50 (external, cli)"
 
-    val AVAILABLE_MODELS = listOf(
+    const val OPENAI_BASE_URL = "https://api.openai.com/"
+
+    val ANTHROPIC_AVAILABLE_MODELS = listOf(
         "claude-haiku-4-5-20251001" to "Claude Haiku 4.5",
         "claude-sonnet-4-5-20250514" to "Claude Sonnet 4.5",
         "claude-opus-4-20250514" to "Claude Opus 4",
     )
 
+    val OPENAI_AVAILABLE_MODELS = listOf(
+        "gpt-4o" to "GPT-4o",
+        "gpt-4o-mini" to "GPT-4o Mini",
+        "gpt-4.1" to "GPT-4.1",
+        "gpt-4.1-mini" to "GPT-4.1 Mini",
+        "gpt-4.1-nano" to "GPT-4.1 Nano",
+    )
+
     const val DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+    const val DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
     const val AI_SYSTEM_PROMPT = """你是一个专业的英语词汇分析助手。用户会提供一个英语单词，你需要分析该单词并返回严格的 JSON 格式结果。
 

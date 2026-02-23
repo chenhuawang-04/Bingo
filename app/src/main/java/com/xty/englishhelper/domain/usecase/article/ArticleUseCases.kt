@@ -5,6 +5,7 @@ import com.xty.englishhelper.domain.article.DictionaryMatcher
 import com.xty.englishhelper.domain.article.SentenceSplitter
 import com.xty.englishhelper.domain.article.WordRef
 import com.xty.englishhelper.domain.model.Article
+import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.ArticleOcrResult
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSentence
@@ -200,10 +201,12 @@ class AnalyzeSentenceUseCase @Inject constructor(
         sentenceText: String,
         apiKey: String,
         model: String,
-        baseUrl: String
+        baseUrl: String,
+        provider: AiProvider = AiProvider.ANTHROPIC
     ): SentenceAnalysisResult {
         val hash = computeSentenceHash(sentenceText)
-        val modelKey = "$model|$CACHE_VERSION"
+        val normalizedUrl = baseUrl.trimEnd('/')
+        val modelKey = "${provider.name}|$normalizedUrl|$model|$CACHE_VERSION"
 
         // Check cache first
         val cached = repository.getAnalysisCache(articleId, sentenceId, hash, modelKey)
@@ -212,7 +215,7 @@ class AnalyzeSentenceUseCase @Inject constructor(
         }
 
         // Call AI
-        val result = aiRepository.analyzeSentence(sentenceText, apiKey, model, baseUrl)
+        val result = aiRepository.analyzeSentence(sentenceText, apiKey, model, baseUrl, provider)
 
         // Store in cache
         repository.insertAnalysisCache(
@@ -271,9 +274,10 @@ class ExtractArticleFromImagesUseCase @Inject constructor(
         hint: String?,
         apiKey: String,
         model: String,
-        baseUrl: String
+        baseUrl: String,
+        provider: AiProvider = AiProvider.ANTHROPIC
     ): ArticleOcrResult {
-        return aiRepository.extractArticleFromImages(imageBytes, hint, apiKey, model, baseUrl)
+        return aiRepository.extractArticleFromImages(imageBytes, hint, apiKey, model, baseUrl, provider)
     }
 }
 

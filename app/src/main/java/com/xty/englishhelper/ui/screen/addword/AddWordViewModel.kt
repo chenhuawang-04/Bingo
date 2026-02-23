@@ -261,13 +261,14 @@ class AddWordViewModel @Inject constructor(
                 val apiKey = settingsDataStore.apiKey.first()
                 val model = settingsDataStore.model.first()
                 val baseUrl = settingsDataStore.baseUrl.first()
+                val provider = settingsDataStore.provider.first()
 
                 if (apiKey.isBlank()) {
                     _uiState.update { it.copy(isAiLoading = false, error = "请先在设置中配置 API Key") }
                     return@launch
                 }
 
-                val result = organizeWordWithAi(spelling, apiKey, model, baseUrl)
+                val result = organizeWordWithAi(spelling, apiKey, model, baseUrl, provider)
                 _uiState.update {
                     it.copy(
                         isAiLoading = false,

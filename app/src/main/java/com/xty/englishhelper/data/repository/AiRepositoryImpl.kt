@@ -1,11 +1,11 @@
 package com.xty.englishhelper.data.repository
 
 import com.squareup.moshi.Moshi
-import com.xty.englishhelper.data.remote.AnthropicApiService
+import com.xty.englishhelper.data.remote.AiApiClientProvider
+import com.xty.englishhelper.data.remote.ChatMessage
 import com.xty.englishhelper.data.remote.dto.AiWordAnalysis
-import com.xty.englishhelper.data.remote.dto.AnthropicRequest
-import com.xty.englishhelper.data.remote.dto.MessageDto
 import com.xty.englishhelper.domain.model.AiOrganizeResult
+import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Inflection
@@ -20,50 +20,36 @@ import javax.inject.Singleton
 
 @Singleton
 class AiRepositoryImpl @Inject constructor(
-    private val apiService: AnthropicApiService,
+    private val clientProvider: AiApiClientProvider,
     private val moshi: Moshi
 ) : AiRepository {
 
-    override suspend fun organizeWord(word: String, apiKey: String, model: String, baseUrl: String): AiOrganizeResult {
-        val request = AnthropicRequest(
+    override suspend fun organizeWord(word: String, apiKey: String, model: String, baseUrl: String, provider: AiProvider): AiOrganizeResult {
+        val client = clientProvider.getClient(provider)
+        val text = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
             model = model,
-            system = Constants.AI_SYSTEM_PROMPT,
+            systemPrompt = Constants.AI_SYSTEM_PROMPT,
             messages = listOf(
-                MessageDto(
-                    role = "user",
-                    content = Constants.AI_USER_PROMPT_TEMPLATE.format(word)
-                )
-            )
+                ChatMessage(role = "user", content = Constants.AI_USER_PROMPT_TEMPLATE.format(word))
+            ),
+            maxTokens = 2048
         )
-
-        val url = buildUrl(baseUrl)
-        val response = apiService.createMessage(url, "Bearer $apiKey", request)
-        val text = response.content.firstOrNull()?.text
-            ?: throw IllegalStateException("Empty response from AI")
-
         return parseAiResponse(text)
     }
 
-    override suspend fun testConnection(apiKey: String, model: String, baseUrl: String): Boolean {
-        val request = AnthropicRequest(
+    override suspend fun testConnection(apiKey: String, model: String, baseUrl: String, provider: AiProvider): Boolean {
+        val client = clientProvider.getClient(provider)
+        val text = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
             model = model,
-            maxTokens = 32,
-            messages = listOf(
-                MessageDto(role = "user", content = "Hi")
-            )
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = "Hi")),
+            maxTokens = 32
         )
-        val url = buildUrl(baseUrl)
-        val response = apiService.createMessage(url, "Bearer $apiKey", request)
-        return response.content.isNotEmpty()
-    }
-
-    private fun buildUrl(baseUrl: String): String {
-        val base = baseUrl.trimEnd('/')
-        return when {
-            base.endsWith("/v1/messages") -> base
-            base.endsWith("/v1") -> "$base/messages"
-            else -> "$base/v1/messages"
-        }
+        return text.isNotBlank()
     }
 
     private fun parseAiResponse(text: String): AiOrganizeResult {

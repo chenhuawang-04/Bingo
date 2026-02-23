@@ -3,6 +3,7 @@ package com.xty.englishhelper.ui.screen.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.usecase.ai.TestAiConnectionUseCase
 import com.xty.englishhelper.util.Constants
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,6 +25,11 @@ class SettingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            settingsDataStore.provider.collect { provider ->
+                _uiState.update { it.copy(provider = provider) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.apiKey.collect { key ->
                 _uiState.update { it.copy(apiKey = key) }
             }
@@ -40,19 +46,30 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun onProviderChange(provider: AiProvider) {
+        if (provider == _uiState.value.provider) return
+        _uiState.update { it.copy(provider = provider) }
+        viewModelScope.launch {
+            settingsDataStore.setProvider(provider)
+        }
+    }
+
     fun onApiKeyChange(key: String) {
+        val provider = _uiState.value.provider
         _uiState.update { it.copy(apiKey = key) }
-        viewModelScope.launch { settingsDataStore.setApiKey(key) }
+        viewModelScope.launch { settingsDataStore.setApiKey(provider, key) }
     }
 
     fun onBaseUrlChange(url: String) {
+        val provider = _uiState.value.provider
         _uiState.update { it.copy(baseUrl = url) }
-        viewModelScope.launch { settingsDataStore.setBaseUrl(url) }
+        viewModelScope.launch { settingsDataStore.setBaseUrl(provider, url) }
     }
 
     fun onModelChange(model: String) {
+        val provider = _uiState.value.provider
         _uiState.update { it.copy(selectedModel = model) }
-        viewModelScope.launch { settingsDataStore.setModel(model) }
+        viewModelScope.launch { settingsDataStore.setModel(provider, model) }
     }
 
     fun testConnection() {
@@ -65,9 +82,19 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isTesting = true, testResult = null, error = null) }
             try {
-                val model = state.selectedModel.ifBlank { Constants.DEFAULT_MODEL }
-                val baseUrl = state.baseUrl.ifBlank { Constants.ANTHROPIC_BASE_URL }
-                val success = testAiConnection(state.apiKey, model, baseUrl)
+                val model = state.selectedModel.ifBlank {
+                    when (state.provider) {
+                        AiProvider.ANTHROPIC -> Constants.DEFAULT_MODEL
+                        AiProvider.OPENAI_COMPATIBLE -> Constants.DEFAULT_OPENAI_MODEL
+                    }
+                }
+                val baseUrl = state.baseUrl.ifBlank {
+                    when (state.provider) {
+                        AiProvider.ANTHROPIC -> Constants.ANTHROPIC_BASE_URL
+                        AiProvider.OPENAI_COMPATIBLE -> Constants.OPENAI_BASE_URL
+                    }
+                }
+                val success = testAiConnection(state.apiKey, model, baseUrl, state.provider)
                 _uiState.update {
                     it.copy(
                         isTesting = false,

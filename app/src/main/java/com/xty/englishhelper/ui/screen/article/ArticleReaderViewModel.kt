@@ -146,13 +146,14 @@ class ArticleReaderViewModel @Inject constructor(
                 val apiKey = settingsDataStore.apiKey.first()
                 val model = settingsDataStore.model.first()
                 val baseUrl = settingsDataStore.baseUrl.first()
+                val provider = settingsDataStore.provider.first()
 
                 if (apiKey.isBlank()) {
                     _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "请先在设置中配置 API Key") }
                     return@launch
                 }
 
-                val result = analyzeSentence(articleId, sentenceId, sentenceText, apiKey, model, baseUrl)
+                val result = analyzeSentence(articleId, sentenceId, sentenceText, apiKey, model, baseUrl, provider)
                 _uiState.update {
                     it.copy(
                         sentenceAnalysis = it.sentenceAnalysis + (sentenceId to result),
