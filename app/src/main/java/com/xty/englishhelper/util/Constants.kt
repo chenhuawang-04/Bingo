@@ -9,20 +9,21 @@ object Constants {
 
     val ANTHROPIC_AVAILABLE_MODELS = listOf(
         "claude-haiku-4-5-20251001" to "Claude Haiku 4.5",
-        "claude-sonnet-4-5-20250514" to "Claude Sonnet 4.5",
-        "claude-opus-4-20250514" to "Claude Opus 4",
+        "claude-sonnet-4-6" to "Claude Sonnet 4.6",
+        "claude-opus-4-6" to "Claude Opus 4.6",
     )
 
     val OPENAI_AVAILABLE_MODELS = listOf(
-        "gpt-4o" to "GPT-4o",
-        "gpt-4o-mini" to "GPT-4o Mini",
+        "gpt-5.2" to "GPT-5.2",
         "gpt-4.1" to "GPT-4.1",
         "gpt-4.1-mini" to "GPT-4.1 Mini",
         "gpt-4.1-nano" to "GPT-4.1 Nano",
+        "o4-mini" to "o4-mini",
+        "o3" to "o3",
     )
 
     const val DEFAULT_MODEL = "claude-haiku-4-5-20251001"
-    const val DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+    const val DEFAULT_OPENAI_MODEL = "gpt-4.1-nano"
 
     const val AI_SYSTEM_PROMPT = """你是一个专业的英语词汇分析助手。用户会提供一个英语单词，你需要分析该单词并返回严格的 JSON 格式结果。
 
