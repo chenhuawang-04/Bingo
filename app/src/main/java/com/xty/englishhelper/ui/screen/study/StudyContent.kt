@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -80,6 +81,7 @@ internal fun StudyingContent(
                     .fillMaxHeight()
             ) {
                 ProgressBar(state)
+                BrainstormTag(state)
 
                 if (!state.showAnswer) {
                     QuestionView(
@@ -123,6 +125,7 @@ internal fun StudyingContent(
         // Compact layout
         Column(modifier = modifier.fillMaxSize()) {
             ProgressBar(state)
+            BrainstormTag(state)
 
             if (!state.showAnswer) {
                 QuestionView(
@@ -164,6 +167,33 @@ private fun ProgressBar(state: StudyUiState) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     )
+}
+
+@Composable
+private fun BrainstormTag(state: StudyUiState) {
+    if (state.currentWordRelatedSpellings.isNotEmpty()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                text = "关联词：",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            state.currentWordRelatedSpellings.forEach { spelling ->
+                SuggestionChip(
+                    onClick = {},
+                    label = {
+                        Text(spelling, style = MaterialTheme.typography.labelSmall)
+                    }
+                )
+            }
+        }
+    }
 }
 
 @Composable

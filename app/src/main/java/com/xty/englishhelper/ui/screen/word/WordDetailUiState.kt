@@ -2,6 +2,7 @@ package com.xty.englishhelper.ui.screen.word
 
 import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.repository.WordExample
 
 data class WordDetailUiState(
@@ -11,5 +12,6 @@ data class WordDetailUiState(
     val error: String? = null,
     val linkedWordIds: Map<String, Long> = emptyMap(),
     val associatedWords: List<AssociatedWordInfo> = emptyList(),
-    val examples: List<WordExample> = emptyList()
+    val examples: List<WordExample> = emptyList(),
+    val pools: List<WordPool> = emptyList()
 )

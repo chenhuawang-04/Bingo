@@ -3,6 +3,7 @@ package com.xty.englishhelper.ui.screen.study
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.usecase.study.CountDueWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.CountNewWordsUseCase
 import com.xty.englishhelper.domain.usecase.unit.GetUnitsWithWordCountUseCase
@@ -71,6 +72,13 @@ class StudySetupViewModel @Inject constructor(
 
     fun getSelectedUnitIdsString(): String =
         _uiState.value.selectedUnitIds.joinToString(",")
+
+    fun getSelectedModeString(): String =
+        _uiState.value.selectedMode.name
+
+    fun setMode(mode: StudyMode) {
+        _uiState.update { it.copy(selectedMode = mode) }
+    }
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }

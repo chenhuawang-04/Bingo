@@ -8,6 +8,7 @@ import com.xty.englishhelper.data.repository.DictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.RoomTransactionRunner
 import com.xty.englishhelper.data.repository.StudyRepositoryImpl
 import com.xty.englishhelper.data.repository.UnitRepositoryImpl
+import com.xty.englishhelper.data.repository.WordPoolRepositoryImpl
 import com.xty.englishhelper.data.repository.WordRepositoryImpl
 import com.xty.englishhelper.domain.repository.AiRepository
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
@@ -17,6 +18,7 @@ import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.StudyRepository
 import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.UnitRepository
+import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import dagger.Binds
 import dagger.Module
@@ -63,4 +65,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindArticleAiRepository(impl: ArticleAiRepositoryImpl): ArticleAiRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindWordPoolRepository(impl: WordPoolRepositoryImpl): WordPoolRepository
 }

@@ -114,8 +114,8 @@ fun NavGraph(navController: NavHostController) {
                 val route = backStackEntry.toRoute<StudySetupRoute>()
                 StudySetupScreen(
                     onBack = { navController.popBackStack() },
-                    onStartStudy = { unitIds ->
-                        navController.navigate(StudyRoute(unitIds))
+                    onStartStudy = { unitIds, mode ->
+                        navController.navigate(StudyRoute(unitIds, mode))
                     }
                 )
             }

@@ -10,6 +10,7 @@ import com.xty.englishhelper.data.local.dao.DictionaryDao
 import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
+import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
 import com.xty.englishhelper.data.local.entity.ArticleSentenceEntity
@@ -25,6 +26,8 @@ import com.xty.englishhelper.data.local.entity.UnitWordCrossRef
 import com.xty.englishhelper.data.local.entity.WordAssociationEntity
 import com.xty.englishhelper.data.local.entity.WordEntity
 import com.xty.englishhelper.data.local.entity.WordExampleEntity
+import com.xty.englishhelper.data.local.entity.WordPoolEntity
+import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
 import com.xty.englishhelper.data.local.entity.WordStudyStateEntity
 import java.util.UUID
 
@@ -45,9 +48,11 @@ import java.util.UUID
         ArticleWordStatEntity::class,
         ArticleWordLinkEntity::class,
         SentenceAnalysisCacheEntity::class,
-        WordExampleEntity::class
+        WordExampleEntity::class,
+        WordPoolEntity::class,
+        WordPoolMemberEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -56,6 +61,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun unitDao(): UnitDao
     abstract fun studyDao(): StudyDao
     abstract fun articleDao(): ArticleDao
+    abstract fun wordPoolDao(): WordPoolDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -332,6 +338,31 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("DROP INDEX IF EXISTS index_sentence_analysis_cache_article_id_sentence_id_sentence_hash")
                 db.execSQL("CREATE UNIQUE INDEX `index_sentence_analysis_cache_article_id_sentence_id_sentence_hash_model_key` ON `sentence_analysis_cache`(`article_id`, `sentence_id`, `sentence_hash`, `model_key`)")
                 db.execSQL("DELETE FROM sentence_analysis_cache")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `word_pools` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `dictionary_id` INTEGER NOT NULL,
+                    `focus_word_id` INTEGER,
+                    `strategy` TEXT NOT NULL,
+                    `algorithm_version` TEXT NOT NULL,
+                    FOREIGN KEY(`dictionary_id`) REFERENCES `dictionaries`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`focus_word_id`) REFERENCES `words`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_pools_dictionary_id` ON `word_pools`(`dictionary_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_pools_focus_word_id` ON `word_pools`(`focus_word_id`)")
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `word_pool_members` (
+                    `word_id` INTEGER NOT NULL,
+                    `pool_id` INTEGER NOT NULL,
+                    PRIMARY KEY(`word_id`, `pool_id`),
+                    FOREIGN KEY(`word_id`) REFERENCES `words`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`pool_id`) REFERENCES `word_pools`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_pool_members_pool_id` ON `word_pool_members`(`pool_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_pool_members_word_id` ON `word_pool_members`(`word_id`)")
             }
         }
     }

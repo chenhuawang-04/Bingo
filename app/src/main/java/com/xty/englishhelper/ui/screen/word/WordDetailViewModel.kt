@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
+import com.xty.englishhelper.domain.usecase.pool.GetWordPoolsUseCase
 import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
 import com.xty.englishhelper.domain.usecase.word.GetAssociatedWordsUseCase
 import com.xty.englishhelper.domain.usecase.word.GetWordByIdUseCase
@@ -24,7 +25,8 @@ class WordDetailViewModel @Inject constructor(
     private val deleteWord: DeleteWordUseCase,
     private val resolveLinkedWords: ResolveLinkedWordsUseCase,
     private val getAssociatedWords: GetAssociatedWordsUseCase,
-    private val getWordExamples: GetWordExamplesUseCase
+    private val getWordExamples: GetWordExamplesUseCase,
+    private val getWordPools: GetWordPoolsUseCase
 ) : ViewModel() {
 
     private var wordId: Long = savedStateHandle["wordId"] ?: 0L
@@ -76,6 +78,14 @@ class WordDetailViewModel @Inject constructor(
                         _uiState.update { it.copy(examples = examples) }
                     } catch (e: Exception) {
                         Log.w("WordDetailVM", "Examples loading failed for wordId=$wordId", e)
+                    }
+
+                    // Load word pools
+                    try {
+                        val pools = getWordPools(wordId)
+                        _uiState.update { it.copy(pools = pools) }
+                    } catch (e: Exception) {
+                        Log.w("WordDetailVM", "Pools loading failed for wordId=$wordId", e)
                     }
                 }
             } catch (e: Exception) {

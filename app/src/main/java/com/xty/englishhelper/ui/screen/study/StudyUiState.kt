@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.study
 
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.study.Rating
 
@@ -11,7 +12,9 @@ data class StudyUiState(
     val total: Int = 0,
     val previewIntervals: Map<Rating, Long> = emptyMap(),
     val stats: StudyStats = StudyStats(),
-    val error: String? = null
+    val error: String? = null,
+    val studyMode: StudyMode = StudyMode.NORMAL,
+    val currentWordRelatedSpellings: List<String> = emptyList()
 )
 
 enum class StudyPhase {

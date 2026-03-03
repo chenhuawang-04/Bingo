@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,13 +19,17 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -45,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
 import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
 import com.xty.englishhelper.ui.components.ConfirmDialog
@@ -73,11 +80,19 @@ fun DictionaryScreen(
     val isWide = windowWidthClass.isExpandedOrMedium()
 
     var selectedWordId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showPoolMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.error) {
         state.error?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
+        }
+    }
+
+    LaunchedEffect(state.rebuildError) {
+        state.rebuildError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearRebuildError()
         }
     }
 
@@ -104,6 +119,40 @@ fun DictionaryScreen(
                     state.dictionary?.let { dict ->
                         IconButton(onClick = { onStudy(dict.id) }) {
                             Icon(Icons.Default.School, contentDescription = "背单词")
+                        }
+                        Box {
+                            IconButton(onClick = { showPoolMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                            }
+                            DropdownMenu(
+                                expanded = showPoolMenu,
+                                onDismissRequest = { showPoolMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("生成词池（均衡·本地）") },
+                                    onClick = {
+                                        showPoolMenu = false
+                                        viewModel.requestRebuildPools(PoolStrategy.BALANCED)
+                                    },
+                                    enabled = !state.isRebuildingPools
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("生成词池（均衡+AI）") },
+                                    onClick = {
+                                        showPoolMenu = false
+                                        viewModel.requestRebuildPools(PoolStrategy.BALANCED_WITH_AI)
+                                    },
+                                    enabled = !state.isRebuildingPools
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("生成词池（质量优先·高消耗）") },
+                                    onClick = {
+                                        showPoolMenu = false
+                                        viewModel.requestRebuildPools(PoolStrategy.QUALITY_FIRST)
+                                    },
+                                    enabled = !state.isRebuildingPools
+                                )
+                            }
                         }
                     }
                 }
@@ -227,6 +276,38 @@ fun DictionaryScreen(
             }
         )
     }
+
+    // Quality-First confirm dialog
+    if (state.showQfConfirmDialog) {
+        val estimatedTokens = state.qfWordCount * 600
+        AlertDialog(
+            onDismissRequest = viewModel::dismissQfConfirmDialog,
+            title = { Text("质量优先策略确认") },
+            text = {
+                Column {
+                    Text("将对词典中 ${state.qfWordCount} 个词各发起一次 AI 请求")
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("预计消耗约 ${state.qfWordCount} x 600 = $estimatedTokens tokens")
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "此操作费用较高，建议先尝试均衡策略",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmQfRebuild) {
+                    Text("确认并开始")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissQfConfirmDialog) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -326,6 +407,63 @@ private fun DictionaryListContent(
                                 },
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                             )
+                        }
+                    }
+
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "词池 ${state.poolCount} 个",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                if (state.outdatedStrategies.isNotEmpty()) {
+                                    Text(
+                                        text = "算法已更新，建议重建",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                            if (state.isRebuildingPools) {
+                                val progress = state.rebuildProgress
+                                if (progress != null && progress.second > 0) {
+                                    LinearProgressIndicator(
+                                        progress = { progress.first.toFloat() / progress.second },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 4.dp)
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${progress.first}/${progress.second}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        TextButton(onClick = viewModel::cancelRebuild) {
+                                            Text("取消")
+                                        }
+                                    }
+                                } else {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -461,7 +599,8 @@ private fun DetailPane(
                     word = word,
                     associatedWords = detailState.associatedWords,
                     linkedWordIds = detailState.linkedWordIds,
-                    onWordClick = onWordClick
+                    onWordClick = onWordClick,
+                    pools = detailState.pools
                 )
             }
         }

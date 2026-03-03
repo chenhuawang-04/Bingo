@@ -22,6 +22,10 @@ interface WordDao {
     fun getWordsByDictionary(dictionaryId: Long): Flow<List<WordWithDetails>>
 
     @Transaction
+    @Query("SELECT * FROM words WHERE dictionary_id = :dictionaryId ORDER BY spelling ASC")
+    suspend fun getWordsByDictionaryOnce(dictionaryId: Long): List<WordWithDetails>
+
+    @Transaction
     @Query("SELECT * FROM words WHERE dictionary_id = :dictionaryId AND spelling LIKE '%' || :query || '%' ORDER BY spelling ASC")
     fun searchWords(dictionaryId: Long, query: String): Flow<List<WordWithDetails>>
 

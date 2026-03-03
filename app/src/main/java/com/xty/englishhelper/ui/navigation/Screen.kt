@@ -36,7 +36,7 @@ data class UnitDetailRoute(val unitId: Long, val dictionaryId: Long)
 data class StudySetupRoute(val dictionaryId: Long)
 
 @Serializable
-data class StudyRoute(val unitIds: String)
+data class StudyRoute(val unitIds: String, val mode: String = "NORMAL")
 
 @Serializable
 data object ArticleListRoute

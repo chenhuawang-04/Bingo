@@ -3,7 +3,9 @@ package com.xty.englishhelper.ui.screen.study
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.domain.usecase.study.GetDueWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.GetNewWordsUseCase
@@ -35,11 +37,14 @@ class StudyViewModel @Inject constructor(
     private val getDueWords: GetDueWordsUseCase,
     private val getNewWords: GetNewWordsUseCase,
     private val reviewWord: ReviewWordUseCase,
-    private val previewIntervals: PreviewIntervalsUseCase
+    private val previewIntervals: PreviewIntervalsUseCase,
+    private val wordPoolRepository: WordPoolRepository
 ) : ViewModel() {
 
     private val unitIdsStr: String = savedStateHandle["unitIds"] ?: ""
     private val unitIds: List<Long> = unitIdsStr.split(",").mapNotNull { it.toLongOrNull() }
+    private val modeStr: String = savedStateHandle["mode"] ?: "NORMAL"
+    private val studyMode: StudyMode = runCatching { StudyMode.valueOf(modeStr) }.getOrDefault(StudyMode.NORMAL)
 
     private val _uiState = MutableStateFlow(StudyUiState())
     val uiState: StateFlow<StudyUiState> = _uiState.asStateFlow()
@@ -52,6 +57,11 @@ class StudyViewModel @Inject constructor(
     private var easyCount = 0
     private var totalUniqueWords = 0
     private var waitJob: Job? = null
+
+    // Brainstorm data: wordId -> set of related wordIds (via pool union)
+    private var brainstormRelated: Map<Long, Set<Long>> = emptyMap()
+    // wordId -> spelling for displaying related words tag
+    private var wordIdToSpelling: Map<Long, String> = emptyMap()
 
     init {
         loadSession()
@@ -67,20 +77,35 @@ class StudyViewModel @Inject constructor(
                 // Build queue: due words first, then new words
                 queue.clear()
                 val addedIds = mutableSetOf<Long>()
+                val orderedWords = mutableListOf<WordDetails>()
                 for (word in dueWords) {
                     if (word.id !in addedIds) {
-                        queue.addLast(QueueEntry(word))
+                        orderedWords.add(word)
                         addedIds.add(word.id)
                     }
                 }
                 for (word in newWords) {
                     if (word.id !in addedIds) {
-                        queue.addLast(QueueEntry(word))
+                        orderedWords.add(word)
                         addedIds.add(word.id)
                     }
                 }
 
+                // Build spelling lookup for brainstorm tags
+                wordIdToSpelling = orderedWords.associate { it.id to it.spelling }
+
+                // Apply brainstorm reordering if needed
+                val finalOrder = if (studyMode == StudyMode.BRAINSTORM && orderedWords.isNotEmpty()) {
+                    val dictionaryId = orderedWords.first().dictionaryId
+                    applyBrainstormOrder(orderedWords, dictionaryId)
+                } else {
+                    orderedWords
+                }
+
+                finalOrder.forEach { queue.addLast(QueueEntry(it)) }
                 totalUniqueWords = queue.size
+
+                _uiState.update { it.copy(studyMode = studyMode) }
 
                 if (queue.isEmpty()) {
                     _uiState.update {
@@ -95,6 +120,58 @@ class StudyViewModel @Inject constructor(
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, phase = StudyPhase.Finished) }
             }
+        }
+    }
+
+    private suspend fun applyBrainstormOrder(
+        words: List<WordDetails>,
+        dictionaryId: Long
+    ): List<WordDetails> {
+        return try {
+            val wordToPoolsMap = wordPoolRepository.getWordToPoolsMap(dictionaryId)
+            val poolToMembersMap = wordPoolRepository.getPoolToMembersMap(dictionaryId)
+
+            // Build wordId -> set of all related wordIds (union of all pools)
+            val relatedMap = mutableMapOf<Long, MutableSet<Long>>()
+            wordToPoolsMap.forEach { (wordId, poolIds) ->
+                val related = mutableSetOf<Long>()
+                poolIds.forEach { poolId ->
+                    poolToMembersMap[poolId]?.forEach { memberId ->
+                        if (memberId != wordId) related.add(memberId)
+                    }
+                }
+                relatedMap[wordId] = related
+            }
+            brainstormRelated = relatedMap
+
+            // Stable insertion algorithm
+            val wordMap = words.associateBy { it.id }
+            val remainingIds = words.map { it.id }
+            val emittedIds = mutableSetOf<Long>()
+            val output = mutableListOf<WordDetails>()
+
+            for (wId in remainingIds) {
+                if (wId in emittedIds) continue
+                val word = wordMap[wId] ?: continue
+                output.add(word)
+                emittedIds.add(wId)
+
+                // Insert related words that are in the queue, maintaining their original relative order
+                val related = relatedMap[wId] ?: emptySet()
+                for (rId in remainingIds) {
+                    if (rId in emittedIds) continue
+                    if (rId in related) {
+                        val rWord = wordMap[rId] ?: continue
+                        output.add(rWord)
+                        emittedIds.add(rId)
+                    }
+                }
+            }
+
+            output
+        } catch (e: Exception) {
+            // Fall back to original order if pool data unavailable
+            words
         }
     }
 
@@ -123,6 +200,15 @@ class StudyViewModel @Inject constructor(
         if (readyIndex >= 0) {
             // Found a ready entry — remove it and show
             val entry = queue.removeAt(readyIndex)
+
+            // Compute related spellings for brainstorm tag
+            val relatedSpellings = if (studyMode == StudyMode.BRAINSTORM) {
+                val related = brainstormRelated[entry.word.id] ?: emptySet()
+                related.take(5).mapNotNull { wordIdToSpelling[it] }
+            } else {
+                emptyList()
+            }
+
             _uiState.update {
                 it.copy(
                     phase = StudyPhase.Studying,
@@ -130,7 +216,8 @@ class StudyViewModel @Inject constructor(
                     showAnswer = false,
                     previewIntervals = emptyMap(),
                     progress = processedWordIds.size,
-                    total = totalUniqueWords
+                    total = totalUniqueWords,
+                    currentWordRelatedSpellings = relatedSpellings
                 )
             }
         } else {

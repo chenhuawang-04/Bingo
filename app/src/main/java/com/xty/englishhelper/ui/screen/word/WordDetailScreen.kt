@@ -74,7 +74,8 @@ fun WordDetailScreen(
                     onWordClick = onWordClick,
                     modifier = Modifier.padding(padding),
                     examples = state.examples,
-                    onArticleClick = onArticleClick
+                    onArticleClick = onArticleClick,
+                    pools = state.pools
                 )
             }
         }

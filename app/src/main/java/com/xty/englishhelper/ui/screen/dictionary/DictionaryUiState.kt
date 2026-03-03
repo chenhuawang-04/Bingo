@@ -15,7 +15,14 @@ data class DictionaryUiState(
     val newUnitName: String = "",
     val error: String? = null,
     val currentPage: Int = 0,
-    val pageSize: Int = 10
+    val pageSize: Int = 10,
+    val poolCount: Int = 0,
+    val isRebuildingPools: Boolean = false,
+    val rebuildProgress: Pair<Int, Int>? = null,
+    val rebuildError: String? = null,
+    val showQfConfirmDialog: Boolean = false,
+    val qfWordCount: Int = 0,
+    val outdatedStrategies: Set<String> = emptySet()
 ) {
     val totalPages: Int get() = if (words.isEmpty()) 1 else (words.size + pageSize - 1) / pageSize
     val pagedWords: List<WordDetails> get() = words.drop(currentPage * pageSize).take(pageSize)

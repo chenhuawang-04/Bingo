@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -14,6 +15,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.ui.components.LoadingIndicator
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,7 +31,8 @@ fun StudyScreen(
             TopAppBar(
                 title = {
                     if (state.phase == StudyPhase.Studying) {
-                        Text("${state.progress}/${state.total}")
+                        val prefix = if (state.studyMode == StudyMode.BRAINSTORM) "风暴 " else ""
+                        Text("$prefix${state.progress}/${state.total}")
                     } else {
                         Text("学习完成")
                     }

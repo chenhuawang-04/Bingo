@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.ui.components.EmptyState
 import com.xty.englishhelper.ui.components.LoadingIndicator
 
@@ -41,7 +43,7 @@ import com.xty.englishhelper.ui.components.LoadingIndicator
 @Composable
 fun StudySetupScreen(
     onBack: () -> Unit,
-    onStartStudy: (unitIds: String) -> Unit,
+    onStartStudy: (unitIds: String, mode: String) -> Unit,
     viewModel: StudySetupViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -122,12 +124,34 @@ fun StudySetupScreen(
                             .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        // Mode selection
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            FilterChip(
+                                selected = state.selectedMode == StudyMode.NORMAL,
+                                onClick = { viewModel.setMode(StudyMode.NORMAL) },
+                                label = { Text("普通") }
+                            )
+                            FilterChip(
+                                selected = state.selectedMode == StudyMode.BRAINSTORM,
+                                onClick = { viewModel.setMode(StudyMode.BRAINSTORM) },
+                                label = { Text("头脑风暴") }
+                            )
+                        }
+
                         Text(
                             text = "到期词 $totalDue + 新词 $totalNew = ${totalDue + totalNew}",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Button(
-                            onClick = { onStartStudy(viewModel.getSelectedUnitIdsString()) },
+                            onClick = {
+                                onStartStudy(
+                                    viewModel.getSelectedUnitIdsString(),
+                                    viewModel.getSelectedModeString()
+                                )
+                            },
                             enabled = state.selectedUnitIds.isNotEmpty() && (totalDue + totalNew > 0),
                             modifier = Modifier
                                 .fillMaxWidth()

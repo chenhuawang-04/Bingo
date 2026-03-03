@@ -3,14 +3,19 @@ package com.xty.englishhelper.ui.screen.dictionary
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.usecase.dictionary.GetDictionaryByIdUseCase
+import com.xty.englishhelper.domain.usecase.pool.GetPoolCountUseCase
+import com.xty.englishhelper.domain.usecase.pool.GetPoolVersionInfoUseCase
+import com.xty.englishhelper.domain.usecase.pool.RebuildWordPoolsUseCase
 import com.xty.englishhelper.domain.usecase.unit.CreateUnitUseCase
 import com.xty.englishhelper.domain.usecase.unit.GetUnitsWithWordCountUseCase
 import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
 import com.xty.englishhelper.domain.usecase.word.GetWordsByDictionaryUseCase
 import com.xty.englishhelper.domain.usecase.word.SearchWordsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +35,10 @@ class DictionaryViewModel @Inject constructor(
     private val searchWords: SearchWordsUseCase,
     private val deleteWord: DeleteWordUseCase,
     private val getUnitsWithWordCount: GetUnitsWithWordCountUseCase,
-    private val createUnit: CreateUnitUseCase
+    private val createUnit: CreateUnitUseCase,
+    private val rebuildWordPools: RebuildWordPoolsUseCase,
+    private val getPoolCount: GetPoolCountUseCase,
+    private val getPoolVersionInfo: GetPoolVersionInfoUseCase
 ) : ViewModel() {
 
     private val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
@@ -40,10 +48,13 @@ class DictionaryViewModel @Inject constructor(
 
     private val _searchQuery = MutableStateFlow("")
 
+    private var rebuildJob: Job? = null
+
     init {
         loadDictionary()
         observeWords()
         observeUnits()
+        loadPoolInfo()
     }
 
     private fun loadDictionary() {
@@ -135,6 +146,77 @@ class DictionaryViewModel @Inject constructor(
 
     fun nextPage() = goToPage(_uiState.value.currentPage + 1)
     fun previousPage() = goToPage(_uiState.value.currentPage - 1)
+
+    // ── Pool management ──
+
+    private fun loadPoolInfo() {
+        viewModelScope.launch {
+            try {
+                val count = getPoolCount(dictionaryId)
+                _uiState.update { it.copy(poolCount = count) }
+
+                // Version check
+                val versionInfo = getPoolVersionInfo(dictionaryId)
+                val outdated = versionInfo.filter { (strategy, version) ->
+                    when (strategy) {
+                        "BALANCED" -> version != PoolStrategy.BALANCED.algorithmVersion
+                        "QUALITY_FIRST" -> version != PoolStrategy.QUALITY_FIRST.algorithmVersion
+                        else -> false
+                    }
+                }.map { it.first }.toSet()
+                _uiState.update { it.copy(outdatedStrategies = outdated) }
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun requestRebuildPools(strategy: PoolStrategy) {
+        if (strategy == PoolStrategy.QUALITY_FIRST) {
+            val wordCount = _uiState.value.words.size
+            _uiState.update { it.copy(showQfConfirmDialog = true, qfWordCount = wordCount) }
+        } else {
+            startRebuild(strategy)
+        }
+    }
+
+    fun confirmQfRebuild() {
+        _uiState.update { it.copy(showQfConfirmDialog = false) }
+        startRebuild(PoolStrategy.QUALITY_FIRST)
+    }
+
+    fun dismissQfConfirmDialog() {
+        _uiState.update { it.copy(showQfConfirmDialog = false) }
+    }
+
+    private fun startRebuild(strategy: PoolStrategy) {
+        rebuildJob?.cancel()
+        rebuildJob = viewModelScope.launch {
+            _uiState.update { it.copy(isRebuildingPools = true, rebuildProgress = null, rebuildError = null) }
+            try {
+                rebuildWordPools(dictionaryId, strategy) { current, total ->
+                    _uiState.update { it.copy(rebuildProgress = current to total) }
+                }
+                loadPoolInfo()
+                _uiState.update { it.copy(isRebuildingPools = false, rebuildProgress = null) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _uiState.update { it.copy(isRebuildingPools = false, rebuildProgress = null) }
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isRebuildingPools = false, rebuildProgress = null, rebuildError = e.message)
+                }
+            }
+        }
+    }
+
+    fun cancelRebuild() {
+        rebuildJob?.cancel()
+        rebuildJob = null
+        _uiState.update { it.copy(isRebuildingPools = false, rebuildProgress = null) }
+    }
+
+    fun clearRebuildError() {
+        _uiState.update { it.copy(rebuildError = null) }
+    }
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }

@@ -28,6 +28,7 @@ import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
 import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
 
@@ -40,7 +41,8 @@ fun WordDetailContent(
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
     modifier: Modifier = Modifier,
     examples: List<com.xty.englishhelper.domain.repository.WordExample> = emptyList(),
-    onArticleClick: (articleId: Long, sentenceId: Long) -> Unit = { _, _ -> }
+    onArticleClick: (articleId: Long, sentenceId: Long) -> Unit = { _, _ -> },
+    pools: List<WordPool> = emptyList()
 ) {
     val windowWidthClass = currentWindowWidthClass()
     val isWide = windowWidthClass.isExpandedOrMedium()
@@ -220,6 +222,29 @@ fun WordDetailContent(
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+                pools.forEach { pool ->
+                    item {
+                        val label = if (pool.strategy == "QUALITY_FIRST") "精准池" else "关联池"
+                        WordDetailSection(title = label) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                pool.members.forEach { member ->
+                                    AssistChip(
+                                        onClick = { onWordClick(member.id, word.dictionaryId) },
+                                        label = {
+                                            Text(
+                                                member.spelling,
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -427,6 +452,29 @@ fun WordDetailContent(
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+            pools.forEach { pool ->
+                item {
+                    val label = if (pool.strategy == "QUALITY_FIRST") "精准池" else "关联池"
+                    WordDetailSection(title = label) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            pool.members.forEach { member ->
+                                AssistChip(
+                                    onClick = { onWordClick(member.id, word.dictionaryId) },
+                                    label = {
+                                        Text(
+                                            member.spelling,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                )
                             }
                         }
                     }
