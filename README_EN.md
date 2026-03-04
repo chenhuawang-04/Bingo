@@ -15,7 +15,9 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 ### Vocabulary Management
 - **Dictionary system** — Create multiple dictionaries to organize vocabulary from different sources
 - **Word entry** — Manually add words with spelling, phonetics, POS & definitions, root explanation, inflections, and more
-- **AI auto-organize** — One-click Claude API call to auto-fill phonetics, definitions, decomposition, synonyms, similar words, cognates, and inflections
+- **AI auto-organize** — One-click AI call to auto-fill phonetics, definitions, decomposition, synonyms, similar words, cognates, and inflections
+- **Background organize** — "Save & Background Organize" button saves and enqueues AI processing in the background, so you can keep adding words without waiting; failed tasks can be retried with one click
+- **Batch photo import** — Select images → enter extraction conditions (e.g., "blue text") → AI extracts word list → preview and select → batch import with automatic background organization
 - **Deduplication** — Automatic duplicate detection based on normalized spelling (lowercase + trimmed), with upsert semantics
 - **Inflections** — Track plural, past tense, past participle, present participle, third person, comparative, and superlative forms
 
@@ -37,11 +39,20 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 - **Sentence analysis** — Long-press any sentence for AI analysis: Chinese translation, grammar points, and key vocabulary; results are cached per model version to avoid duplicate requests
 - **Parse status** — Article cards show real-time parsing progress (Pending / Processing / Done / Failed)
 
+### Word Pool System
+- **Word Pools** — Automatically groups related words based on multiple linguistic signals for associative learning
+- **Three generation strategies**:
+  - **Balanced (Local)**: Union-Find clustering using edit distance, synonym/similar/cognate cross-references, Chinese meaning overlap, and association similarity
+  - **Balanced + AI**: Extends balanced strategy by sending orphaned words to AI in batches for supplementary grouping
+  - **Quality-First (High Cost)**: Per-word AI comparison against random candidates; requires user confirmation with estimated token cost
+- **Algorithm version tracking** — Shows a warning when existing pools were built with an outdated algorithm, prompting rebuild
+
 ### Spaced Repetition Study
 - **Unit grouping** — Organize words into units with multi-select assignment
 - **FSRS-5 algorithm** — Adaptive spaced repetition scheduling using FSRS-5, replacing fixed Ebbinghaus intervals
 - **Learning dashboard** — Home screen shows retention rate, due word count, today's progress, and estimated clear time
 - **Study mode** — Select units to enter review flow with four-level ratings (Again/Hard/Good/Easy) and real-time next-interval preview
+- **Brainstorm mode** — Uses word pools to cluster related words for consecutive review, enhancing associative memory while preserving FSRS scheduling
 
 ### Adaptive UI
 - **Responsive layouts** — Built on Material 3 Adaptive framework, automatically switches between phone and tablet layouts based on WindowSizeClass
@@ -60,9 +71,10 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 - **Post-import rebuild** — Automatically batch-computes word associations after importing a dictionary
 
 ### Settings
-- **API configuration** — Custom API Key, model selection (Haiku / Sonnet / Opus), custom Base URL
+- **API configuration** — Supports Anthropic and OpenAI-compatible providers with custom API Key, model selection, and custom Base URL
+- **Scoped AI settings** — Configure independent AI models for word pool generation (POOL) and OCR recognition (OCR); automatically falls back to main settings when not enabled
 - **Encrypted API Key storage** — Stored using AndroidX Security Crypto
-- **Connection test** — One-click API connectivity test after configuration
+- **Connection test** — One-click API connectivity test for both main and scoped settings
 
 ## Tech Stack
 
@@ -74,7 +86,7 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 | Local Storage | Room (SQLite), DataStore Preferences |
 | Network | Retrofit + OkHttp + Moshi |
 | Navigation | Navigation Compose (type-safe routes + dual-tab navigation) |
-| AI | Anthropic Claude API (auto-organize, OCR extraction, sentence analysis) |
+| AI | Anthropic Claude API / OpenAI-compatible API (auto-organize, OCR extraction, sentence analysis, pool generation, batch import) |
 | Security | AndroidX Security Crypto |
 | Async | Kotlin Coroutines + Flow |
 | Spaced Repetition | FSRS-5 adaptive algorithm |
@@ -101,7 +113,9 @@ com.xty.englishhelper/
 ├── di/                          # Hilt DI modules
 ├── domain/                      # Domain layer
 │   ├── article/                 # Article parsing tools (sentence splitting, tokenization, dictionary matching)
-│   ├── model/                   # Domain models (incl. WordExampleSourceType enum)
+│   ├── model/                   # Domain models (incl. AiSettingsScope enum)
+│   ├── organize/                # Background organize manager
+│   ├── pool/                    # Word pool engine
 │   ├── repository/              # Repository interfaces
 │   ├── study/                   # FSRS spaced repetition engine
 │   └── usecase/                 # Use cases
@@ -122,6 +136,7 @@ com.xty.englishhelper/
 │   ├── screen/                  # Screen pages (container/content/component split)
 │   │   ├── addword/             # Add/edit word
 │   │   ├── article/             # Article list/editor/reader/sentence analysis
+│   │   ├── batchimport/         # Batch photo import
 │   │   ├── dictionary/          # Dictionary detail
 │   │   ├── home/                # Home + dashboard
 │   │   ├── importexport/        # Import/export
@@ -158,15 +173,18 @@ com.xty.englishhelper/
 
 ## Usage
 
-1. **Configure API** — Go to Settings, enter your Anthropic API Key, select a model, and test the connection
+1. **Configure API** — Go to Settings, enter your API Key, select a provider and model, and test the connection
 2. **Create a dictionary** — On the Dictionary tab, tap "+" to create a dictionary
-3. **Add words** — Enter the dictionary, tap "+", type a word, and tap "AI Auto-Organize" to auto-fill
-4. **Browse associations** — On the word detail page, view morpheme decomposition, tap synonyms/similar words/cognates to navigate, and browse associated words
-5. **Create units** — Manage units on the dictionary page and assign words to different units
-6. **Start studying** — Select units to enter review mode; the system schedules reviews using the FSRS-5 adaptive algorithm
-7. **Add articles** — Switch to the Article tab, tap "+" to enter manually or upload photos for AI extraction
-8. **Read articles** — Tap an article card to open the reader; dictionary words are highlighted automatically; tap any highlighted word to jump to its detail page
-9. **Analyze sentences** — Long-press any sentence in the reader for AI-powered translation, grammar, and vocabulary analysis
+3. **Add words** — Enter the dictionary, tap "+", choose "Manual Add", type a word, and tap "AI Auto-Organize" to auto-fill
+4. **Batch import** — Enter the dictionary, tap "+", choose "Batch Photo Import", select images, enter conditions, AI extract, select and import
+5. **Browse associations** — On the word detail page, view morpheme decomposition, tap synonyms/similar words/cognates to navigate, and browse associated words and word pools
+6. **Create units** — Manage units on the dictionary page and assign words to different units
+7. **Generate word pools** — Select a pool generation strategy from the dictionary page menu to prepare for associative learning
+8. **Start studying** — Select units to enter review mode; switch to Brainstorm mode for pool-based learning; FSRS-5 handles adaptive scheduling
+9. **Add articles** — Switch to the Article tab, tap "+" to enter manually or upload photos for AI extraction
+10. **Read articles** — Tap an article card to open the reader; dictionary words are highlighted automatically; tap any highlighted word to jump to its detail page
+11. **Analyze sentences** — Long-press any sentence in the reader for AI-powered translation, grammar, and vocabulary analysis
+12. **Scoped settings** (optional) — Enable "Pool AI" or "OCR AI" in Settings to configure independent AI models for different scenarios
 
 ## Database Versions
 
@@ -180,6 +198,7 @@ com.xty.englishhelper/
 | 6 | Added inflections_json to words; new article module (articles, article_sentences, article_word_stats, article_word_links, sentence_analysis_cache, word_examples, article_images) |
 | 7 | Added normalized_token index to article_word_stats |
 | 8 | Added model_key column + composite unique index to sentence_analysis_cache |
+| 9 | Added word_pools table (id, dictionary_id, focus_word_id, strategy, algorithm_version) and word_pool_members join table (word_id, pool_id) with cascading foreign keys |
 
 ## License
 
