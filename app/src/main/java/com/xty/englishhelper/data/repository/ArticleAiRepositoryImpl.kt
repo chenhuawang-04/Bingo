@@ -96,6 +96,30 @@ class ArticleAiRepositoryImpl @Inject constructor(
             ?: SentenceAnalysisResult()
     }
 
+    override suspend fun extractWordsFromImages(
+        imageBytes: List<ByteArray>,
+        conditions: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): List<String> {
+        val conditionClause = if (conditions.isBlank()) "" else "${conditions}的"
+        val prompt = "请扫描图片，提取出所有${conditionClause}英语单词，以JSON数组格式返回，如 [\"word1\", \"word2\"]。只返回JSON数组，不要其他文字。"
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMultimodalMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            imageBytes = imageBytes,
+            prompt = prompt,
+            maxTokens = 2048
+        )
+
+        return parseStringArray(responseText)
+    }
+
     private fun <T> parseJsonPayload(responseText: String, clazz: Class<T>): T? {
         val cleaned = stripCodeFence(responseText)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
@@ -140,5 +164,15 @@ class ArticleAiRepositoryImpl @Inject constructor(
 
     private fun removeTrailingCommas(json: String): String {
         return json.replace(Regex(",\\s*([}\\]])"), "$1")
+    }
+
+    private fun parseStringArray(text: String): List<String> {
+        val cleaned = stripCodeFence(text)
+        val arrayMatch = Regex("\\[\\s*(\"[^\"]*\"(?:\\s*,\\s*\"[^\"]*\")*)\\s*\\]").find(cleaned)
+            ?: return emptyList()
+        return Regex("\"([^\"]+)\"").findAll(arrayMatch.value)
+            .map { it.groupValues[1].trim() }
+            .filter { it.isNotBlank() }
+            .toList()
     }
 }

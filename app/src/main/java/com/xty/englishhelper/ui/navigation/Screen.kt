@@ -46,3 +46,6 @@ data class ArticleEditorRoute(val articleId: Long = 0L)
 
 @Serializable
 data class ArticleReaderRoute(val articleId: Long, val scrollToSentenceId: Long = 0L)
+
+@Serializable
+data class BatchImportRoute(val dictionaryId: Long)

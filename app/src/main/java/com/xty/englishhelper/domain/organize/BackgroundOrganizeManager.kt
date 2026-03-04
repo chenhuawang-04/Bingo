@@ -117,4 +117,20 @@ class BackgroundOrganizeManager @Inject constructor(
             map.filterValues { it.status == OrganizeTaskStatus.ORGANIZING }
         }
     }
+
+    fun retryAllFailed() {
+        val failed = _tasks.value.values.filter { it.status == OrganizeTaskStatus.FAILED }
+        for (task in failed) {
+            enqueue(task.wordId, task.dictionaryId, task.spelling)
+        }
+    }
+
+    fun retryFailedForDictionary(dictionaryId: Long) {
+        val failed = _tasks.value.values.filter {
+            it.status == OrganizeTaskStatus.FAILED && it.dictionaryId == dictionaryId
+        }
+        for (task in failed) {
+            enqueue(task.wordId, task.dictionaryId, task.spelling)
+        }
+    }
 }

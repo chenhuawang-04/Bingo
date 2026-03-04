@@ -189,6 +189,10 @@ class DictionaryViewModel @Inject constructor(
         backgroundOrganizeManager.dismissAll()
     }
 
+    fun retryAllFailedOrganizeTasks() {
+        backgroundOrganizeManager.retryFailedForDictionary(dictionaryId)
+    }
+
     // ── Pool management ──
 
     private fun loadPoolInfo() {

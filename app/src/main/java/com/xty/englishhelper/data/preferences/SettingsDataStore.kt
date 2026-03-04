@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.xty.englishhelper.domain.model.AiProvider
+import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.util.Constants
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -113,6 +114,101 @@ class SettingsDataStore @Inject constructor(
         if (!oldKey.isNullOrBlank()) {
             encryptedApiKeyStore.setApiKey(oldKey)
             dataStore.edit { it.remove(API_KEY) }
+        }
+    }
+
+    // ── Scoped AI config ──
+
+    data class AiConfig(
+        val provider: AiProvider,
+        val apiKey: String,
+        val model: String,
+        val baseUrl: String
+    )
+
+    suspend fun getAiConfig(scope: AiSettingsScope): AiConfig {
+        if (scope == AiSettingsScope.MAIN) {
+            val prefs = dataStore.data.first()
+            val p = providerFromPrefs(prefs)
+            return AiConfig(
+                provider = p,
+                apiKey = encryptedApiKeyStore.getApiKey(p),
+                model = readModel(prefs, p),
+                baseUrl = readBaseUrl(prefs, p)
+            )
+        }
+        val prefs = dataStore.data.first()
+        val scopedProviderStr = prefs[stringPreferencesKey("${scope.prefix}provider")]
+            ?: return getAiConfig(AiSettingsScope.MAIN) // not configured, fallback
+        val scopedProvider = try { AiProvider.valueOf(scopedProviderStr) } catch (_: Exception) {
+            return getAiConfig(AiSettingsScope.MAIN)
+        }
+        val scopedApiKey = encryptedApiKeyStore.getApiKey(scope, scopedProvider)
+        if (scopedApiKey.isBlank()) return getAiConfig(AiSettingsScope.MAIN) // no key, fallback
+        val scopedModel = prefs[stringPreferencesKey("${scope.prefix}model_${scopedProvider.name.lowercase()}")] ?: defaultModel(scopedProvider)
+        val scopedBaseUrl = prefs[stringPreferencesKey("${scope.prefix}base_url_${scopedProvider.name.lowercase()}")] ?: defaultBaseUrl(scopedProvider)
+        return AiConfig(
+            provider = scopedProvider,
+            apiKey = scopedApiKey,
+            model = scopedModel,
+            baseUrl = scopedBaseUrl
+        )
+    }
+
+    fun scopedProvider(scope: AiSettingsScope): Flow<AiProvider?> = dataStore.data.map { prefs ->
+        val raw = prefs[stringPreferencesKey("${scope.prefix}provider")]
+        raw?.let { try { AiProvider.valueOf(it) } catch (_: Exception) { null } }
+    }
+
+    fun scopedApiKey(scope: AiSettingsScope): Flow<String> = dataStore.data.map { prefs ->
+        val providerStr = prefs[stringPreferencesKey("${scope.prefix}provider")] ?: return@map ""
+        val p = try { AiProvider.valueOf(providerStr) } catch (_: Exception) { return@map "" }
+        encryptedApiKeyStore.getApiKey(scope, p)
+    }
+
+    fun scopedModel(scope: AiSettingsScope): Flow<String> = dataStore.data.map { prefs ->
+        val providerStr = prefs[stringPreferencesKey("${scope.prefix}provider")] ?: return@map ""
+        val p = try { AiProvider.valueOf(providerStr) } catch (_: Exception) { return@map "" }
+        prefs[stringPreferencesKey("${scope.prefix}model_${p.name.lowercase()}")] ?: defaultModel(p)
+    }
+
+    fun scopedBaseUrl(scope: AiSettingsScope): Flow<String> = dataStore.data.map { prefs ->
+        val providerStr = prefs[stringPreferencesKey("${scope.prefix}provider")] ?: return@map ""
+        val p = try { AiProvider.valueOf(providerStr) } catch (_: Exception) { return@map "" }
+        prefs[stringPreferencesKey("${scope.prefix}base_url_${p.name.lowercase()}")] ?: defaultBaseUrl(p)
+    }
+
+    suspend fun setScopedProvider(scope: AiSettingsScope, provider: AiProvider) {
+        dataStore.edit { prefs ->
+            prefs[stringPreferencesKey("${scope.prefix}provider")] = provider.name
+        }
+    }
+
+    suspend fun setScopedApiKey(scope: AiSettingsScope, provider: AiProvider, key: String) {
+        encryptedApiKeyStore.setApiKey(scope, provider, key)
+    }
+
+    suspend fun setScopedModel(scope: AiSettingsScope, provider: AiProvider, model: String) {
+        dataStore.edit { prefs ->
+            prefs[stringPreferencesKey("${scope.prefix}model_${provider.name.lowercase()}")] = model
+        }
+    }
+
+    suspend fun setScopedBaseUrl(scope: AiSettingsScope, provider: AiProvider, url: String) {
+        dataStore.edit { prefs ->
+            prefs[stringPreferencesKey("${scope.prefix}base_url_${provider.name.lowercase()}")] = url
+        }
+    }
+
+    suspend fun clearScopedSettings(scope: AiSettingsScope) {
+        if (scope == AiSettingsScope.MAIN) return
+        encryptedApiKeyStore.clearScopedApiKeys(scope)
+        dataStore.edit { prefs ->
+            prefs.remove(stringPreferencesKey("${scope.prefix}provider"))
+            AiProvider.entries.forEach { p ->
+                prefs.remove(stringPreferencesKey("${scope.prefix}model_${p.name.lowercase()}"))
+                prefs.remove(stringPreferencesKey("${scope.prefix}base_url_${p.name.lowercase()}"))
+            }
         }
     }
 

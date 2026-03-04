@@ -73,6 +73,7 @@ fun DictionaryScreen(
     onEditWord: (dictionaryId: Long, wordId: Long) -> Unit,
     onUnitClick: (unitId: Long, dictionaryId: Long) -> Unit,
     onStudy: (dictionaryId: Long) -> Unit,
+    onBatchImport: (dictionaryId: Long) -> Unit = {},
     viewModel: DictionaryViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -82,6 +83,7 @@ fun DictionaryScreen(
 
     var selectedWordId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showPoolMenu by remember { mutableStateOf(false) }
+    var showFabMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.error) {
         state.error?.let {
@@ -161,8 +163,29 @@ fun DictionaryScreen(
         },
         floatingActionButton = {
             state.dictionary?.let { dict ->
-                FloatingActionButton(onClick = { onAddWord(dict.id) }) {
-                    Icon(Icons.Default.Add, contentDescription = "添加单词")
+                Box {
+                    FloatingActionButton(onClick = { showFabMenu = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "添加单词")
+                    }
+                    DropdownMenu(
+                        expanded = showFabMenu,
+                        onDismissRequest = { showFabMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("手动添加") },
+                            onClick = {
+                                showFabMenu = false
+                                onAddWord(dict.id)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("拍照批量导入") },
+                            onClick = {
+                                showFabMenu = false
+                                onBatchImport(dict.id)
+                            }
+                        )
+                    }
                 }
             }
         },
@@ -371,9 +394,16 @@ fun DictionaryScreen(
                 }
             },
             dismissButton = {
-                if (state.organizeTasks.any { it.value.status != OrganizeTaskStatus.ORGANIZING }) {
-                    TextButton(onClick = viewModel::dismissAllOrganizeTasks) {
-                        Text("清除已完成")
+                Row {
+                    if (state.organizeTasks.any { it.value.status == OrganizeTaskStatus.FAILED }) {
+                        TextButton(onClick = viewModel::retryAllFailedOrganizeTasks) {
+                            Text("重试全部失败")
+                        }
+                    }
+                    if (state.organizeTasks.any { it.value.status != OrganizeTaskStatus.ORGANIZING }) {
+                        TextButton(onClick = viewModel::dismissAllOrganizeTasks) {
+                            Text("清除已完成")
+                        }
                     }
                 }
             }

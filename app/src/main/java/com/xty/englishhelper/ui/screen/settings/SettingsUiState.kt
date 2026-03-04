@@ -9,5 +9,17 @@ data class SettingsUiState(
     val selectedModel: String = "",
     val isTesting: Boolean = false,
     val testResult: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val poolAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
+    val ocrAiSettings: ScopedAiSettingsState = ScopedAiSettingsState()
+)
+
+data class ScopedAiSettingsState(
+    val enabled: Boolean = false,
+    val provider: AiProvider = AiProvider.ANTHROPIC,
+    val apiKey: String = "",
+    val baseUrl: String = "",
+    val selectedModel: String = "",
+    val isTesting: Boolean = false,
+    val testResult: String? = null
 )

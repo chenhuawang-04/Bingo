@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.xty.englishhelper.domain.model.AiProvider
+import com.xty.englishhelper.domain.model.AiSettingsScope
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,6 +51,29 @@ class EncryptedApiKeyStore @Inject constructor(
         when (provider) {
             AiProvider.ANTHROPIC -> prefs.edit().putString(ANTHROPIC_API_KEY, key).apply()
             AiProvider.OPENAI_COMPATIBLE -> prefs.edit().putString(OPENAI_API_KEY, key).apply()
+        }
+    }
+
+    fun getApiKey(scope: AiSettingsScope, provider: AiProvider): String {
+        if (scope == AiSettingsScope.MAIN) return getApiKey(provider)
+        val key = "api_key_${scope.prefix}${provider.name.lowercase()}"
+        return prefs.getString(key, null) ?: ""
+    }
+
+    fun setApiKey(scope: AiSettingsScope, provider: AiProvider, key: String) {
+        if (scope == AiSettingsScope.MAIN) {
+            setApiKey(provider, key)
+            return
+        }
+        val prefKey = "api_key_${scope.prefix}${provider.name.lowercase()}"
+        prefs.edit().putString(prefKey, key).apply()
+    }
+
+    fun clearScopedApiKeys(scope: AiSettingsScope) {
+        if (scope == AiSettingsScope.MAIN) return
+        AiProvider.entries.forEach { provider ->
+            val key = "api_key_${scope.prefix}${provider.name.lowercase()}"
+            prefs.edit().remove(key).apply()
         }
     }
 }

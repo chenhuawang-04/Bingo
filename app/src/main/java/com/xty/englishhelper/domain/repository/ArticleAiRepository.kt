@@ -21,4 +21,13 @@ interface ArticleAiRepository {
         baseUrl: String,
         provider: AiProvider
     ): SentenceAnalysisResult
+
+    suspend fun extractWordsFromImages(
+        imageBytes: List<ByteArray>,
+        conditions: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): List<String>
 }

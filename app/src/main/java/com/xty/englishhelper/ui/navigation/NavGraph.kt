@@ -11,6 +11,7 @@ import com.xty.englishhelper.ui.screen.addword.AddWordScreen
 import com.xty.englishhelper.ui.screen.article.ArticleEditorScreen
 import com.xty.englishhelper.ui.screen.article.ArticleListScreen
 import com.xty.englishhelper.ui.screen.article.ArticleReaderScreen
+import com.xty.englishhelper.ui.screen.batchimport.BatchImportScreen
 import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
 import com.xty.englishhelper.ui.screen.home.HomeScreen
 import com.xty.englishhelper.ui.screen.importexport.ImportExportScreen
@@ -61,6 +62,9 @@ fun NavGraph(navController: NavHostController) {
                     },
                     onStudy = { dictId ->
                         navController.navigate(StudySetupRoute(dictId))
+                    },
+                    onBatchImport = { dictId ->
+                        navController.navigate(BatchImportRoute(dictId))
                     }
                 )
             }
@@ -84,6 +88,13 @@ fun NavGraph(navController: NavHostController) {
             composable<AddWordRoute> { backStackEntry ->
                 val route = backStackEntry.toRoute<AddWordRoute>()
                 AddWordScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<BatchImportRoute> { backStackEntry ->
+                val route = backStackEntry.toRoute<BatchImportRoute>()
+                BatchImportScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

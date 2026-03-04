@@ -12,6 +12,7 @@ import com.xty.englishhelper.data.mapper.toDomain
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.AiApiClientProvider
 import com.xty.englishhelper.data.remote.ChatMessage
+import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.pool.BuiltPool
@@ -19,7 +20,6 @@ import com.xty.englishhelper.domain.pool.PoolCandidate
 import com.xty.englishhelper.domain.pool.WordPoolEngine
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
@@ -318,16 +318,13 @@ class WordPoolRepositoryImpl @Inject constructor(
     }
 
     private suspend fun callAi(prompt: String): String {
-        val provider = settingsDataStore.provider.first()
-        val apiKey = settingsDataStore.apiKey.first()
-        val model = settingsDataStore.model.first()
-        val baseUrl = settingsDataStore.baseUrl.first()
-        val client = aiApiClientProvider.getClient(provider)
+        val config = settingsDataStore.getAiConfig(AiSettingsScope.POOL)
+        val client = aiApiClientProvider.getClient(config.provider)
 
         return client.sendMessage(
-            url = baseUrl,
-            apiKey = apiKey,
-            model = model,
+            url = config.baseUrl,
+            apiKey = config.apiKey,
+            model = config.model,
             systemPrompt = null,
             messages = listOf(ChatMessage(role = "user", content = prompt)),
             maxTokens = 1024
