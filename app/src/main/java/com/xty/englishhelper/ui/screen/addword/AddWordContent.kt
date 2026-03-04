@@ -18,11 +18,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +42,7 @@ internal fun AddWordContent(
     onRootExplanationChange: (String) -> Unit,
     onToggleUnit: (Long) -> Unit,
     onOrganizeWithAi: () -> Unit,
+    onSaveAndOrganizeInBackground: () -> Unit,
     onMeaningChange: (Int, com.xty.englishhelper.domain.model.Meaning) -> Unit,
     onAddMeaning: () -> Unit,
     onRemoveMeaning: (Int) -> Unit,
@@ -68,6 +71,7 @@ internal fun AddWordContent(
             onRootExplanationChange = onRootExplanationChange,
             onToggleUnit = onToggleUnit,
             onOrganizeWithAi = onOrganizeWithAi,
+            onSaveAndOrganizeInBackground = onSaveAndOrganizeInBackground,
             onMeaningChange = onMeaningChange,
             onAddMeaning = onAddMeaning,
             onRemoveMeaning = onRemoveMeaning,
@@ -96,6 +100,7 @@ internal fun AddWordContent(
             onRootExplanationChange = onRootExplanationChange,
             onToggleUnit = onToggleUnit,
             onOrganizeWithAi = onOrganizeWithAi,
+            onSaveAndOrganizeInBackground = onSaveAndOrganizeInBackground,
             onMeaningChange = onMeaningChange,
             onAddMeaning = onAddMeaning,
             onRemoveMeaning = onRemoveMeaning,
@@ -128,6 +133,7 @@ private fun WideContent(
     onRootExplanationChange: (String) -> Unit,
     onToggleUnit: (Long) -> Unit,
     onOrganizeWithAi: () -> Unit,
+    onSaveAndOrganizeInBackground: () -> Unit,
     onMeaningChange: (Int, com.xty.englishhelper.domain.model.Meaning) -> Unit,
     onAddMeaning: () -> Unit,
     onRemoveMeaning: (Int) -> Unit,
@@ -172,6 +178,7 @@ private fun WideContent(
                     onRootExplanationChange = onRootExplanationChange,
                     onToggleUnit = onToggleUnit,
                     onOrganizeWithAi = onOrganizeWithAi,
+                    onSaveAndOrganizeInBackground = onSaveAndOrganizeInBackground,
                     onMeaningChange = onMeaningChange,
                     onAddMeaning = onAddMeaning,
                     onRemoveMeaning = onRemoveMeaning
@@ -218,6 +225,7 @@ private fun CompactContent(
     onRootExplanationChange: (String) -> Unit,
     onToggleUnit: (Long) -> Unit,
     onOrganizeWithAi: () -> Unit,
+    onSaveAndOrganizeInBackground: () -> Unit,
     onMeaningChange: (Int, com.xty.englishhelper.domain.model.Meaning) -> Unit,
     onAddMeaning: () -> Unit,
     onRemoveMeaning: (Int) -> Unit,
@@ -261,6 +269,10 @@ private fun CompactContent(
 
         item {
             AiOrganizeButton(state = state, onClick = onOrganizeWithAi)
+        }
+
+        item {
+            SaveAndOrganizeButton(state = state, onClick = onSaveAndOrganizeInBackground)
         }
 
         item {
@@ -372,6 +384,7 @@ private fun BasicFields(
     onRootExplanationChange: (String) -> Unit,
     onToggleUnit: (Long) -> Unit,
     onOrganizeWithAi: () -> Unit,
+    onSaveAndOrganizeInBackground: () -> Unit,
     onMeaningChange: (Int, com.xty.englishhelper.domain.model.Meaning) -> Unit,
     onAddMeaning: () -> Unit,
     onRemoveMeaning: (Int) -> Unit
@@ -389,6 +402,8 @@ private fun BasicFields(
     }
 
     AiOrganizeButton(state = state, onClick = onOrganizeWithAi)
+
+    SaveAndOrganizeButton(state = state, onClick = onSaveAndOrganizeInBackground)
 
     OutlinedTextField(
         value = state.phonetic,
@@ -530,5 +545,17 @@ private fun AiOrganizeButton(state: AddWordUiState, onClick: () -> Unit) {
             Icon(Icons.Default.AutoAwesome, contentDescription = null)
             Text("  AI 自动整理")
         }
+    }
+}
+
+@Composable
+private fun SaveAndOrganizeButton(state: AddWordUiState, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = !state.isSaving && !state.isAiLoading && state.spelling.isNotBlank(),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Icon(Icons.Default.CloudUpload, contentDescription = null)
+        Text("  保存并后台整理")
     }
 }

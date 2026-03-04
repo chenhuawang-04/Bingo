@@ -13,6 +13,7 @@ import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import com.xty.englishhelper.domain.usecase.ai.OrganizeWordWithAiUseCase
 import com.xty.englishhelper.domain.usecase.unit.AddWordsToUnitUseCase
 import com.xty.englishhelper.domain.usecase.unit.GetUnitIdsForWordUseCase
@@ -39,7 +40,8 @@ class AddWordViewModel @Inject constructor(
     private val getUnitsWithWordCount: GetUnitsWithWordCountUseCase,
     private val addWordsToUnit: AddWordsToUnitUseCase,
     private val removeWordsFromUnit: RemoveWordsFromUnitUseCase,
-    private val getUnitIdsForWord: GetUnitIdsForWordUseCase
+    private val getUnitIdsForWord: GetUnitIdsForWordUseCase,
+    private val backgroundOrganizeManager: BackgroundOrganizeManager
 ) : ViewModel() {
 
     private val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
@@ -336,6 +338,62 @@ class AddWordViewModel @Inject constructor(
 
                 // Remember selected unit IDs
                 settingsDataStore.setLastSelectedUnitIds(dictionaryId, selectedIds)
+
+                _uiState.update { it.copy(isSaving = false, savedSuccessfully = true) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSaving = false, error = "保存失败：${e.message}") }
+            }
+        }
+    }
+
+    // Save and enqueue background AI organize
+    fun saveAndOrganizeInBackground() {
+        val state = _uiState.value
+        if (state.spelling.isBlank()) {
+            _uiState.update { it.copy(error = "请输入单词拼写") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true) }
+            try {
+                val word = WordDetails(
+                    id = wordId,
+                    dictionaryId = dictionaryId,
+                    spelling = state.spelling.trim(),
+                    phonetic = state.phonetic.trim(),
+                    meanings = state.meanings.filter { it.definition.isNotBlank() },
+                    rootExplanation = state.rootExplanation.trim(),
+                    decomposition = state.decomposition.filter { it.segment.isNotBlank() },
+                    synonyms = state.synonyms.filter { it.word.isNotBlank() },
+                    similarWords = state.similarWords.filter { it.word.isNotBlank() },
+                    cognates = state.cognates.filter { it.word.isNotBlank() },
+                    inflections = state.inflections.filter { it.form.isNotBlank() }
+                )
+                val savedWordId = saveWord(word)
+
+                // Handle unit associations
+                val selectedIds = state.selectedUnitIds
+                if (wordId != 0L) {
+                    val currentUnitIds = getUnitIdsForWord(savedWordId).toSet()
+                    val toAdd = selectedIds - currentUnitIds
+                    val toRemove = currentUnitIds - selectedIds
+                    for (unitId in toAdd) {
+                        addWordsToUnit(unitId, listOf(savedWordId))
+                    }
+                    for (unitId in toRemove) {
+                        removeWordsFromUnit(unitId, listOf(savedWordId))
+                    }
+                } else {
+                    for (unitId in selectedIds) {
+                        addWordsToUnit(unitId, listOf(savedWordId))
+                    }
+                }
+
+                settingsDataStore.setLastSelectedUnitIds(dictionaryId, selectedIds)
+
+                // Enqueue background organize
+                backgroundOrganizeManager.enqueue(savedWordId, dictionaryId, state.spelling.trim())
 
                 _uiState.update { it.copy(isSaving = false, savedSuccessfully = true) }
             } catch (e: Exception) {

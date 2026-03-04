@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import com.xty.englishhelper.domain.usecase.dictionary.GetDictionaryByIdUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetPoolCountUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetPoolVersionInfoUseCase
@@ -38,7 +39,8 @@ class DictionaryViewModel @Inject constructor(
     private val createUnit: CreateUnitUseCase,
     private val rebuildWordPools: RebuildWordPoolsUseCase,
     private val getPoolCount: GetPoolCountUseCase,
-    private val getPoolVersionInfo: GetPoolVersionInfoUseCase
+    private val getPoolVersionInfo: GetPoolVersionInfoUseCase,
+    private val backgroundOrganizeManager: BackgroundOrganizeManager
 ) : ViewModel() {
 
     private val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
@@ -55,6 +57,7 @@ class DictionaryViewModel @Inject constructor(
         observeWords()
         observeUnits()
         loadPoolInfo()
+        observeOrganizeTasks()
     }
 
     private fun loadDictionary() {
@@ -146,6 +149,37 @@ class DictionaryViewModel @Inject constructor(
 
     fun nextPage() = goToPage(_uiState.value.currentPage + 1)
     fun previousPage() = goToPage(_uiState.value.currentPage - 1)
+
+    // ── Background organize observation ──
+
+    private fun observeOrganizeTasks() {
+        viewModelScope.launch {
+            backgroundOrganizeManager.tasks.collect { tasks ->
+                _uiState.update { it.copy(organizeTasks = tasks) }
+            }
+        }
+        viewModelScope.launch {
+            backgroundOrganizeManager.organizingWordIds.collect { ids ->
+                _uiState.update { it.copy(organizingWordIds = ids) }
+            }
+        }
+    }
+
+    fun showOrganizeDetailDialog() {
+        _uiState.update { it.copy(showOrganizeDetailDialog = true) }
+    }
+
+    fun dismissOrganizeDetailDialog() {
+        _uiState.update { it.copy(showOrganizeDetailDialog = false) }
+    }
+
+    fun dismissOrganizeTask(wordId: Long) {
+        backgroundOrganizeManager.dismissTask(wordId)
+    }
+
+    fun dismissAllOrganizeTasks() {
+        backgroundOrganizeManager.dismissAll()
+    }
 
     // ── Pool management ──
 

@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.PoolStrategy
+import com.xty.englishhelper.domain.organize.OrganizeTaskStatus
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
 import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
 import com.xty.englishhelper.ui.components.ConfirmDialog
@@ -308,6 +309,76 @@ fun DictionaryScreen(
             }
         )
     }
+
+    // Background organize detail dialog
+    if (state.showOrganizeDetailDialog) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissOrganizeDetailDialog,
+            title = { Text("后台整理任务") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.organizeTasks.isEmpty()) {
+                        Text("暂无任务")
+                    } else {
+                        state.organizeTasks.values.forEach { task ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = task.spelling,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    when (task.status) {
+                                        OrganizeTaskStatus.ORGANIZING -> Text(
+                                            "整理中…",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        OrganizeTaskStatus.SUCCESS -> Text(
+                                            "完成",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.tertiary
+                                        )
+                                        OrganizeTaskStatus.FAILED -> Text(
+                                            task.error ?: "失败",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                if (task.status != OrganizeTaskStatus.ORGANIZING) {
+                                    TextButton(onClick = { viewModel.dismissOrganizeTask(task.wordId) }) {
+                                        Text("清除")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissOrganizeDetailDialog) {
+                    Text("关闭")
+                }
+            },
+            dismissButton = {
+                if (state.organizeTasks.any { it.value.status != OrganizeTaskStatus.ORGANIZING }) {
+                    TextButton(onClick = viewModel::dismissAllOrganizeTasks) {
+                        Text("清除已完成")
+                    }
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -344,7 +415,8 @@ private fun DictionaryListContent(
                                         onWordClick(word.id, it.id)
                                     }
                                 },
-                                isSelected = word.id == selectedWordId
+                                isSelected = word.id == selectedWordId,
+                                isOrganizing = word.id in state.organizingWordIds
                             )
                             HorizontalDivider()
                         }
@@ -467,6 +539,31 @@ private fun DictionaryListContent(
                         }
                     }
 
+                    if (state.organizeTasks.isNotEmpty()) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val organizing = state.organizingCount
+                                val failed = state.organizeTasks.count { it.value.status == OrganizeTaskStatus.FAILED }
+                                val label = buildString {
+                                    if (organizing > 0) append("整理中: ${organizing}个")
+                                    if (failed > 0) {
+                                        if (isNotEmpty()) append("  ")
+                                        append("失败: ${failed}个")
+                                    }
+                                }
+                                TextButton(onClick = viewModel::showOrganizeDetailDialog) {
+                                    Text(label)
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         Text(
                             text = "全部单词 (${state.words.size})",
@@ -491,7 +588,8 @@ private fun DictionaryListContent(
                                         onWordClick(word.id, it.id)
                                     }
                                 },
-                                isSelected = word.id == selectedWordId
+                                isSelected = word.id == selectedWordId,
+                                isOrganizing = word.id in state.organizingWordIds
                             )
                             HorizontalDivider()
                         }

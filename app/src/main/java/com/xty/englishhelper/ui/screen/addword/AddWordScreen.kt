@@ -74,6 +74,7 @@ fun AddWordScreen(
             onRootExplanationChange = viewModel::onRootExplanationChange,
             onToggleUnit = viewModel::toggleUnitSelection,
             onOrganizeWithAi = viewModel::organizeWithAi,
+            onSaveAndOrganizeInBackground = viewModel::saveAndOrganizeInBackground,
             onMeaningChange = viewModel::onMeaningChange,
             onAddMeaning = viewModel::addMeaning,
             onRemoveMeaning = viewModel::removeMeaning,
