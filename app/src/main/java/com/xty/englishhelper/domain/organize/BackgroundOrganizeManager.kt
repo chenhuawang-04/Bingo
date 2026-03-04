@@ -22,6 +22,7 @@ enum class OrganizeTaskStatus { ORGANIZING, SUCCESS, FAILED }
 
 data class OrganizeTask(
     val wordId: Long,
+    val dictionaryId: Long,
     val spelling: String,
     val status: OrganizeTaskStatus,
     val error: String? = null
@@ -51,7 +52,7 @@ class BackgroundOrganizeManager @Inject constructor(
         // Skip if already organizing
         if (_tasks.value[wordId]?.status == OrganizeTaskStatus.ORGANIZING) return
 
-        _tasks.update { it + (wordId to OrganizeTask(wordId, spelling, OrganizeTaskStatus.ORGANIZING)) }
+        _tasks.update { it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.ORGANIZING)) }
 
         scope.launch {
             try {
@@ -62,7 +63,7 @@ class BackgroundOrganizeManager @Inject constructor(
 
                 if (apiKey.isBlank()) {
                     _tasks.update {
-                        it + (wordId to OrganizeTask(wordId, spelling, OrganizeTaskStatus.FAILED, "API Key 未配置"))
+                        it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.FAILED, "API Key 未配置"))
                     }
                     return@launch
                 }
@@ -73,7 +74,7 @@ class BackgroundOrganizeManager @Inject constructor(
                 val currentWord = wordRepository.getWordById(wordId)
                 if (currentWord == null) {
                     _tasks.update {
-                        it + (wordId to OrganizeTask(wordId, spelling, OrganizeTaskStatus.FAILED, "单词不存在"))
+                        it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.FAILED, "单词不存在"))
                     }
                     return@launch
                 }
@@ -92,7 +93,7 @@ class BackgroundOrganizeManager @Inject constructor(
                 wordRepository.updateWord(merged)
 
                 _tasks.update {
-                    it + (wordId to OrganizeTask(wordId, spelling, OrganizeTaskStatus.SUCCESS))
+                    it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.SUCCESS))
                 }
 
                 // Auto-dismiss SUCCESS after 3 seconds
@@ -101,7 +102,7 @@ class BackgroundOrganizeManager @Inject constructor(
             } catch (e: Exception) {
                 Log.w("BgOrganize", "Failed to organize word $spelling", e)
                 _tasks.update {
-                    it + (wordId to OrganizeTask(wordId, spelling, OrganizeTaskStatus.FAILED, e.message))
+                    it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.FAILED, e.message))
                 }
             }
         }

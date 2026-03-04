@@ -550,15 +550,22 @@ private fun DictionaryListContent(
                             ) {
                                 val organizing = state.organizingCount
                                 val failed = state.organizeTasks.count { it.value.status == OrganizeTaskStatus.FAILED }
+                                val success = state.organizeTasks.count { it.value.status == OrganizeTaskStatus.SUCCESS }
                                 val label = buildString {
                                     if (organizing > 0) append("整理中: ${organizing}个")
+                                    if (success > 0) {
+                                        if (isNotEmpty()) append("  ")
+                                        append("已完成: ${success}个")
+                                    }
                                     if (failed > 0) {
                                         if (isNotEmpty()) append("  ")
                                         append("失败: ${failed}个")
                                     }
                                 }
-                                TextButton(onClick = viewModel::showOrganizeDetailDialog) {
-                                    Text(label)
+                                if (label.isNotEmpty()) {
+                                    TextButton(onClick = viewModel::showOrganizeDetailDialog) {
+                                        Text(label)
+                                    }
                                 }
                             }
                         }
