@@ -130,6 +130,7 @@ fun SettingsScreen(
                     onValueChange = viewModel::onBaseUrlChange,
                     label = { Text("Base URL") },
                     placeholder = { Text(baseUrlPlaceholder) },
+                    supportingText = { Text("本地服务使用 http://IP:端口") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )

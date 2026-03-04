@@ -30,7 +30,7 @@ fun StudyScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    if (state.phase == StudyPhase.Studying) {
+                    if (state.phase == StudyPhase.Studying || state.phase == StudyPhase.WaitingForNext) {
                         val prefix = if (state.studyMode == StudyMode.BRAINSTORM) "风暴 " else ""
                         Text("$prefix${state.progress}/${state.total}")
                     } else {
@@ -57,6 +57,10 @@ fun StudyScreen(
                     onRate = viewModel::onRate,
                     modifier = Modifier.padding(padding)
                 )
+            }
+
+            StudyPhase.WaitingForNext -> {
+                LoadingIndicator(Modifier.padding(padding))
             }
 
             StudyPhase.Finished -> {

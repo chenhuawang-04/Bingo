@@ -62,6 +62,8 @@ class StudyViewModel @Inject constructor(
     private var brainstormRelated: Map<Long, Set<Long>> = emptyMap()
     // wordId -> spelling for displaying related words tag
     private var wordIdToSpelling: Map<Long, String> = emptyMap()
+    // Guard against re-rating during wait or while reviewWord is in-flight
+    private var isProcessingRating = false
 
     init {
         loadSession()
@@ -177,6 +179,7 @@ class StudyViewModel @Inject constructor(
 
     private fun showNextWord() {
         if (queue.isEmpty()) {
+            isProcessingRating = false
             _uiState.update {
                 it.copy(
                     phase = StudyPhase.Finished,
@@ -198,6 +201,7 @@ class StudyViewModel @Inject constructor(
         val readyIndex = queue.indexOfFirst { it.dueAt <= now }
 
         if (readyIndex >= 0) {
+            isProcessingRating = false
             // Found a ready entry — remove it and show
             val entry = queue.removeAt(readyIndex)
 
@@ -221,7 +225,10 @@ class StudyViewModel @Inject constructor(
                 )
             }
         } else {
-            // All remaining entries are waiting — schedule a delayed show
+            // All remaining entries are waiting — show waiting state and schedule
+            isProcessingRating = false
+            _uiState.update { it.copy(phase = StudyPhase.WaitingForNext) }
+
             val earliest = queue.minOf { it.dueAt }
             val waitMs = earliest - now
             waitJob?.cancel()
@@ -233,6 +240,7 @@ class StudyViewModel @Inject constructor(
     }
 
     fun onRevealAnswer() {
+        if (_uiState.value.phase != StudyPhase.Studying) return
         val word = _uiState.value.currentWord ?: return
         viewModelScope.launch {
             val intervals = previewIntervals(word.id)
@@ -246,26 +254,34 @@ class StudyViewModel @Inject constructor(
     }
 
     fun onRate(rating: Rating) {
+        if (isProcessingRating) return
         val word = _uiState.value.currentWord ?: return
+        isProcessingRating = true
+        waitJob?.cancel()
         viewModelScope.launch {
-            val result = reviewWord(word.id, rating)
+            try {
+                val result = reviewWord(word.id, rating)
 
-            when (rating) {
-                Rating.Again -> againCount++
-                Rating.Hard -> hardCount++
-                Rating.Good -> goodCount++
-                Rating.Easy -> easyCount++
+                when (rating) {
+                    Rating.Again -> againCount++
+                    Rating.Hard -> hardCount++
+                    Rating.Good -> goodCount++
+                    Rating.Easy -> easyCount++
+                }
+
+                if (rating == Rating.Again) {
+                    // Re-queue with the scheduled due time so the word waits
+                    queue.addLast(QueueEntry(word, dueAt = result.due))
+                } else {
+                    // Only count as fully processed when not re-queued
+                    processedWordIds.add(word.id)
+                }
+
+                showNextWord()
+            } catch (e: Exception) {
+                isProcessingRating = false
+                _uiState.update { it.copy(error = e.message) }
             }
-
-            if (rating == Rating.Again) {
-                // Re-queue with the scheduled due time so the word waits
-                queue.addLast(QueueEntry(word, dueAt = result.due))
-            } else {
-                // Only count as fully processed when not re-queued
-                processedWordIds.add(word.id)
-            }
-
-            showNextWord()
         }
     }
 

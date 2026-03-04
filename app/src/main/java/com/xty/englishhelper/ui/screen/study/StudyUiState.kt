@@ -20,6 +20,7 @@ data class StudyUiState(
 enum class StudyPhase {
     Loading,
     Studying,
+    WaitingForNext,
     Finished
 }
 
