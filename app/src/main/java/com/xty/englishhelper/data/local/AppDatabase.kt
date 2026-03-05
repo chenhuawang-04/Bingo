@@ -368,16 +368,37 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_9_10 = object : Migration(9, 10) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE articles ADD COLUMN article_uid TEXT NOT NULL DEFAULT ''")
-                val cursor = db.query("SELECT id FROM articles")
-                cursor.use {
-                    val idIndex = it.getColumnIndex("id")
-                    while (it.moveToNext()) {
-                        val id = it.getLong(idIndex)
-                        db.execSQL(
-                            "UPDATE articles SET article_uid = ? WHERE id = ?",
-                            arrayOf<Any>(UUID.randomUUID().toString(), id)
-                        )
+                val hasColumn = db.query("PRAGMA table_info(`articles`)").use { cursor ->
+                    val nameIndex = cursor.getColumnIndex("name")
+                    var found = false
+                    while (cursor.moveToNext()) {
+                        if (cursor.getString(nameIndex) == "article_uid") {
+                            found = true
+                            break
+                        }
+                    }
+                    found
+                }
+                if (!hasColumn) {
+                    db.execSQL("ALTER TABLE articles ADD COLUMN article_uid TEXT NOT NULL DEFAULT ''")
+                }
+
+                val seen = mutableSetOf<String>()
+                db.query("SELECT id, article_uid FROM articles").use { cursor ->
+                    val idIndex = cursor.getColumnIndex("id")
+                    val uidIndex = cursor.getColumnIndex("article_uid")
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(idIndex)
+                        val uid = cursor.getString(uidIndex) ?: ""
+                        val normalized = uid.trim()
+                        if (normalized.isBlank() || !seen.add(normalized)) {
+                            val newUid = UUID.randomUUID().toString()
+                            db.execSQL(
+                                "UPDATE articles SET article_uid = ? WHERE id = ?",
+                                arrayOf<Any>(newUid, id)
+                            )
+                            seen.add(newUid)
+                        }
                     }
                 }
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_articles_article_uid` ON `articles`(`article_uid`)")
