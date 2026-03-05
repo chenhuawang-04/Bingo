@@ -21,6 +21,9 @@ interface WordPoolDao {
     @Query("DELETE FROM word_pools WHERE dictionary_id = :dictionaryId AND strategy = :strategy")
     suspend fun deleteByDictionaryAndStrategy(dictionaryId: Long, strategy: String)
 
+    @Query("DELETE FROM word_pools WHERE dictionary_id = :dictionaryId")
+    suspend fun deleteByDictionary(dictionaryId: Long)
+
     @Query("SELECT * FROM word_pools WHERE id IN (:poolIds)")
     suspend fun getPoolsByIds(poolIds: List<Long>): List<WordPoolEntity>
 

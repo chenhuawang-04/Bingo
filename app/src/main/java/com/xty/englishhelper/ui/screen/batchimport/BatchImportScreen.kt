@@ -3,6 +3,8 @@ package com.xty.englishhelper.ui.screen.batchimport
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -135,6 +138,13 @@ fun BatchImportScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            if (state.availableUnits.isNotEmpty()) {
+                UnitSelector(
+                    state = state,
+                    onToggleUnit = viewModel::toggleUnitSelection
+                )
+            }
+
             // Extract button
             Button(
                 onClick = {
@@ -235,6 +245,30 @@ fun BatchImportScreen(
                         Text("全部导入")
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UnitSelector(
+    state: BatchImportUiState,
+    onToggleUnit: (Long) -> Unit
+) {
+    Column {
+        Text("新增单词所属单元", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            state.availableUnits.forEach { unit ->
+                FilterChip(
+                    selected = unit.id in state.selectedUnitIds,
+                    onClick = { onToggleUnit(unit.id) },
+                    label = { Text(unit.name) }
+                )
             }
         }
     }

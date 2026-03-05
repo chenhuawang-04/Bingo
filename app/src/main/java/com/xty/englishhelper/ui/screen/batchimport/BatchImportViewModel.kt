@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.screen.batchimport
+﻿package com.xty.englishhelper.ui.screen.batchimport
 
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
@@ -6,14 +6,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
+import com.xty.englishhelper.domain.usecase.unit.AddWordsToUnitUseCase
+import com.xty.englishhelper.domain.usecase.unit.GetUnitsWithWordCountUseCase
 import com.xty.englishhelper.domain.usecase.word.SaveWordUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -28,6 +32,8 @@ data class BatchImportUiState(
     val conditions: String = "",
     val isExtracting: Boolean = false,
     val extractedWords: List<ExtractedWord> = emptyList(),
+    val availableUnits: List<StudyUnit> = emptyList(),
+    val selectedUnitIds: Set<Long> = emptySet(),
     val isImporting: Boolean = false,
     val importProgress: Pair<Int, Int>? = null,
     val importDone: Boolean = false,
@@ -39,6 +45,8 @@ class BatchImportViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val articleAiRepository: ArticleAiRepository,
     private val settingsDataStore: SettingsDataStore,
+    private val getUnitsWithWordCount: GetUnitsWithWordCountUseCase,
+    private val addWordsToUnit: AddWordsToUnitUseCase,
     private val saveWord: SaveWordUseCase,
     private val backgroundOrganizeManager: BackgroundOrganizeManager
 ) : ViewModel() {
@@ -47,6 +55,25 @@ class BatchImportViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(BatchImportUiState())
     val uiState: StateFlow<BatchImportUiState> = _uiState.asStateFlow()
+
+    init {
+        loadUnits()
+    }
+
+    private fun loadUnits() {
+        viewModelScope.launch {
+            val units = getUnitsWithWordCount(dictionaryId).first()
+            val lastSelected = settingsDataStore.getLastSelectedUnitIds(dictionaryId)
+            val validIds = units.map { it.id }.toSet()
+            val initialSelected = lastSelected.filter { it in validIds }.toSet()
+            _uiState.update {
+                it.copy(
+                    availableUnits = units,
+                    selectedUnitIds = initialSelected
+                )
+            }
+        }
+    }
 
     fun addImages(uris: List<Uri>) {
         _uiState.update { it.copy(imageUris = it.imageUris + uris) }
@@ -65,7 +92,7 @@ class BatchImportViewModel @Inject constructor(
     fun extractWords(readImageBytes: suspend (Uri) -> ByteArray) {
         val state = _uiState.value
         if (state.imageUris.isEmpty()) {
-            _uiState.update { it.copy(error = "请先选择图片") }
+            _uiState.update { it.copy(error = "璇峰厛閫夋嫨鍥剧墖") }
             return
         }
         if (state.conditions.isBlank()) {
@@ -78,7 +105,7 @@ class BatchImportViewModel @Inject constructor(
             try {
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.OCR)
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(isExtracting = false, error = "请先在设置中配置 API Key") }
+                    _uiState.update { it.copy(isExtracting = false, error = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
                     return@launch
                 }
 
@@ -124,6 +151,14 @@ class BatchImportViewModel @Inject constructor(
         }
     }
 
+    fun toggleUnitSelection(unitId: Long) {
+        _uiState.update {
+            val newSet = it.selectedUnitIds.toMutableSet()
+            if (unitId in newSet) newSet.remove(unitId) else newSet.add(unitId)
+            it.copy(selectedUnitIds = newSet)
+        }
+    }
+
     fun importWords() {
         val selected = _uiState.value.extractedWords
             .filter { it.checked && it.spelling.isNotBlank() }
@@ -142,9 +177,15 @@ class BatchImportViewModel @Inject constructor(
                         spelling = word.spelling.trim()
                     )
                     val savedId = saveWord(wordDetails)
+                    if (_uiState.value.selectedUnitIds.isNotEmpty()) {
+                        for (unitId in _uiState.value.selectedUnitIds) {
+                            addWordsToUnit(unitId, listOf(savedId))
+                        }
+                    }
                     backgroundOrganizeManager.enqueue(savedId, dictionaryId, word.spelling.trim())
                     _uiState.update { it.copy(importProgress = (index + 1) to selected.size) }
                 }
+                settingsDataStore.setLastSelectedUnitIds(dictionaryId, _uiState.value.selectedUnitIds)
                 _uiState.update { it.copy(isImporting = false, importDone = true) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isImporting = false, error = "导入失败：${e.message}") }
@@ -156,3 +197,6 @@ class BatchImportViewModel @Inject constructor(
         _uiState.update { it.copy(error = null) }
     }
 }
+
+
+

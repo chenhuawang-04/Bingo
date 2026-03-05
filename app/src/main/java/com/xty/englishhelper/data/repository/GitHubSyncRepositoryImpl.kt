@@ -3,6 +3,7 @@ package com.xty.englishhelper.data.repository
 import android.os.Build
 import android.util.Base64
 import com.squareup.moshi.Moshi
+import com.xty.englishhelper.BuildConfig
 import com.xty.englishhelper.data.json.ArticleJsonModel
 import com.xty.englishhelper.data.json.ArticlesExportModel
 import com.xty.englishhelper.data.json.DictionaryJsonModel
@@ -11,6 +12,9 @@ import com.xty.englishhelper.data.json.StudyStateJsonModel
 import com.xty.englishhelper.data.json.SyncManifest
 import com.xty.englishhelper.data.json.UnitJsonModel
 import com.xty.englishhelper.data.json.WordPoolJsonModel
+import com.xty.englishhelper.data.local.dao.WordPoolDao
+import com.xty.englishhelper.data.local.entity.WordPoolEntity
+import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.GitHubApiService
 import com.xty.englishhelper.data.remote.dto.GitHubPutRequest
@@ -33,6 +37,7 @@ import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.usecase.importexport.ExportDictionaryUseCase
 import com.xty.englishhelper.domain.usecase.importexport.ImportDictionaryUseCase
 import kotlinx.coroutines.flow.first
+import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -47,6 +52,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val studyRepository: StudyRepository,
     private val articleRepository: ArticleRepository,
     private val wordPoolRepository: WordPoolRepository,
+    private val wordPoolDao: WordPoolDao,
     private val importExporter: DictionaryImportExporter,
     private val exportDictionary: ExportDictionaryUseCase,
     private val transactionRunner: TransactionRunner,
@@ -148,8 +154,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         onProgress(SyncProgress("上传中", "正在上传数据...", 3, 4))
         val fileNames = mutableListOf<String>()
         for (dictJson in finalDictJsons) {
-            val slug = dictJson.name.replace(Regex("[^\\w\\u4e00-\\u9fff]+"), "_").trimEnd('_')
-            val fileName = "$slug.json"
+            val fileName = dictFileName(dictJson.name)
             fileNames.add(fileName)
             uploadJson("dictionaries/$fileName", dictJson, dictAdapter)
         }
@@ -164,7 +169,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         // Upload manifest
         val manifest = SyncManifest(
-            appVersion = "2.1.0",
+            appVersion = BuildConfig.VERSION_NAME,
             schemaVersion = 5,
             syncedAt = System.currentTimeMillis(),
             deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
@@ -186,8 +191,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         localDicts.forEachIndexed { i, dict ->
             onProgress(SyncProgress("上传中", "正在上传 ${dict.name}...", i + 1, localDicts.size + 2))
             val json = exportLocalDictionary(dict)
-            val slug = dict.name.replace(Regex("[^\\w\\u4e00-\\u9fff]+"), "_").trimEnd('_')
-            val fileName = "$slug.json"
+            val fileName = dictFileName(dict.name)
             fileNames.add(fileName)
             uploadJson("dictionaries/$fileName", json, dictAdapter)
         }
@@ -202,7 +206,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         // Upload manifest
         val manifest = SyncManifest(
-            appVersion = "2.1.0",
+            appVersion = BuildConfig.VERSION_NAME,
             schemaVersion = 5,
             syncedAt = System.currentTimeMillis(),
             deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
@@ -336,6 +340,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val localWords = wordRepository.getWordsByDictionary(localDict.id).first()
         val wordUidToId = localWords.associate { it.wordUid to it.id }
 
+        if (cloudJson.wordPools.isNotEmpty()) {
+            val localPoolCount = wordPoolRepository.getPoolCount(localDict.id)
+            if (localPoolCount == 0) {
+                transactionRunner.runInTransaction {
+                    importWordPools(localDict.id, cloudJson.wordPools, wordUidToId)
+                }
+            }
+        }
+
         for (uid in allStudyUids) {
             val cloud = cloudStudyByUid[uid]
             val local = localStudyByUid[uid]
@@ -455,6 +468,19 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         return articleRepository.getAllArticles().first()
     }
 
+    private fun dictFileName(name: String): String {
+        val slug = name.replace(Regex("[^\\w\\u4e00-\\u9fff]+"), "_").trim { it == '_' }
+        val safeSlug = if (slug.isBlank()) "dict" else slug
+        val hash = shortHash(name)
+        return "${safeSlug}__${hash}.json"
+    }
+
+    private fun shortHash(input: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(input.toByteArray(Charsets.UTF_8))
+        return digest.take(4).joinToString("") { "%02x".format(it) }
+    }
+
     // ── Export Helpers ──
 
     private suspend fun exportLocalDictionary(dict: Dictionary): DictionaryJsonModel {
@@ -510,6 +536,36 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         updatedAt = updatedAt
     )
 
+    private suspend fun importWordPools(
+        dictionaryId: Long,
+        pools: List<WordPoolJsonModel>,
+        wordUidToId: Map<String, Long>
+    ) {
+        wordPoolDao.deleteByDictionary(dictionaryId)
+        if (pools.isEmpty()) return
+
+        pools.forEach { pool ->
+            val memberIds = pool.memberWordUids.mapNotNull { wordUidToId[it] }.distinct()
+            if (memberIds.size < 2) return@forEach
+
+            val focusId = pool.focusWordUid?.let { wordUidToId[it] }
+            val strategy = pool.strategy.ifBlank { "BALANCED" }
+            val algorithmVersion = pool.algorithmVersion.ifBlank { "${strategy}_v1" }
+
+            val poolId = wordPoolDao.insertPool(
+                WordPoolEntity(
+                    dictionaryId = dictionaryId,
+                    focusWordId = focusId,
+                    strategy = strategy,
+                    algorithmVersion = algorithmVersion
+                )
+            )
+            wordPoolDao.insertMembers(
+                memberIds.map { WordPoolMemberEntity(wordId = it, poolId = poolId) }
+            )
+        }
+    }
+
     // ── Import Helper ──
 
     private suspend fun importCloudDictionary(cloudDict: DictionaryJsonModel) {
@@ -562,6 +618,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         )
                     }
 
+                    importWordPools(dictId, cloudDict.wordPools, wordUidToId)
+
                     wordRepository.recomputeAllAssociationsForDictionary(dictId)
                 }
             }
@@ -579,12 +637,20 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             throw IllegalStateException("GitHub API 错误: ${response.code()} ${response.message()}")
         }
         val content = response.body() ?: return null
-        val decoded = when (content.encoding) {
-            "base64" -> {
-                val cleaned = content.content?.replace("\n", "") ?: return null
+        val decoded = when {
+            content.encoding == "base64" && !content.content.isNullOrBlank() -> {
+                val cleaned = content.content.replace("\n", "")
                 String(Base64.decode(cleaned, Base64.DEFAULT), Charsets.UTF_8)
             }
-            else -> content.content ?: return null
+            !content.content.isNullOrBlank() -> content.content
+            !content.downloadUrl.isNullOrBlank() -> {
+                val rawResponse = gitHubApi.downloadRaw(authHeader(), content.downloadUrl)
+                if (!rawResponse.isSuccessful) {
+                    throw IllegalStateException("下载失败: ${rawResponse.code()} ${rawResponse.message()}")
+                }
+                rawResponse.body()?.string() ?: throw IllegalStateException("下载失败: 空响应")
+            }
+            else -> return null
         }
         return adapter.fromJson(decoded)
     }
