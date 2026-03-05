@@ -24,6 +24,22 @@
 - Title bar displays "风暴" prefix to indicate active brainstorm mode
 - FSRS scoring logic is **completely unaffected** — only presentation order changes
 
+### Background Word Organization
+- New **"保存并后台整理"** button on the Add Word page — saves the word immediately and enqueues AI organization in the background, so the user can continue adding words without waiting
+- `BackgroundOrganizeManager` runs as an application-level singleton with its own `CoroutineScope`, independent of any ViewModel lifecycle
+- Merge strategy: AI results only fill **blank fields** — user-entered data is never overwritten
+- Dictionary page status feedback:
+  - Shows **"整理中: N个"** / **"失败: N个"** clickable badge in the word list area (only for the current dictionary)
+  - Each word being organized displays a **16dp spinner** next to its spelling in the word list
+  - Tapping the badge opens a **detail dialog** listing all tasks with status and dismiss controls
+- Success tasks are **auto-dismissed after 3 seconds**; failed tasks remain until manually cleared
+- Edge cases handled: duplicate enqueue ignored, API Key not configured → immediate FAILED, network/AI errors → FAILED with error message preserved
+
+## Bug Fixes
+
+- **Study rating buttons unresponsive**: fixed touch event handling on study rating buttons
+- **HTTP URL scheme normalization**: URLs missing a scheme are now correctly normalized
+
 ## Improvements
 
 ### Network

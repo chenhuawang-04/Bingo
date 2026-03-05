@@ -9,7 +9,8 @@ data class DictionaryJsonModel(
     val schemaVersion: Int = 0,
     val words: List<WordJsonModel> = emptyList(),
     val units: List<UnitJsonModel> = emptyList(),
-    val studyStates: List<StudyStateJsonModel> = emptyList()
+    val studyStates: List<StudyStateJsonModel> = emptyList(),
+    val wordPools: List<WordPoolJsonModel> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
@@ -22,7 +23,8 @@ data class WordJsonModel(
     val decomposition: List<DecompositionPartJsonModel> = emptyList(),
     val synonyms: List<SynonymJsonModel> = emptyList(),
     val similarWords: List<SimilarWordJsonModel> = emptyList(),
-    val cognates: List<CognateJsonModel> = emptyList()
+    val cognates: List<CognateJsonModel> = emptyList(),
+    val inflections: List<InflectionJsonModel> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
@@ -76,4 +78,18 @@ data class StudyStateJsonModel(
     val lastReviewAt: Long = 0,
     val reps: Int = 0,
     val lapses: Int = 0
+)
+
+@JsonClass(generateAdapter = true)
+data class InflectionJsonModel(
+    val form: String = "",
+    val formType: String = ""
+)
+
+@JsonClass(generateAdapter = true)
+data class WordPoolJsonModel(
+    val focusWordUid: String? = null,
+    val memberWordUids: List<String> = emptyList(),
+    val strategy: String = "",
+    val algorithmVersion: String = ""
 )

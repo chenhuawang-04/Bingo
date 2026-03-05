@@ -6,6 +6,11 @@ import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.usecase.ai.TestAiConnectionUseCase
+import com.xty.englishhelper.domain.usecase.sync.ForceDownloadUseCase
+import com.xty.englishhelper.domain.usecase.sync.ForceUploadUseCase
+import com.xty.englishhelper.domain.usecase.sync.GetCloudManifestUseCase
+import com.xty.englishhelper.domain.usecase.sync.SyncUseCase
+import com.xty.englishhelper.domain.usecase.sync.TestSyncConnectionUseCase
 import com.xty.englishhelper.util.Constants
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +23,12 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
-    private val testAiConnection: TestAiConnectionUseCase
+    private val testAiConnection: TestAiConnectionUseCase,
+    private val syncUseCase: SyncUseCase,
+    private val forceUploadUseCase: ForceUploadUseCase,
+    private val forceDownloadUseCase: ForceDownloadUseCase,
+    private val testSyncConnectionUseCase: TestSyncConnectionUseCase,
+    private val getCloudManifestUseCase: GetCloudManifestUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -48,6 +58,9 @@ class SettingsViewModel @Inject constructor(
         // Scoped settings
         initScopedSettings(AiSettingsScope.POOL) { state, scoped -> state.copy(poolAiSettings = scoped) }
         initScopedSettings(AiSettingsScope.OCR) { state, scoped -> state.copy(ocrAiSettings = scoped) }
+
+        // Cloud sync settings
+        initCloudSync()
     }
 
     private fun initScopedSettings(
@@ -255,5 +268,115 @@ class SettingsViewModel @Inject constructor(
                 AiSettingsScope.MAIN -> state
             }
         }
+    }
+
+    // ── Cloud Sync ──
+
+    private fun initCloudSync() {
+        viewModelScope.launch {
+            settingsDataStore.githubOwner.collect { owner ->
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(githubOwner = owner)) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.githubRepo.collect { repo ->
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(githubRepo = repo)) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.lastSyncAt.collect { ts ->
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(lastSyncAt = ts)) }
+            }
+        }
+        // Load PAT once
+        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(pat = settingsDataStore.getGitHubPat())) }
+    }
+
+    fun onGitHubOwnerChange(owner: String) {
+        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(githubOwner = owner)) }
+        viewModelScope.launch { settingsDataStore.setGitHubOwner(owner) }
+    }
+
+    fun onGitHubRepoChange(repo: String) {
+        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(githubRepo = repo)) }
+        viewModelScope.launch { settingsDataStore.setGitHubRepo(repo) }
+    }
+
+    fun onGitHubPatChange(pat: String) {
+        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(pat = pat)) }
+        settingsDataStore.setGitHubPat(pat)
+    }
+
+    fun testSyncConnection() {
+        val sync = _uiState.value.cloudSync
+        if (sync.pat.isBlank() || sync.githubOwner.isBlank() || sync.githubRepo.isBlank()) {
+            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = "请填写完整配置")) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = null, error = null)) }
+            try {
+                val success = testSyncConnectionUseCase()
+                val result = if (success) "连接成功" else "连接失败：仓库不存在或无权限"
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = result)) }
+                if (success) {
+                    try {
+                        val manifest = getCloudManifestUseCase()
+                        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(cloudManifest = manifest)) }
+                    } catch (_: Exception) { }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = "连接失败：${e.message}")) }
+            }
+        }
+    }
+
+    fun performSync() {
+        if (_uiState.value.cloudSync.isSyncing) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = true, error = null, syncProgress = null)) }
+            try {
+                syncUseCase { progress ->
+                    _uiState.update { it.copy(cloudSync = it.cloudSync.copy(syncProgress = progress)) }
+                }
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "同步失败：${e.message}")) }
+            }
+        }
+    }
+
+    fun performForceUpload() {
+        if (_uiState.value.cloudSync.isSyncing) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = true, error = null, syncProgress = null)) }
+            try {
+                forceUploadUseCase { progress ->
+                    _uiState.update { it.copy(cloudSync = it.cloudSync.copy(syncProgress = progress)) }
+                }
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "上传失败：${e.message}")) }
+            }
+        }
+    }
+
+    fun performForceDownload() {
+        if (_uiState.value.cloudSync.isSyncing) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = true, error = null, syncProgress = null)) }
+            try {
+                forceDownloadUseCase { progress ->
+                    _uiState.update { it.copy(cloudSync = it.cloudSync.copy(syncProgress = progress)) }
+                }
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "下载失败：${e.message}")) }
+            }
+        }
+    }
+
+    fun clearSyncError() {
+        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(error = null, connectionTestResult = null)) }
     }
 }

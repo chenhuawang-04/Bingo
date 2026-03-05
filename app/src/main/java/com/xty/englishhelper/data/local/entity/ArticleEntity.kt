@@ -9,12 +9,15 @@ import androidx.room.PrimaryKey
     tableName = "articles",
     indices = [
         Index("updated_at"),
-        Index("title")
+        Index("title"),
+        Index(value = ["article_uid"], unique = true)
     ]
 )
 data class ArticleEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    @ColumnInfo(name = "article_uid")
+    val articleUid: String = "",
     val title: String,
     val content: String,
     val domain: String = "",

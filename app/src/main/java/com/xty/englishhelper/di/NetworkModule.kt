@@ -4,6 +4,7 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.xty.englishhelper.BuildConfig
 import com.xty.englishhelper.data.remote.AnthropicApiService
+import com.xty.englishhelper.data.remote.GitHubApiService
 import com.xty.englishhelper.data.remote.OpenAiApiService
 import com.xty.englishhelper.data.remote.interceptor.AnthropicHeaderInterceptor
 import com.xty.englishhelper.util.Constants
@@ -117,5 +118,48 @@ object NetworkModule {
     @Singleton
     fun provideOpenAiApiService(@Named("openai") retrofit: Retrofit): OpenAiApiService {
         return retrofit.create(OpenAiApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    @Named("github")
+    fun provideGitHubOkHttpClient(): OkHttpClient {
+        val builder = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .addHeader("Accept", "application/vnd.github.v3+json")
+                    .addHeader("User-Agent", "EnglishHelper-Android")
+                    .build()
+                chain.proceed(request)
+            }
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+
+        if (BuildConfig.DEBUG) {
+            builder.addInterceptor(createLoggingInterceptor())
+        }
+
+        return builder.build()
+    }
+
+    @Provides
+    @Singleton
+    @Named("github")
+    fun provideGitHubRetrofit(
+        @Named("github") okHttpClient: OkHttpClient,
+        moshi: Moshi
+    ): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl("https://api.github.com/")
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideGitHubApiService(@Named("github") retrofit: Retrofit): GitHubApiService {
+        return retrofit.create(GitHubApiService::class.java)
     }
 }

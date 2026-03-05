@@ -3,6 +3,7 @@ package com.xty.englishhelper.data.preferences
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiSettingsScope
@@ -28,6 +29,9 @@ class SettingsDataStore @Inject constructor(
         val OPENAI_MODEL = stringPreferencesKey("openai_model")
         val ANTHROPIC_BASE_URL = stringPreferencesKey("anthropic_base_url")
         val OPENAI_BASE_URL = stringPreferencesKey("openai_base_url")
+        val GITHUB_OWNER = stringPreferencesKey("github_owner")
+        val GITHUB_REPO = stringPreferencesKey("github_repo")
+        val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -211,6 +215,28 @@ class SettingsDataStore @Inject constructor(
             }
         }
     }
+
+    // ── GitHub Sync config ──
+
+    val githubOwner: Flow<String> = dataStore.data.map { it[GITHUB_OWNER] ?: "" }
+    val githubRepo: Flow<String> = dataStore.data.map { it[GITHUB_REPO] ?: "" }
+    val lastSyncAt: Flow<Long> = dataStore.data.map { it[LAST_SYNC_AT] ?: 0L }
+
+    suspend fun setGitHubOwner(owner: String) {
+        dataStore.edit { it[GITHUB_OWNER] = owner }
+    }
+
+    suspend fun setGitHubRepo(repo: String) {
+        dataStore.edit { it[GITHUB_REPO] = repo }
+    }
+
+    suspend fun setLastSyncAt(timestamp: Long) {
+        dataStore.edit { it[LAST_SYNC_AT] = timestamp }
+    }
+
+    fun getGitHubPat(): String = encryptedApiKeyStore.getGitHubPat()
+
+    fun setGitHubPat(token: String) = encryptedApiKeyStore.setGitHubPat(token)
 
     private fun providerFromPrefs(prefs: Preferences): AiProvider {
         return when (prefs[PROVIDER]) {

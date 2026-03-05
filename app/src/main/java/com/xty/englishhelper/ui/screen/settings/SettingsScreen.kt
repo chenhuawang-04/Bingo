@@ -229,6 +229,21 @@ fun SettingsScreen(
                     scoped = state.ocrAiSettings,
                     viewModel = viewModel
                 )
+
+                HorizontalDivider()
+
+                // Cloud Sync
+                CloudSyncSection(
+                    state = state.cloudSync,
+                    onOwnerChange = viewModel::onGitHubOwnerChange,
+                    onRepoChange = viewModel::onGitHubRepoChange,
+                    onPatChange = viewModel::onGitHubPatChange,
+                    onTestConnection = viewModel::testSyncConnection,
+                    onSync = viewModel::performSync,
+                    onForceUpload = viewModel::performForceUpload,
+                    onForceDownload = viewModel::performForceDownload,
+                    onClearError = viewModel::clearSyncError
+                )
             }
         }
     }

@@ -18,6 +18,7 @@ class EncryptedApiKeyStore @Inject constructor(
         private const val LEGACY_API_KEY = "api_key"
         private const val ANTHROPIC_API_KEY = "api_key_anthropic"
         private const val OPENAI_API_KEY = "api_key_openai"
+        private const val GITHUB_PAT = "github_pat"
     }
 
     private val prefs: SharedPreferences by lazy {
@@ -75,5 +76,15 @@ class EncryptedApiKeyStore @Inject constructor(
             val key = "api_key_${scope.prefix}${provider.name.lowercase()}"
             prefs.edit().remove(key).apply()
         }
+    }
+
+    fun getGitHubPat(): String = prefs.getString(GITHUB_PAT, "") ?: ""
+
+    fun setGitHubPat(token: String) {
+        prefs.edit().putString(GITHUB_PAT, token).apply()
+    }
+
+    fun clearGitHubPat() {
+        prefs.edit().remove(GITHUB_PAT).apply()
     }
 }

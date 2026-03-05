@@ -10,6 +10,7 @@ enum class ArticleParseStatus {
 
 data class Article(
     val id: Long = 0,
+    val articleUid: String = "",
     val title: String,
     val content: String,
     val domain: String = "",

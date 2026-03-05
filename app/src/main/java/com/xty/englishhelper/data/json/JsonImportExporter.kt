@@ -4,6 +4,7 @@ import com.squareup.moshi.Moshi
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.SimilarWordInfo
@@ -33,7 +34,7 @@ class JsonImportExporter @Inject constructor(
         val model = DictionaryJsonModel(
             name = dictionary.name,
             description = dictionary.description,
-            schemaVersion = 4,
+            schemaVersion = 5,
             words = words.map { word ->
                 WordJsonModel(
                     spelling = word.spelling,
@@ -50,6 +51,9 @@ class JsonImportExporter @Inject constructor(
                     },
                     cognates = word.cognates.map {
                         CognateJsonModel(it.word, it.meaning, it.sharedRoot)
+                    },
+                    inflections = word.inflections.map {
+                        InflectionJsonModel(it.form, it.formType)
                     }
                 )
             },
@@ -82,8 +86,8 @@ class JsonImportExporter @Inject constructor(
         val model = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
 
         // Validate schema version
-        if (model.schemaVersion != 4) {
-            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4）")
+        if (model.schemaVersion !in listOf(4, 5)) {
+            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4 或 5）")
         }
 
         // Validate no empty spellings
@@ -145,6 +149,9 @@ class JsonImportExporter @Inject constructor(
                 },
                 cognates = word.cognates.map {
                     CognateInfo(word = it.word, meaning = it.meaning, sharedRoot = it.sharedRoot)
+                },
+                inflections = word.inflections.map {
+                    Inflection(form = it.form, formType = it.formType)
                 }
             )
         }

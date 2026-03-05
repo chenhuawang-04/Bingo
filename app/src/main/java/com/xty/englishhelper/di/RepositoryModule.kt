@@ -5,6 +5,7 @@ import com.xty.englishhelper.data.repository.AiRepositoryImpl
 import com.xty.englishhelper.data.repository.ArticleAiRepositoryImpl
 import com.xty.englishhelper.data.repository.ArticleRepositoryImpl
 import com.xty.englishhelper.data.repository.DictionaryRepositoryImpl
+import com.xty.englishhelper.data.repository.GitHubSyncRepositoryImpl
 import com.xty.englishhelper.data.repository.RoomTransactionRunner
 import com.xty.englishhelper.data.repository.StudyRepositoryImpl
 import com.xty.englishhelper.data.repository.UnitRepositoryImpl
@@ -13,6 +14,7 @@ import com.xty.englishhelper.data.repository.WordRepositoryImpl
 import com.xty.englishhelper.domain.repository.AiRepository
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.repository.CloudSyncRepository
 import com.xty.englishhelper.domain.repository.DictionaryImportExporter
 import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.StudyRepository
@@ -69,4 +71,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindWordPoolRepository(impl: WordPoolRepositoryImpl): WordPoolRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCloudSyncRepository(impl: GitHubSyncRepositoryImpl): CloudSyncRepository
 }

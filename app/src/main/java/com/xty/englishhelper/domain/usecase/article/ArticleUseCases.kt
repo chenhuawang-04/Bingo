@@ -23,6 +23,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import java.security.MessageDigest
+import java.util.UUID
 import javax.inject.Inject
 
 class CreateArticleUseCase @Inject constructor(
@@ -32,6 +33,7 @@ class CreateArticleUseCase @Inject constructor(
         val article = Article(
             title = title,
             content = content,
+            articleUid = UUID.randomUUID().toString(),
             sourceType = sourceType,
             domain = domain,
             difficultyAi = difficultyAi,

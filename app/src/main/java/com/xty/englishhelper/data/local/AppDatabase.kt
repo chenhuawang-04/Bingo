@@ -52,7 +52,7 @@ import java.util.UUID
         WordPoolEntity::class,
         WordPoolMemberEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -363,6 +363,24 @@ abstract class AppDatabase : RoomDatabase() {
                 )""".trimIndent())
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_pool_members_pool_id` ON `word_pool_members`(`pool_id`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_pool_members_word_id` ON `word_pool_members`(`word_id`)")
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE articles ADD COLUMN article_uid TEXT NOT NULL DEFAULT ''")
+                val cursor = db.query("SELECT id FROM articles")
+                cursor.use {
+                    val idIndex = it.getColumnIndex("id")
+                    while (it.moveToNext()) {
+                        val id = it.getLong(idIndex)
+                        db.execSQL(
+                            "UPDATE articles SET article_uid = ? WHERE id = ?",
+                            arrayOf<Any>(UUID.randomUUID().toString(), id)
+                        )
+                    }
+                }
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_articles_article_uid` ON `articles`(`article_uid`)")
             }
         }
     }

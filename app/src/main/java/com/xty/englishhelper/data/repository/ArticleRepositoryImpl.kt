@@ -173,6 +173,7 @@ class ArticleRepositoryImpl @Inject constructor(
     // Entity <-> Domain mapping
     private fun ArticleEntity.toDomain() = Article(
         id = id,
+        articleUid = articleUid,
         title = title,
         content = content,
         domain = domain,
@@ -187,6 +188,7 @@ class ArticleRepositoryImpl @Inject constructor(
 
     private fun Article.toEntity() = ArticleEntity(
         id = id,
+        articleUid = articleUid,
         title = title,
         content = content,
         domain = domain,
