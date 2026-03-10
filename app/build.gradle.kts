@@ -112,6 +112,12 @@ dependencies {
     implementation(libs.m3.adaptive.navigation)
     implementation(libs.window.manager)
 
+    // Image loading
+    implementation(libs.coil.compose)
+
+    // HTML parsing
+    implementation(libs.jsoup)
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 

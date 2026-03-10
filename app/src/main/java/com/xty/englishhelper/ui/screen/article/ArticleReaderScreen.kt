@@ -1,35 +1,42 @@
 package com.xty.englishhelper.ui.screen.article
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,20 +46,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.xty.englishhelper.domain.model.Article
+import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleSentence
+import com.xty.englishhelper.domain.model.ArticleStatistics
 import com.xty.englishhelper.domain.model.ArticleWordLink
-import com.xty.englishhelper.domain.model.SentenceAnalysisResult
-import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
-import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
+import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
+import com.xty.englishhelper.domain.model.ParagraphType
+import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,26 +78,7 @@ fun ArticleReaderScreen(
     val uiState by viewModel.uiState.collectAsState()
     val article = uiState.article
     val snackbarHostState = remember { SnackbarHostState() }
-    val windowWidthClass = currentWindowWidthClass()
-    val isWide = windowWidthClass.isExpandedOrMedium()
     val listState = rememberLazyListState()
-
-    var showSentenceAnalysis by remember { mutableStateOf(false) }
-    var selectedSentenceId by remember { mutableStateOf(0L) }
-    var selectedSentenceText by remember { mutableStateOf("") }
-    val analysisSheetState = rememberModalBottomSheetState()
-
-    // Scroll to sentence when scrollToSentenceId is provided
-    LaunchedEffect(viewModel.scrollToSentenceId, uiState.sentences) {
-        if (viewModel.scrollToSentenceId > 0 && uiState.sentences != null) {
-            val sentences = uiState.sentences!!
-            val targetIndex = sentences.indexOfFirst { it.id == viewModel.scrollToSentenceId }
-            if (targetIndex >= 0) {
-                // +1 to account for the title item
-                listState.animateScrollToItem(targetIndex + 1)
-            }
-        }
-    }
 
     LaunchedEffect(Unit) {
         viewModel.navigateBack.collect {
@@ -101,10 +96,65 @@ fun ArticleReaderScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(article?.title ?: "文章") },
+                title = { Text(article?.title ?: "文章", maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    // Translation toggle
+                    IconButton(onClick = { viewModel.toggleTranslation() }) {
+                        Icon(
+                            Icons.Default.Translate,
+                            contentDescription = "翻译",
+                            tint = if (uiState.translationEnabled)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Notebook button with badge
+                    IconButton(onClick = { viewModel.toggleNotebook() }) {
+                        if (uiState.collectedWords.isNotEmpty()) {
+                            BadgedBox(
+                                badge = {
+                                    Badge {
+                                        Text("${uiState.collectedWords.size}")
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.MenuBook,
+                                    contentDescription = "收纳本"
+                                )
+                            }
+                        } else {
+                            Icon(
+                                Icons.AutoMirrored.Filled.MenuBook,
+                                contentDescription = "收纳本",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Save button for online/unsaved articles
+                    if (article?.isSaved == false) {
+                        TextButton(
+                            onClick = { viewModel.saveToLocal() },
+                            enabled = !uiState.isSavingToLocal
+                        ) {
+                            if (uiState.isSavingToLocal) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier
+                                        .padding(end = 4.dp)
+                                        .size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                            Text("保存")
+                        }
                     }
                 }
             )
@@ -122,243 +172,474 @@ fun ArticleReaderScreen(
                 Text("加载中…", style = MaterialTheme.typography.bodyLarge)
             }
         } else {
-            if (isWide) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                ) {
-                    ArticleReaderContent(
-                        article = article!!,
-                        sentences = uiState.sentences ?: emptyList(),
-                        wordLinks = uiState.wordLinks ?: emptyList(),
-                        sentenceAnalysis = uiState.sentenceAnalysis,
-                        isAnalyzing = uiState.isAnalyzing,
-                        onAnalyzeSentence = { sentenceId, text ->
-                            selectedSentenceId = sentenceId
-                            selectedSentenceText = text
-                            showSentenceAnalysis = true
-                            viewModel.analyzeSentence(sentenceId, text)
-                        },
-                        onWordClick = onWordClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(16.dp),
-                        listState = listState
-                    )
-
-                    // Statistics sidebar
-                    uiState.statistics?.let { stats ->
-                        Column(
-                            modifier = Modifier
-                                .weight(0.35f)
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text("统计信息", style = MaterialTheme.typography.titleMedium)
-                            Text("总词数: ${stats.wordCount}", style = MaterialTheme.typography.bodySmall)
-                            Text("句数: ${stats.sentenceCount}", style = MaterialTheme.typography.bodySmall)
-                            Text("字数: ${stats.charCount}", style = MaterialTheme.typography.bodySmall)
-                            Text("不同词: ${stats.uniqueWordCount}", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            } else {
-                ArticleReaderContent(
-                    article = article!!,
-                    sentences = uiState.sentences ?: emptyList(),
-                    wordLinks = uiState.wordLinks ?: emptyList(),
-                    sentenceAnalysis = uiState.sentenceAnalysis,
-                    isAnalyzing = uiState.isAnalyzing,
-                    onAnalyzeSentence = { sentenceId, text ->
-                        selectedSentenceId = sentenceId
-                        selectedSentenceText = text
-                        showSentenceAnalysis = true
-                        viewModel.analyzeSentence(sentenceId, text)
-                    },
-                    onWordClick = onWordClick,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    listState = listState
-                )
-            }
+            ArticleReaderContent(
+                article = article,
+                paragraphs = uiState.paragraphs ?: emptyList(),
+                wordLinks = uiState.wordLinks,
+                sentencesByParagraph = uiState.sentencesByParagraph,
+                paragraphAnalysis = uiState.paragraphAnalysis,
+                analyzingParagraphId = uiState.analyzingParagraphId,
+                translationEnabled = uiState.translationEnabled,
+                paragraphTranslations = uiState.paragraphTranslations,
+                translatingParagraphIds = uiState.translatingParagraphIds,
+                statistics = uiState.statistics,
+                onAnalyzeParagraph = { paragraphId, text ->
+                    viewModel.analyzeParagraph(paragraphId, text)
+                },
+                onWordClick = onWordClick,
+                onCollectWord = { word, context ->
+                    viewModel.collectWord(word, context)
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                listState = listState
+            )
         }
     }
 
-    // Sentence Analysis Sheet
-    if (showSentenceAnalysis) {
-        ModalBottomSheet(
-            onDismissRequest = { showSentenceAnalysis = false },
-            sheetState = analysisSheetState
-        ) {
-            SentenceAnalysisSheet(
-                sentenceText = selectedSentenceText,
-                analysis = uiState.sentenceAnalysis[selectedSentenceId],
-                isLoading = uiState.isAnalyzing == selectedSentenceId,
-                error = uiState.analyzeError,
-                onDismiss = { showSentenceAnalysis = false }
-            )
-        }
+    // Collection notebook sheet
+    if (uiState.showNotebook) {
+        CollectionNotebookSheet(
+            collectedWords = uiState.collectedWords,
+            dictionaries = uiState.dictionaries,
+            onLoadUnits = { dictId -> viewModel.getUnitsForDictionary(dictId) },
+            onRemoveWord = { viewModel.removeCollectedWord(it) },
+            onAddToDictionary = { word, dictId, unitId ->
+                viewModel.addToDictionary(word, dictId, unitId)
+            },
+            onDismiss = { viewModel.dismissNotebook() }
+        )
     }
 }
 
 @Composable
 private fun ArticleReaderContent(
     article: Article,
-    sentences: List<ArticleSentence>,
+    paragraphs: List<ArticleParagraph>,
     wordLinks: List<ArticleWordLink>,
-    sentenceAnalysis: Map<Long, SentenceAnalysisResult>,
-    isAnalyzing: Long,
-    onAnalyzeSentence: (Long, String) -> Unit,
+    sentencesByParagraph: Map<Long, List<ArticleSentence>>,
+    paragraphAnalysis: Map<Long, ParagraphAnalysisResult>,
+    analyzingParagraphId: Long,
+    translationEnabled: Boolean,
+    paragraphTranslations: Map<Long, String>,
+    translatingParagraphIds: Set<Long>,
+    statistics: ArticleStatistics?,
+    onAnalyzeParagraph: (Long, String) -> Unit,
     onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (word: String, contextSentence: String) -> Unit,
     modifier: Modifier = Modifier,
     listState: LazyListState
 ) {
-    // Build word link map: sentenceId -> List<ArticleWordLink> (with remember to avoid rebuilding)
-    val wordLinksBySentence = remember(wordLinks) { wordLinks.groupBy { it.sentenceId } }
+    // Build word link lookup: matchedToken (lowercase) -> WordLink
+    val wordLinkMap = remember(wordLinks) {
+        wordLinks.groupBy { it.matchedToken.lowercase() }
+    }
 
     LazyColumn(
         state = listState,
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = modifier,
+        contentPadding = PaddingValues(
+            horizontal = ArticleTypography.HorizontalPadding,
+            vertical = 16.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        item {
-            Text(article.title, style = MaterialTheme.typography.headlineSmall)
-            if (article.domain.isNotBlank()) {
-                Text(article.domain, style = MaterialTheme.typography.labelSmall)
+        // Cover image
+        val coverUri = article.coverImageUri ?: article.coverImageUrl
+        if (coverUri != null) {
+            item(key = "cover") {
+                AsyncImage(
+                    model = coverUri,
+                    contentDescription = "封面",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(Modifier.height(16.dp))
             }
         }
 
-        items(sentences, key = { it.id }) { sentence ->
-            SentenceRow(
-                sentenceId = sentence.id,
-                sentenceText = sentence.text,
-                wordLinks = wordLinksBySentence[sentence.id] ?: emptyList(),
-                isAnalyzing = isAnalyzing == sentence.id,
-                analysis = sentenceAnalysis[sentence.id],
-                onAnalyze = { onAnalyzeSentence(sentence.id, sentence.text) },
-                onWordClick = onWordClick
+        // Title
+        item(key = "title") {
+            Text(
+                article.title,
+                style = ArticleTypography.ReaderTitle,
+                color = MaterialTheme.colorScheme.onSurface
             )
+        }
+
+        // Meta row
+        item(key = "meta") {
+            val displayWordCount = article.wordCount.takeIf { it > 0 }
+                ?: statistics?.wordCount?.takeIf { it > 0 }
+            val metaParts = buildList {
+                if (article.author.isNotBlank()) add(article.author)
+                if (article.source.isNotBlank()) add(article.source)
+                if (displayWordCount != null) add("$displayWordCount \u8BCD")
+            }
+            if (metaParts.isNotEmpty()) {
+                Text(
+                    metaParts.joinToString(" · "),
+                    style = ArticleTypography.ReaderMeta,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Summary
+        if (article.summary.isNotBlank()) {
+            item(key = "summary") {
+                val quoteColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .drawBehind {
+                            drawLine(
+                                color = quoteColor,
+                                start = Offset(0f, 0f),
+                                end = Offset(0f, size.height),
+                                strokeWidth = 3.dp.toPx()
+                            )
+                        }
+                        .padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
+                ) {
+                    Text(
+                        article.summary,
+                        style = ArticleTypography.ReaderQuote,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        item(key = "divider") {
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(8.dp))
+        }
+
+        // Paragraphs
+        items(paragraphs, key = { it.id }) { paragraph ->
+            ParagraphBlock(
+                paragraph = paragraph,
+                wordLinkMap = wordLinkMap,
+                analysis = paragraphAnalysis[paragraph.id],
+                isAnalyzing = analyzingParagraphId == paragraph.id,
+                translationEnabled = translationEnabled,
+                translation = paragraphTranslations[paragraph.id],
+                isTranslating = paragraph.id in translatingParagraphIds,
+                onAnalyze = { onAnalyzeParagraph(paragraph.id, paragraph.text) },
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord
+            )
+            Spacer(Modifier.height(ArticleTypography.ParagraphSpacing))
+        }
+
+        item(key = "bottom_spacer") {
+            Spacer(Modifier.height(80.dp))
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SentenceRow(
-    sentenceId: Long,
-    sentenceText: String,
-    wordLinks: List<ArticleWordLink>,
+private fun ParagraphBlock(
+    paragraph: ArticleParagraph,
+    wordLinkMap: Map<String, List<ArticleWordLink>>,
+    analysis: ParagraphAnalysisResult?,
     isAnalyzing: Boolean,
-    analysis: SentenceAnalysisResult?,
+    translationEnabled: Boolean,
+    translation: String?,
+    isTranslating: Boolean,
     onAnalyze: () -> Unit,
-    onWordClick: (Long, Long) -> Unit
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (word: String, contextSentence: String) -> Unit
 ) {
-    // Build list of (text, wordLink) for rendering - split sentence into highlighted and non-highlighted parts
-    // Cache this to avoid rebuilding on every recomposition
-    val parts = remember(sentenceId, sentenceText, wordLinks) {
-        val partsList = mutableListOf<Pair<String, ArticleWordLink?>>()
-        var lastEnd = 0
-
-        wordLinks.forEach { link ->
-            val lowerText = sentenceText.lowercase()
-            val matchedToken = link.matchedToken.lowercase()
-            val startPos = lowerText.indexOf(matchedToken, startIndex = lastEnd)
-            if (startPos >= 0 && startPos < sentenceText.length) {
-                val endPos = minOf(startPos + matchedToken.length, sentenceText.length)
-                // Add non-highlighted text before word
-                if (lastEnd < startPos) {
-                    partsList.add(sentenceText.substring(lastEnd, startPos) to null)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Render paragraph text based on type
+        when (paragraph.paragraphType) {
+            ParagraphType.HEADING -> {
+                Text(
+                    paragraph.text,
+                    style = ArticleTypography.ReaderHeading,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            ParagraphType.QUOTE -> {
+                val quoteColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .drawBehind {
+                            drawLine(
+                                color = quoteColor,
+                                start = Offset(0f, 0f),
+                                end = Offset(0f, size.height),
+                                strokeWidth = 3.dp.toPx()
+                            )
+                        }
+                        .padding(start = 12.dp)
+                ) {
+                    HighlightedParagraphText(
+                        text = paragraph.text,
+                        wordLinkMap = wordLinkMap,
+                        onWordClick = onWordClick,
+                        onCollectWord = onCollectWord,
+                        style = ArticleTypography.ReaderQuote
+                    )
                 }
-                // Add highlighted word
-                partsList.add(sentenceText.substring(startPos, endPos) to link)
-                lastEnd = endPos
+            }
+            ParagraphType.IMAGE -> {
+                // Image-only paragraph
+                val imageUri = paragraph.imageUri ?: paragraph.imageUrl
+                if (imageUri != null) {
+                    AsyncImage(
+                        model = imageUri,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.FillWidth
+                    )
+                }
+                if (paragraph.text.isNotBlank()) {
+                    Text(
+                        paragraph.text,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            ParagraphType.LIST -> {
+                Row {
+                    Text("•  ", style = ArticleTypography.ReaderBody)
+                    HighlightedParagraphText(
+                        text = paragraph.text,
+                        wordLinkMap = wordLinkMap,
+                        onWordClick = onWordClick,
+                        onCollectWord = onCollectWord
+                    )
+                }
+            }
+            else -> {
+                HighlightedParagraphText(
+                    text = paragraph.text,
+                    wordLinkMap = wordLinkMap,
+                    onWordClick = onWordClick,
+                    onCollectWord = onCollectWord
+                )
             }
         }
-        // Add remaining text
-        if (lastEnd < sentenceText.length) {
-            partsList.add(sentenceText.substring(lastEnd) to null)
-        }
-        partsList
-    }
 
-    // Cache the AnnotatedString to avoid rebuilding every recomposition
-    val highlightStyle = SpanStyle(
-        background = MaterialTheme.colorScheme.primaryContainer,
-        color = MaterialTheme.colorScheme.onPrimaryContainer
+        // Translation block (inserted between text and analyze button)
+        if (translationEnabled) {
+            if (isTranslating) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 10.dp, top = 2.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "翻译中…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else if (translation != null) {
+                TranslationBlock(translation)
+            }
+        }
+
+        // Paragraph inline image
+        val paraImage = paragraph.imageUri ?: paragraph.imageUrl
+        if (paraImage != null && paragraph.paragraphType != ParagraphType.IMAGE) {
+            AsyncImage(
+                model = paraImage,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.FillWidth
+            )
+        }
+
+        // Analyze button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(
+                onClick = onAnalyze,
+                enabled = !isAnalyzing
+            ) {
+                if (isAnalyzing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .height(16.dp)
+                            .width(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+                Text(if (analysis != null) "重新整理" else "整理", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+
+        // Analysis result
+        if (analysis != null) {
+            ParagraphAnalysisCard(analysis = analysis)
+        }
+    }
+}
+
+@Composable
+private fun TranslationBlock(translation: String) {
+    val lineColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                drawLine(
+                    lineColor,
+                    Offset(0f, 0f),
+                    Offset(0f, size.height),
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
+            .padding(start = 10.dp, top = 2.dp, bottom = 2.dp)
+    ) {
+        Text(
+            translation,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun HighlightedParagraphText(
+    text: String,
+    wordLinkMap: Map<String, List<ArticleWordLink>>,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (word: String, contextSentence: String) -> Unit,
+    style: androidx.compose.ui.text.TextStyle = ArticleTypography.ReaderBody
+) {
+    // Tokenize and build annotated string with underlined dictionary words
+    val underlineStyle = SpanStyle(
+        textDecoration = TextDecoration.Underline,
+        color = MaterialTheme.colorScheme.primary
     )
-    val annotatedString = remember(parts, highlightStyle) {
+
+    val annotatedString = remember(text, wordLinkMap) {
         buildAnnotatedString {
-            parts.forEach { (text, link) ->
-                if (link != null) {
-                    pushStringAnnotation(tag = "word", annotation = "${link.wordId}:${link.dictionaryId}")
-                    withStyle(highlightStyle) {
-                        append(text)
+            // Simple word-by-word matching
+            val words = text.split(Regex("(?<=\\s)|(?=\\s)|(?<=[,.:;!?\"'()\\[\\]{}])|(?=[,.:;!?\"'()\\[\\]{}])"))
+            for (word in words) {
+                val cleaned = word.trim().lowercase().trimEnd(',', '.', ':', ';', '!', '?', '"', '\'', ')', ']', '}')
+                    .trimStart('"', '\'', '(', '[', '{')
+                val links = wordLinkMap[cleaned]
+
+                if (links != null && links.isNotEmpty() && cleaned.isNotEmpty()) {
+                    pushStringAnnotation(tag = "word", annotation = "${links.first().wordId}:${links.first().dictionaryId}")
+                    withStyle(underlineStyle) {
+                        append(word)
                     }
                     pop()
                 } else {
-                    append(text)
+                    append(word)
                 }
             }
         }
     }
 
-    Column(
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    Text(
+        annotatedString,
+        style = style,
+        color = MaterialTheme.colorScheme.onSurface,
+        onTextLayout = { textLayoutResult = it },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        // Render highlighted text with tap and long-press gestures
-        var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-
-        Text(
-            annotatedString,
-            style = MaterialTheme.typography.bodyMedium,
-            onTextLayout = { textLayoutResult = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .pointerInput(wordLinks) {
-                    detectTapGestures(
-                        onTap = { tapOffset ->
-                            textLayoutResult?.let { layout ->
-                                val charOffset = layout.getOffsetForPosition(tapOffset)
-                                // Use cached annotatedString directly - no need to rebuild
-                                annotatedString
-                                    .getStringAnnotations("word", charOffset, charOffset)
-                                    .firstOrNull()?.let { ann ->
-                                        val (wId, dId) = ann.item.split(":")
-                                        onWordClick(wId.toLong(), dId.toLong())
-                                    }
+            .pointerInput(wordLinkMap) {
+                detectTapGestures(
+                    onTap = { tapOffset ->
+                        textLayoutResult?.let { layout ->
+                            val charOffset = layout.getOffsetForPosition(tapOffset)
+                            val annotations = annotatedString.getStringAnnotations("word", charOffset, charOffset)
+                            if (annotations.isNotEmpty()) {
+                                val (wId, dId) = annotations.first().item.split(":")
+                                onWordClick(wId.toLong(), dId.toLong())
+                            } else {
+                                // Non-dictionary word → extract and collect
+                                val tappedWord = extractWordAtOffset(text, charOffset)
+                                if (tappedWord != null) {
+                                    val context = extractContextSentence(text, charOffset)
+                                    onCollectWord(tappedWord, context)
+                                }
                             }
-                        },
-                        onLongPress = { onAnalyze() }
-                    )
-                }
-        )
+                        }
+                    }
+                )
+            }
+    )
+}
 
-        if (isAnalyzing) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.padding(end = 8.dp),
-                    strokeWidth = 2.dp
-                )
-                Text("分析中…", style = MaterialTheme.typography.labelSmall)
-            }
-        } else if (analysis != null) {
-            Text(analysis.meaningZh, style = MaterialTheme.typography.bodySmall)
-            if (analysis.grammarPoints.isNotEmpty()) {
-                Text(
-                    "语法: ${analysis.grammarPoints.take(2).joinToString("; ") { it.title }}",
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
+private fun extractWordAtOffset(text: String, charOffset: Int): String? {
+    if (charOffset < 0 || charOffset >= text.length) return null
+    if (!text[charOffset].isLetter()) return null
+
+    fun isWordInternal(index: Int): Boolean {
+        val c = text[index]
+        if (c.isLetter()) return true
+        if (c == '\'' || c == '\u2019' || c == '-') {
+            return index > 0 && text[index - 1].isLetter()
+                && index < text.length - 1 && text[index + 1].isLetter()
         }
+        return false
     }
+
+    var start = charOffset
+    while (start > 0 && isWordInternal(start - 1)) start--
+    var end = charOffset
+    while (end < text.length - 1 && isWordInternal(end + 1)) end++
+
+    // Trim: ensure first and last chars are letters
+    while (start <= end && !text[start].isLetter()) start++
+    while (end >= start && !text[end].isLetter()) end--
+    if (start > end) return null
+
+    val word = text.substring(start, end + 1)
+    return if (word.length >= 2 && word.all {
+            it in 'A'..'Z' || it in 'a'..'z' || it == '\'' || it == '\u2019' || it == '-'
+        }) word else null
+}
+
+private fun extractContextSentence(text: String, charOffset: Int): String {
+    // Find sentence boundaries around the charOffset
+    val sentenceEnders = setOf('.', '!', '?')
+
+    var start = charOffset
+    while (start > 0) {
+        val prev = text[start - 1]
+        if (prev in sentenceEnders && start < text.length && text[start] == ' ') break
+        start--
+    }
+
+    var end = charOffset
+    while (end < text.length) {
+        if (text[end] in sentenceEnders) {
+            end++
+            break
+        }
+        end++
+    }
+
+    return text.substring(start, end.coerceAtMost(text.length)).trim()
 }

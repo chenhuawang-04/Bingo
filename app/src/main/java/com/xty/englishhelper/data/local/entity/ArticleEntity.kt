@@ -34,5 +34,18 @@ data class ArticleEntity(
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "updated_at")
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val summary: String = "",
+    val author: String = "",
+    val source: String = "",
+    @ColumnInfo(name = "cover_image_uri")
+    val coverImageUri: String? = null,
+    @ColumnInfo(name = "cover_image_url")
+    val coverImageUrl: String? = null,
+    @ColumnInfo(name = "word_count")
+    val wordCount: Int = 0,
+    @ColumnInfo(name = "is_saved")
+    val isSaved: Int = 1,
+    @ColumnInfo(name = "source_type_v2")
+    val sourceTypeV2: String = "LOCAL"
 )

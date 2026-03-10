@@ -7,7 +7,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(
-    tableName = "article_sentences",
+    tableName = "article_paragraphs",
     foreignKeys = [
         ForeignKey(
             entity = ArticleEntity::class,
@@ -18,21 +18,21 @@ import androidx.room.PrimaryKey
     ],
     indices = [
         Index("article_id"),
-        Index(value = ["article_id", "sentence_index"], unique = true)
+        Index(value = ["article_id", "paragraph_index"], unique = true)
     ]
 )
-data class ArticleSentenceEntity(
+data class ArticleParagraphEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     @ColumnInfo(name = "article_id")
     val articleId: Long,
-    @ColumnInfo(name = "sentence_index")
-    val sentenceIndex: Int,
+    @ColumnInfo(name = "paragraph_index")
+    val paragraphIndex: Int,
     val text: String,
-    @ColumnInfo(name = "char_start")
-    val charStart: Int,
-    @ColumnInfo(name = "char_end")
-    val charEnd: Int,
-    @ColumnInfo(name = "paragraph_id")
-    val paragraphId: Long = 0
+    @ColumnInfo(name = "image_uri")
+    val imageUri: String? = null,
+    @ColumnInfo(name = "image_url")
+    val imageUrl: String? = null,
+    @ColumnInfo(name = "paragraph_type")
+    val paragraphType: String = "TEXT"
 )

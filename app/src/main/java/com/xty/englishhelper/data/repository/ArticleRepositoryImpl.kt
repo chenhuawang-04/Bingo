@@ -1,24 +1,29 @@
 package com.xty.englishhelper.data.repository
 
-import androidx.room.Transaction
 import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
+import com.xty.englishhelper.data.local.entity.ArticleParagraphEntity
 import com.xty.englishhelper.data.local.entity.ArticleSentenceEntity
 import com.xty.englishhelper.data.local.entity.ArticleWordLinkEntity
 import com.xty.englishhelper.data.local.entity.ArticleWordStatEntity
+import com.xty.englishhelper.data.local.entity.ParagraphAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.SentenceAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.WordExampleEntity
 import com.xty.englishhelper.data.mapper.parseInflections
 import com.xty.englishhelper.domain.model.Article
+import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSentence
 import com.xty.englishhelper.domain.model.ArticleSourceType
+import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ArticleWordStat
+import com.xty.englishhelper.domain.model.ParagraphType
 import com.xty.englishhelper.domain.model.WordExampleSourceType
 import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.repository.ParagraphAnalysisCacheData
 import com.xty.englishhelper.domain.repository.SentenceAnalysisCache
 import com.xty.englishhelper.domain.repository.WordExample
 import com.xty.englishhelper.domain.repository.WordMatchInfo
@@ -73,6 +78,23 @@ class ArticleRepositoryImpl @Inject constructor(
         articleDao.deleteSentencesByArticle(articleId)
     }
 
+    override suspend fun getSentencesByParagraph(paragraphId: Long): List<ArticleSentence> {
+        return articleDao.getSentencesByParagraph(paragraphId).map { it.toDomain() }
+    }
+
+    // Paragraphs
+    override suspend fun getParagraphs(articleId: Long): List<ArticleParagraph> {
+        return articleDao.getParagraphs(articleId).map { it.toDomain() }
+    }
+
+    override suspend fun insertParagraphs(paragraphs: List<ArticleParagraph>) {
+        articleDao.insertParagraphs(paragraphs.map { it.toEntity() })
+    }
+
+    override suspend fun deleteParagraphsByArticle(articleId: Long) {
+        articleDao.deleteParagraphsByArticle(articleId)
+    }
+
     override suspend fun upsertWordStats(articleId: Long, stats: List<ArticleWordStat>) {
         articleDao.upsertWordStats(stats.map { it.toEntity() })
     }
@@ -125,6 +147,32 @@ class ArticleRepositoryImpl @Inject constructor(
         )
     }
 
+    override suspend fun getParagraphAnalysisCache(articleId: Long, paragraphId: Long, hash: String, modelKey: String): ParagraphAnalysisCacheData? {
+        return articleDao.getParagraphAnalysisCache(articleId, paragraphId, hash, modelKey)?.let {
+            ParagraphAnalysisCacheData(
+                meaningZh = it.meaningZh,
+                grammarJson = it.grammarJson,
+                keywordsJson = it.keywordsJson,
+                breakdownsJson = it.breakdownsJson
+            )
+        }
+    }
+
+    override suspend fun insertParagraphAnalysisCache(articleId: Long, paragraphId: Long, hash: String, modelKey: String, cache: ParagraphAnalysisCacheData) {
+        articleDao.insertParagraphAnalysisCache(
+            ParagraphAnalysisCacheEntity(
+                articleId = articleId,
+                paragraphId = paragraphId,
+                paragraphHash = hash,
+                modelKey = modelKey,
+                meaningZh = cache.meaningZh,
+                grammarJson = cache.grammarJson,
+                keywordsJson = cache.keywordsJson,
+                breakdownsJson = cache.breakdownsJson
+            )
+        )
+    }
+
     override suspend fun getExamplesForWord(wordId: Long): List<WordExample> {
         return articleDao.getExamplesForWord(wordId).map { it.toDomain() }
     }
@@ -170,6 +218,26 @@ class ArticleRepositoryImpl @Inject constructor(
         articleDao.deleteImagesByArticle(articleId)
     }
 
+    override suspend fun updateWordCount(articleId: Long, wordCount: Int) {
+        articleDao.updateWordCount(articleId, wordCount)
+    }
+
+    override suspend fun getArticleBySourceUrl(sourceUrl: String): Article? {
+        return articleDao.getArticleBySourceUrl(sourceUrl)?.toDomain()
+    }
+
+    override suspend fun markArticleSaved(articleId: Long) {
+        articleDao.markArticleSaved(articleId)
+    }
+
+    override suspend fun deleteUnsavedArticlesBefore(cutoff: Long) {
+        articleDao.deleteUnsavedArticlesBefore(cutoff)
+    }
+
+    override fun getSavedArticles(): Flow<List<Article>> {
+        return articleDao.getSavedArticles().map { list -> list.map { it.toDomain() } }
+    }
+
     // Entity <-> Domain mapping
     private fun ArticleEntity.toDomain() = Article(
         id = id,
@@ -183,7 +251,15 @@ class ArticleRepositoryImpl @Inject constructor(
         sourceType = ArticleSourceType.entries.getOrElse(sourceType - 1) { ArticleSourceType.MANUAL },
         parseStatus = ArticleParseStatus.entries.getOrElse(parseStatus) { ArticleParseStatus.PENDING },
         createdAt = createdAt,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        summary = summary,
+        author = author,
+        source = source,
+        coverImageUri = coverImageUri,
+        coverImageUrl = coverImageUrl,
+        wordCount = wordCount,
+        isSaved = isSaved == 1,
+        sourceTypeV2 = runCatching { ArticleSourceTypeV2.valueOf(sourceTypeV2) }.getOrDefault(ArticleSourceTypeV2.LOCAL)
     )
 
     private fun Article.toEntity() = ArticleEntity(
@@ -198,7 +274,15 @@ class ArticleRepositoryImpl @Inject constructor(
         sourceType = sourceType.ordinal + 1,
         parseStatus = parseStatus.ordinal,
         createdAt = createdAt,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        summary = summary,
+        author = author,
+        source = source,
+        coverImageUri = coverImageUri,
+        coverImageUrl = coverImageUrl,
+        wordCount = wordCount,
+        isSaved = if (isSaved) 1 else 0,
+        sourceTypeV2 = sourceTypeV2.name
     )
 
     private fun ArticleSentenceEntity.toDomain() = ArticleSentence(
@@ -207,7 +291,8 @@ class ArticleRepositoryImpl @Inject constructor(
         sentenceIndex = sentenceIndex,
         text = text,
         charStart = charStart,
-        charEnd = charEnd
+        charEnd = charEnd,
+        paragraphId = paragraphId
     )
 
     private fun ArticleSentence.toEntity() = ArticleSentenceEntity(
@@ -216,7 +301,28 @@ class ArticleRepositoryImpl @Inject constructor(
         sentenceIndex = sentenceIndex,
         text = text,
         charStart = charStart,
-        charEnd = charEnd
+        charEnd = charEnd,
+        paragraphId = paragraphId
+    )
+
+    private fun ArticleParagraphEntity.toDomain() = ArticleParagraph(
+        id = id,
+        articleId = articleId,
+        paragraphIndex = paragraphIndex,
+        text = text,
+        imageUri = imageUri,
+        imageUrl = imageUrl,
+        paragraphType = runCatching { ParagraphType.valueOf(paragraphType) }.getOrDefault(ParagraphType.TEXT)
+    )
+
+    private fun ArticleParagraph.toEntity() = ArticleParagraphEntity(
+        id = id,
+        articleId = articleId,
+        paragraphIndex = paragraphIndex,
+        text = text,
+        imageUri = imageUri,
+        imageUrl = imageUrl,
+        paragraphType = paragraphType.name
     )
 
     private fun ArticleWordStatEntity.toDomain() = ArticleWordStat(

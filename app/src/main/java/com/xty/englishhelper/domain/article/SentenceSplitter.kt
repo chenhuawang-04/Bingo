@@ -59,3 +59,38 @@ object SentenceSplitter {
         return sentences
     }
 }
+
+object SmartParagraphSplitter {
+    fun split(content: String): List<String> {
+        // If content already has blank-line paragraph breaks, use them
+        val blankLineSplit = content.split(Regex("\\n\\s*\\n"))
+        if (blankLineSplit.size > 1) {
+            return blankLineSplit.map { it.trim() }.filter { it.isNotBlank() }
+        }
+
+        // If content has single newlines, treat each as a paragraph
+        val newLineSplit = content.split("\n")
+        if (newLineSplit.size > 1) {
+            return newLineSplit.map { it.trim() }.filter { it.isNotBlank() }
+        }
+
+        // Otherwise, split by sentence groups (~3-5 sentences per paragraph)
+        val sentenceEnders = Regex("(?<=[.!?])\\s+(?=[A-Z])")
+        val sentences = sentenceEnders.split(content).map { it.trim() }.filter { it.isNotBlank() }
+        if (sentences.size <= 4) return listOf(content.trim())
+
+        val paragraphs = mutableListOf<String>()
+        val buffer = mutableListOf<String>()
+        for (sentence in sentences) {
+            buffer.add(sentence)
+            if (buffer.size >= 4) {
+                paragraphs.add(buffer.joinToString(" "))
+                buffer.clear()
+            }
+        }
+        if (buffer.isNotEmpty()) {
+            paragraphs.add(buffer.joinToString(" "))
+        }
+        return paragraphs
+    }
+}

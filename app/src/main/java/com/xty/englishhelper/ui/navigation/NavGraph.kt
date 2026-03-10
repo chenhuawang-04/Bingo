@@ -11,6 +11,7 @@ import com.xty.englishhelper.ui.screen.addword.AddWordScreen
 import com.xty.englishhelper.ui.screen.article.ArticleEditorScreen
 import com.xty.englishhelper.ui.screen.article.ArticleListScreen
 import com.xty.englishhelper.ui.screen.article.ArticleReaderScreen
+import com.xty.englishhelper.ui.screen.guardian.GuardianBrowseScreen
 import com.xty.englishhelper.ui.screen.batchimport.BatchImportScreen
 import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
 import com.xty.englishhelper.ui.screen.home.HomeScreen
@@ -146,7 +147,8 @@ fun NavGraph(navController: NavHostController) {
                     onReadArticle = { articleId ->
                         navController.navigate(ArticleReaderRoute(articleId))
                     },
-                    onSettings = { navController.navigate(SettingsRoute) }
+                    onSettings = { navController.navigate(SettingsRoute) },
+                    onGuardianBrowse = { navController.navigate(GuardianBrowseRoute) }
                 )
             }
 
@@ -167,6 +169,16 @@ fun NavGraph(navController: NavHostController) {
                     onBack = { navController.popBackStack() },
                     onWordClick = { wordId, dictionaryId ->
                         navController.navigate(WordDetailRoute(wordId, dictionaryId))
+                    }
+                )
+            }
+
+            // Guardian online reading
+            composable<GuardianBrowseRoute> {
+                GuardianBrowseScreen(
+                    onBack = { navController.popBackStack() },
+                    onArticleClick = { articleId ->
+                        navController.navigate(ArticleReaderRoute(articleId))
                     }
                 )
             }

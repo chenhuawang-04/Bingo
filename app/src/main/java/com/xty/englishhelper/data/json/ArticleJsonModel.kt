@@ -17,5 +17,10 @@ data class ArticleJsonModel(
     val difficultyAi: Float = 0f,
     val sourceType: String = "MANUAL",
     val createdAt: Long = 0,
-    val updatedAt: Long = 0
+    val updatedAt: Long = 0,
+    val summary: String = "",
+    val author: String = "",
+    val source: String = "",
+    val coverImageUrl: String? = null,
+    val wordCount: Int = 0
 )

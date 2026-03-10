@@ -5,6 +5,8 @@ import com.xty.englishhelper.data.remote.AiApiClientProvider
 import com.xty.englishhelper.data.remote.ChatMessage
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.ArticleOcrResult
+import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
+import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import javax.inject.Inject
@@ -120,6 +122,115 @@ class ArticleAiRepositoryImpl @Inject constructor(
         return parseStringArray(responseText)
     }
 
+    override suspend fun analyzeParagraph(
+        paragraphText: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): ParagraphAnalysisResult {
+        val systemPrompt =
+            """
+            You are an English paragraph analysis assistant for Chinese learners.
+            Analyze the paragraph by:
+            1. Translating each sentence to Chinese
+            2. Identifying key grammar points
+            3. Listing important vocabulary
+
+            Return strict JSON only:
+            {
+              "meaningZh": "Overall paragraph meaning in Chinese",
+              "grammarPoints": [
+                {"title": "grammar point", "explanation": "Chinese explanation"}
+              ],
+              "keyVocabulary": [
+                {"word": "english word", "meaning": "Chinese meaning"}
+              ],
+              "sentenceBreakdowns": [
+                {"sentence": "original sentence", "translation": "Chinese translation", "grammarNotes": "brief grammar note"}
+              ]
+            }
+            """.trimIndent()
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            systemPrompt = systemPrompt,
+            messages = listOf(
+                ChatMessage(role = "user", content = "Analyze this paragraph:\n\n$paragraphText")
+            ),
+            maxTokens = 2048
+        )
+
+        return parseJsonPayload(responseText, ParagraphAnalysisResult::class.java)
+            ?: ParagraphAnalysisResult()
+    }
+
+    override suspend fun translateParagraph(
+        paragraphText: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): String {
+        val systemPrompt = "你是一位专业的英汉翻译。请将用户提供的英文段落翻译为流畅自然的中文。只返回中文译文，不要添加任何解释、注释或原文。"
+
+        val client = clientProvider.getClient(provider)
+        return client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            systemPrompt = systemPrompt,
+            messages = listOf(
+                ChatMessage(role = "user", content = paragraphText)
+            ),
+            maxTokens = 1024
+        ).trim()
+    }
+
+    override suspend fun quickAnalyzeWord(
+        word: String,
+        contextSentence: String?,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): QuickWordAnalysis {
+        val contextPart = if (!contextSentence.isNullOrBlank()) {
+            "\nContext sentence: $contextSentence"
+        } else ""
+
+        val systemPrompt = """
+            You are an English vocabulary analysis assistant for Chinese learners preparing for the graduate school entrance exam (考研).
+            Analyze the given word and return strict JSON only:
+            {
+              "phonetic": "IPA phonetic notation",
+              "partOfSpeech": "part of speech abbreviation (n./v./adj./adv./etc.)",
+              "contextMeaning": "meaning in the given context (in Chinese)",
+              "commonMeanings": ["meaning1", "meaning2", "meaning3"],
+              "examImportance": "核心/高频/普通/低频"
+            }
+            - commonMeanings: up to 3 most common Chinese meanings
+            - examImportance: rate importance for 考研 English
+        """.trimIndent()
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            systemPrompt = systemPrompt,
+            messages = listOf(
+                ChatMessage(role = "user", content = "Word: $word$contextPart")
+            ),
+            maxTokens = 512
+        )
+
+        return parseQuickWordAnalysis(responseText)
+    }
+
     private fun <T> parseJsonPayload(responseText: String, clazz: Class<T>): T? {
         val cleaned = stripCodeFence(responseText)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
@@ -175,4 +286,35 @@ class ArticleAiRepositoryImpl @Inject constructor(
             .filter { it.isNotBlank() }
             .toList()
     }
+
+    private fun parseQuickWordAnalysis(text: String): QuickWordAnalysis {
+        val cleaned = stripCodeFence(text)
+        val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+
+        // Parse using Moshi
+        val adapter = moshi.adapter(QuickWordAnalysisJson::class.java).lenient()
+        val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
+            ?: runCatching { adapter.fromJson(removeTrailingCommas(json)) }.getOrNull()
+
+        return if (parsed != null) {
+            QuickWordAnalysis(
+                phonetic = parsed.phonetic ?: "",
+                partOfSpeech = parsed.partOfSpeech ?: "",
+                contextMeaning = parsed.contextMeaning ?: "",
+                commonMeanings = parsed.commonMeanings ?: emptyList(),
+                examImportance = parsed.examImportance ?: ""
+            )
+        } else {
+            QuickWordAnalysis()
+        }
+    }
 }
+
+// Internal JSON model for Moshi parsing
+private data class QuickWordAnalysisJson(
+    val phonetic: String? = null,
+    val partOfSpeech: String? = null,
+    val contextMeaning: String? = null,
+    val commonMeanings: List<String>? = null,
+    val examImportance: String? = null
+)

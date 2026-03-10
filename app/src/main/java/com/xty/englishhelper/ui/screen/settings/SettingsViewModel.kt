@@ -105,6 +105,7 @@ class SettingsViewModel @Inject constructor(
         return when (scope) {
             AiSettingsScope.POOL -> state.poolAiSettings
             AiSettingsScope.OCR -> state.ocrAiSettings
+            AiSettingsScope.ARTICLE -> state.articleAiSettings
             AiSettingsScope.MAIN -> ScopedAiSettingsState()
         }
     }
@@ -265,6 +266,7 @@ class SettingsViewModel @Inject constructor(
             when (scope) {
                 AiSettingsScope.POOL -> state.copy(poolAiSettings = scoped)
                 AiSettingsScope.OCR -> state.copy(ocrAiSettings = scoped)
+                AiSettingsScope.ARTICLE -> state.copy(articleAiSettings = scoped)
                 AiSettingsScope.MAIN -> state
             }
         }

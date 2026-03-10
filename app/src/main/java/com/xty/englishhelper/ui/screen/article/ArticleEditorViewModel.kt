@@ -6,9 +6,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.article.SmartParagraphSplitter
+import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.ParagraphType
+import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.usecase.article.CreateArticleUseCase
 import com.xty.englishhelper.domain.usecase.article.ExtractArticleFromImagesUseCase
 import com.xty.englishhelper.domain.usecase.article.GetArticleDetailUseCase
@@ -23,12 +27,21 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class ParagraphInput(
+    val text: String = "",
+    val imageUri: Uri? = null,
+    val type: ParagraphType = ParagraphType.TEXT
+)
+
 data class ArticleEditorUiState(
     val isEditing: Boolean = false,
     val title: String = "",
-    val content: String = "",
+    val summary: String = "",
+    val author: String = "",
+    val source: String = "",
     val domain: String = "",
-    val difficulty: Float = 0f,
+    val coverImageUri: Uri? = null,
+    val paragraphs: List<ParagraphInput> = listOf(ParagraphInput()),
     val imageUris: List<Uri> = emptyList(),
     val isOcrLoading: Boolean = false,
     val isSaving: Boolean = false,
@@ -45,7 +58,8 @@ class ArticleEditorViewModel @Inject constructor(
     private val getArticleDetail: GetArticleDetailUseCase,
     private val parseArticle: ParseArticleUseCase,
     private val extractFromImages: ExtractArticleFromImagesUseCase,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val repository: ArticleRepository
 ) : ViewModel() {
 
     private val articleId: Long = savedStateHandle["articleId"] ?: 0L
@@ -62,12 +76,32 @@ class ArticleEditorViewModel @Inject constructor(
     private fun loadArticle() {
         viewModelScope.launch {
             getArticleDetail(articleId).first()?.let { article ->
+                // Load paragraphs from DB
+                val paragraphs = repository.getParagraphs(articleId)
+                val paragraphInputs = if (paragraphs.isNotEmpty()) {
+                    paragraphs.map { p ->
+                        ParagraphInput(
+                            text = p.text,
+                            imageUri = p.imageUri?.let { Uri.parse(it) },
+                            type = p.paragraphType
+                        )
+                    }
+                } else {
+                    // Fallback: split content into paragraphs
+                    val splits = SmartParagraphSplitter.split(article.content)
+                    splits.map { ParagraphInput(text = it) }
+                }
+
                 _uiState.update {
                     it.copy(
                         isEditing = true,
                         title = article.title,
-                        content = article.content,
-                        domain = article.domain
+                        summary = article.summary,
+                        author = article.author,
+                        source = article.source,
+                        domain = article.domain,
+                        coverImageUri = article.coverImageUri?.let { uri -> Uri.parse(uri) },
+                        paragraphs = paragraphInputs.ifEmpty { listOf(ParagraphInput()) }
                     )
                 }
             }
@@ -78,12 +112,67 @@ class ArticleEditorViewModel @Inject constructor(
         _uiState.update { it.copy(title = value) }
     }
 
-    fun onContentChange(value: String) {
-        _uiState.update { it.copy(content = value) }
+    fun onSummaryChange(value: String) {
+        _uiState.update { it.copy(summary = value) }
+    }
+
+    fun onAuthorChange(value: String) {
+        _uiState.update { it.copy(author = value) }
+    }
+
+    fun onSourceChange(value: String) {
+        _uiState.update { it.copy(source = value) }
     }
 
     fun onDomainChange(value: String) {
         _uiState.update { it.copy(domain = value) }
+    }
+
+    fun onCoverImageSelected(uri: Uri?) {
+        _uiState.update { it.copy(coverImageUri = uri) }
+    }
+
+    fun onParagraphTextChange(index: Int, text: String) {
+        _uiState.update {
+            val newParagraphs = it.paragraphs.toMutableList()
+            if (index < newParagraphs.size) {
+                newParagraphs[index] = newParagraphs[index].copy(text = text)
+            }
+            it.copy(paragraphs = newParagraphs)
+        }
+    }
+
+    fun onParagraphImageSelected(index: Int, uri: Uri?) {
+        _uiState.update {
+            val newParagraphs = it.paragraphs.toMutableList()
+            if (index < newParagraphs.size) {
+                newParagraphs[index] = newParagraphs[index].copy(imageUri = uri)
+            }
+            it.copy(paragraphs = newParagraphs)
+        }
+    }
+
+    fun addParagraph() {
+        _uiState.update {
+            it.copy(paragraphs = it.paragraphs + ParagraphInput())
+        }
+    }
+
+    fun removeParagraph(index: Int) {
+        _uiState.update {
+            if (it.paragraphs.size <= 1) return@update it
+            val newParagraphs = it.paragraphs.toMutableList()
+            newParagraphs.removeAt(index)
+            it.copy(paragraphs = newParagraphs)
+        }
+    }
+
+    fun pasteFullText(text: String) {
+        val splits = SmartParagraphSplitter.split(text)
+        if (splits.isEmpty()) return
+        _uiState.update {
+            it.copy(paragraphs = splits.map { s -> ParagraphInput(text = s) })
+        }
     }
 
     fun addImages(uris: List<Uri>) {
@@ -116,13 +205,19 @@ class ArticleEditorViewModel @Inject constructor(
                 val imageBytesList = uris.map { readImageBytes(it) }
                 val result = extractFromImages(imageBytesList, _uiState.value.title.ifBlank { null }, config.apiKey, config.model, config.baseUrl, config.provider)
 
+                // Auto-split OCR result into paragraphs
+                val paragraphs = if (result.content.isNotBlank()) {
+                    SmartParagraphSplitter.split(result.content).map { ParagraphInput(text = it) }
+                } else {
+                    _uiState.value.paragraphs
+                }
+
                 _uiState.update {
                     it.copy(
                         isOcrLoading = false,
                         title = result.title.ifBlank { it.title },
-                        content = result.content.ifBlank { it.content },
                         domain = result.domain.ifBlank { it.domain },
-                        difficulty = if (result.difficulty > 0) result.difficulty else it.difficulty
+                        paragraphs = paragraphs
                     )
                 }
             } catch (e: Exception) {
@@ -137,7 +232,8 @@ class ArticleEditorViewModel @Inject constructor(
             _uiState.update { it.copy(error = "请输入文章标题") }
             return
         }
-        if (state.content.isBlank()) {
+        val nonEmptyParagraphs = state.paragraphs.filter { it.text.isNotBlank() }
+        if (nonEmptyParagraphs.isEmpty()) {
             _uiState.update { it.copy(error = "请输入文章内容") }
             return
         }
@@ -145,23 +241,47 @@ class ArticleEditorViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
             try {
+                // Build content from paragraphs
+                val content = nonEmptyParagraphs.joinToString("\n\n") { it.text.trim() }
+                val paragraphModels = nonEmptyParagraphs.mapIndexed { index, p ->
+                    ArticleParagraph(
+                        paragraphIndex = index,
+                        text = p.text.trim(),
+                        imageUri = p.imageUri?.toString(),
+                        paragraphType = p.type
+                    )
+                }
+
                 val savedId = if (state.isEditing) {
                     val article = getArticleDetail(articleId).first()!!
+                    // Update paragraphs
+                    repository.deleteParagraphsByArticle(articleId)
+                    repository.insertParagraphs(paragraphModels.map {
+                        it.copy(articleId = articleId)
+                    })
                     updateArticle(
                         article.copy(
                             title = state.title.trim(),
-                            content = state.content.trim(),
+                            content = content,
                             domain = state.domain.trim(),
+                            summary = state.summary.trim(),
+                            author = state.author.trim(),
+                            source = state.source.trim(),
+                            coverImageUri = state.coverImageUri?.toString(),
                             parseStatus = ArticleParseStatus.PENDING
                         )
                     )
                 } else {
                     createArticle(
                         title = state.title.trim(),
-                        content = state.content.trim(),
+                        content = content,
                         sourceType = if (state.imageUris.isNotEmpty()) ArticleSourceType.AI else ArticleSourceType.MANUAL,
                         domain = state.domain.trim(),
-                        difficultyAi = state.difficulty
+                        summary = state.summary.trim(),
+                        author = state.author.trim(),
+                        source = state.source.trim(),
+                        paragraphs = paragraphModels,
+                        coverImageUri = state.coverImageUri?.toString()
                     )
                 }
 

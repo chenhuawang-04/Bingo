@@ -7,6 +7,9 @@ import com.xty.englishhelper.data.remote.AnthropicApiService
 import com.xty.englishhelper.data.remote.GitHubApiService
 import com.xty.englishhelper.data.remote.OpenAiApiService
 import com.xty.englishhelper.data.remote.interceptor.AnthropicHeaderInterceptor
+import com.xty.englishhelper.data.remote.guardian.GuardianHtmlParser
+import com.xty.englishhelper.data.remote.guardian.GuardianService
+import com.xty.englishhelper.data.remote.guardian.GuardianServiceImpl
 import com.xty.englishhelper.util.Constants
 import dagger.Module
 import dagger.Provides
@@ -161,5 +164,39 @@ object NetworkModule {
     @Singleton
     fun provideGitHubApiService(@Named("github") retrofit: Retrofit): GitHubApiService {
         return retrofit.create(GitHubApiService::class.java)
+    }
+
+    // Guardian
+    @Provides
+    @Singleton
+    @Named("guardian")
+    fun provideGuardianOkHttpClient(): OkHttpClient {
+        val builder = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .build()
+                chain.proceed(request)
+            }
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+
+        if (BuildConfig.DEBUG) {
+            builder.addInterceptor(createLoggingInterceptor())
+        }
+
+        return builder.build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideGuardianHtmlParser(): GuardianHtmlParser = GuardianHtmlParser()
+
+    @Provides
+    @Singleton
+    fun provideGuardianService(@Named("guardian") client: OkHttpClient): GuardianService {
+        return GuardianServiceImpl(client)
     }
 }

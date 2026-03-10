@@ -4,6 +4,10 @@ enum class ArticleSourceType {
     MANUAL, AI
 }
 
+enum class ArticleSourceTypeV2 {
+    LOCAL, ONLINE
+}
+
 enum class ArticleParseStatus {
     PENDING, PROCESSING, DONE, FAILED
 }
@@ -20,5 +24,13 @@ data class Article(
     val sourceType: ArticleSourceType = ArticleSourceType.MANUAL,
     val parseStatus: ArticleParseStatus = ArticleParseStatus.PENDING,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val summary: String = "",
+    val author: String = "",
+    val source: String = "",
+    val coverImageUri: String? = null,
+    val coverImageUrl: String? = null,
+    val wordCount: Int = 0,
+    val isSaved: Boolean = true,
+    val sourceTypeV2: ArticleSourceTypeV2 = ArticleSourceTypeV2.LOCAL
 )

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.model.Article
+import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.usecase.article.DeleteArticleUseCase
 import com.xty.englishhelper.domain.usecase.article.GetArticleListUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,11 +26,23 @@ data class ArticleListUiState(
 @HiltViewModel
 class ArticleListViewModel @Inject constructor(
     private val getArticleList: GetArticleListUseCase,
-    private val deleteArticle: DeleteArticleUseCase
+    private val deleteArticle: DeleteArticleUseCase,
+    private val guardianRepository: GuardianRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ArticleListUiState())
     val uiState: StateFlow<ArticleListUiState> = _uiState.asStateFlow()
+
+    init {
+        // Cleanup old unsaved Guardian articles on entry
+        viewModelScope.launch {
+            try {
+                guardianRepository.cleanupUnsavedArticles()
+            } catch (e: Exception) {
+                Log.w("ArticleListVM", "Cleanup unsaved articles failed", e)
+            }
+        }
+    }
 
     fun getArticles(): Flow<List<Article>> {
         return getArticleList()

@@ -14,6 +14,7 @@ data class SettingsUiState(
     val error: String? = null,
     val poolAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val ocrAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
+    val articleAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val cloudSync: CloudSyncState = CloudSyncState()
 )
 

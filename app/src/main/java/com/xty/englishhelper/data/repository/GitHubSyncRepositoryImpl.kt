@@ -264,7 +264,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     sourceType = try { ArticleSourceType.valueOf(articleJson.sourceType) } catch (_: Exception) { ArticleSourceType.MANUAL },
                     parseStatus = ArticleParseStatus.PENDING,
                     createdAt = articleJson.createdAt,
-                    updatedAt = articleJson.updatedAt
+                    updatedAt = articleJson.updatedAt,
+                    summary = articleJson.summary,
+                    author = articleJson.author,
+                    source = articleJson.source,
+                    coverImageUrl = articleJson.coverImageUrl,
+                    wordCount = articleJson.wordCount
                 )
                 articleRepository.upsertArticle(article)
             }
@@ -445,7 +450,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     sourceType = try { ArticleSourceType.valueOf(cloud.sourceType) } catch (_: Exception) { ArticleSourceType.MANUAL },
                     parseStatus = ArticleParseStatus.PENDING,
                     createdAt = cloud.createdAt,
-                    updatedAt = cloud.updatedAt
+                    updatedAt = cloud.updatedAt,
+                    summary = cloud.summary,
+                    author = cloud.author,
+                    source = cloud.source,
+                    coverImageUrl = cloud.coverImageUrl,
+                    wordCount = cloud.wordCount
                 )
                 articleRepository.upsertArticle(article)
             } else if (local != null && cloud != null) {
@@ -457,7 +467,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         domain = cloud.domain,
                         difficultyAi = cloud.difficultyAi,
                         updatedAt = cloud.updatedAt,
-                        parseStatus = ArticleParseStatus.PENDING
+                        parseStatus = ArticleParseStatus.PENDING,
+                        summary = cloud.summary,
+                        author = cloud.author,
+                        source = cloud.source,
+                        coverImageUrl = cloud.coverImageUrl,
+                        wordCount = cloud.wordCount
                     )
                     articleRepository.upsertArticle(updated)
                 }
@@ -533,7 +548,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         difficultyAi = difficultyAi,
         sourceType = sourceType.name,
         createdAt = createdAt,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        summary = summary,
+        author = author,
+        source = source,
+        coverImageUrl = coverImageUrl,
+        wordCount = wordCount
     )
 
     private suspend fun importWordPools(

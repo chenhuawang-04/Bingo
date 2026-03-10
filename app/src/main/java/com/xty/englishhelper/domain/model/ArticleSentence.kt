@@ -6,5 +6,6 @@ data class ArticleSentence(
     val sentenceIndex: Int,
     val text: String,
     val charStart: Int,
-    val charEnd: Int
+    val charEnd: Int,
+    val paragraphId: Long = 0
 )

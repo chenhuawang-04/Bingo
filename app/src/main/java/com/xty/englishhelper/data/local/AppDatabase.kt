@@ -13,9 +13,11 @@ import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
+import com.xty.englishhelper.data.local.entity.ArticleParagraphEntity
 import com.xty.englishhelper.data.local.entity.ArticleSentenceEntity
 import com.xty.englishhelper.data.local.entity.ArticleWordLinkEntity
 import com.xty.englishhelper.data.local.entity.ArticleWordStatEntity
+import com.xty.englishhelper.data.local.entity.ParagraphAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.CognateEntity
 import com.xty.englishhelper.data.local.entity.DictionaryEntity
 import com.xty.englishhelper.data.local.entity.SentenceAnalysisCacheEntity
@@ -50,9 +52,11 @@ import java.util.UUID
         SentenceAnalysisCacheEntity::class,
         WordExampleEntity::class,
         WordPoolEntity::class,
-        WordPoolMemberEntity::class
+        WordPoolMemberEntity::class,
+        ArticleParagraphEntity::class,
+        ParagraphAnalysisCacheEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -403,6 +407,138 @@ abstract class AppDatabase : RoomDatabase() {
                 }
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_articles_article_uid` ON `articles`(`article_uid`)")
             }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. ALTER articles table — add new columns
+                db.execSQL("ALTER TABLE articles ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE articles ADD COLUMN author TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE articles ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE articles ADD COLUMN cover_image_uri TEXT")
+                db.execSQL("ALTER TABLE articles ADD COLUMN cover_image_url TEXT")
+                db.execSQL("ALTER TABLE articles ADD COLUMN word_count INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE articles ADD COLUMN is_saved INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE articles ADD COLUMN source_type_v2 TEXT NOT NULL DEFAULT 'LOCAL'")
+
+                // 2. ALTER article_sentences — add paragraph_id
+                db.execSQL("ALTER TABLE article_sentences ADD COLUMN paragraph_id INTEGER NOT NULL DEFAULT 0")
+
+                // 3. CREATE article_paragraphs table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `article_paragraphs` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `article_id` INTEGER NOT NULL,
+                        `paragraph_index` INTEGER NOT NULL,
+                        `text` TEXT NOT NULL,
+                        `image_uri` TEXT,
+                        `image_url` TEXT,
+                        `paragraph_type` TEXT NOT NULL DEFAULT 'TEXT',
+                        FOREIGN KEY(`article_id`) REFERENCES `articles`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_paragraphs_article_id` ON `article_paragraphs`(`article_id`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_article_paragraphs_article_id_paragraph_index` ON `article_paragraphs`(`article_id`, `paragraph_index`)")
+
+                // 4. CREATE paragraph_analysis_cache table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `paragraph_analysis_cache` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `article_id` INTEGER NOT NULL,
+                        `paragraph_id` INTEGER NOT NULL,
+                        `paragraph_hash` TEXT NOT NULL,
+                        `model_key` TEXT NOT NULL,
+                        `meaning_zh` TEXT NOT NULL,
+                        `grammar_json` TEXT NOT NULL,
+                        `keywords_json` TEXT NOT NULL,
+                        `breakdowns_json` TEXT NOT NULL DEFAULT '[]',
+                        `created_at` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_paragraph_analysis_cache_article_id_paragraph_id_paragraph_hash_model_key` ON `paragraph_analysis_cache`(`article_id`, `paragraph_id`, `paragraph_hash`, `model_key`)")
+
+                // 5. Migrate existing articles: split content into paragraphs
+                val articleCursor = db.query("SELECT id, content FROM articles")
+                articleCursor.use { cursor ->
+                    val idIdx = cursor.getColumnIndex("id")
+                    val contentIdx = cursor.getColumnIndex("content")
+                    while (cursor.moveToNext()) {
+                        val articleId = cursor.getLong(idIdx)
+                        val content = cursor.getString(contentIdx) ?: ""
+                        if (content.isBlank()) continue
+
+                        // Smart paragraph splitting
+                        val paragraphs = smartSplitParagraphs(content)
+                        var charOffset = 0
+
+                        paragraphs.forEachIndexed { paraIndex, paraText ->
+                            db.execSQL(
+                                "INSERT INTO article_paragraphs (article_id, paragraph_index, text, paragraph_type) VALUES (?, ?, ?, 'TEXT')",
+                                arrayOf<Any>(articleId, paraIndex, paraText)
+                            )
+
+                            // Get the inserted paragraph id
+                            val paraCursor = db.query(
+                                "SELECT id FROM article_paragraphs WHERE article_id = ? AND paragraph_index = ?",
+                                arrayOf<Any>(articleId.toString(), paraIndex.toString())
+                            )
+                            val paragraphId = paraCursor.use { pc ->
+                                if (pc.moveToFirst()) pc.getLong(0) else 0L
+                            }
+
+                            // Match existing sentences to this paragraph by char range
+                            val paraStart = charOffset
+                            val paraEnd = charOffset + paraText.length
+                            db.execSQL(
+                                "UPDATE article_sentences SET paragraph_id = ? WHERE article_id = ? AND char_start >= ? AND char_end <= ?",
+                                arrayOf<Any>(paragraphId, articleId, paraStart, paraEnd)
+                            )
+                            // Account for paragraph separator
+                            charOffset = paraEnd + 1
+                        }
+
+                        // Backfill word_count
+                        val wordCount = content.split(Regex("\\s+")).count { it.isNotBlank() }
+                        db.execSQL(
+                            "UPDATE articles SET word_count = ? WHERE id = ?",
+                            arrayOf<Any>(wordCount, articleId)
+                        )
+                    }
+                }
+            }
+        }
+
+        private fun smartSplitParagraphs(content: String): List<String> {
+            // If content already has blank-line paragraph breaks, use them
+            val blankLineSplit = content.split(Regex("\\n\\s*\\n"))
+            if (blankLineSplit.size > 1) {
+                return blankLineSplit.map { it.trim() }.filter { it.isNotBlank() }
+            }
+
+            // If content has single newlines, treat each as a paragraph
+            val newLineSplit = content.split("\n")
+            if (newLineSplit.size > 1) {
+                return newLineSplit.map { it.trim() }.filter { it.isNotBlank() }
+            }
+
+            // Otherwise, split by sentence groups (~3-5 sentences per paragraph)
+            val sentenceEnders = Regex("(?<=[.!?])\\s+(?=[A-Z])")
+            val sentences = sentenceEnders.split(content).map { it.trim() }.filter { it.isNotBlank() }
+            if (sentences.size <= 4) return listOf(content.trim())
+
+            val paragraphs = mutableListOf<String>()
+            val buffer = mutableListOf<String>()
+            for (sentence in sentences) {
+                buffer.add(sentence)
+                if (buffer.size >= 4) {
+                    paragraphs.add(buffer.joinToString(" "))
+                    buffer.clear()
+                }
+            }
+            if (buffer.isNotEmpty()) {
+                paragraphs.add(buffer.joinToString(" "))
+            }
+            return paragraphs
         }
     }
 }

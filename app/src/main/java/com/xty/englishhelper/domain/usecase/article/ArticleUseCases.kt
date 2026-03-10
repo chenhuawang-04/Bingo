@@ -7,16 +7,24 @@ import com.xty.englishhelper.domain.article.WordRef
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.ArticleOcrResult
+import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSentence
 import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.ArticleStatistics
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ArticleWordStat
+import com.xty.englishhelper.domain.model.GrammarPoint
+import com.xty.englishhelper.domain.model.KeyWord
+import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
+import com.xty.englishhelper.domain.model.ParagraphType
+import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
+import com.xty.englishhelper.domain.model.SentenceBreakdown
 import com.xty.englishhelper.domain.model.WordExampleSourceType
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.repository.ParagraphAnalysisCacheData
 import com.xty.englishhelper.domain.repository.WordExample
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.encodeToString
@@ -29,7 +37,18 @@ import javax.inject.Inject
 class CreateArticleUseCase @Inject constructor(
     private val repository: ArticleRepository
 ) {
-    suspend operator fun invoke(title: String, content: String, sourceType: ArticleSourceType = ArticleSourceType.MANUAL, domain: String = "", difficultyAi: Float = 0f): Long {
+    suspend operator fun invoke(
+        title: String,
+        content: String,
+        sourceType: ArticleSourceType = ArticleSourceType.MANUAL,
+        domain: String = "",
+        difficultyAi: Float = 0f,
+        summary: String = "",
+        author: String = "",
+        source: String = "",
+        paragraphs: List<ArticleParagraph> = emptyList(),
+        coverImageUri: String? = null
+    ): Long {
         val article = Article(
             title = title,
             content = content,
@@ -37,9 +56,23 @@ class CreateArticleUseCase @Inject constructor(
             sourceType = sourceType,
             domain = domain,
             difficultyAi = difficultyAi,
-            parseStatus = ArticleParseStatus.PENDING
+            parseStatus = ArticleParseStatus.PENDING,
+            summary = summary,
+            author = author,
+            source = source,
+            coverImageUri = coverImageUri
         )
-        return repository.upsertArticle(article)
+        val articleId = repository.upsertArticle(article)
+
+        // Store paragraphs
+        if (paragraphs.isNotEmpty()) {
+            val withArticleId = paragraphs.mapIndexed { index, p ->
+                p.copy(articleId = articleId, paragraphIndex = index)
+            }
+            repository.insertParagraphs(withArticleId)
+        }
+
+        return articleId
     }
 }
 
@@ -96,6 +129,7 @@ class GetArticleStatisticsUseCase @Inject constructor(
         )
     }
 }
+
 class ParseArticleUseCase @Inject constructor(
     private val repository: ArticleRepository
 ) {
@@ -106,28 +140,59 @@ class ParseArticleUseCase @Inject constructor(
             val article = repository.getArticleByIdOnce(articleId)
                 ?: throw IllegalStateException("Article not found")
 
-            // Step 1: Split sentences
-            val spans = SentenceSplitter.split(article.content)
-            val sentences = spans.mapIndexed { index, span ->
-                ArticleSentence(
-                    articleId = articleId,
-                    sentenceIndex = index,
-                    text = span.text,
-                    charStart = span.charStart,
-                    charEnd = span.charEnd
-                )
+            // Only run full parse for saved articles
+            if (!article.isSaved) {
+                repository.updateParseStatus(articleId, ArticleParseStatus.DONE.ordinal)
+                return
             }
 
-            // Step 2: Insert sentences in chunks
+            // Step 1: Read paragraphs (already structured in DB)
+            val paragraphs = repository.getParagraphs(articleId)
+
+            // Step 2: Clean old data
             repository.deleteSentencesByArticle(articleId)
-            sentences.chunked(500).forEach { chunk ->
+            repository.deleteWordStatsByArticle(articleId)
+            repository.deleteExamplesByArticle(articleId)
+
+            // Step 3: Split sentences per paragraph
+            var globalSentenceIndex = 0
+            var globalCharOffset = 0
+            val allSentences = mutableListOf<ArticleSentence>()
+
+            for (paragraph in paragraphs) {
+                if (paragraph.text.isBlank()) {
+                    globalCharOffset += 1 // paragraph separator
+                    continue
+                }
+
+                val spans = SentenceSplitter.split(paragraph.text)
+                for (span in spans) {
+                    allSentences.add(
+                        ArticleSentence(
+                            articleId = articleId,
+                            sentenceIndex = globalSentenceIndex++,
+                            text = span.text,
+                            charStart = globalCharOffset + span.charStart,
+                            charEnd = globalCharOffset + span.charEnd,
+                            paragraphId = paragraph.id
+                        )
+                    )
+                }
+                globalCharOffset += paragraph.text.length + 1 // +1 for paragraph separator
+            }
+
+            // Step 4: Insert sentences
+            allSentences.chunked(500).forEach { chunk ->
                 repository.insertSentences(articleId, chunk)
             }
 
-            // Step 3: Tokenize
-            val tokens = ArticleTokenizer.tokenize(spans)
+            // Step 5: Tokenize using sentence spans from paragraphs
+            val allSpans = paragraphs.flatMap { p ->
+                SentenceSplitter.split(p.text)
+            }
+            val tokens = ArticleTokenizer.tokenize(allSpans)
 
-            // Step 4: Aggregate frequencies
+            // Step 6: Aggregate frequencies
             val freqMap = ArticleTokenizer.aggregate(tokens)
             val wordStats = freqMap.map { (normalized, entry) ->
                 ArticleWordStat(
@@ -137,18 +202,16 @@ class ParseArticleUseCase @Inject constructor(
                     frequency = entry.frequency
                 )
             }
-            // Delete old word stats before upserting new ones to prevent stale data
-            repository.deleteWordStatsByArticle(articleId)
             repository.upsertWordStats(articleId, wordStats)
 
-            // Step 5: Match against dictionary
+            // Step 7: Match against dictionary
             val allWords = repository.getAllWordsForMatching()
             val wordRefs = allWords.map { WordRef(it.wordId, it.dictionaryId, it.normalizedSpelling) }
             val inflectionMap = allWords.associate { it.wordId to it.inflections }
             val matcher = DictionaryMatcher(wordRefs, inflectionMap)
             val matches = matcher.match(tokens)
 
-            // Step 6: Resolve sentence IDs and insert links
+            // Step 8: Resolve sentence IDs and insert links
             val storedSentences = repository.getSentences(articleId)
             val sentenceIdByIndex = storedSentences.associate { it.sentenceIndex to it.id }
 
@@ -166,8 +229,7 @@ class ParseArticleUseCase @Inject constructor(
                 repository.upsertWordLinks(chunk)
             }
 
-            // Step 7: Generate word examples - 先清理旧例句，再生成新的
-            repository.deleteExamplesByArticle(articleId)
+            // Step 9: Generate word examples (only for saved articles)
             val examples = wordLinks.map { link ->
                 val sentence = storedSentences.find { it.id == link.sentenceId }
                 val articleTitle = article.title
@@ -184,6 +246,16 @@ class ParseArticleUseCase @Inject constructor(
                 repository.insertExamples(chunk)
             }
 
+            // Step 10: Update word count
+            val wordCount = freqMap.values.sumOf { it.frequency }
+            repository.updateWordCount(articleId, wordCount)
+
+            // Step 11: Update content field for compatibility (paragraphs joined)
+            val contentJoined = paragraphs.joinToString("\n\n") { it.text }
+            if (contentJoined != article.content) {
+                repository.upsertArticle(article.copy(content = contentJoined, wordCount = wordCount))
+            }
+
             repository.updateParseStatus(articleId, ArticleParseStatus.DONE.ordinal)
         } catch (e: Exception) {
             repository.updateParseStatus(articleId, ArticleParseStatus.FAILED.ordinal)
@@ -191,6 +263,7 @@ class ParseArticleUseCase @Inject constructor(
         }
     }
 }
+
 class AnalyzeSentenceUseCase @Inject constructor(
     private val repository: ArticleRepository,
     private val aiRepository: ArticleAiRepository
@@ -206,7 +279,7 @@ class AnalyzeSentenceUseCase @Inject constructor(
         baseUrl: String,
         provider: AiProvider = AiProvider.ANTHROPIC
     ): SentenceAnalysisResult {
-        val hash = computeSentenceHash(sentenceText)
+        val hash = computeHash(sentenceText)
         val normalizedUrl = baseUrl.trimEnd('/')
         val modelKey = "${provider.name}|$normalizedUrl|$model|$CACHE_VERSION"
 
@@ -232,8 +305,8 @@ class AnalyzeSentenceUseCase @Inject constructor(
         return result
     }
 
-    private fun computeSentenceHash(sentenceText: String): String {
-        val input = "$sentenceText|$CACHE_VERSION"
+    private fun computeHash(text: String): String {
+        val input = "$text|$CACHE_VERSION"
         val digest = MessageDigest.getInstance("SHA-256")
         return digest.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
     }
@@ -246,28 +319,96 @@ class AnalyzeSentenceUseCase @Inject constructor(
         )
     }
 
-    private fun grammarPointsToJson(points: List<com.xty.englishhelper.domain.model.GrammarPoint>): String {
+    private fun grammarPointsToJson(points: List<GrammarPoint>): String {
         return json.encodeToString(points)
     }
 
-    private fun keyWordsToJson(keywords: List<com.xty.englishhelper.domain.model.KeyWord>): String {
+    private fun keyWordsToJson(keywords: List<KeyWord>): String {
         return json.encodeToString(keywords)
     }
 
-    private fun parseGrammarPoints(jsonStr: String): List<com.xty.englishhelper.domain.model.GrammarPoint> {
+    private fun parseGrammarPoints(jsonStr: String): List<GrammarPoint> {
         if (jsonStr.isBlank()) return emptyList()
-        return runCatching { json.decodeFromString<List<com.xty.englishhelper.domain.model.GrammarPoint>>(jsonStr) }.getOrDefault(emptyList())
+        return runCatching { json.decodeFromString<List<GrammarPoint>>(jsonStr) }.getOrDefault(emptyList())
     }
 
-    private fun parseKeyWords(jsonStr: String): List<com.xty.englishhelper.domain.model.KeyWord> {
+    private fun parseKeyWords(jsonStr: String): List<KeyWord> {
         if (jsonStr.isBlank()) return emptyList()
-        return runCatching { json.decodeFromString<List<com.xty.englishhelper.domain.model.KeyWord>>(jsonStr) }.getOrDefault(emptyList())
+        return runCatching { json.decodeFromString<List<KeyWord>>(jsonStr) }.getOrDefault(emptyList())
     }
 
     companion object {
         private const val CACHE_VERSION = "v1"
     }
 }
+
+class AnalyzeParagraphUseCase @Inject constructor(
+    private val repository: ArticleRepository,
+    private val aiRepository: ArticleAiRepository
+) {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    suspend operator fun invoke(
+        articleId: Long,
+        paragraphId: Long,
+        paragraphText: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider = AiProvider.ANTHROPIC,
+        isSaved: Boolean = true
+    ): ParagraphAnalysisResult {
+        val hash = computeHash(paragraphText)
+        val normalizedUrl = baseUrl.trimEnd('/')
+        val modelKey = "${provider.name}|$normalizedUrl|$model|$CACHE_VERSION"
+
+        // Check cache (only for saved articles)
+        if (isSaved) {
+            val cached = repository.getParagraphAnalysisCache(articleId, paragraphId, hash, modelKey)
+            if (cached != null) {
+                return parseCachedResult(cached)
+            }
+        }
+
+        // Call AI
+        val result = aiRepository.analyzeParagraph(paragraphText, apiKey, model, baseUrl, provider)
+
+        // Store in cache (only for saved articles)
+        if (isSaved) {
+            repository.insertParagraphAnalysisCache(
+                articleId, paragraphId, hash, modelKey,
+                ParagraphAnalysisCacheData(
+                    meaningZh = result.meaningZh,
+                    grammarJson = json.encodeToString(result.grammarPoints),
+                    keywordsJson = json.encodeToString(result.keyVocabulary),
+                    breakdownsJson = json.encodeToString(result.sentenceBreakdowns)
+                )
+            )
+        }
+
+        return result
+    }
+
+    private fun computeHash(text: String): String {
+        val input = "$text|$CACHE_VERSION"
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    private fun parseCachedResult(cache: ParagraphAnalysisCacheData): ParagraphAnalysisResult {
+        return ParagraphAnalysisResult(
+            meaningZh = cache.meaningZh,
+            grammarPoints = runCatching { json.decodeFromString<List<GrammarPoint>>(cache.grammarJson) }.getOrDefault(emptyList()),
+            keyVocabulary = runCatching { json.decodeFromString<List<KeyWord>>(cache.keywordsJson) }.getOrDefault(emptyList()),
+            sentenceBreakdowns = runCatching { json.decodeFromString<List<SentenceBreakdown>>(cache.breakdownsJson) }.getOrDefault(emptyList())
+        )
+    }
+
+    companion object {
+        private const val CACHE_VERSION = "v1"
+    }
+}
+
 class ExtractArticleFromImagesUseCase @Inject constructor(
     private val aiRepository: ArticleAiRepository
 ) {
@@ -296,5 +437,98 @@ class GetArticleCountUseCase @Inject constructor(
 ) {
     operator fun invoke(): Flow<Int> {
         return repository.getArticleCount()
+    }
+}
+
+class ScanWordLinksUseCase @Inject constructor(
+    private val repository: ArticleRepository
+) {
+    suspend operator fun invoke(paragraphs: List<ArticleParagraph>): List<ArticleWordLink> {
+        val allWords = repository.getAllWordsForMatching()
+        if (allWords.isEmpty()) return emptyList()
+
+        val wordRefs = allWords.map { WordRef(it.wordId, it.dictionaryId, it.normalizedSpelling) }
+        val inflectionMap = allWords.associate { it.wordId to it.inflections }
+        val matcher = DictionaryMatcher(wordRefs, inflectionMap)
+
+        val allSpans = paragraphs.flatMap { SentenceSplitter.split(it.text) }
+        val tokens = ArticleTokenizer.tokenize(allSpans)
+        val matches = matcher.match(tokens)
+
+        return matches.map { match ->
+            ArticleWordLink(
+                articleId = 0,
+                sentenceId = 0,
+                wordId = match.wordId,
+                dictionaryId = match.dictionaryId,
+                matchedToken = match.matchedToken
+            )
+        }
+    }
+}
+
+class TranslateParagraphUseCase @Inject constructor(
+    private val repository: ArticleRepository,
+    private val aiRepository: ArticleAiRepository
+) {
+    suspend operator fun invoke(
+        articleId: Long,
+        paragraphId: Long,
+        paragraphText: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider,
+        isSaved: Boolean
+    ): String {
+        val hash = computeHash(paragraphText)
+        val normalizedUrl = baseUrl.trimEnd('/')
+        val modelKey = "TRANSLATE|${provider.name}|$normalizedUrl|$model|$CACHE_VERSION"
+
+        if (isSaved) {
+            val cached = repository.getParagraphAnalysisCache(articleId, paragraphId, hash, modelKey)
+            if (cached != null) return cached.meaningZh
+        }
+
+        val translation = aiRepository.translateParagraph(paragraphText, apiKey, model, baseUrl, provider)
+
+        if (isSaved) {
+            repository.insertParagraphAnalysisCache(
+                articleId, paragraphId, hash, modelKey,
+                ParagraphAnalysisCacheData(
+                    meaningZh = translation,
+                    grammarJson = "",
+                    keywordsJson = "",
+                    breakdownsJson = ""
+                )
+            )
+        }
+
+        return translation
+    }
+
+    private fun computeHash(text: String): String {
+        val input = "$text|$CACHE_VERSION"
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    companion object {
+        private const val CACHE_VERSION = "v1"
+    }
+}
+
+class QuickAnalyzeWordUseCase @Inject constructor(
+    private val aiRepository: ArticleAiRepository
+) {
+    suspend operator fun invoke(
+        word: String,
+        contextSentence: String?,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): QuickWordAnalysis {
+        return aiRepository.quickAnalyzeWord(word, contextSentence, apiKey, model, baseUrl, provider)
     }
 }

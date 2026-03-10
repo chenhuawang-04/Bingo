@@ -15,15 +15,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -41,7 +47,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -57,11 +65,29 @@ fun ArticleEditorScreen(
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
         viewModel.addImages(uris)
+    }
+
+    val coverPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        viewModel.onCoverImageSelected(uri)
+    }
+
+    // Per-paragraph image picker: store index to assign image
+    val paragraphImageIndex = remember { androidx.compose.runtime.mutableIntStateOf(-1) }
+    val paragraphImagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        val idx = paragraphImageIndex.intValue
+        if (idx >= 0) {
+            viewModel.onParagraphImageSelected(idx, uri)
+        }
     }
 
     LaunchedEffect(state.error) {
@@ -89,7 +115,8 @@ fun ArticleEditorScreen(
                 actions = {
                     TextButton(
                         onClick = viewModel::save,
-                        enabled = !state.isSaving && state.title.isNotBlank() && state.content.isNotBlank()
+                        enabled = !state.isSaving && state.title.isNotBlank() &&
+                            state.paragraphs.any { it.text.isNotBlank() }
                     ) {
                         Text("保存")
                     }
@@ -107,28 +134,173 @@ fun ArticleEditorScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Title
                 item {
                     OutlinedTextField(
                         value = state.title,
                         onValueChange = viewModel::onTitleChange,
-                        label = { Text("文章标题") },
+                        label = { Text("标题") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
 
+                // Summary
+                item {
+                    OutlinedTextField(
+                        value = state.summary,
+                        onValueChange = viewModel::onSummaryChange,
+                        label = { Text("梗概（可选）") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // Author + Source row
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = state.author,
+                            onValueChange = viewModel::onAuthorChange,
+                            label = { Text("作者") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = state.source,
+                            onValueChange = viewModel::onSourceChange,
+                            label = { Text("来源") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // Domain
                 item {
                     OutlinedTextField(
                         value = state.domain,
                         onValueChange = viewModel::onDomainChange,
-                        label = { Text("领域（可选，如 science/technology）") },
+                        label = { Text("领域（可选）") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
 
+                // Cover image
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(onClick = { coverPickerLauncher.launch("image/*") }) {
+                            Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("  封面图片")
+                        }
+                        if (state.coverImageUri != null) {
+                            InputChip(
+                                selected = false,
+                                onClick = { viewModel.onCoverImageSelected(null) },
+                                label = { Text("已选封面") },
+                                trailingIcon = {
+                                    Icon(Icons.Default.Close, contentDescription = "移除", modifier = Modifier.size(16.dp))
+                                }
+                            )
+                        }
+                    }
+                }
+
+                item { HorizontalDivider() }
+
+                // Paragraphs
+                itemsIndexed(state.paragraphs, key = { index, _ -> index }) { index, paragraph ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "段落 ${index + 1}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row {
+                                IconButton(
+                                    onClick = {
+                                        paragraphImageIndex.intValue = index
+                                        paragraphImagePicker.launch("image/*")
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Default.PhotoCamera, contentDescription = "插图", modifier = Modifier.size(18.dp))
+                                }
+                                if (state.paragraphs.size > 1) {
+                                    IconButton(
+                                        onClick = { viewModel.removeParagraph(index) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "删除段落", modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = paragraph.text,
+                            onValueChange = { viewModel.onParagraphTextChange(index, it) },
+                            placeholder = { Text("输入段落内容…") },
+                            minLines = 3,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (paragraph.imageUri != null) {
+                            InputChip(
+                                selected = false,
+                                onClick = { viewModel.onParagraphImageSelected(index, null) },
+                                label = { Text("段落插图") },
+                                trailingIcon = {
+                                    Icon(Icons.Default.Close, contentDescription = "移除", modifier = Modifier.size(16.dp))
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Add paragraph + Paste buttons
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(onClick = viewModel::addParagraph) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("  添加段落")
+                        }
+                        OutlinedButton(onClick = {
+                            val clipText = clipboardManager.getText()?.text
+                            if (!clipText.isNullOrBlank()) {
+                                viewModel.pasteFullText(clipText)
+                            }
+                        }) {
+                            Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("  粘贴全文")
+                        }
+                    }
+                }
+
+                item { HorizontalDivider() }
+
+                // OCR section
                 item {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -179,16 +351,6 @@ fun ArticleEditorScreen(
                             }
                         }
                     }
-                }
-
-                item {
-                    OutlinedTextField(
-                        value = state.content,
-                        onValueChange = viewModel::onContentChange,
-                        label = { Text("文章内容") },
-                        minLines = 10,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
 
                 item { Spacer(Modifier.height(80.dp)) }
