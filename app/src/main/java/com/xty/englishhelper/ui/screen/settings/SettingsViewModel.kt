@@ -55,6 +55,11 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(selectedModel = model) }
             }
         }
+        viewModelScope.launch {
+            settingsDataStore.guardianDetailConcurrency.collect { value ->
+                _uiState.update { it.copy(guardianDetailConcurrency = value) }
+            }
+        }
         // Scoped settings
         initScopedSettings(AiSettingsScope.POOL) { state, scoped -> state.copy(poolAiSettings = scoped) }
         initScopedSettings(AiSettingsScope.OCR) { state, scoped -> state.copy(ocrAiSettings = scoped) }
@@ -136,6 +141,11 @@ class SettingsViewModel @Inject constructor(
         val provider = _uiState.value.provider
         _uiState.update { it.copy(selectedModel = model) }
         viewModelScope.launch { settingsDataStore.setModel(provider, model) }
+    }
+
+    fun onGuardianDetailConcurrencyChange(value: Int) {
+        _uiState.update { it.copy(guardianDetailConcurrency = value) }
+        viewModelScope.launch { settingsDataStore.setGuardianDetailConcurrency(value) }
     }
 
     fun testConnection() {

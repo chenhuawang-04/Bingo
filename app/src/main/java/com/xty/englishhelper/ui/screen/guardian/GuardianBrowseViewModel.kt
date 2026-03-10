@@ -3,17 +3,35 @@ package com.xty.englishhelper.ui.screen.guardian
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.xty.englishhelper.data.remote.guardian.GuardianArticlePreview
+import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
 data class GuardianSection(val key: String, val label: String, val group: String = "")
+
+data class GuardianBrowseItem(
+    val title: String,
+    val url: String,
+    val trailText: String? = null,
+    val thumbnailUrl: String? = null,
+    val author: String? = null,
+    val coverImageUrl: String? = null,
+    val wordCount: Int? = null,
+    val isAuthorLoading: Boolean = false,
+    val isWordCountLoading: Boolean = false,
+    val detailError: String? = null
+)
 
 val defaultSections = listOf(
     // Main
@@ -57,7 +75,7 @@ val defaultSections = listOf(
 data class GuardianBrowseUiState(
     val sections: List<GuardianSection> = defaultSections,
     val selectedSection: String = "international",
-    val articles: List<GuardianArticlePreview> = emptyList(),
+    val articles: List<GuardianBrowseItem> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingArticle: Boolean = false,
     val error: String? = null
@@ -65,26 +83,101 @@ data class GuardianBrowseUiState(
 
 @HiltViewModel
 class GuardianBrowseViewModel @Inject constructor(
-    private val guardianRepository: GuardianRepository
+    private val guardianRepository: GuardianRepository,
+    private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GuardianBrowseUiState())
     val uiState: StateFlow<GuardianBrowseUiState> = _uiState.asStateFlow()
+
+    private var detailJob: Job? = null
 
     init {
         loadSection("international")
     }
 
     fun loadSection(section: String) {
+        detailJob?.cancel()
+        detailJob = null
         _uiState.update { it.copy(selectedSection = section, isLoading = true, error = null) }
 
         viewModelScope.launch {
             try {
                 val articles = guardianRepository.getSectionArticles(section)
-                _uiState.update { it.copy(articles = articles, isLoading = false) }
+                val items = articles.map { preview ->
+                    GuardianBrowseItem(
+                        title = preview.title,
+                        url = preview.url,
+                        trailText = preview.trailText,
+                        thumbnailUrl = preview.thumbnailUrl,
+                        author = preview.author,
+                        isAuthorLoading = true,
+                        isWordCountLoading = true
+                    )
+                }
+                _uiState.update { it.copy(articles = items, isLoading = false) }
+                detailJob = viewModelScope.launch {
+                    loadArticleDetails(items)
+                }
             } catch (e: Exception) {
                 Log.e("GuardianBrowseVM", "Failed to load section: $section", e)
                 _uiState.update { it.copy(isLoading = false, error = "加载失败：${e.message}") }
+            }
+        }
+    }
+
+    private suspend fun loadArticleDetails(items: List<GuardianBrowseItem>) {
+        if (items.isEmpty()) return
+        val concurrency = settingsDataStore.guardianDetailConcurrency.first().coerceIn(1, 10)
+        val semaphore = Semaphore(concurrency)
+        coroutineScope {
+            items.forEach { item ->
+                launch {
+                    semaphore.withPermit {
+                        try {
+                            val detail = guardianRepository.getArticleDetail(item.url)
+                            val wordCount = detail.paragraphs
+                                .joinToString(" ") { it.text }
+                                .split(Regex("\\s+"))
+                                .count { it.isNotBlank() }
+                            _uiState.update { state ->
+                                state.copy(
+                                    articles = state.articles.map { current ->
+                                        if (current.url == item.url) {
+                                            current.copy(
+                                                author = detail.author.takeIf { it.isNotBlank() },
+                                                coverImageUrl = detail.coverImageUrl,
+                                                wordCount = wordCount,
+                                                isAuthorLoading = false,
+                                                isWordCountLoading = false,
+                                                detailError = null
+                                            )
+                                        } else {
+                                            current
+                                        }
+                                    }
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.w("GuardianBrowseVM", "Detail load failed: ${item.url}", e)
+                            _uiState.update { state ->
+                                state.copy(
+                                    articles = state.articles.map { current ->
+                                        if (current.url == item.url) {
+                                            current.copy(
+                                                isAuthorLoading = false,
+                                                isWordCountLoading = false,
+                                                detailError = e.message
+                                            )
+                                        } else {
+                                            current
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

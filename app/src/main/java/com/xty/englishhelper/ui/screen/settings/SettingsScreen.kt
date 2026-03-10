@@ -40,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.AiProvider
@@ -232,6 +234,14 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                // 在线阅读
+                OnlineReadingSection(
+                    concurrency = state.guardianDetailConcurrency,
+                    onConcurrencyChange = viewModel::onGuardianDetailConcurrencyChange
+                )
+
+                HorizontalDivider()
+
                 // Cloud Sync
                 CloudSyncSection(
                     state = state.cloudSync,
@@ -246,6 +256,53 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OnlineReadingSection(
+    concurrency: Int,
+    onConcurrencyChange: (Int) -> Unit
+) {
+    var input by remember { mutableStateOf(concurrency.toString()) }
+
+    LaunchedEffect(concurrency) {
+        val current = concurrency.toString()
+        if (input != current) {
+            input = current
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("在线阅读", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "设置详情并发加载数量（1-10）",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        OutlinedTextField(
+            value = input,
+            onValueChange = { value ->
+                val filtered = value.filter { it.isDigit() }
+                input = filtered
+                if (filtered.isBlank()) {
+                    onConcurrencyChange(5)
+                    return@OutlinedTextField
+                }
+                val parsed = filtered.toIntOrNull() ?: return@OutlinedTextField
+                val clamped = parsed.coerceIn(1, 10)
+                if (clamped != concurrency) {
+                    onConcurrencyChange(clamped)
+                }
+            },
+            label = { Text("详情并发") },
+            placeholder = { Text("5") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

@@ -3,6 +3,7 @@ package com.xty.englishhelper.data.preferences
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.xty.englishhelper.domain.model.AiProvider
@@ -32,6 +33,7 @@ class SettingsDataStore @Inject constructor(
         val GITHUB_OWNER = stringPreferencesKey("github_owner")
         val GITHUB_REPO = stringPreferencesKey("github_repo")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
+        val GUARDIAN_DETAIL_CONCURRENCY = intPreferencesKey("guardian_detail_concurrency")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -50,6 +52,16 @@ class SettingsDataStore @Inject constructor(
     }
     val provider: Flow<AiProvider> = dataStore.data.map { prefs ->
         providerFromPrefs(prefs)
+    }
+
+    val guardianDetailConcurrency: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[GUARDIAN_DETAIL_CONCURRENCY] ?: 5
+    }
+
+    suspend fun setGuardianDetailConcurrency(value: Int) {
+        dataStore.edit { prefs ->
+            prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
+        }
     }
 
     suspend fun setApiKey(key: String) {

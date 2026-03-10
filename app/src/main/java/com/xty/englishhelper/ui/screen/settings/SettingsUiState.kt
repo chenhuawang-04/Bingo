@@ -15,6 +15,7 @@ data class SettingsUiState(
     val poolAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val ocrAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val articleAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
+    val guardianDetailConcurrency: Int = 5,
     val cloudSync: CloudSyncState = CloudSyncState()
 )
 

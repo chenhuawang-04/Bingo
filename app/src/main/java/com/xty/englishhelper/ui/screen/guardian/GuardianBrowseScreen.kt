@@ -1,18 +1,17 @@
 package com.xty.englishhelper.ui.screen.guardian
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -41,13 +40,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
-import com.xty.englishhelper.data.remote.guardian.GuardianArticlePreview
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -204,7 +206,7 @@ private fun SectionChips(
 
 @Composable
 private fun ArticleList(
-    articles: List<GuardianArticlePreview>,
+    articles: List<GuardianBrowseItem>,
     isLoadingArticle: Boolean,
     onArticleClick: (url: String) -> Unit
 ) {
@@ -231,9 +233,13 @@ private fun ArticleList(
 
 @Composable
 private fun ArticlePreviewCard(
-    article: GuardianArticlePreview,
+    article: GuardianBrowseItem,
     onClick: () -> Unit
 ) {
+    val imageUrl = article.coverImageUrl ?: article.thumbnailUrl
+    val painter = rememberAsyncImagePainter(model = imageUrl)
+    val imageLoaded = imageUrl != null && painter.state is AsyncImagePainter.State.Success
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -243,35 +249,55 @@ private fun ArticlePreviewCard(
         ),
         elevation = CardDefaults.cardElevation(1.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Thumbnail
-            if (article.thumbnailUrl != null) {
-                AsyncImage(
-                    model = article.thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
-                )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+            ) {
+                if (imageLoaded) {
+                    Image(
+                        painter = painter,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF1F1F1F))
+                            .padding(12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = article.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
             }
 
-            // Text content
             Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    article.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
+                if (imageLoaded) {
+                    Text(
+                        article.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
                 if (!article.trailText.isNullOrBlank()) {
                     Text(
@@ -283,13 +309,32 @@ private fun ArticlePreviewCard(
                     )
                 }
 
-                if (!article.author.isNullOrBlank()) {
-                    Text(
-                        article.author,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                val authorText = when {
+                    article.isAuthorLoading -> "作者：加载中…"
+                    !article.author.isNullOrBlank() -> "作者：${article.author}"
+                    else -> "作者：未知"
                 }
+                val wordCountText = when {
+                    article.isWordCountLoading -> "字数：加载中…"
+                    article.wordCount != null && article.wordCount > 0 -> "字数：${article.wordCount}"
+                    else -> "字数：未知"
+                }
+                val metaColor = if (article.isAuthorLoading || article.isWordCountLoading) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
+                Text(
+                    authorText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = metaColor
+                )
+                Text(
+                    wordCountText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = metaColor
+                )
             }
         }
     }
