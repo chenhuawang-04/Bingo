@@ -1,6 +1,5 @@
 package com.xty.englishhelper.ui.screen.guardian
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -43,13 +42,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -237,8 +237,7 @@ private fun ArticlePreviewCard(
     onClick: () -> Unit
 ) {
     val imageUrl = article.coverImageUrl ?: article.thumbnailUrl
-    val painter = rememberAsyncImagePainter(model = imageUrl)
-    val imageLoaded = imageUrl != null && painter.state is AsyncImagePainter.State.Success
+    val context = LocalContext.current
 
     Card(
         modifier = Modifier
@@ -256,9 +255,12 @@ private fun ArticlePreviewCard(
                     .height(160.dp)
                     .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
             ) {
-                if (imageLoaded) {
-                    Image(
-                        painter = painter,
+                if (imageUrl != null) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .crossfade(true)
+                            .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -290,14 +292,12 @@ private fun ArticlePreviewCard(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (imageLoaded) {
-                    Text(
-                        article.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    article.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
 
                 if (!article.trailText.isNullOrBlank()) {
                     Text(

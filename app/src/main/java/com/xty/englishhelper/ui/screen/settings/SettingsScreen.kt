@@ -58,6 +58,7 @@ fun SettingsScreen(
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var modelExpanded by remember { mutableStateOf(false) }
+    var fastModelExpanded by remember { mutableStateOf(false) }
 
     val availableModels = when (state.provider) {
         AiProvider.ANTHROPIC -> Constants.ANTHROPIC_AVAILABLE_MODELS
@@ -156,6 +157,11 @@ fun SettingsScreen(
                         modelId.contains(state.selectedModel, ignoreCase = true) ||
                         modelName.contains(state.selectedModel, ignoreCase = true)
                 }
+                val filteredFastModels = availableModels.filter { (modelId, modelName) ->
+                    state.fastModel.isBlank() ||
+                        modelId.contains(state.fastModel, ignoreCase = true) ||
+                        modelName.contains(state.fastModel, ignoreCase = true)
+                }
 
                 ExposedDropdownMenuBox(
                     expanded = modelExpanded,
@@ -186,6 +192,42 @@ fun SettingsScreen(
                                     onClick = {
                                         viewModel.onModelChange(modelId)
                                         modelExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                ExposedDropdownMenuBox(
+                    expanded = fastModelExpanded,
+                    onExpandedChange = { fastModelExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = state.fastModel,
+                        onValueChange = { value ->
+                            viewModel.onFastModelChange(value)
+                            fastModelExpanded = true
+                        },
+                        label = { Text("快速模型") },
+                        placeholder = { Text("选择或输入模型名称") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fastModelExpanded) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(MenuAnchorType.PrimaryEditable)
+                    )
+                    if (filteredFastModels.isNotEmpty()) {
+                        ExposedDropdownMenu(
+                            expanded = fastModelExpanded,
+                            onDismissRequest = { fastModelExpanded = false }
+                        ) {
+                            filteredFastModels.forEach { (modelId, modelName) ->
+                                DropdownMenuItem(
+                                    text = { Text("$modelName ($modelId)") },
+                                    onClick = {
+                                        viewModel.onFastModelChange(modelId)
+                                        fastModelExpanded = false
                                     }
                                 )
                             }

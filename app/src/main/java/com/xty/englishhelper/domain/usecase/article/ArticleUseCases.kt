@@ -361,10 +361,16 @@ class AnalyzeParagraphUseCase @Inject constructor(
         val hash = computeHash(paragraphText)
         val normalizedUrl = baseUrl.trimEnd('/')
         val modelKey = "${provider.name}|$normalizedUrl|$model|$CACHE_VERSION"
+        val memoryKey = "P|$articleId|$paragraphId|$hash|$modelKey"
 
-        // Check cache (only for saved articles)
+        // Check cache
         if (isSaved) {
             val cached = repository.getParagraphAnalysisCache(articleId, paragraphId, hash, modelKey)
+            if (cached != null) {
+                return parseCachedResult(cached)
+            }
+        } else {
+            val cached = repository.getMemoryParagraphAnalysisCache(memoryKey)
             if (cached != null) {
                 return parseCachedResult(cached)
             }
@@ -373,17 +379,18 @@ class AnalyzeParagraphUseCase @Inject constructor(
         // Call AI
         val result = aiRepository.analyzeParagraph(paragraphText, apiKey, model, baseUrl, provider)
 
-        // Store in cache (only for saved articles)
+        val cacheData = ParagraphAnalysisCacheData(
+            meaningZh = result.meaningZh,
+            grammarJson = json.encodeToString(result.grammarPoints),
+            keywordsJson = json.encodeToString(result.keyVocabulary),
+            breakdownsJson = json.encodeToString(result.sentenceBreakdowns)
+        )
+
+        // Store in cache
         if (isSaved) {
-            repository.insertParagraphAnalysisCache(
-                articleId, paragraphId, hash, modelKey,
-                ParagraphAnalysisCacheData(
-                    meaningZh = result.meaningZh,
-                    grammarJson = json.encodeToString(result.grammarPoints),
-                    keywordsJson = json.encodeToString(result.keyVocabulary),
-                    breakdownsJson = json.encodeToString(result.sentenceBreakdowns)
-                )
-            )
+            repository.insertParagraphAnalysisCache(articleId, paragraphId, hash, modelKey, cacheData)
+        } else {
+            repository.putMemoryParagraphAnalysisCache(memoryKey, cacheData)
         }
 
         return result
@@ -484,24 +491,29 @@ class TranslateParagraphUseCase @Inject constructor(
         val hash = computeHash(paragraphText)
         val normalizedUrl = baseUrl.trimEnd('/')
         val modelKey = "TRANSLATE|${provider.name}|$normalizedUrl|$model|$CACHE_VERSION"
+        val memoryKey = "T|$articleId|$paragraphId|$hash|$modelKey"
 
         if (isSaved) {
             val cached = repository.getParagraphAnalysisCache(articleId, paragraphId, hash, modelKey)
+            if (cached != null) return cached.meaningZh
+        } else {
+            val cached = repository.getMemoryParagraphAnalysisCache(memoryKey)
             if (cached != null) return cached.meaningZh
         }
 
         val translation = aiRepository.translateParagraph(paragraphText, apiKey, model, baseUrl, provider)
 
+        val cacheData = ParagraphAnalysisCacheData(
+            meaningZh = translation,
+            grammarJson = "",
+            keywordsJson = "",
+            breakdownsJson = ""
+        )
+
         if (isSaved) {
-            repository.insertParagraphAnalysisCache(
-                articleId, paragraphId, hash, modelKey,
-                ParagraphAnalysisCacheData(
-                    meaningZh = translation,
-                    grammarJson = "",
-                    keywordsJson = "",
-                    breakdownsJson = ""
-                )
-            )
+            repository.insertParagraphAnalysisCache(articleId, paragraphId, hash, modelKey, cacheData)
+        } else {
+            repository.putMemoryParagraphAnalysisCache(memoryKey, cacheData)
         }
 
         return translation
@@ -519,7 +531,8 @@ class TranslateParagraphUseCase @Inject constructor(
 }
 
 class QuickAnalyzeWordUseCase @Inject constructor(
-    private val aiRepository: ArticleAiRepository
+    private val aiRepository: ArticleAiRepository,
+    private val repository: ArticleRepository
 ) {
     suspend operator fun invoke(
         word: String,
@@ -529,6 +542,26 @@ class QuickAnalyzeWordUseCase @Inject constructor(
         baseUrl: String,
         provider: AiProvider
     ): QuickWordAnalysis {
-        return aiRepository.quickAnalyzeWord(word, contextSentence, apiKey, model, baseUrl, provider)
+        val normalizedUrl = baseUrl.trimEnd('/')
+        val modelKey = "${provider.name}|$normalizedUrl|$model|$CACHE_VERSION"
+        val hash = computeHash("$word|${contextSentence.orEmpty()}")
+        val memoryKey = "Q|$hash|$modelKey"
+
+        val cached = repository.getMemoryQuickWordAnalysisCache(memoryKey)
+        if (cached != null) return cached
+
+        val result = aiRepository.quickAnalyzeWord(word, contextSentence, apiKey, model, baseUrl, provider)
+        repository.putMemoryQuickWordAnalysisCache(memoryKey, result)
+        return result
+    }
+
+    private fun computeHash(text: String): String {
+        val input = "$text|$CACHE_VERSION"
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    companion object {
+        private const val CACHE_VERSION = "v1"
     }
 }

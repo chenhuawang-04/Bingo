@@ -30,6 +30,8 @@ class SettingsDataStore @Inject constructor(
         val OPENAI_MODEL = stringPreferencesKey("openai_model")
         val ANTHROPIC_BASE_URL = stringPreferencesKey("anthropic_base_url")
         val OPENAI_BASE_URL = stringPreferencesKey("openai_base_url")
+        val FAST_ANTHROPIC_MODEL = stringPreferencesKey("fast_anthropic_model")
+        val FAST_OPENAI_MODEL = stringPreferencesKey("fast_openai_model")
         val GITHUB_OWNER = stringPreferencesKey("github_owner")
         val GITHUB_REPO = stringPreferencesKey("github_repo")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
@@ -52,6 +54,11 @@ class SettingsDataStore @Inject constructor(
     }
     val provider: Flow<AiProvider> = dataStore.data.map { prefs ->
         providerFromPrefs(prefs)
+    }
+
+    val fastModel: Flow<String> = dataStore.data.map { prefs ->
+        val provider = providerFromPrefs(prefs)
+        readFastModel(prefs, provider)
     }
 
     val guardianDetailConcurrency: Flow<Int> = dataStore.data.map { prefs ->
@@ -99,6 +106,19 @@ class SettingsDataStore @Inject constructor(
         }
     }
 
+    suspend fun setFastModel(model: String) {
+        dataStore.edit { prefs ->
+            val provider = providerFromPrefs(prefs)
+            prefs[fastModelKey(provider)] = model
+        }
+    }
+
+    suspend fun setFastModel(provider: AiProvider, model: String) {
+        dataStore.edit { prefs ->
+            prefs[fastModelKey(provider)] = model
+        }
+    }
+
     suspend fun setProvider(provider: AiProvider) {
         dataStore.edit { prefs ->
             prefs[PROVIDER] = provider.name
@@ -141,6 +161,17 @@ class SettingsDataStore @Inject constructor(
         val model: String,
         val baseUrl: String
     )
+
+    suspend fun getFastAiConfig(): AiConfig {
+        val prefs = dataStore.data.first()
+        val p = providerFromPrefs(prefs)
+        return AiConfig(
+            provider = p,
+            apiKey = encryptedApiKeyStore.getApiKey(p),
+            model = readFastModel(prefs, p),
+            baseUrl = readBaseUrl(prefs, p)
+        )
+    }
 
     suspend fun getAiConfig(scope: AiSettingsScope): AiConfig {
         if (scope == AiSettingsScope.MAIN) {
@@ -265,6 +296,10 @@ class SettingsDataStore @Inject constructor(
         return prefs[baseUrlKey(provider)] ?: prefs[BASE_URL] ?: defaultBaseUrl(provider)
     }
 
+    private fun readFastModel(prefs: Preferences, provider: AiProvider): String {
+        return prefs[fastModelKey(provider)] ?: readModel(prefs, provider)
+    }
+
     private fun modelKey(provider: AiProvider): Preferences.Key<String> {
         return when (provider) {
             AiProvider.ANTHROPIC -> ANTHROPIC_MODEL
@@ -276,6 +311,13 @@ class SettingsDataStore @Inject constructor(
         return when (provider) {
             AiProvider.ANTHROPIC -> ANTHROPIC_BASE_URL
             AiProvider.OPENAI_COMPATIBLE -> OPENAI_BASE_URL
+        }
+    }
+
+    private fun fastModelKey(provider: AiProvider): Preferences.Key<String> {
+        return when (provider) {
+            AiProvider.ANTHROPIC -> FAST_ANTHROPIC_MODEL
+            AiProvider.OPENAI_COMPATIBLE -> FAST_OPENAI_MODEL
         }
     }
 

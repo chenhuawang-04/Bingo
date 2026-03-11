@@ -67,6 +67,8 @@ data class ArticleReaderUiState(
     val translationEnabled: Boolean = false,
     val paragraphTranslations: Map<Long, String> = emptyMap(),
     val translatingParagraphIds: Set<Long> = emptySet(),
+    val translationFailedParagraphIds: Set<Long> = emptySet(),
+    val expandedParagraphIds: Set<Long> = emptySet(),
     // Collection notebook
     val collectedWords: List<CollectedWord> = emptyList(),
     val showNotebook: Boolean = false,
@@ -268,7 +270,7 @@ class ArticleReaderViewModel @Inject constructor(
 
         translationJob?.cancel()
         translationJob = viewModelScope.launch {
-            val config = settingsDataStore.getAiConfig(AiSettingsScope.ARTICLE)
+            val config = settingsDataStore.getFastAiConfig()
             if (config.apiKey.isBlank()) {
                 _uiState.update { it.copy(analyzeError = "请先在设置中配置 API Key") }
                 return@launch
@@ -287,11 +289,49 @@ class ArticleReaderViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             paragraphTranslations = it.paragraphTranslations + (paragraph.id to translation),
-                            translatingParagraphIds = it.translatingParagraphIds - paragraph.id
+                            translatingParagraphIds = it.translatingParagraphIds - paragraph.id,
+                            translationFailedParagraphIds = it.translationFailedParagraphIds - paragraph.id
                         )
                     }
                 } catch (e: Exception) {
-                    _uiState.update { it.copy(translatingParagraphIds = it.translatingParagraphIds - paragraph.id) }
+                    _uiState.update {
+                        it.copy(
+                            translatingParagraphIds = it.translatingParagraphIds - paragraph.id,
+                            translationFailedParagraphIds = it.translationFailedParagraphIds + paragraph.id
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun retryTranslateParagraph(paragraphId: Long, paragraphText: String) {
+        viewModelScope.launch {
+            val config = settingsDataStore.getFastAiConfig()
+            if (config.apiKey.isBlank()) {
+                _uiState.update { it.copy(analyzeError = "请先在设置中配置 API Key") }
+                return@launch
+            }
+            val isSaved = _uiState.value.article?.isSaved ?: true
+            _uiState.update { it.copy(translatingParagraphIds = it.translatingParagraphIds + paragraphId) }
+            try {
+                val translation = translateParagraph(
+                    articleId, paragraphId, paragraphText,
+                    config.apiKey, config.model, config.baseUrl, config.provider, isSaved
+                )
+                _uiState.update {
+                    it.copy(
+                        paragraphTranslations = it.paragraphTranslations + (paragraphId to translation),
+                        translatingParagraphIds = it.translatingParagraphIds - paragraphId,
+                        translationFailedParagraphIds = it.translationFailedParagraphIds - paragraphId
+                    )
+                }
+            } catch (_: Exception) {
+                _uiState.update {
+                    it.copy(
+                        translatingParagraphIds = it.translatingParagraphIds - paragraphId,
+                        translationFailedParagraphIds = it.translationFailedParagraphIds + paragraphId
+                    )
                 }
             }
         }
@@ -307,7 +347,7 @@ class ArticleReaderViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val config = settingsDataStore.getAiConfig(AiSettingsScope.ARTICLE)
+                val config = settingsDataStore.getFastAiConfig()
                 if (config.apiKey.isBlank()) {
                     _uiState.update { state ->
                         state.copy(collectedWords = state.collectedWords.map {
@@ -413,11 +453,23 @@ class ArticleReaderViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         paragraphAnalysis = it.paragraphAnalysis + (paragraphId to result),
-                        analyzingParagraphId = 0L
+                        analyzingParagraphId = 0L,
+                        expandedParagraphIds = it.expandedParagraphIds + paragraphId
                     )
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "分析失败：${e.message}") }
+            }
+        }
+    }
+
+    fun toggleParagraphAnalysisExpanded(paragraphId: Long) {
+        _uiState.update {
+            val expanded = it.expandedParagraphIds
+            if (paragraphId in expanded) {
+                it.copy(expandedParagraphIds = expanded - paragraphId)
+            } else {
+                it.copy(expandedParagraphIds = expanded + paragraphId)
             }
         }
     }

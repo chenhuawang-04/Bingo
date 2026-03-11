@@ -182,9 +182,17 @@ fun ArticleReaderScreen(
                 translationEnabled = uiState.translationEnabled,
                 paragraphTranslations = uiState.paragraphTranslations,
                 translatingParagraphIds = uiState.translatingParagraphIds,
+                translationFailedParagraphIds = uiState.translationFailedParagraphIds,
                 statistics = uiState.statistics,
+                expandedParagraphIds = uiState.expandedParagraphIds,
                 onAnalyzeParagraph = { paragraphId, text ->
                     viewModel.analyzeParagraph(paragraphId, text)
+                },
+                onRetryTranslateParagraph = { paragraphId, text ->
+                    viewModel.retryTranslateParagraph(paragraphId, text)
+                },
+                onToggleAnalysisExpanded = { paragraphId ->
+                    viewModel.toggleParagraphAnalysisExpanded(paragraphId)
                 },
                 onWordClick = onWordClick,
                 onCollectWord = { word, context ->
@@ -224,8 +232,12 @@ private fun ArticleReaderContent(
     translationEnabled: Boolean,
     paragraphTranslations: Map<Long, String>,
     translatingParagraphIds: Set<Long>,
+    translationFailedParagraphIds: Set<Long>,
     statistics: ArticleStatistics?,
+    expandedParagraphIds: Set<Long>,
     onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
     onWordClick: (Long, Long) -> Unit,
     onCollectWord: (word: String, contextSentence: String) -> Unit,
     modifier: Modifier = Modifier,
@@ -331,7 +343,11 @@ private fun ArticleReaderContent(
                 translationEnabled = translationEnabled,
                 translation = paragraphTranslations[paragraph.id],
                 isTranslating = paragraph.id in translatingParagraphIds,
+                translationFailed = paragraph.id in translationFailedParagraphIds,
+                analysisExpanded = paragraph.id in expandedParagraphIds,
                 onAnalyze = { onAnalyzeParagraph(paragraph.id, paragraph.text) },
+                onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) },
+                onToggleAnalysisExpanded = { onToggleAnalysisExpanded(paragraph.id) },
                 onWordClick = onWordClick,
                 onCollectWord = onCollectWord
             )
@@ -353,7 +369,11 @@ private fun ParagraphBlock(
     translationEnabled: Boolean,
     translation: String?,
     isTranslating: Boolean,
+    translationFailed: Boolean,
+    analysisExpanded: Boolean,
     onAnalyze: () -> Unit,
+    onRetryTranslate: () -> Unit,
+    onToggleAnalysisExpanded: () -> Unit,
     onWordClick: (Long, Long) -> Unit,
     onCollectWord: (word: String, contextSentence: String) -> Unit
 ) {
@@ -451,8 +471,19 @@ private fun ParagraphBlock(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            } else if (translation != null) {
-                TranslationBlock(translation)
+            } else {
+                if (translation != null) {
+                    TranslationBlock(translation)
+                }
+                if (translation != null || translationFailed) {
+                    TextButton(
+                        onClick = onRetryTranslate,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.padding(start = 10.dp)
+                    ) {
+                        Text("重试翻译", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             }
         }
 
@@ -471,12 +502,14 @@ private fun ParagraphBlock(
 
         // Analyze button
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
+            modifier = Modifier.align(Alignment.End),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(
                 onClick = onAnalyze,
-                enabled = !isAnalyzing
+                enabled = !isAnalyzing,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
             ) {
                 if (isAnalyzing) {
                     CircularProgressIndicator(
@@ -493,7 +526,11 @@ private fun ParagraphBlock(
 
         // Analysis result
         if (analysis != null) {
-            ParagraphAnalysisCard(analysis = analysis)
+            ParagraphAnalysisCard(
+                analysis = analysis,
+                expanded = analysisExpanded,
+                onToggleExpanded = onToggleAnalysisExpanded
+            )
         }
     }
 }

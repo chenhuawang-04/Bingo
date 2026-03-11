@@ -6,6 +6,7 @@ import com.xty.englishhelper.domain.model.ArticleSentence
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ArticleWordStat
 import com.xty.englishhelper.domain.model.WordExampleSourceType
+import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import kotlinx.coroutines.flow.Flow
 
 data class WordExample(
@@ -69,11 +70,15 @@ interface ArticleRepository {
 
     suspend fun getAnalysisCache(articleId: Long, sentenceId: Long, hash: String, modelKey: String): SentenceAnalysisCache?
     suspend fun insertAnalysisCache(articleId: Long, sentenceId: Long, hash: String, modelKey: String, cache: SentenceAnalysisCache)
-
-    // Paragraph analysis cache
     suspend fun getParagraphAnalysisCache(articleId: Long, paragraphId: Long, hash: String, modelKey: String): ParagraphAnalysisCacheData?
     suspend fun insertParagraphAnalysisCache(articleId: Long, paragraphId: Long, hash: String, modelKey: String, cache: ParagraphAnalysisCacheData)
 
+    // In-memory cache for unsaved articles
+    suspend fun getMemoryParagraphAnalysisCache(cacheKey: String): ParagraphAnalysisCacheData?
+    suspend fun putMemoryParagraphAnalysisCache(cacheKey: String, cache: ParagraphAnalysisCacheData)
+
+    suspend fun getMemoryQuickWordAnalysisCache(cacheKey: String): QuickWordAnalysis?
+    suspend fun putMemoryQuickWordAnalysisCache(cacheKey: String, analysis: QuickWordAnalysis)
     suspend fun getExamplesForWord(wordId: Long): List<WordExample>
     suspend fun insertExamples(examples: List<WordExample>)
     suspend fun deleteExamplesByArticle(articleId: Long)

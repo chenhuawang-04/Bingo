@@ -22,6 +22,7 @@ import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ArticleWordStat
 import com.xty.englishhelper.domain.model.ParagraphType
 import com.xty.englishhelper.domain.model.WordExampleSourceType
+import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.ParagraphAnalysisCacheData
 import com.xty.englishhelper.domain.repository.SentenceAnalysisCache
@@ -37,6 +38,9 @@ class ArticleRepositoryImpl @Inject constructor(
     private val articleDao: ArticleDao,
     private val wordDao: WordDao
 ) : ArticleRepository {
+
+    private val memoryParagraphCache = java.util.concurrent.ConcurrentHashMap<String, ParagraphAnalysisCacheData>()
+    private val memoryQuickWordCache = java.util.concurrent.ConcurrentHashMap<String, QuickWordAnalysis>()
 
     override fun getAllArticles(): Flow<List<Article>> {
         return articleDao.getAllArticles().map { list -> list.map { it.toDomain() } }
@@ -171,6 +175,22 @@ class ArticleRepositoryImpl @Inject constructor(
                 breakdownsJson = cache.breakdownsJson
             )
         )
+    }
+
+    override suspend fun getMemoryParagraphAnalysisCache(cacheKey: String): ParagraphAnalysisCacheData? {
+        return memoryParagraphCache[cacheKey]
+    }
+
+    override suspend fun putMemoryParagraphAnalysisCache(cacheKey: String, cache: ParagraphAnalysisCacheData) {
+        memoryParagraphCache[cacheKey] = cache
+    }
+
+    override suspend fun getMemoryQuickWordAnalysisCache(cacheKey: String): QuickWordAnalysis? {
+        return memoryQuickWordCache[cacheKey]
+    }
+
+    override suspend fun putMemoryQuickWordAnalysisCache(cacheKey: String, analysis: QuickWordAnalysis) {
+        memoryQuickWordCache[cacheKey] = analysis
     }
 
     override suspend fun getExamplesForWord(wordId: Long): List<WordExample> {

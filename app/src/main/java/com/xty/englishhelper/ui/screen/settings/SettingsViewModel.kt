@@ -56,6 +56,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.fastModel.collect { model ->
+                _uiState.update { it.copy(fastModel = model) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.guardianDetailConcurrency.collect { value ->
                 _uiState.update { it.copy(guardianDetailConcurrency = value) }
             }
@@ -141,6 +146,12 @@ class SettingsViewModel @Inject constructor(
         val provider = _uiState.value.provider
         _uiState.update { it.copy(selectedModel = model) }
         viewModelScope.launch { settingsDataStore.setModel(provider, model) }
+    }
+
+    fun onFastModelChange(model: String) {
+        val provider = _uiState.value.provider
+        _uiState.update { it.copy(fastModel = model) }
+        viewModelScope.launch { settingsDataStore.setFastModel(provider, model) }
     }
 
     fun onGuardianDetailConcurrencyChange(value: Int) {
