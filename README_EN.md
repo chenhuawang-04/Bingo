@@ -20,6 +20,7 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 - **Batch photo import** — Select images → enter extraction conditions (e.g., "blue text") → AI extracts word list → preview and select → batch import with automatic background organization
 - **Deduplication** — Automatic duplicate detection based on normalized spelling (lowercase + trimmed), with upsert semantics
 - **Inflections** — Track plural, past tense, past participle, present participle, third person, comparative, and superlative forms
+- **Word TTS** — Text-to-speech playback for words with controls
 
 ### Morpheme Decomposition
 - **Structured decomposition** — Break words into prefixes, roots, suffixes, stems, linking elements and other morphemes, each labeled with role and meaning
@@ -30,14 +31,23 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 - **Linked word navigation** — Synonyms, similar words, and cognates that exist in the dictionary are clickable, navigating directly to their detail page
 - **Association display** — Bottom of detail page shows associated words sharing morphemes with the current word, all clickable
 
-### Article Reading & Vocabulary Linking
+### Article Reading & Vocabulary Linking (Refactored)
+- **Paragraph-first data model** — Articles are stored and rendered by paragraphs
 - **Article management** — Manually enter articles or upload photos for AI OCR extraction of title, content, domain, and difficulty level
 - **Automatic parsing** — After saving, articles enter a background pipeline: sentence splitting, tokenization, and word frequency statistics
 - **Vocabulary highlighting** — Dictionary words are automatically highlighted in the reader (including inflection matching); tap any highlighted word to jump to its detail page
 - **Bidirectional linking** — Matched vocabulary automatically creates Article ↔ Word links; saving or editing a word automatically backfills new links to matching articles
-- **Example extraction** — Automatically extracts example sentences containing target words from articles, labeled with source (e.g., "「Article Title」例句"), displayed on word detail pages
-- **Sentence analysis** — Long-press any sentence for AI analysis: Chinese translation, grammar points, and key vocabulary; results are cached per model version to avoid duplicate requests
-- **Parse status** — Article cards show real-time parsing progress (Pending / Processing / Done / Failed)
+- **Example extraction** — Automatically extracts example sentences containing target words from articles, labeled with source (e.g., "Article Title" examples), displayed on word detail pages
+- **Paragraph translation** — Paragraph-level AI translation with a global toggle and cache
+- **Paragraph analysis** — Paragraph-level AI analysis (translation, grammar points, keywords, sentence breakdowns) with cache
+- **Reading notebook** — Collect new words while reading, quick analysis, and one-tap add to dictionary/unit
+- **Article TTS** — Text-to-speech playback for articles with play/pause, previous/next paragraph, stop, and auto-follow scroll
+
+### Guardian Online Reading
+- **Section browsing** — Browse Guardian sections with grouped categories
+- **Online parsing** — Parse online articles into temporary entries for reading
+- **Save to local** — One-tap save to local and enter full parsing & stats flow
+- **Online word scanning** — On-the-fly vocabulary scanning and highlighting
 
 ### Word Pool System
 - **Word Pools** — Automatically groups related words based on multiple linguistic signals for associative learning
@@ -72,7 +82,7 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 
 ### Settings
 - **API configuration** — Supports Anthropic and OpenAI-compatible providers with custom API Key, model selection, and custom Base URL
-- **Scoped AI settings** — Configure independent AI models for word pool generation (POOL) and OCR recognition (OCR); automatically falls back to main settings when not enabled
+- **Scoped AI settings** — Configure independent AI models for word pool generation (POOL), OCR recognition (OCR), and article analysis (ARTICLE)
 - **Encrypted API Key storage** — Stored using AndroidX Security Crypto
 - **Connection test** — One-click API connectivity test for both main and scoped settings
 
@@ -85,8 +95,10 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 | DI | Hilt |
 | Local Storage | Room (SQLite), DataStore Preferences |
 | Network | Retrofit + OkHttp + Moshi |
+| Images | Coil |
+| HTML Parsing | Jsoup |
 | Navigation | Navigation Compose (type-safe routes + dual-tab navigation) |
-| AI | Anthropic Claude API / OpenAI-compatible API (auto-organize, OCR extraction, sentence analysis, pool generation, batch import) |
+| AI | Anthropic Claude API / OpenAI-compatible API (auto-organize, OCR extraction, sentence analysis, pool generation, batch import, paragraph analysis/translation) |
 | Security | AndroidX Security Crypto |
 | Async | Kotlin Coroutines + Flow |
 | Spaced Repetition | FSRS-5 adaptive algorithm |
@@ -106,8 +118,9 @@ com.xty.englishhelper/
 │   │   └── relation/            # Relation queries
 │   ├── mapper/                  # Entity ↔ Domain mapping
 │   ├── preferences/             # DataStore + encrypted storage
-│   ├── remote/                  # Anthropic API client
+│   ├── remote/                  # AI clients + Guardian parsing
 │   │   ├── dto/                 # Request/response DTOs
+│   │   ├── guardian/            # Guardian fetch & parse
 │   │   └── interceptor/         # OkHttp interceptors
 │   └── repository/              # Repository implementations
 ├── di/                          # Hilt DI modules
@@ -118,9 +131,10 @@ com.xty.englishhelper/
 │   ├── pool/                    # Word pool engine
 │   ├── repository/              # Repository interfaces
 │   ├── study/                   # FSRS spaced repetition engine
+│   ├── tts/                     # Text-to-speech
 │   └── usecase/                 # Use cases
 │       ├── ai/                  # AI auto-organize
-│       ├── article/             # Article parsing, sentence analysis, vocabulary backfill
+│       ├── article/             # Article parsing, paragraph analysis/translation, vocabulary backfill
 │       ├── dictionary/          # Dictionary CRUD
 │       ├── importexport/        # Import/export
 │       ├── study/               # Study scheduling
@@ -135,9 +149,10 @@ com.xty.englishhelper/
 │   ├── navigation/              # Nav graph + route definitions (dual-tab)
 │   ├── screen/                  # Screen pages (container/content/component split)
 │   │   ├── addword/             # Add/edit word
-│   │   ├── article/             # Article list/editor/reader/sentence analysis
+│   │   ├── article/             # Article list/editor/reader/paragraph analysis
 │   │   ├── batchimport/         # Batch photo import
 │   │   ├── dictionary/          # Dictionary detail
+│   │   ├── guardian/            # Guardian browse & reader
 │   │   ├── home/                # Home + dashboard
 │   │   ├── importexport/        # Import/export
 │   │   ├── main/                # Main scaffold + bottom/rail navigation
@@ -183,8 +198,11 @@ com.xty.englishhelper/
 8. **Start studying** — Select units to enter review mode; switch to Brainstorm mode for pool-based learning; FSRS-5 handles adaptive scheduling
 9. **Add articles** — Switch to the Article tab, tap "+" to enter manually or upload photos for AI extraction
 10. **Read articles** — Tap an article card to open the reader; dictionary words are highlighted automatically; tap any highlighted word to jump to its detail page
-11. **Analyze sentences** — Long-press any sentence in the reader for AI-powered translation, grammar, and vocabulary analysis
-12. **Scoped settings** (optional) — Enable "Pool AI" or "OCR AI" in Settings to configure independent AI models for different scenarios
+11. **Paragraph analysis/translation** — Toggle translation in the reader or tap “Organize” on a paragraph
+12. **Reading notebook** — Tap unknown words to add to notebook, then add to dictionary/unit
+13. **Guardian reading** — Browse Guardian online articles and save to local
+14. **Text-to-speech** — Play article TTS with follow-scroll and paragraph controls
+15. **Scoped settings** (optional) — Enable Pool/OCR/Article AI in Settings to configure independent models
 
 ## Database Versions
 
@@ -199,6 +217,8 @@ com.xty.englishhelper/
 | 7 | Added normalized_token index to article_word_stats |
 | 8 | Added model_key column + composite unique index to sentence_analysis_cache |
 | 9 | Added word_pools table (id, dictionary_id, focus_word_id, strategy, algorithm_version) and word_pool_members join table (word_id, pool_id) with cascading foreign keys |
+| 10 | Refactored articles to paragraph-first storage and paragraph analysis cache |
+| 11 | Paragraph analysis/translation cache improvements + Guardian online reading and temporary articles |
 
 ## License
 
