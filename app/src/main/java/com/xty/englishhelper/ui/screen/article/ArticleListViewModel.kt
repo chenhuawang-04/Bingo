@@ -26,7 +26,7 @@ data class ArticleListUiState(
 @HiltViewModel
 class ArticleListViewModel @Inject constructor(
     private val getArticleList: GetArticleListUseCase,
-    private val deleteArticle: DeleteArticleUseCase,
+    private val deleteArticleUseCase: DeleteArticleUseCase,
     private val guardianRepository: GuardianRepository
 ) : ViewModel() {
 
@@ -51,10 +51,10 @@ class ArticleListViewModel @Inject constructor(
     fun deleteArticle(articleId: Long) {
         viewModelScope.launch {
             try {
-                deleteArticle(articleId)
+                deleteArticleUseCase(articleId)
             } catch (e: Exception) {
                 Log.e("ArticleListVM", "Delete article failed: $articleId", e)
-                _uiState.update { it.copy(error = "删除失败：${e.message}") }
+                _uiState.update { it.copy(error = "Delete failed: ${e.message ?: \"unknown\"}") }
             }
         }
     }

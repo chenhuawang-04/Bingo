@@ -100,6 +100,9 @@ interface ArticleDao {
     @Query("SELECT * FROM article_word_links WHERE word_id = :wordId")
     suspend fun getWordLinksByWord(wordId: Long): List<ArticleWordLinkEntity>
 
+    @Query("DELETE FROM article_word_links WHERE article_id = :articleId")
+    suspend fun deleteWordLinksByArticle(articleId: Long)
+
     // Sentence analysis cache
     @Query("SELECT * FROM sentence_analysis_cache WHERE article_id = :articleId AND sentence_id = :sentenceId AND sentence_hash = :hash AND model_key = :modelKey LIMIT 1")
     suspend fun getAnalysisCache(articleId: Long, sentenceId: Long, hash: String, modelKey: String): SentenceAnalysisCacheEntity?
@@ -138,6 +141,26 @@ interface ArticleDao {
 
     @Query("DELETE FROM word_examples WHERE word_id = :wordId")
     suspend fun deleteExamplesByWord(wordId: Long)
+
+    @Query("DELETE FROM sentence_analysis_cache WHERE article_id = :articleId")
+    suspend fun deleteSentenceAnalysisCacheByArticle(articleId: Long)
+
+    @Query("DELETE FROM paragraph_analysis_cache WHERE article_id = :articleId")
+    suspend fun deleteParagraphAnalysisCacheByArticle(articleId: Long)
+
+    @Transaction
+    suspend fun deleteArticleCascade(articleId: Long) {
+        // Clear derived/cache tables first to avoid foreign key issues on some devices
+        deleteWordLinksByArticle(articleId)
+        deleteWordStatsByArticle(articleId)
+        deleteSentencesByArticle(articleId)
+        deleteParagraphsByArticle(articleId)
+        deleteImagesByArticle(articleId)
+        deleteExamplesByArticle(articleId)
+        deleteSentenceAnalysisCacheByArticle(articleId)
+        deleteParagraphAnalysisCacheByArticle(articleId)
+        deleteArticle(articleId)
+    }
 
     // Guardian: find article by source URL (stored in domain field)
     @Query("SELECT * FROM articles WHERE domain = :sourceUrl AND source_type_v2 = 'ONLINE' LIMIT 1")

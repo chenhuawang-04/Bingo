@@ -63,7 +63,7 @@ class ArticleRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteArticle(articleId: Long) {
-        articleDao.deleteArticleWithExamples(articleId)
+        articleDao.deleteArticleCascade(articleId)
     }
 
     override fun getArticleCount(): Flow<Int> {
