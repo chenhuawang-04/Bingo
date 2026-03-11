@@ -54,7 +54,8 @@ class ArticleListViewModel @Inject constructor(
                 deleteArticleUseCase(articleId)
             } catch (e: Exception) {
                 Log.e("ArticleListVM", "Delete article failed: $articleId", e)
-                _uiState.update { it.copy(error = "Delete failed: ${e.message ?: \"unknown\"}") }
+                val msg = e.message ?: "unknown"
+                _uiState.update { it.copy(error = "Delete failed: $msg") }
             }
         }
     }
