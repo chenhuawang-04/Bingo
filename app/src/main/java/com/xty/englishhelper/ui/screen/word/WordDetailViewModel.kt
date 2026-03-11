@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetWordPoolsUseCase
 import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
@@ -26,7 +27,8 @@ class WordDetailViewModel @Inject constructor(
     private val resolveLinkedWords: ResolveLinkedWordsUseCase,
     private val getAssociatedWords: GetAssociatedWordsUseCase,
     private val getWordExamples: GetWordExamplesUseCase,
-    private val getWordPools: GetWordPoolsUseCase
+    private val getWordPools: GetWordPoolsUseCase,
+    private val ttsManager: TtsManager
 ) : ViewModel() {
 
     private var wordId: Long = savedStateHandle["wordId"] ?: 0L
@@ -36,8 +38,17 @@ class WordDetailViewModel @Inject constructor(
     val uiState: StateFlow<WordDetailUiState> = _uiState.asStateFlow()
 
     init {
+        observeTtsState()
         if (wordId != 0L) {
             loadWord()
+        }
+    }
+
+    private fun observeTtsState() {
+        viewModelScope.launch {
+            ttsManager.state.collect { tts ->
+                _uiState.update { it.copy(ttsState = tts) }
+            }
         }
     }
 
@@ -107,5 +118,38 @@ class WordDetailViewModel @Inject constructor(
             deleteWord(wordId, dictionaryId)
             onDeleted()
         }
+    }
+
+    fun toggleSpeakWord() {
+        val word = _uiState.value.word ?: return
+        val sessionId = ttsManager.wordSessionId(word.id)
+        val isCurrent = _uiState.value.ttsState.sessionId == sessionId
+
+        if (_uiState.value.ttsState.isSpeaking && isCurrent) {
+            ttsManager.pause()
+            return
+        }
+
+        viewModelScope.launch {
+            ttsManager.speakWord(word.id, word.spelling)
+        }
+    }
+
+    fun speakWordUs() {
+        val word = _uiState.value.word ?: return
+        viewModelScope.launch {
+            ttsManager.speakWord(word.id, word.spelling, localeOverride = "en-US")
+        }
+    }
+
+    fun speakWordUk() {
+        val word = _uiState.value.word ?: return
+        viewModelScope.launch {
+            ttsManager.speakWord(word.id, word.spelling, localeOverride = "en-GB")
+        }
+    }
+
+    fun clearTtsError() {
+        ttsManager.clearError()
     }
 }

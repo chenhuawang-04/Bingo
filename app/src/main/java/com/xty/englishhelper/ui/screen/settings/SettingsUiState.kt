@@ -17,6 +17,10 @@ data class SettingsUiState(
     val ocrAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val articleAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val guardianDetailConcurrency: Int = 5,
+    val ttsRate: Float = 1.0f,
+    val ttsPitch: Float = 1.0f,
+    val ttsLocale: String = "system",
+    val ttsAutoStudy: Boolean = true,
     val cloudSync: CloudSyncState = CloudSyncState()
 )
 

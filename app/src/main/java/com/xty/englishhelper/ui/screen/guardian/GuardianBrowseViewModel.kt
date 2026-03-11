@@ -130,6 +130,8 @@ class GuardianBrowseViewModel @Inject constructor(
         if (items.isEmpty()) return
         val concurrency = settingsDataStore.guardianDetailConcurrency.first().coerceIn(1, 10)
         val semaphore = Semaphore(concurrency)
+        // Build URL -> index map for O(1) lookup instead of O(n) scan per update
+        val urlToIndex = items.withIndex().associate { (i, item) -> item.url to i }
         coroutineScope {
             items.forEach { item ->
                 launch {
@@ -141,39 +143,37 @@ class GuardianBrowseViewModel @Inject constructor(
                                 .split(Regex("\\s+"))
                                 .count { it.isNotBlank() }
                             _uiState.update { state ->
-                                state.copy(
-                                    articles = state.articles.map { current ->
-                                        if (current.url == item.url) {
-                                            current.copy(
-                                                author = detail.author.takeIf { it.isNotBlank() },
-                                                coverImageUrl = detail.coverImageUrl,
-                                                wordCount = wordCount,
-                                                isAuthorLoading = false,
-                                                isWordCountLoading = false,
-                                                detailError = null
-                                            )
-                                        } else {
-                                            current
-                                        }
-                                    }
-                                )
+                                val idx = urlToIndex[item.url]
+                                if (idx != null && idx < state.articles.size && state.articles[idx].url == item.url) {
+                                    val updated = state.articles.toMutableList()
+                                    updated[idx] = updated[idx].copy(
+                                        author = detail.author.takeIf { it.isNotBlank() },
+                                        coverImageUrl = detail.coverImageUrl,
+                                        wordCount = wordCount,
+                                        isAuthorLoading = false,
+                                        isWordCountLoading = false,
+                                        detailError = null
+                                    )
+                                    state.copy(articles = updated)
+                                } else {
+                                    state
+                                }
                             }
                         } catch (e: Exception) {
                             Log.w("GuardianBrowseVM", "Detail load failed: ${item.url}", e)
                             _uiState.update { state ->
-                                state.copy(
-                                    articles = state.articles.map { current ->
-                                        if (current.url == item.url) {
-                                            current.copy(
-                                                isAuthorLoading = false,
-                                                isWordCountLoading = false,
-                                                detailError = e.message
-                                            )
-                                        } else {
-                                            current
-                                        }
-                                    }
-                                )
+                                val idx = urlToIndex[item.url]
+                                if (idx != null && idx < state.articles.size && state.articles[idx].url == item.url) {
+                                    val updated = state.articles.toMutableList()
+                                    updated[idx] = updated[idx].copy(
+                                        isAuthorLoading = false,
+                                        isWordCountLoading = false,
+                                        detailError = e.message
+                                    )
+                                    state.copy(articles = updated)
+                                } else {
+                                    state
+                                }
                             }
                         }
                     }

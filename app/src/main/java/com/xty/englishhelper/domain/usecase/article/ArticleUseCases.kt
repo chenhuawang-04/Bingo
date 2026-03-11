@@ -154,10 +154,11 @@ class ParseArticleUseCase @Inject constructor(
             repository.deleteWordStatsByArticle(articleId)
             repository.deleteExamplesByArticle(articleId)
 
-            // Step 3: Split sentences per paragraph
+            // Step 3: Split sentences per paragraph (reused in Step 5)
             var globalSentenceIndex = 0
             var globalCharOffset = 0
             val allSentences = mutableListOf<ArticleSentence>()
+            val allSpans = mutableListOf<com.xty.englishhelper.domain.article.SentenceSpan>()
 
             for (paragraph in paragraphs) {
                 if (paragraph.text.isBlank()) {
@@ -166,6 +167,7 @@ class ParseArticleUseCase @Inject constructor(
                 }
 
                 val spans = SentenceSplitter.split(paragraph.text)
+                allSpans.addAll(spans)
                 for (span in spans) {
                     allSentences.add(
                         ArticleSentence(
@@ -186,10 +188,7 @@ class ParseArticleUseCase @Inject constructor(
                 repository.insertSentences(articleId, chunk)
             }
 
-            // Step 5: Tokenize using sentence spans from paragraphs
-            val allSpans = paragraphs.flatMap { p ->
-                SentenceSplitter.split(p.text)
-            }
+            // Step 5: Tokenize using sentence spans (reusing allSpans from Step 3)
             val tokens = ArticleTokenizer.tokenize(allSpans)
 
             // Step 6: Aggregate frequencies
@@ -230,8 +229,9 @@ class ParseArticleUseCase @Inject constructor(
             }
 
             // Step 9: Generate word examples (only for saved articles)
+            val sentenceById = storedSentences.associateBy { it.id }
             val examples = wordLinks.map { link ->
-                val sentence = storedSentences.find { it.id == link.sentenceId }
+                val sentence = sentenceById[link.sentenceId]
                 val articleTitle = article.title
                 WordExample(
                     wordId = link.wordId,

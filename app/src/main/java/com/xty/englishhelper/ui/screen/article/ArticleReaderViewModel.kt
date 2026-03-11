@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.article.SentenceSplitter
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleParagraph
@@ -18,6 +19,7 @@ import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
+import com.xty.englishhelper.domain.model.TtsState
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import com.xty.englishhelper.domain.repository.ArticleRepository
@@ -58,11 +60,13 @@ data class ArticleReaderUiState(
     val paragraphs: List<ArticleParagraph>? = null,
     val sentencesByParagraph: Map<Long, List<ArticleSentence>> = emptyMap(),
     val wordLinks: List<ArticleWordLink> = emptyList(),
+    val wordLinkMap: Map<String, List<ArticleWordLink>> = emptyMap(),
     val paragraphAnalysis: Map<Long, ParagraphAnalysisResult> = emptyMap(),
     val analyzingParagraphId: Long = 0L,
     val statistics: ArticleStatistics? = null,
     val analyzeError: String? = null,
     val isSavingToLocal: Boolean = false,
+    val ttsState: TtsState = TtsState(),
     // Translation
     val translationEnabled: Boolean = false,
     val paragraphTranslations: Map<Long, String> = emptyMap(),
@@ -95,7 +99,8 @@ class ArticleReaderViewModel @Inject constructor(
     private val unitRepository: UnitRepository,
     private val backgroundOrganizeManager: BackgroundOrganizeManager,
     private val settingsDataStore: SettingsDataStore,
-    private val repository: ArticleRepository
+    private val repository: ArticleRepository,
+    private val ttsManager: TtsManager
 ) : ViewModel() {
 
     private val articleId: Long = savedStateHandle["articleId"] ?: 0L
@@ -109,12 +114,27 @@ class ArticleReaderViewModel @Inject constructor(
 
     private var pollStarted = false
     private var translationJob: Job? = null
+    // Track content fingerprint to avoid redundant reloads
+    private var lastLoadedParseStatus: ArticleParseStatus? = null
+    private var lastLoadedContentHash: String? = null
+    private var dataLoaded = false
+    // Cache for online article word link scanning
+    private var cachedOnlineWordLinks: List<ArticleWordLink>? = null
 
     init {
+        observeTtsState()
         subscribeToArticleUpdates()
         loadDictionaries()
         if (articleId != 0L) {
             startParseStatusPolling()
+        }
+    }
+
+    private fun observeTtsState() {
+        viewModelScope.launch {
+            ttsManager.state.collect { tts ->
+                _uiState.update { it.copy(ttsState = tts) }
+            }
         }
     }
 
@@ -128,10 +148,21 @@ class ArticleReaderViewModel @Inject constructor(
                     return@collect
                 }
 
-                try {
-                    loadArticleData()
-                } catch (e: Exception) {
-                    Log.w("ArticleReaderVM", "Data loading failed for articleId=$articleId", e)
+                // Only reload data when content actually changes
+                val contentFingerprint = "${article.content.length}|${article.wordCount}"
+                val needsReload = !dataLoaded
+                    || article.parseStatus != lastLoadedParseStatus
+                    || contentFingerprint != lastLoadedContentHash
+
+                if (needsReload) {
+                    try {
+                        loadArticleData()
+                        lastLoadedParseStatus = article.parseStatus
+                        lastLoadedContentHash = contentFingerprint
+                        dataLoaded = true
+                    } catch (e: Exception) {
+                        Log.w("ArticleReaderVM", "Data loading failed for articleId=$articleId", e)
+                    }
                 }
             }
         }
@@ -147,19 +178,24 @@ class ArticleReaderViewModel @Inject constructor(
             // Local/saved article: read persisted word links from DB
             repository.getWordLinks(articleId)
         } else {
-            // Online article: in-memory word scanning (no DB writes)
-            scanWordLinks(paragraphs)
+            // Online article: use cached scan result or scan fresh
+            cachedOnlineWordLinks ?: scanWordLinks(paragraphs).also {
+                cachedOnlineWordLinks = it
+            }
         }
 
         // Group sentences by paragraph
         val sentencesByParagraph = sentences.groupBy { it.paragraphId }
+
+        val wordLinkMap = wordLinks.groupBy { it.matchedToken.lowercase() }
 
         _uiState.update {
             it.copy(
                 paragraphs = paragraphs,
                 sentences = sentences,
                 sentencesByParagraph = sentencesByParagraph,
-                wordLinks = wordLinks
+                wordLinks = wordLinks,
+                wordLinkMap = wordLinkMap
             )
         }
 
@@ -514,6 +550,55 @@ class ArticleReaderViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun toggleSpeakArticle() {
+        val article = _uiState.value.article ?: return
+        val paragraphs = _uiState.value.paragraphs ?: return
+        val sessionId = ttsManager.articleSessionId(article.id)
+        val isCurrent = _uiState.value.ttsState.sessionId == sessionId
+
+        if (_uiState.value.ttsState.isSpeaking && isCurrent) {
+            ttsManager.pause()
+            return
+        }
+
+        val texts = buildTtsParagraphs(article.title, paragraphs)
+        if (texts.isEmpty()) return
+
+        val ttsState = _uiState.value.ttsState
+        val atEnd = isCurrent &&
+            !ttsState.isSpeaking &&
+            texts.isNotEmpty() &&
+            ttsState.currentIndex >= texts.lastIndex
+        val startIndex = if (!isCurrent) 0 else if (atEnd) 0 else ttsState.currentIndex
+        viewModelScope.launch {
+            ttsManager.speakArticle(article.id, texts, startIndex)
+        }
+    }
+
+    fun stopSpeaking() {
+        ttsManager.stop()
+    }
+
+    fun nextParagraph() {
+        ttsManager.next()
+    }
+
+    fun previousParagraph() {
+        ttsManager.previous()
+    }
+
+    fun clearTtsError() {
+        ttsManager.clearError()
+    }
+
+    private fun buildTtsParagraphs(title: String, paragraphs: List<ArticleParagraph>): List<String> {
+        val texts = paragraphs
+            .filter { it.paragraphType != com.xty.englishhelper.domain.model.ParagraphType.IMAGE }
+            .map { it.text.trim() }
+            .filter { it.isNotBlank() }
+        return if (title.isBlank()) texts else listOf(title) + texts
     }
 
     fun clearError() {

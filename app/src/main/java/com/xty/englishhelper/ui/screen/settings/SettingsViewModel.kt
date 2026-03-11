@@ -3,6 +3,7 @@ package com.xty.englishhelper.ui.screen.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.usecase.ai.TestAiConnectionUseCase
@@ -23,6 +24,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
+    private val ttsManager: TtsManager,
     private val testAiConnection: TestAiConnectionUseCase,
     private val syncUseCase: SyncUseCase,
     private val forceUploadUseCase: ForceUploadUseCase,
@@ -63,6 +65,26 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsDataStore.guardianDetailConcurrency.collect { value ->
                 _uiState.update { it.copy(guardianDetailConcurrency = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.ttsRate.collect { value ->
+                _uiState.update { it.copy(ttsRate = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.ttsPitch.collect { value ->
+                _uiState.update { it.copy(ttsPitch = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.ttsLocale.collect { value ->
+                _uiState.update { it.copy(ttsLocale = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.ttsAutoStudy.collect { value ->
+                _uiState.update { it.copy(ttsAutoStudy = value) }
             }
         }
         // Scoped settings
@@ -157,6 +179,37 @@ class SettingsViewModel @Inject constructor(
     fun onGuardianDetailConcurrencyChange(value: Int) {
         _uiState.update { it.copy(guardianDetailConcurrency = value) }
         viewModelScope.launch { settingsDataStore.setGuardianDetailConcurrency(value) }
+    }
+
+    fun onTtsRateChange(value: Float) {
+        val clamped = value.coerceIn(0.5f, 2.0f)
+        _uiState.update { it.copy(ttsRate = clamped) }
+        viewModelScope.launch { settingsDataStore.setTtsRate(clamped) }
+    }
+
+    fun onTtsPitchChange(value: Float) {
+        val clamped = value.coerceIn(0.5f, 2.0f)
+        _uiState.update { it.copy(ttsPitch = clamped) }
+        viewModelScope.launch { settingsDataStore.setTtsPitch(clamped) }
+    }
+
+    fun onTtsLocaleChange(value: String) {
+        _uiState.update { it.copy(ttsLocale = value) }
+        viewModelScope.launch { settingsDataStore.setTtsLocale(value) }
+    }
+
+    fun onTtsAutoStudyChange(value: Boolean) {
+        _uiState.update { it.copy(ttsAutoStudy = value) }
+        viewModelScope.launch { settingsDataStore.setTtsAutoStudy(value) }
+    }
+
+    fun playTtsSample() {
+        viewModelScope.launch {
+            ttsManager.speakWord(
+                wordId = 0L,
+                text = "This is a sample of English speech."
+            )
+        }
     }
 
     fun testConnection() {

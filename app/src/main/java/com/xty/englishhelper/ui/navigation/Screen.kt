@@ -30,6 +30,9 @@ data object ImportExportRoute
 data object SettingsRoute
 
 @Serializable
+data object TtsDiagnosticsRoute
+
+@Serializable
 data class UnitDetailRoute(val unitId: Long, val dictionaryId: Long)
 
 @Serializable

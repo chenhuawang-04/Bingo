@@ -3,6 +3,8 @@ package com.xty.englishhelper.data.preferences
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -36,6 +38,10 @@ class SettingsDataStore @Inject constructor(
         val GITHUB_REPO = stringPreferencesKey("github_repo")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
         val GUARDIAN_DETAIL_CONCURRENCY = intPreferencesKey("guardian_detail_concurrency")
+        val TTS_RATE = floatPreferencesKey("tts_rate")
+        val TTS_PITCH = floatPreferencesKey("tts_pitch")
+        val TTS_LOCALE = stringPreferencesKey("tts_locale")
+        val TTS_AUTO_STUDY = booleanPreferencesKey("tts_auto_study")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -65,10 +71,42 @@ class SettingsDataStore @Inject constructor(
         prefs[GUARDIAN_DETAIL_CONCURRENCY] ?: 5
     }
 
+    val ttsRate: Flow<Float> = dataStore.data.map { prefs ->
+        prefs[TTS_RATE] ?: 1.0f
+    }
+
+    val ttsPitch: Flow<Float> = dataStore.data.map { prefs ->
+        prefs[TTS_PITCH] ?: 1.0f
+    }
+
+    val ttsLocale: Flow<String> = dataStore.data.map { prefs ->
+        prefs[TTS_LOCALE] ?: "system"
+    }
+
+    val ttsAutoStudy: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[TTS_AUTO_STUDY] ?: true
+    }
+
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
         }
+    }
+
+    suspend fun setTtsRate(value: Float) {
+        dataStore.edit { prefs -> prefs[TTS_RATE] = value }
+    }
+
+    suspend fun setTtsPitch(value: Float) {
+        dataStore.edit { prefs -> prefs[TTS_PITCH] = value }
+    }
+
+    suspend fun setTtsLocale(value: String) {
+        dataStore.edit { prefs -> prefs[TTS_LOCALE] = value }
+    }
+
+    suspend fun setTtsAutoStudy(value: Boolean) {
+        dataStore.edit { prefs -> prefs[TTS_AUTO_STUDY] = value }
     }
 
     suspend fun setApiKey(key: String) {
@@ -162,6 +200,12 @@ class SettingsDataStore @Inject constructor(
         val baseUrl: String
     )
 
+    data class TtsConfig(
+        val rate: Float,
+        val pitch: Float,
+        val localeTag: String
+    )
+
     suspend fun getFastAiConfig(): AiConfig {
         val prefs = dataStore.data.first()
         val p = providerFromPrefs(prefs)
@@ -199,6 +243,15 @@ class SettingsDataStore @Inject constructor(
             apiKey = scopedApiKey,
             model = scopedModel,
             baseUrl = scopedBaseUrl
+        )
+    }
+
+    suspend fun getTtsConfig(): TtsConfig {
+        val prefs = dataStore.data.first()
+        return TtsConfig(
+            rate = prefs[TTS_RATE] ?: 1.0f,
+            pitch = prefs[TTS_PITCH] ?: 1.0f,
+            localeTag = prefs[TTS_LOCALE] ?: "system"
         )
     }
 

@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -53,6 +54,7 @@ import com.xty.englishhelper.util.Constants
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onTtsDiagnostics: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -284,6 +286,21 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                // TTS
+                TtsSection(
+                    rate = state.ttsRate,
+                    pitch = state.ttsPitch,
+                    locale = state.ttsLocale,
+                    autoStudy = state.ttsAutoStudy,
+                    onRateChange = viewModel::onTtsRateChange,
+                    onPitchChange = viewModel::onTtsPitchChange,
+                    onLocaleChange = viewModel::onTtsLocaleChange,
+                    onAutoStudyChange = viewModel::onTtsAutoStudyChange,
+                    onTest = viewModel::playTtsSample
+                )
+
+                HorizontalDivider()
+
                 // Cloud Sync
                 CloudSyncSection(
                     state = state.cloudSync,
@@ -296,6 +313,15 @@ fun SettingsScreen(
                     onForceDownload = viewModel::performForceDownload,
                     onClearError = viewModel::clearSyncError
                 )
+
+                HorizontalDivider()
+
+                Button(
+                    onClick = onTtsDiagnostics,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("语音诊断")
+                }
             }
         }
     }
@@ -345,6 +371,84 @@ private fun OnlineReadingSection(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+@Composable
+private fun TtsSection(
+    rate: Float,
+    pitch: Float,
+    locale: String,
+    autoStudy: Boolean,
+    onRateChange: (Float) -> Unit,
+    onPitchChange: (Float) -> Unit,
+    onLocaleChange: (String) -> Unit,
+    onAutoStudyChange: (Boolean) -> Unit,
+    onTest: () -> Unit
+) {
+    val locales = listOf(
+        "system" to "跟随系统",
+        "en-US" to "英语（美式）",
+        "en-GB" to "英语（英式）"
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("语音播报", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "使用系统语音引擎播报单词和文章，可调整语速与音调",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Text("语速：${"%.2f".format(rate)}x", style = MaterialTheme.typography.bodySmall)
+        Slider(
+            value = rate,
+            onValueChange = onRateChange,
+            valueRange = 0.5f..2.0f
+        )
+
+        Text("音调：${"%.2f".format(pitch)}x", style = MaterialTheme.typography.bodySmall)
+        Slider(
+            value = pitch,
+            onValueChange = onPitchChange,
+            valueRange = 0.5f..2.0f
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            locales.forEach { (value, label) ->
+                FilterChip(
+                    selected = locale == value,
+                    onClick = { onLocaleChange(value) },
+                    label = { Text(label) }
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("背词自动朗读", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "每弹出一个单词自动播报",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = autoStudy,
+                onCheckedChange = onAutoStudyChange
+            )
+        }
+
+        Button(
+            onClick = onTest,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("播放示例")
+        }
     }
 }
 

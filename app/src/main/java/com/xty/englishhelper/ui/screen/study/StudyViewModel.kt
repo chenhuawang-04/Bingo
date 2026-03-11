@@ -3,6 +3,8 @@ package com.xty.englishhelper.ui.screen.study
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.repository.WordPoolRepository
@@ -17,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -38,7 +41,9 @@ class StudyViewModel @Inject constructor(
     private val getNewWords: GetNewWordsUseCase,
     private val reviewWord: ReviewWordUseCase,
     private val previewIntervals: PreviewIntervalsUseCase,
-    private val wordPoolRepository: WordPoolRepository
+    private val wordPoolRepository: WordPoolRepository,
+    private val settingsDataStore: SettingsDataStore,
+    private val ttsManager: TtsManager
 ) : ViewModel() {
 
     private val unitIdsStr: String = savedStateHandle["unitIds"] ?: ""
@@ -223,6 +228,14 @@ class StudyViewModel @Inject constructor(
                     total = totalUniqueWords,
                     currentWordRelatedSpellings = relatedSpellings
                 )
+            }
+
+            // Auto-speak the word when it appears
+            viewModelScope.launch {
+                val enabled = settingsDataStore.ttsAutoStudy.first()
+                if (enabled) {
+                    ttsManager.speakWord(entry.word.id, entry.word.spelling)
+                }
             }
         } else {
             // All remaining entries are waiting — show waiting state and schedule
