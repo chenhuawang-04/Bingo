@@ -42,6 +42,8 @@ class SettingsDataStore @Inject constructor(
         val TTS_PITCH = floatPreferencesKey("tts_pitch")
         val TTS_LOCALE = stringPreferencesKey("tts_locale")
         val TTS_AUTO_STUDY = booleanPreferencesKey("tts_auto_study")
+        val TTS_PREWARM_CONCURRENCY = intPreferencesKey("tts_prewarm_concurrency")
+        val TTS_PREWARM_RETRY = intPreferencesKey("tts_prewarm_retry")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -87,6 +89,14 @@ class SettingsDataStore @Inject constructor(
         prefs[TTS_AUTO_STUDY] ?: true
     }
 
+    val ttsPrewarmConcurrency: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[TTS_PREWARM_CONCURRENCY] ?: 2
+    }
+
+    val ttsPrewarmRetry: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[TTS_PREWARM_RETRY] ?: 2
+    }
+
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
@@ -107,6 +117,14 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setTtsAutoStudy(value: Boolean) {
         dataStore.edit { prefs -> prefs[TTS_AUTO_STUDY] = value }
+    }
+
+    suspend fun setTtsPrewarmConcurrency(value: Int) {
+        dataStore.edit { prefs -> prefs[TTS_PREWARM_CONCURRENCY] = value }
+    }
+
+    suspend fun setTtsPrewarmRetry(value: Int) {
+        dataStore.edit { prefs -> prefs[TTS_PREWARM_RETRY] = value }
     }
 
     suspend fun setApiKey(key: String) {
@@ -203,7 +221,9 @@ class SettingsDataStore @Inject constructor(
     data class TtsConfig(
         val rate: Float,
         val pitch: Float,
-        val localeTag: String
+        val localeTag: String,
+        val prewarmConcurrency: Int,
+        val prewarmRetry: Int
     )
 
     suspend fun getFastAiConfig(): AiConfig {
@@ -251,7 +271,9 @@ class SettingsDataStore @Inject constructor(
         return TtsConfig(
             rate = prefs[TTS_RATE] ?: 1.0f,
             pitch = prefs[TTS_PITCH] ?: 1.0f,
-            localeTag = prefs[TTS_LOCALE] ?: "system"
+            localeTag = prefs[TTS_LOCALE] ?: "system",
+            prewarmConcurrency = prefs[TTS_PREWARM_CONCURRENCY] ?: 2,
+            prewarmRetry = prefs[TTS_PREWARM_RETRY] ?: 2
         )
     }
 

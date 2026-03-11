@@ -199,6 +199,14 @@ class ArticleReaderViewModel @Inject constructor(
             )
         }
 
+        // Prewarm full-article TTS so each paragraph can start quickly
+        if (article != null && paragraphs.isNotEmpty()) {
+            val texts = buildTtsParagraphs(article.title, paragraphs)
+            if (texts.isNotEmpty()) {
+                ttsManager.prewarmArticle(article.id, texts)
+            }
+        }
+
         // For unsaved articles, compute statistics in-memory from paragraph text
         // For saved articles, load from DB
         if (article?.isSaved == false && paragraphs.isNotEmpty()) {

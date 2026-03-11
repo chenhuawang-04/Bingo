@@ -292,10 +292,14 @@ fun SettingsScreen(
                     pitch = state.ttsPitch,
                     locale = state.ttsLocale,
                     autoStudy = state.ttsAutoStudy,
+                    prewarmConcurrency = state.ttsPrewarmConcurrency,
+                    prewarmRetry = state.ttsPrewarmRetry,
                     onRateChange = viewModel::onTtsRateChange,
                     onPitchChange = viewModel::onTtsPitchChange,
                     onLocaleChange = viewModel::onTtsLocaleChange,
                     onAutoStudyChange = viewModel::onTtsAutoStudyChange,
+                    onPrewarmConcurrencyChange = viewModel::onTtsPrewarmConcurrencyChange,
+                    onPrewarmRetryChange = viewModel::onTtsPrewarmRetryChange,
                     onTest = viewModel::playTtsSample
                 )
 
@@ -380,10 +384,14 @@ private fun TtsSection(
     pitch: Float,
     locale: String,
     autoStudy: Boolean,
+    prewarmConcurrency: Int,
+    prewarmRetry: Int,
     onRateChange: (Float) -> Unit,
     onPitchChange: (Float) -> Unit,
     onLocaleChange: (String) -> Unit,
     onAutoStudyChange: (Boolean) -> Unit,
+    onPrewarmConcurrencyChange: (Int) -> Unit,
+    onPrewarmRetryChange: (Int) -> Unit,
     onTest: () -> Unit
 ) {
     val locales = listOf(
@@ -391,6 +399,22 @@ private fun TtsSection(
         "en-US" to "英语（美式）",
         "en-GB" to "英语（英式）"
     )
+
+    var prewarmConcurrencyInput by remember { mutableStateOf(prewarmConcurrency.toString()) }
+    var prewarmRetryInput by remember { mutableStateOf(prewarmRetry.toString()) }
+
+    LaunchedEffect(prewarmConcurrency) {
+        val current = prewarmConcurrency.toString()
+        if (prewarmConcurrencyInput != current) {
+            prewarmConcurrencyInput = current
+        }
+    }
+    LaunchedEffect(prewarmRetry) {
+        val current = prewarmRetry.toString()
+        if (prewarmRetryInput != current) {
+            prewarmRetryInput = current
+        }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("语音播报", style = MaterialTheme.typography.titleMedium)
@@ -442,6 +466,59 @@ private fun TtsSection(
                 onCheckedChange = onAutoStudyChange
             )
         }
+
+        HorizontalDivider()
+
+        Text("TTS Prewarm", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Control prewarm parallelism and retry count for paragraph caching.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        OutlinedTextField(
+            value = prewarmConcurrencyInput,
+            onValueChange = { value ->
+                val filtered = value.filter { it.isDigit() }
+                prewarmConcurrencyInput = filtered
+                if (filtered.isBlank()) {
+                    onPrewarmConcurrencyChange(2)
+                    return@OutlinedTextField
+                }
+                val parsed = filtered.toIntOrNull() ?: return@OutlinedTextField
+                val clamped = parsed.coerceIn(1, 6)
+                if (clamped != prewarmConcurrency) {
+                    onPrewarmConcurrencyChange(clamped)
+                }
+            },
+            label = { Text("Prewarm Parallelism") },
+            placeholder = { Text("2") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        OutlinedTextField(
+            value = prewarmRetryInput,
+            onValueChange = { value ->
+                val filtered = value.filter { it.isDigit() }
+                prewarmRetryInput = filtered
+                if (filtered.isBlank()) {
+                    onPrewarmRetryChange(2)
+                    return@OutlinedTextField
+                }
+                val parsed = filtered.toIntOrNull() ?: return@OutlinedTextField
+                val clamped = parsed.coerceIn(0, 5)
+                if (clamped != prewarmRetry) {
+                    onPrewarmRetryChange(clamped)
+                }
+            },
+            label = { Text("Prewarm Retries") },
+            placeholder = { Text("2") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
 
         Button(
             onClick = onTest,

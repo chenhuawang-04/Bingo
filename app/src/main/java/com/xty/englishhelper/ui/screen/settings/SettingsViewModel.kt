@@ -87,6 +87,16 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(ttsAutoStudy = value) }
             }
         }
+        viewModelScope.launch {
+            settingsDataStore.ttsPrewarmConcurrency.collect { value ->
+                _uiState.update { it.copy(ttsPrewarmConcurrency = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.ttsPrewarmRetry.collect { value ->
+                _uiState.update { it.copy(ttsPrewarmRetry = value) }
+            }
+        }
         // Scoped settings
         initScopedSettings(AiSettingsScope.POOL) { state, scoped -> state.copy(poolAiSettings = scoped) }
         initScopedSettings(AiSettingsScope.OCR) { state, scoped -> state.copy(ocrAiSettings = scoped) }
@@ -201,6 +211,18 @@ class SettingsViewModel @Inject constructor(
     fun onTtsAutoStudyChange(value: Boolean) {
         _uiState.update { it.copy(ttsAutoStudy = value) }
         viewModelScope.launch { settingsDataStore.setTtsAutoStudy(value) }
+    }
+
+    fun onTtsPrewarmConcurrencyChange(value: Int) {
+        val clamped = value.coerceIn(1, 6)
+        _uiState.update { it.copy(ttsPrewarmConcurrency = clamped) }
+        viewModelScope.launch { settingsDataStore.setTtsPrewarmConcurrency(clamped) }
+    }
+
+    fun onTtsPrewarmRetryChange(value: Int) {
+        val clamped = value.coerceIn(0, 5)
+        _uiState.update { it.copy(ttsPrewarmRetry = clamped) }
+        viewModelScope.launch { settingsDataStore.setTtsPrewarmRetry(clamped) }
     }
 
     fun playTtsSample() {
