@@ -38,6 +38,7 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -94,7 +95,17 @@ class TtsManager @Inject constructor(
         if (paragraphs.isEmpty()) return
         val sessionId = articleSessionId(articleId)
         prewarmJobs.remove(sessionId)?.cancel()
+        val total = paragraphs.size
+        _state.update {
+            it.copy(
+                isPrewarming = true,
+                prewarmSessionId = sessionId,
+                prewarmDone = 0,
+                prewarmTotal = total
+            )
+        }
         val job = ioScope.launch {
+            val progress = AtomicInteger(0)
             try {
                 state.first { it.isReady }
                 val config = settingsDataStore.getTtsConfig()
@@ -112,11 +123,36 @@ class TtsManager @Inject constructor(
                             semaphore.withPermit {
                                 prewarmParagraph(articleId, index, text, config, retryCount)
                             }
+                            val done = progress.incrementAndGet().coerceAtMost(total)
+                            _state.update { current ->
+                                if (current.prewarmSessionId != sessionId) {
+                                    current
+                                } else {
+                                    current.copy(
+                                        isPrewarming = done < total,
+                                        prewarmDone = done,
+                                        prewarmTotal = total
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             } catch (_: Exception) {
                 // Best-effort prewarm, ignore failures.
+            } finally {
+                val done = progress.get().coerceAtMost(total)
+                _state.update { current ->
+                    if (current.prewarmSessionId != sessionId) {
+                        current
+                    } else {
+                        current.copy(
+                            isPrewarming = false,
+                            prewarmDone = done,
+                            prewarmTotal = total
+                        )
+                    }
+                }
             }
         }
         job.invokeOnCompletion { prewarmJobs.remove(sessionId) }

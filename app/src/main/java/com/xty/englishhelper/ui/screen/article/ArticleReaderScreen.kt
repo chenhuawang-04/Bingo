@@ -309,6 +309,12 @@ private fun ArticleReaderContent(
 
     val ttsSessionId = "article:${article.id}"
     val ttsActive = ttsState.sessionId == ttsSessionId
+    val prewarmActive = ttsState.isPrewarming &&
+        ttsState.prewarmSessionId == ttsSessionId &&
+        ttsState.prewarmTotal > 0
+    val prewarmDone = if (prewarmActive) {
+        ttsState.prewarmDone.coerceIn(0, ttsState.prewarmTotal)
+    } else 0
     val speakableParagraphs = remember(paragraphs) {
         paragraphs.filter { it.paragraphType != ParagraphType.IMAGE && it.text.isNotBlank() }
     }
@@ -393,6 +399,23 @@ private fun ArticleReaderContent(
                     Text(
                         article.summary,
                         style = ArticleTypography.ReaderQuote,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        if (prewarmActive) {
+            item(key = "tts_prewarm") {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Caching audio $prewarmDone/${ttsState.prewarmTotal}",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
