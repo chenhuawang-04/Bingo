@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -288,7 +289,7 @@ class TtsManager @Inject constructor(
         config: SettingsDataStore.TtsConfig,
         retryCount: Int
     ) {
-        ensureActive()
+        coroutineContext.ensureActive()
         if (text.isBlank()) return
         val file = cachedAudioFile(articleId, index, text, config)
         if (file.exists() && file.length() > 0) return
@@ -300,7 +301,7 @@ class TtsManager @Inject constructor(
         val maxAttempts = retryCount.coerceAtLeast(0) + 1
         val cacheKey = "${articleId}_${index}"
         while (attempt < maxAttempts) {
-            ensureActive()
+            coroutineContext.ensureActive()
             waitUntilNotSpeaking()
             val utteranceId = "prewarm_${articleId}_${index}_${System.currentTimeMillis()}_$attempt"
             val success = synthesizeToFile(text, file, utteranceId, config)
