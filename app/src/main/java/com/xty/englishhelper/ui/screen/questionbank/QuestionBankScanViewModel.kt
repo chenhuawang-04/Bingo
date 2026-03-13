@@ -7,12 +7,15 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.ArticleParagraph
+import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.ExamPaper
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.ScanResult
+import com.xty.englishhelper.domain.usecase.article.CreateArticleUseCase
+import com.xty.englishhelper.domain.usecase.article.ParseArticleUseCase
 import com.xty.englishhelper.domain.usecase.questionbank.ConvertScanResultUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -23,6 +26,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,6 +79,8 @@ class QuestionBankScanViewModel @Inject constructor(
     private val aiRepository: QuestionBankAiRepository,
     private val repository: QuestionBankRepository,
     private val convertScanResult: ConvertScanResultUseCase,
+    private val createArticle: CreateArticleUseCase,
+    private val parseArticle: ParseArticleUseCase,
     private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
@@ -284,18 +290,12 @@ class QuestionBankScanViewModel @Inject constructor(
     private fun launchBackgroundTasks(paperId: Long) {
         viewModelScope.launch {
             try {
-                val groups = repository.getGroupsByPaper(paperId)
-                // Collect first emission
-                groups.collect { groupList ->
-                    for (group in groupList) {
-                        // Answer generation
-                        launchAnswerGeneration(group)
-                        // Source verification
-                        if (!group.sourceUrl.isNullOrBlank()) {
-                            launchSourceVerification(group)
-                        }
+                val groupList = repository.getGroupsByPaper(paperId).first()
+                for (group in groupList) {
+                    launchAnswerGeneration(group)
+                    if (!group.sourceUrl.isNullOrBlank()) {
+                        launchSourceVerification(group)
                     }
-                    return@collect
                 }
             } catch (_: Exception) { }
         }
@@ -340,6 +340,22 @@ class QuestionBankScanViewModel @Inject constructor(
 
                 if (result.matched) {
                     repository.updateSourceVerification(group.id, 1, null)
+                    // Create linked article from verified source
+                    try {
+                        val articleId = createArticle(
+                            title = result.articleTitle ?: group.sectionLabel ?: "来源文章",
+                            content = result.articleContent ?: "",
+                            sourceType = ArticleSourceType.AI,
+                            author = result.articleAuthor ?: "",
+                            source = result.sourceUrl ?: group.sourceUrl ?: "",
+                            summary = result.articleSummary ?: "",
+                            paragraphs = result.articleParagraphs?.mapIndexed { i, text ->
+                                ArticleParagraph(paragraphIndex = i, text = text)
+                            } ?: emptyList()
+                        )
+                        parseArticle(articleId)
+                        repository.linkSourceArticle(group.id, articleId)
+                    } catch (_: Exception) { /* article creation failure should not revert verification */ }
                 } else {
                     repository.updateSourceVerification(group.id, -1, result.errorMessage)
                 }

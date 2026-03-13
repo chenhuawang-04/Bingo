@@ -96,7 +96,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
   "articleAuthor": "author",
   "articleContent": "full article text",
   "articleSummary": "brief summary",
-  "articleParagraphs": ["paragraph 1", "paragraph 2"]
+  "articleParagraphs": ["paragraph 1", "paragraph 2"],
+  "sourceUrl": "the actual/canonical URL of the source article"
 }
 """.trimIndent())
             append("\nIf not matched, set matched=false and explain in errorMessage.")
@@ -212,7 +213,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
                 articleAuthor = parsed.articleAuthor,
                 articleContent = parsed.articleContent,
                 articleSummary = parsed.articleSummary,
-                articleParagraphs = parsed.articleParagraphs
+                articleParagraphs = parsed.articleParagraphs,
+                sourceUrl = parsed.sourceUrl
             )
         } else {
             VerifyResult(matched = false, errorMessage = "Failed to parse AI response")
@@ -346,7 +348,8 @@ private data class VerifyResultJson(
     val articleAuthor: String? = null,
     val articleContent: String? = null,
     val articleSummary: String? = null,
-    val articleParagraphs: List<String>? = null
+    val articleParagraphs: List<String>? = null,
+    val sourceUrl: String? = null
 )
 
 private data class AnswerResultJson(

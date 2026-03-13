@@ -116,7 +116,9 @@ fun QuestionBankReaderScreen(
 
     // TTS scroll follow
     val ttsSessionId = state.ttsState.sessionId
-    val ttsActive = state.ttsState.isSpeaking && ttsSessionId?.contains("article:") == true
+    val ttsCurrentSessionId = "article:${com.xty.englishhelper.domain.usecase.questionbank.questionBankContentId(state.group?.id ?: 0L)}"
+    val ttsCurrent = ttsSessionId == ttsCurrentSessionId
+    val ttsActive = state.ttsState.isSpeaking && ttsCurrent
     LaunchedEffect(ttsActive, state.ttsState.currentIndex, state.paragraphs.size, followTts) {
         if (!ttsActive || !followTts) return@LaunchedEffect
         val speakableParagraphs = state.paragraphs.filter { it.text.isNotBlank() }
@@ -175,7 +177,7 @@ fun QuestionBankReaderScreen(
             )
         },
         bottomBar = {
-            if (ttsActive) {
+            if (ttsCurrent) {
                 TtsPlaybackBar(
                     isSpeaking = state.ttsState.isSpeaking,
                     currentIndex = state.ttsState.currentIndex,

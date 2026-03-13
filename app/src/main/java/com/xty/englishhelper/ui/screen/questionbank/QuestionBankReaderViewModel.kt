@@ -447,7 +447,19 @@ class QuestionBankReaderViewModel @Inject constructor(
             for (item in state.items) {
                 val userAnswer = state.selectedAnswers[item.id]
                 if (userAnswer == null) continue
-                val correct = item.correctAnswer != null && userAnswer.equals(item.correctAnswer, ignoreCase = true)
+                // Skip scoring when no correct answer is available
+                if (item.correctAnswer == null) {
+                    records.add(
+                        PracticeRecord(
+                            questionItemId = item.id,
+                            userAnswer = userAnswer,
+                            isCorrect = false,
+                            practicedAt = now
+                        )
+                    )
+                    continue
+                }
+                val correct = userAnswer.equals(item.correctAnswer, ignoreCase = true)
                 results[item.id] = correct
                 records.add(
                     PracticeRecord(
@@ -592,7 +604,7 @@ class QuestionBankReaderViewModel @Inject constructor(
             content = result.articleContent ?: "",
             sourceType = ArticleSourceType.AI,
             author = result.articleAuthor ?: "",
-            source = group.sourceUrl ?: "",
+            source = result.sourceUrl ?: group.sourceUrl ?: "",
             summary = result.articleSummary ?: "",
             paragraphs = result.articleParagraphs?.mapIndexed { i, text ->
                 ArticleParagraph(paragraphIndex = i, text = text)

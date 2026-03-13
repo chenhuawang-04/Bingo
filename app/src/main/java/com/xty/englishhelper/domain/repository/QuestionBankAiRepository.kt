@@ -68,7 +68,8 @@ data class VerifyResult(
     val articleAuthor: String? = null,
     val articleContent: String? = null,
     val articleSummary: String? = null,
-    val articleParagraphs: List<String>? = null
+    val articleParagraphs: List<String>? = null,
+    val sourceUrl: String? = null
 )
 
 data class AnswerResult(
