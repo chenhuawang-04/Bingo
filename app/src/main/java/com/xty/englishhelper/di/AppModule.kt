@@ -8,6 +8,7 @@ import androidx.room.Room
 import com.xty.englishhelper.data.local.AppDatabase
 import com.xty.englishhelper.data.local.dao.DictionaryDao
 import com.xty.englishhelper.data.local.dao.ArticleDao
+import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
@@ -33,7 +34,7 @@ object AppModule {
             AppDatabase::class.java,
             "english_helper.db"
         )
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12)
             .build()
     }
 
@@ -54,6 +55,9 @@ object AppModule {
 
     @Provides
     fun provideWordPoolDao(db: AppDatabase): WordPoolDao = db.wordPoolDao()
+
+    @Provides
+    fun provideQuestionBankDao(db: AppDatabase): QuestionBankDao = db.questionBankDao()
 
     @Provides
     @Singleton

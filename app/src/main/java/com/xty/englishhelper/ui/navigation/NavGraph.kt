@@ -12,6 +12,9 @@ import com.xty.englishhelper.ui.screen.article.ArticleEditorScreen
 import com.xty.englishhelper.ui.screen.article.ArticleListScreen
 import com.xty.englishhelper.ui.screen.article.ArticleReaderScreen
 import com.xty.englishhelper.ui.screen.guardian.GuardianBrowseScreen
+import com.xty.englishhelper.ui.screen.questionbank.QuestionBankListScreen
+import com.xty.englishhelper.ui.screen.questionbank.QuestionBankScanScreen
+import com.xty.englishhelper.ui.screen.questionbank.QuestionBankReaderScreen
 import com.xty.englishhelper.ui.screen.batchimport.BatchImportScreen
 import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
 import com.xty.englishhelper.ui.screen.home.HomeScreen
@@ -186,6 +189,36 @@ fun NavGraph(navController: NavHostController) {
                 GuardianBrowseScreen(
                     onBack = { navController.popBackStack() },
                     onArticleClick = { articleId ->
+                        navController.navigate(ArticleReaderRoute(articleId))
+                    }
+                )
+            }
+
+            // Question Bank
+            composable<QuestionBankListRoute> {
+                QuestionBankListScreen(
+                    onScan = { navController.navigate(QuestionBankScanRoute()) },
+                    onGroupClick = { groupId ->
+                        navController.navigate(QuestionBankReaderRoute(groupId))
+                    }
+                )
+            }
+
+            composable<QuestionBankScanRoute> {
+                QuestionBankScanScreen(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() }
+                )
+            }
+
+            composable<QuestionBankReaderRoute> { backStackEntry ->
+                val route = backStackEntry.toRoute<QuestionBankReaderRoute>()
+                QuestionBankReaderScreen(
+                    onBack = { navController.popBackStack() },
+                    onWordClick = { wordId, dictionaryId ->
+                        navController.navigate(WordDetailRoute(wordId, dictionaryId))
+                    },
+                    onViewArticle = { articleId ->
                         navController.navigate(ArticleReaderRoute(articleId))
                     }
                 )

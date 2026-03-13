@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.domain.model.CollectedWord
 import com.xty.englishhelper.domain.model.StudyUnit
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -25,6 +26,9 @@ import com.xty.englishhelper.ui.navigation.ArticleReaderRoute
 import com.xty.englishhelper.ui.navigation.AddWordRoute
 import com.xty.englishhelper.ui.navigation.DictionaryRoute
 import com.xty.englishhelper.ui.navigation.HomeRoute
+import com.xty.englishhelper.ui.navigation.QuestionBankListRoute
+import com.xty.englishhelper.ui.navigation.QuestionBankReaderRoute
+import com.xty.englishhelper.ui.navigation.QuestionBankScanRoute
 import com.xty.englishhelper.ui.navigation.StudyRoute
 import com.xty.englishhelper.ui.navigation.StudySetupRoute
 import com.xty.englishhelper.ui.navigation.UnitDetailRoute
@@ -47,6 +51,12 @@ private val ARTICLE_TAB_ROUTES: Set<String> = setOf(
     ArticleReaderRoute::class
 ).mapNotNull { it.qualifiedName }.toSet()
 
+private val QUESTION_BANK_TAB_ROUTES: Set<String> = setOf(
+    QuestionBankListRoute::class,
+    QuestionBankScanRoute::class,
+    QuestionBankReaderRoute::class
+).mapNotNull { it.qualifiedName }.toSet()
+
 private fun matchesTab(currentRoute: String?, prefixes: Set<String>): Boolean =
     currentRoute != null && prefixes.any { currentRoute.startsWith(it) }
 
@@ -60,7 +70,8 @@ fun MainScaffold(
 
     val isInDictionaryTab = matchesTab(currentRoute, DICTIONARY_TAB_ROUTES)
     val isInArticleTab = matchesTab(currentRoute, ARTICLE_TAB_ROUTES)
-    val showBottomBar = isInDictionaryTab || isInArticleTab
+    val isInQuestionBankTab = matchesTab(currentRoute, QUESTION_BANK_TAB_ROUTES)
+    val showBottomBar = isInDictionaryTab || isInArticleTab || isInQuestionBankTab
 
     fun navigateToDictionaryTab() {
         navController.navigate(HomeRoute) {
@@ -72,6 +83,14 @@ fun MainScaffold(
 
     fun navigateToArticleTab() {
         navController.navigate(ArticleListRoute) {
+            popUpTo<HomeRoute> { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    fun navigateToQuestionBankTab() {
+        navController.navigate(QuestionBankListRoute) {
             popUpTo<HomeRoute> { saveState = true }
             launchSingleTop = true
             restoreState = true
@@ -97,6 +116,12 @@ fun MainScaffold(
                             icon = { Icon(Icons.AutoMirrored.Outlined.Article, null) },
                             label = { Text("文章") }
                         )
+                        NavigationBarItem(
+                            selected = isInQuestionBankTab,
+                            onClick = ::navigateToQuestionBankTab,
+                            icon = { Icon(Icons.Outlined.Quiz, null) },
+                            label = { Text("题库") }
+                        )
                     }
                 }
             }
@@ -118,6 +143,12 @@ fun MainScaffold(
                         onClick = ::navigateToArticleTab,
                         icon = { Icon(Icons.AutoMirrored.Outlined.Article, null) },
                         label = { Text("文章") }
+                    )
+                    NavigationRailItem(
+                        selected = isInQuestionBankTab,
+                        onClick = ::navigateToQuestionBankTab,
+                        icon = { Icon(Icons.Outlined.Quiz, null) },
+                        label = { Text("题库") }
                     )
                 }
             }

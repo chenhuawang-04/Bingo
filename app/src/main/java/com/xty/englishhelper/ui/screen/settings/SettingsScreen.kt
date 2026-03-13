@@ -278,6 +278,28 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                // Scan AI settings (Question Bank)
+                ScopedAiSettingsSection(
+                    title = "扫描模型",
+                    description = "用于识别试卷图片中的题目（需支持多模态）",
+                    scope = AiSettingsScope.SCAN,
+                    scoped = state.scanAiSettings,
+                    viewModel = viewModel
+                )
+
+                HorizontalDivider()
+
+                // Search AI settings (Question Bank)
+                ScopedAiSettingsSection(
+                    title = "搜索模型",
+                    description = "用于验证题目来源（需要有联网能力的模型）",
+                    scope = AiSettingsScope.SEARCH,
+                    scoped = state.searchAiSettings,
+                    viewModel = viewModel
+                )
+
+                HorizontalDivider()
+
                 // 在线阅读
                 OnlineReadingSection(
                     concurrency = state.guardianDetailConcurrency,

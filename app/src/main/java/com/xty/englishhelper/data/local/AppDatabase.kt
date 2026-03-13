@@ -7,6 +7,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.DictionaryDao
+import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
@@ -20,6 +21,12 @@ import com.xty.englishhelper.data.local.entity.ArticleWordStatEntity
 import com.xty.englishhelper.data.local.entity.ParagraphAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.CognateEntity
 import com.xty.englishhelper.data.local.entity.DictionaryEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperEntity
+import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
+import com.xty.englishhelper.data.local.entity.QuestionGroupEntity
+import com.xty.englishhelper.data.local.entity.QuestionGroupParagraphEntity
+import com.xty.englishhelper.data.local.entity.QuestionItemEntity
+import com.xty.englishhelper.data.local.entity.QuestionSourceArticleEntity
 import com.xty.englishhelper.data.local.entity.SentenceAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.SimilarWordEntity
 import com.xty.englishhelper.data.local.entity.SynonymEntity
@@ -54,9 +61,15 @@ import java.util.UUID
         WordPoolEntity::class,
         WordPoolMemberEntity::class,
         ArticleParagraphEntity::class,
-        ParagraphAnalysisCacheEntity::class
+        ParagraphAnalysisCacheEntity::class,
+        ExamPaperEntity::class,
+        QuestionGroupEntity::class,
+        QuestionGroupParagraphEntity::class,
+        QuestionItemEntity::class,
+        PracticeRecordEntity::class,
+        QuestionSourceArticleEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -66,6 +79,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun studyDao(): StudyDao
     abstract fun articleDao(): ArticleDao
     abstract fun wordPoolDao(): WordPoolDao
+    abstract fun questionBankDao(): QuestionBankDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -505,6 +519,119 @@ abstract class AppDatabase : RoomDatabase() {
                         )
                     }
                 }
+            }
+        }
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // exam_papers
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `exam_papers` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `uid` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `description` TEXT,
+                        `total_questions` INTEGER NOT NULL DEFAULT 0,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_exam_papers_uid` ON `exam_papers`(`uid`)")
+
+                // question_groups
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `question_groups` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `uid` TEXT NOT NULL,
+                        `exam_paper_id` INTEGER NOT NULL,
+                        `question_type` TEXT NOT NULL,
+                        `section_label` TEXT,
+                        `order_in_paper` INTEGER NOT NULL DEFAULT 0,
+                        `directions` TEXT,
+                        `passage_text` TEXT NOT NULL DEFAULT '',
+                        `source_info` TEXT,
+                        `source_url` TEXT,
+                        `source_author` TEXT,
+                        `source_verified` INTEGER NOT NULL DEFAULT 0,
+                        `source_verify_error` TEXT,
+                        `word_count` INTEGER NOT NULL DEFAULT 0,
+                        `difficulty_level` TEXT,
+                        `difficulty_score` REAL,
+                        `has_ai_answer` INTEGER NOT NULL DEFAULT 0,
+                        `has_scanned_answer` INTEGER NOT NULL DEFAULT 0,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`exam_paper_id`) REFERENCES `exam_papers`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_question_groups_uid` ON `question_groups`(`uid`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_question_groups_exam_paper_id` ON `question_groups`(`exam_paper_id`)")
+
+                // question_group_paragraphs
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `question_group_paragraphs` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `question_group_id` INTEGER NOT NULL,
+                        `paragraph_index` INTEGER NOT NULL,
+                        `text` TEXT NOT NULL DEFAULT '',
+                        `paragraph_type` TEXT NOT NULL DEFAULT 'TEXT',
+                        `image_uri` TEXT,
+                        `image_url` TEXT,
+                        FOREIGN KEY(`question_group_id`) REFERENCES `question_groups`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_question_group_paragraphs_question_group_id` ON `question_group_paragraphs`(`question_group_id`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_question_group_paragraphs_question_group_id_paragraph_index` ON `question_group_paragraphs`(`question_group_id`, `paragraph_index`)")
+
+                // question_items
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `question_items` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `question_group_id` INTEGER NOT NULL,
+                        `question_number` INTEGER NOT NULL,
+                        `question_text` TEXT NOT NULL,
+                        `option_a` TEXT,
+                        `option_b` TEXT,
+                        `option_c` TEXT,
+                        `option_d` TEXT,
+                        `correct_answer` TEXT,
+                        `answer_source` TEXT NOT NULL DEFAULT 'NONE',
+                        `explanation` TEXT,
+                        `order_in_group` INTEGER NOT NULL DEFAULT 0,
+                        `word_count` INTEGER NOT NULL DEFAULT 0,
+                        `difficulty_level` TEXT,
+                        `difficulty_score` REAL,
+                        `wrong_count` INTEGER NOT NULL DEFAULT 0,
+                        `extra_data` TEXT,
+                        FOREIGN KEY(`question_group_id`) REFERENCES `question_groups`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_question_items_question_group_id` ON `question_items`(`question_group_id`)")
+
+                // practice_records
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `practice_records` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `question_item_id` INTEGER NOT NULL,
+                        `user_answer` TEXT NOT NULL,
+                        `is_correct` INTEGER NOT NULL,
+                        `practiced_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`question_item_id`) REFERENCES `question_items`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_practice_records_question_item_id_practiced_at` ON `practice_records`(`question_item_id`, `practiced_at`)")
+
+                // question_source_articles
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `question_source_articles` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `question_group_id` INTEGER NOT NULL,
+                        `linked_article_id` INTEGER NOT NULL,
+                        `verified_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`question_group_id`) REFERENCES `question_groups`(`id`) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_question_source_articles_question_group_id` ON `question_source_articles`(`question_group_id`)")
             }
         }
 

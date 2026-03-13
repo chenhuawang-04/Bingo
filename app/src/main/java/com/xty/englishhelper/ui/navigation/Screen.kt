@@ -9,6 +9,9 @@ sealed class TopLevelRoute {
 
     @Serializable
     data object Article : TopLevelRoute()
+
+    @Serializable
+    data object QuestionBank : TopLevelRoute()
 }
 
 @Serializable
@@ -58,3 +61,12 @@ data object GuardianBrowseRoute
 
 @Serializable
 data class GuardianArticleRoute(val articleUrl: String)
+
+@Serializable
+data object QuestionBankListRoute
+
+@Serializable
+data class QuestionBankScanRoute(val editMode: Boolean = false)
+
+@Serializable
+data class QuestionBankReaderRoute(val groupId: Long)

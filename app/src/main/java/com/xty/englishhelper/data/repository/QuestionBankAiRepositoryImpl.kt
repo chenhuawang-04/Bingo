@@ -1,0 +1,358 @@
+package com.xty.englishhelper.data.repository
+
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.xty.englishhelper.data.remote.AiApiClientProvider
+import com.xty.englishhelper.data.remote.ChatMessage
+import com.xty.englishhelper.domain.model.AiProvider
+import com.xty.englishhelper.domain.model.QuestionItem
+import com.xty.englishhelper.domain.repository.AnswerResult
+import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
+import com.xty.englishhelper.domain.repository.ScanResult
+import com.xty.englishhelper.domain.repository.ScannedQuestion
+import com.xty.englishhelper.domain.repository.ScannedQuestionGroup
+import com.xty.englishhelper.domain.repository.VerifyResult
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class QuestionBankAiRepositoryImpl @Inject constructor(
+    private val clientProvider: AiApiClientProvider,
+    private val moshi: Moshi
+) : QuestionBankAiRepository {
+
+    override suspend fun scanQuestions(
+        images: List<ByteArray>,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): ScanResult {
+        val prompt = buildString {
+            append("You are an exam paper OCR specialist. Carefully extract all content from these exam paper images.\n")
+            append("Return strict JSON matching this structure:\n")
+            append("""
+{
+  "examPaperTitle": "paper title",
+  "questionGroups": [
+    {
+      "questionType": "READING_COMPREHENSION",
+      "sectionLabel": "Text 1",
+      "directions": "directions text or null",
+      "passageParagraphs": ["paragraph 1", "paragraph 2"],
+      "sourceInfo": "source description or null",
+      "sourceUrl": "source URL if visible or null",
+      "questions": [
+        {
+          "questionNumber": 21,
+          "questionText": "question stem",
+          "optionA": "[A] option text",
+          "optionB": "[B] option text",
+          "optionC": "[C] option text",
+          "optionD": "[D] option text",
+          "wordCount": 45,
+          "difficultyLevel": "MEDIUM",
+          "difficultyScore": 0.6
+        }
+      ],
+      "wordCount": 350,
+      "difficultyLevel": "MEDIUM",
+      "difficultyScore": 0.65
+    }
+  ],
+  "confidence": 0.9
+}
+""".trimIndent())
+            append("\nRules:\n")
+            append("- Transcribe passage text EXACTLY as printed, preserving all paragraphs.\n")
+            append("- wordCount = word count of passage + all questions in the group.\n")
+            append("- difficultyLevel: EASY/MEDIUM/HARD based on vocabulary and sentence complexity.\n")
+            append("- confidence: your overall OCR confidence (0-1).\n")
+            append("- Return JSON only, no markdown fences.")
+        }
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMultimodalMessage(
+            url = baseUrl, apiKey = apiKey, model = model,
+            imageBytes = images, prompt = prompt, maxTokens = 8192
+        )
+
+        return parseScanResult(responseText)
+    }
+
+    override suspend fun verifySource(
+        sourceUrl: String, passageExcerpt: String,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): VerifyResult {
+        val systemPrompt = "You are a source verification assistant with web search capabilities."
+        val userMessage = buildString {
+            append("Verify if the following passage excerpt comes from the given source URL.\n")
+            append("Source URL: $sourceUrl\n")
+            append("Passage excerpt (first 200 chars): ${passageExcerpt.take(200)}\n\n")
+            append("If you can find the original article, return the full text.\n")
+            append("Return strict JSON:\n")
+            append("""
+{
+  "matched": true,
+  "errorMessage": null,
+  "articleTitle": "title",
+  "articleAuthor": "author",
+  "articleContent": "full article text",
+  "articleSummary": "brief summary",
+  "articleParagraphs": ["paragraph 1", "paragraph 2"]
+}
+""".trimIndent())
+            append("\nIf not matched, set matched=false and explain in errorMessage.")
+        }
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl, apiKey = apiKey, model = model,
+            systemPrompt = systemPrompt,
+            messages = listOf(ChatMessage(role = "user", content = userMessage)),
+            maxTokens = 4096
+        )
+
+        return parseVerifyResult(responseText)
+    }
+
+    override suspend fun generateAnswers(
+        passageText: String, questions: List<QuestionItem>,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): List<AnswerResult> {
+        val systemPrompt = "You are an expert English exam answer generator. Read the passage and answer each multiple-choice question."
+        val userMessage = buildString {
+            append("Passage:\n$passageText\n\nQuestions:\n")
+            questions.forEach { q ->
+                append("${q.questionNumber}. ${q.questionText}\n")
+                q.optionA?.let { append("[A] $it\n") }
+                q.optionB?.let { append("[B] $it\n") }
+                q.optionC?.let { append("[C] $it\n") }
+                q.optionD?.let { append("[D] $it\n") }
+                append("\n")
+            }
+            append("Return strict JSON array:\n")
+            append("""
+[
+  {
+    "questionNumber": 21,
+    "answer": "A",
+    "explanation": "brief explanation",
+    "difficultyLevel": "MEDIUM",
+    "difficultyScore": 0.6
+  }
+]
+""".trimIndent())
+        }
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl, apiKey = apiKey, model = model,
+            systemPrompt = systemPrompt,
+            messages = listOf(ChatMessage(role = "user", content = userMessage)),
+            maxTokens = 4096
+        )
+
+        return parseAnswerResults(responseText)
+    }
+
+    override suspend fun scanAnswers(
+        images: List<ByteArray>, questionNumbers: List<Int>,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): List<AnswerResult> {
+        val prompt = buildString {
+            append("Extract answer keys from these answer sheet images.\n")
+            append("Expected question numbers: ${questionNumbers.joinToString(", ")}\n")
+            append("Return strict JSON array:\n")
+            append("""
+[
+  {"questionNumber": 21, "answer": "A", "explanation": "explanation if visible"}
+]
+""".trimIndent())
+        }
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMultimodalMessage(
+            url = baseUrl, apiKey = apiKey, model = model,
+            imageBytes = images, prompt = prompt, maxTokens = 2048
+        )
+
+        return parseAnswerResults(responseText)
+    }
+
+    // ── JSON Parsing ──
+
+    private fun parseScanResult(responseText: String): ScanResult {
+        val cleaned = stripCodeFence(responseText)
+        val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+        val adapter = moshi.adapter(ScanResultJson::class.java).lenient()
+        val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
+            ?: runCatching { adapter.fromJson(removeTrailingCommas(json)) }.getOrNull()
+
+        return if (parsed != null) {
+            ScanResult(
+                examPaperTitle = parsed.examPaperTitle ?: "",
+                questionGroups = parsed.questionGroups?.map { it.toDomain() } ?: emptyList(),
+                confidence = parsed.confidence ?: 0f
+            )
+        } else {
+            ScanResult(confidence = 0f)
+        }
+    }
+
+    private fun parseVerifyResult(responseText: String): VerifyResult {
+        val cleaned = stripCodeFence(responseText)
+        val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+        val adapter = moshi.adapter(VerifyResultJson::class.java).lenient()
+        val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
+            ?: runCatching { adapter.fromJson(removeTrailingCommas(json)) }.getOrNull()
+
+        return if (parsed != null) {
+            VerifyResult(
+                matched = parsed.matched ?: false,
+                errorMessage = parsed.errorMessage,
+                articleTitle = parsed.articleTitle,
+                articleAuthor = parsed.articleAuthor,
+                articleContent = parsed.articleContent,
+                articleSummary = parsed.articleSummary,
+                articleParagraphs = parsed.articleParagraphs
+            )
+        } else {
+            VerifyResult(matched = false, errorMessage = "Failed to parse AI response")
+        }
+    }
+
+    private fun parseAnswerResults(responseText: String): List<AnswerResult> {
+        val cleaned = stripCodeFence(responseText)
+        val json = extractFirstJsonArray(cleaned) ?: cleaned.trim()
+        val type = Types.newParameterizedType(List::class.java, AnswerResultJson::class.java)
+        val adapter = moshi.adapter<List<AnswerResultJson>>(type).lenient()
+        val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
+            ?: runCatching { adapter.fromJson(removeTrailingCommas(json)) }.getOrNull()
+
+        return parsed?.map {
+            AnswerResult(
+                questionNumber = it.questionNumber ?: 0,
+                answer = it.answer ?: "",
+                explanation = it.explanation,
+                difficultyLevel = it.difficultyLevel,
+                difficultyScore = it.difficultyScore
+            )
+        } ?: emptyList()
+    }
+
+    // ── Utility functions ──
+
+    private fun stripCodeFence(text: String): String =
+        text.replace("```json", "", ignoreCase = true).replace("```", "").trim()
+
+    private fun extractFirstJsonObject(text: String): String? {
+        val start = text.indexOf('{')
+        if (start < 0) return null
+        var depth = 0; var inString = false; var escaped = false
+        for (i in start until text.length) {
+            val ch = text[i]
+            if (escaped) { escaped = false; continue }
+            when (ch) {
+                '\\' -> escaped = true
+                '"' -> inString = !inString
+                '{' -> if (!inString) depth++
+                '}' -> if (!inString) { depth--; if (depth == 0) return text.substring(start, i + 1) }
+            }
+        }
+        return null
+    }
+
+    private fun extractFirstJsonArray(text: String): String? {
+        val start = text.indexOf('[')
+        if (start < 0) return null
+        var depth = 0; var inString = false; var escaped = false
+        for (i in start until text.length) {
+            val ch = text[i]
+            if (escaped) { escaped = false; continue }
+            when (ch) {
+                '\\' -> escaped = true
+                '"' -> inString = !inString
+                '[' -> if (!inString) depth++
+                ']' -> if (!inString) { depth--; if (depth == 0) return text.substring(start, i + 1) }
+            }
+        }
+        return null
+    }
+
+    private fun removeTrailingCommas(json: String): String =
+        json.replace(Regex(",\\s*([}\\]])"), "$1")
+}
+
+// ── Internal JSON models ──
+
+private data class ScanResultJson(
+    val examPaperTitle: String? = null,
+    val questionGroups: List<ScannedQuestionGroupJson>? = null,
+    val confidence: Float? = null
+)
+
+private data class ScannedQuestionGroupJson(
+    val questionType: String? = null,
+    val sectionLabel: String? = null,
+    val directions: String? = null,
+    val passageParagraphs: List<String>? = null,
+    val sourceInfo: String? = null,
+    val sourceUrl: String? = null,
+    val questions: List<ScannedQuestionJson>? = null,
+    val wordCount: Int? = null,
+    val difficultyLevel: String? = null,
+    val difficultyScore: Float? = null
+) {
+    fun toDomain() = ScannedQuestionGroup(
+        questionType = questionType ?: "READING_COMPREHENSION",
+        sectionLabel = sectionLabel,
+        directions = directions,
+        passageParagraphs = passageParagraphs ?: emptyList(),
+        sourceInfo = sourceInfo,
+        sourceUrl = sourceUrl,
+        questions = questions?.map { it.toDomain() } ?: emptyList(),
+        wordCount = wordCount ?: 0,
+        difficultyLevel = difficultyLevel,
+        difficultyScore = difficultyScore
+    )
+}
+
+private data class ScannedQuestionJson(
+    val questionNumber: Int? = null,
+    val questionText: String? = null,
+    val optionA: String? = null,
+    val optionB: String? = null,
+    val optionC: String? = null,
+    val optionD: String? = null,
+    val wordCount: Int? = null,
+    val difficultyLevel: String? = null,
+    val difficultyScore: Float? = null
+) {
+    fun toDomain() = ScannedQuestion(
+        questionNumber = questionNumber ?: 0,
+        questionText = questionText ?: "",
+        optionA = optionA ?: "",
+        optionB = optionB ?: "",
+        optionC = optionC ?: "",
+        optionD = optionD ?: "",
+        wordCount = wordCount ?: 0,
+        difficultyLevel = difficultyLevel,
+        difficultyScore = difficultyScore
+    )
+}
+
+private data class VerifyResultJson(
+    val matched: Boolean? = null,
+    val errorMessage: String? = null,
+    val articleTitle: String? = null,
+    val articleAuthor: String? = null,
+    val articleContent: String? = null,
+    val articleSummary: String? = null,
+    val articleParagraphs: List<String>? = null
+)
+
+private data class AnswerResultJson(
+    val questionNumber: Int? = null,
+    val answer: String? = null,
+    val explanation: String? = null,
+    val difficultyLevel: String? = null,
+    val difficultyScore: Float? = null
+)

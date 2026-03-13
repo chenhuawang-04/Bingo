@@ -14,6 +14,7 @@ import com.xty.englishhelper.domain.model.ArticleSentence
 import com.xty.englishhelper.domain.model.ArticleStatistics
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.CollectedWord
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
@@ -47,13 +48,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-data class CollectedWord(
-    val word: String,
-    val contextSentence: String,
-    val analysis: QuickWordAnalysis? = null,
-    val isAnalyzing: Boolean = false
-)
 
 data class ArticleReaderUiState(
     val article: Article? = null,

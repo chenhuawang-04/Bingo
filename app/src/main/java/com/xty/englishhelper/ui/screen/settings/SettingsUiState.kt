@@ -16,6 +16,8 @@ data class SettingsUiState(
     val poolAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val ocrAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val articleAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
+    val scanAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
+    val searchAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val guardianDetailConcurrency: Int = 5,
     val ttsRate: Float = 1.0f,
     val ttsPitch: Float = 1.0f,
