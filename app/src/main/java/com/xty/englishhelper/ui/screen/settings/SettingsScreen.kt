@@ -270,20 +270,9 @@ fun SettingsScreen(
                 // OCR AI settings
                 ScopedAiSettingsSection(
                     title = "OCR AI",
-                    description = "为文章 OCR 配置独立的 AI 模型（需支持多模态）",
+                    description = "为 OCR 识别与题库扫描配置独立的 AI 模型（需支持多模态）",
                     scope = AiSettingsScope.OCR,
                     scoped = state.ocrAiSettings,
-                    viewModel = viewModel
-                )
-
-                HorizontalDivider()
-
-                // Scan AI settings (Question Bank)
-                ScopedAiSettingsSection(
-                    title = "扫描模型",
-                    description = "用于识别试卷图片中的题目（需支持多模态）",
-                    scope = AiSettingsScope.SCAN,
-                    scoped = state.scanAiSettings,
                     viewModel = viewModel
                 )
 

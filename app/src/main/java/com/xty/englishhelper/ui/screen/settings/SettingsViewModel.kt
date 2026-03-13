@@ -100,7 +100,6 @@ class SettingsViewModel @Inject constructor(
         // Scoped settings
         initScopedSettings(AiSettingsScope.POOL) { state, scoped -> state.copy(poolAiSettings = scoped) }
         initScopedSettings(AiSettingsScope.OCR) { state, scoped -> state.copy(ocrAiSettings = scoped) }
-        initScopedSettings(AiSettingsScope.SCAN) { state, scoped -> state.copy(scanAiSettings = scoped) }
         initScopedSettings(AiSettingsScope.SEARCH) { state, scoped -> state.copy(searchAiSettings = scoped) }
 
         // Cloud sync settings
@@ -150,7 +149,6 @@ class SettingsViewModel @Inject constructor(
             AiSettingsScope.POOL -> state.poolAiSettings
             AiSettingsScope.OCR -> state.ocrAiSettings
             AiSettingsScope.ARTICLE -> state.articleAiSettings
-            AiSettingsScope.SCAN -> state.scanAiSettings
             AiSettingsScope.SEARCH -> state.searchAiSettings
             AiSettingsScope.MAIN -> ScopedAiSettingsState()
         }
@@ -367,7 +365,6 @@ class SettingsViewModel @Inject constructor(
                 AiSettingsScope.POOL -> state.copy(poolAiSettings = scoped)
                 AiSettingsScope.OCR -> state.copy(ocrAiSettings = scoped)
                 AiSettingsScope.ARTICLE -> state.copy(articleAiSettings = scoped)
-                AiSettingsScope.SCAN -> state.copy(scanAiSettings = scoped)
                 AiSettingsScope.SEARCH -> state.copy(searchAiSettings = scoped)
                 AiSettingsScope.MAIN -> state
             }
