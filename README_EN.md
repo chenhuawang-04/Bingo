@@ -40,7 +40,7 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 - **AI answer generation** — Automatically generates answers and explanations for each question in the background using the fast model
 - **Answer scanning** — Upload answer sheet photos, AI extracts answers and updates them
 - **Source verification** — Automatically verifies source URLs in the background (requires search model); on success, creates a linked article navigable from the reader; on failure, supports editing the URL and retrying or re-searching
-- **Scoped AI settings** — New scan model (SCAN) and search model (SEARCH) as independent AI configurations
+- **Scoped AI settings** — New search model (SEARCH) as independent AI configuration; question bank scanning reuses OCR model
 
 ### Article Reading & Vocabulary Linking (Refactored)
 - **Paragraph-first data model** — Articles are stored and rendered by paragraphs
@@ -93,7 +93,7 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 
 ### Settings
 - **API configuration** — Supports Anthropic and OpenAI-compatible providers with custom API Key, model selection, and custom Base URL
-- **Scoped AI settings** — Configure independent AI models for word pool generation (POOL), OCR recognition (OCR), article analysis (ARTICLE), question bank scanning (SCAN), and source search (SEARCH)
+- **Scoped AI settings** — Configure independent AI models for word pool generation (POOL), OCR recognition & question bank scanning (OCR), article analysis (ARTICLE), and source search (SEARCH)
 - **Encrypted API Key storage** — Stored using AndroidX Security Crypto
 - **Connection test** — One-click API connectivity test for both main and scoped settings
 
@@ -218,7 +218,7 @@ com.xty.englishhelper/
 14. **Text-to-speech** — Play article TTS with follow-scroll and paragraph controls
 15. **Question bank scanning** — Switch to the Question Bank tab, tap "Scan", select images or PDF, AI auto-recognizes questions
 16. **Practice** — Tap a question group to enter the reader/practice page; full reading features above, questions below with scoring and explanations
-17. **Scoped settings** (optional) — Enable Pool/OCR/Article/Scan/Search AI in Settings to configure independent models
+17. **Scoped settings** (optional) — Enable Pool/OCR/Article/Search AI in Settings to configure independent models
 
 ## Database Versions
 
