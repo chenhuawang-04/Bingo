@@ -8,7 +8,7 @@
   <a href="README.md">中文</a>
 </p>
 
-An AI-powered English vocabulary learning app for Android that helps you systematically master English words through a complete workflow: look up → decompose → read → review.
+An AI-powered English vocabulary learning app for Android that helps you systematically master English words through a complete workflow: look up → decompose → read → practice → review.
 
 ## Features
 
@@ -30,6 +30,17 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 - **Associated words** — Automatically computes inter-word associations using Jaccard similarity on decomposition segments with a root bonus, recalculated on every save
 - **Linked word navigation** — Synonyms, similar words, and cognates that exist in the dictionary are clickable, navigating directly to their detail page
 - **Association display** — Bottom of detail page shows associated words sharing morphemes with the current word, all clickable
+
+### Question Bank (New)
+- **Exam paper scanning** — Select images or PDF, AI automatically recognizes question types, passage paragraphs, questions and options; supports preview editing before saving
+- **PDF support** — Uses Android PdfRenderer to render PDF pages into images, feeding into the unified scanning pipeline
+- **Question bank list** — Groups question sets by exam paper, displaying question type tags, question count/word count/difficulty stats, source verification and answer status
+- **Read & practice** — Single page combining article reading (word link highlighting, TTS, translation, paragraph analysis, reading notebook) with practice (answer selection, submission, scoring)
+- **Wrong answer tracking** — Auto-increments `wrong_count` on each wrong answer; historical mistakes highlighted with orange (1x) / red (2x+) border with error count badge
+- **AI answer generation** — Automatically generates answers and explanations for each question in the background using the fast model
+- **Answer scanning** — Upload answer sheet photos, AI extracts answers and updates them
+- **Source verification** — Automatically verifies source URLs in the background (requires search model); on success, creates a linked article navigable from the reader; on failure, supports editing the URL and retrying or re-searching
+- **Scoped AI settings** — New scan model (SCAN) and search model (SEARCH) as independent AI configurations
 
 ### Article Reading & Vocabulary Linking (Refactored)
 - **Paragraph-first data model** — Articles are stored and rendered by paragraphs
@@ -66,7 +77,7 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 
 ### Adaptive UI
 - **Responsive layouts** — Built on Material 3 Adaptive framework, automatically switches between phone and tablet layouts based on WindowSizeClass
-- **Bottom navigation** — Dictionary tab + Article tab with NavigationBar (compact) or NavigationRail (expanded)
+- **Bottom navigation** — Dictionary tab + Article tab + Question Bank tab with NavigationBar (compact) or NavigationRail (expanded)
 - **Adaptive home** — Phone: dashboard card + dictionary list; Tablet: sidebar dashboard + dictionary grid
 - **List-detail split** — Tablet dictionary screen shows list-detail split pane; tapping a word displays details in the right panel
 - **Dual-column form** — Tablet add/edit word screen uses side-by-side two-column layout
@@ -82,7 +93,7 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 
 ### Settings
 - **API configuration** — Supports Anthropic and OpenAI-compatible providers with custom API Key, model selection, and custom Base URL
-- **Scoped AI settings** — Configure independent AI models for word pool generation (POOL), OCR recognition (OCR), and article analysis (ARTICLE)
+- **Scoped AI settings** — Configure independent AI models for word pool generation (POOL), OCR recognition (OCR), article analysis (ARTICLE), question bank scanning (SCAN), and source search (SEARCH)
 - **Encrypted API Key storage** — Stored using AndroidX Security Crypto
 - **Connection test** — One-click API connectivity test for both main and scoped settings
 
@@ -97,8 +108,8 @@ An AI-powered English vocabulary learning app for Android that helps you systema
 | Network | Retrofit + OkHttp + Moshi |
 | Images | Coil |
 | HTML Parsing | Jsoup |
-| Navigation | Navigation Compose (type-safe routes + dual-tab navigation) |
-| AI | Anthropic Claude API / OpenAI-compatible API (auto-organize, OCR extraction, sentence analysis, pool generation, batch import, paragraph analysis/translation) |
+| Navigation | Navigation Compose (type-safe routes + triple-tab navigation) |
+| AI | Anthropic Claude API / OpenAI-compatible API (auto-organize, OCR extraction, sentence analysis, pool generation, batch import, paragraph analysis/translation, question bank scanning/answer generation/source verification) |
 | Security | AndroidX Security Crypto |
 | Async | Kotlin Coroutines + Flow |
 | Spaced Repetition | FSRS-5 adaptive algorithm |
@@ -137,16 +148,18 @@ com.xty.englishhelper/
 │       ├── article/             # Article parsing, paragraph analysis/translation, vocabulary backfill
 │       ├── dictionary/          # Dictionary CRUD
 │       ├── importexport/        # Import/export
+│       ├── questionbank/        # Question bank use cases (cache ID isolation, scan result conversion)
 │       ├── study/               # Study scheduling
 │       ├── unit/                # Unit management
 │       └── word/                # Word save (with automatic article linking)
 ├── ui/                          # UI layer
 │   ├── adaptive/                # WindowSizeClass utilities
 │   ├── components/              # Reusable components
+│   │   └── reading/             # Shared reading components (ParagraphBlock, TtsPlaybackBar, etc.)
 │   ├── designsystem/            # Design system
 │   │   ├── components/          # Common component library (EhCard, EhStatTile, EhStudyRatingBar, etc.)
 │   │   └── tokens/              # Design tokens (color/spacing/Typography)
-│   ├── navigation/              # Nav graph + route definitions (dual-tab)
+│   ├── navigation/              # Nav graph + route definitions (triple-tab)
 │   ├── screen/                  # Screen pages (container/content/component split)
 │   │   ├── addword/             # Add/edit word
 │   │   ├── article/             # Article list/editor/reader/paragraph analysis
@@ -156,6 +169,7 @@ com.xty.englishhelper/
 │   │   ├── home/                # Home + dashboard
 │   │   ├── importexport/        # Import/export
 │   │   ├── main/                # Main scaffold + bottom/rail navigation
+│   │   ├── questionbank/        # Question bank (list/scan/reader-practice)
 │   │   ├── settings/            # Settings
 │   │   ├── study/               # Study mode
 │   │   ├── unitdetail/          # Unit detail
@@ -202,7 +216,9 @@ com.xty.englishhelper/
 12. **Reading notebook** — Tap unknown words to add to notebook, then add to dictionary/unit
 13. **Guardian reading** — Browse Guardian online articles and save to local
 14. **Text-to-speech** — Play article TTS with follow-scroll and paragraph controls
-15. **Scoped settings** (optional) — Enable Pool/OCR/Article AI in Settings to configure independent models
+15. **Question bank scanning** — Switch to the Question Bank tab, tap "Scan", select images or PDF, AI auto-recognizes questions
+16. **Practice** — Tap a question group to enter the reader/practice page; full reading features above, questions below with scoring and explanations
+17. **Scoped settings** (optional) — Enable Pool/OCR/Article/Scan/Search AI in Settings to configure independent models
 
 ## Database Versions
 
@@ -219,6 +235,7 @@ com.xty.englishhelper/
 | 9 | Added word_pools table (id, dictionary_id, focus_word_id, strategy, algorithm_version) and word_pool_members join table (word_id, pool_id) with cascading foreign keys |
 | 10 | Refactored articles to paragraph-first storage and paragraph analysis cache |
 | 11 | Paragraph analysis/translation cache improvements + Guardian online reading and temporary articles |
+| 12 | Question bank module: exam_papers, question_groups, question_group_paragraphs, question_items, practice_records, question_source_articles (6 new tables) |
 
 ## License
 

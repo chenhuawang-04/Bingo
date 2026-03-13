@@ -8,7 +8,7 @@
   <a href="README_EN.md">English</a>
 </p>
 
-一款基于 AI 的英语词汇学习 Android 应用，帮助你从「查词 → 拆词 → 阅读 → 复习」全流程系统性掌握英语词汇。
+一款基于 AI 的英语词汇学习 Android 应用，帮助你从「查词 → 拆词 → 阅读 → 刷题 → 复习」全流程系统性掌握英语词汇。
 
 ## 功能特性
 
@@ -30,6 +30,17 @@
 - **联想词** — 基于词根拆解片段的 Jaccard 相似度 + 词根加权自动计算词条间的关联关系，保存后自动重算
 - **关联词跳转** — 近义词、形近词、同根词中已存在于辞书的词条可点击直接跳转至详情页
 - **联想词展示** — 详情页底部展示与当前词共享构词成分的联想词列表，均可点击跳转
+
+### 题库模块（新）
+- **试卷扫描** — 选择图片或 PDF，AI 自动识别题型、文章段落、题目与选项，支持预览编辑后保存
+- **PDF 支持** — 基于 Android PdfRenderer 将 PDF 逐页渲染为图片，走统一扫描链路
+- **题库列表** — 按试卷分组展示题组，显示题型标签、题数/字数/难度统计、来源验证与答案状态
+- **阅读做题** — 单页同时呈现文章阅读（词链高亮、TTS、翻译、段落分析、收纳本）与做题（选答案、提交、对错判定）
+- **错题追踪** — 每次答错自动累加 `wrong_count`；历史错题以橙色（1次）/红色（2次+）边框高亮，右上角显示错误次数
+- **AI 答案生成** — 保存后后台自动调用快速模型为每道题生成答案与解析
+- **扫描答案** — 拍照上传答案图片，AI 提取答案并覆盖更新
+- **来源验证** — 保存后后台自动验证来源 URL（需搜索模型）；验证成功自动创建关联文章并可跳转阅读原文；验证失败支持编辑 URL 重试或重新搜索
+- **分域 AI 设置** — 新增扫描模型（SCAN）和搜索模型（SEARCH）两个独立 AI 配置
 
 ### 文章阅读与词汇链接（重构）
 - **段落级数据模型** — 文章以段落为中心存储与渲染，阅读器按段落结构化显示
@@ -66,7 +77,7 @@
 
 ### 自适应 UI
 - **响应式布局** — 基于 Material 3 Adaptive 框架，按 WindowSizeClass 自动切换手机/平板布局
-- **底部导航** — 辞书 Tab + 文章 Tab 双标签切换，手机使用 NavigationBar，平板使用 NavigationRail
+- **底部导航** — 辞书 Tab + 文章 Tab + 题库 Tab 三标签切换，手机使用 NavigationBar，平板使用 NavigationRail
 - **首页自适应** — 手机：仪表板卡片 + 辞书列表；平板：侧栏仪表板 + 辞书网格
 - **列表-详情分栏** — 平板上辞书页面展示列表-详情分栏，点击单词在右侧面板显示详情
 - **双列表单** — 平板上添加/编辑单词页面采用左右双列布局
@@ -82,7 +93,7 @@
 
 ### 设置
 - **API 配置** — 支持 Anthropic 和 OpenAI 兼容两种提供商，自定义 API Key、模型选择、自定义 Base URL
-- **AI 分域设置** — 可为词池生成（POOL）、OCR 识别（OCR）与文章分析（ARTICLE）配置独立 AI 模型
+- **AI 分域设置** — 可为词池生成（POOL）、OCR 识别（OCR）、文章分析（ARTICLE）、题库扫描（SCAN）与来源搜索（SEARCH）配置独立 AI 模型
 - **API Key 加密存储** — 使用 AndroidX Security Crypto 加密保存
 - **连接测试** — 配置后可一键测试 API 连通性（主设置和分域设置各自独立测试）
 
@@ -97,8 +108,8 @@
 | 网络 | Retrofit + OkHttp + Moshi |
 | 图片 | Coil |
 | HTML 解析 | Jsoup |
-| 导航 | Navigation Compose（类型安全路由 + 双 Tab 导航） |
-| AI | Anthropic Claude API / OpenAI 兼容 API（自动整理、OCR 提取、句子分析、词池生成、批量导入、段落分析/翻译） |
+| 导航 | Navigation Compose（类型安全路由 + 三 Tab 导航） |
+| AI | Anthropic Claude API / OpenAI 兼容 API（自动整理、OCR 提取、句子分析、词池生成、批量导入、段落分析/翻译、题库扫描/答案生成/来源验证） |
 | 安全 | AndroidX Security Crypto |
 | 异步 | Kotlin Coroutines + Flow |
 | 间隔重复 | FSRS-5 自适应算法 |
@@ -137,16 +148,18 @@ com.xty.englishhelper/
 │       ├── article/             # 文章解析、段落分析/翻译、词汇回填
 │       ├── dictionary/          # 辞书 CRUD
 │       ├── importexport/        # 导入导出
+│       ├── questionbank/        # 题库用例（缓存 ID 隔离、扫描结果转换）
 │       ├── study/               # 学习调度
 │       ├── unit/                # 单元管理
 │       └── word/                # 单词保存（含自动文章链接）
 ├── ui/                          # UI 层
 │   ├── adaptive/                # WindowSizeClass 工具
 │   ├── components/              # 可复用组件
+│   │   └── reading/             # 共享阅读组件（ParagraphBlock, TtsPlaybackBar 等）
 │   ├── designsystem/            # 设计系统
 │   │   ├── components/          # 通用组件库（EhCard, EhStatTile, EhStudyRatingBar 等）
 │   │   └── tokens/              # 设计令牌（色彩/间距/Typography）
-│   ├── navigation/              # 导航图 + 路由定义（双 Tab）
+│   ├── navigation/              # 导航图 + 路由定义（三 Tab）
 │   ├── screen/                  # 各页面（容器/内容/组件三层拆分）
 │   │   ├── addword/             # 添加/编辑单词
 │   │   ├── article/             # 文章列表/编辑/阅读器/段落分析
@@ -156,6 +169,7 @@ com.xty.englishhelper/
 │   │   ├── home/                # 首页 + 仪表板
 │   │   ├── importexport/        # 导入导出
 │   │   ├── main/                # 主框架 + 底部/侧边导航
+│   │   ├── questionbank/        # 题库（列表/扫描/阅读做题）
 │   │   ├── settings/            # 设置
 │   │   ├── study/               # 学习模式
 │   │   ├── unitdetail/          # 单元详情
@@ -202,7 +216,9 @@ com.xty.englishhelper/
 12. **收纳生词** — 点击未收录单词可加入收纳本，并一键加入词典/单元
 13. **Guardian 阅读** — 进入 Guardian 页面浏览在线文章并保存到本地
 14. **语音朗读** — 在文章阅读器点击播放，支持跟随滚动与段落切换
-15. **分域设置**（可选）— 在设置页开启词池/ OCR / 文章 AI，配置独立模型
+15. **题库扫描** — 切换到题库 Tab，点击「扫描」按钮，选择图片或 PDF，AI 自动识别题目
+16. **做题练习** — 点击题组进入阅读做题页，文章阅读功能齐全，下方做题并查看对错与解析
+17. **分域设置**（可选）— 在设置页开启词池/ OCR / 文章 / 扫描 / 搜索 AI，配置独立模型
 
 ## 数据库版本
 
@@ -219,6 +235,7 @@ com.xty.englishhelper/
 | 9 | 新增 word_pools 表（id, dictionary_id, focus_word_id, strategy, algorithm_version）和 word_pool_members 联结表（word_id, pool_id），含级联外键 |
 | 10 | 文章改为段落结构化存储，新增 paragraph 分析缓存与段落级关系 |
 | 11 | 文章段落分析/翻译缓存完善，Guardian 在线阅读与临时文章支持 |
+| 12 | 题库模块：exam_papers, question_groups, question_group_paragraphs, question_items, practice_records, question_source_articles 六表 |
 
 ## 许可证
 
