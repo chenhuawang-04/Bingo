@@ -1,22 +1,22 @@
-package com.xty.englishhelper.ui.screen.settings
+﻿package com.xty.englishhelper.ui.screen.settings
 
 import com.xty.englishhelper.data.json.SyncManifest
 import com.xty.englishhelper.domain.model.AiProvider
+import com.xty.englishhelper.domain.model.AiScopeConfig
+import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.repository.SyncProgress
 
 data class SettingsUiState(
-    val provider: AiProvider = AiProvider.ANTHROPIC,
-    val apiKey: String = "",
-    val baseUrl: String = "",
-    val selectedModel: String = "",
-    val fastModel: String = "",
-    val isTesting: Boolean = false,
-    val testResult: String? = null,
+    val providers: List<ProviderSummary> = emptyList(),
+    val defaultProviderName: String = "",
+    val scopeConfigs: Map<AiSettingsScope, AiScopeConfig> = emptyMap(),
+    val providerEditor: ProviderEditorState = ProviderEditorState(),
+    val pendingDelete: PendingDeleteProvider? = null,
+    val modelOptions: Map<String, List<String>> = emptyMap(),
+    val modelLoading: Set<String> = emptySet(),
+    val modelError: Map<String, String> = emptyMap(),
+    val message: String? = null,
     val error: String? = null,
-    val poolAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
-    val ocrAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
-    val articleAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
-    val searchAiSettings: ScopedAiSettingsState = ScopedAiSettingsState(),
     val guardianDetailConcurrency: Int = 5,
     val ttsRate: Float = 1.0f,
     val ttsPitch: Float = 1.0f,
@@ -27,14 +27,29 @@ data class SettingsUiState(
     val cloudSync: CloudSyncState = CloudSyncState()
 )
 
-data class ScopedAiSettingsState(
-    val enabled: Boolean = false,
-    val provider: AiProvider = AiProvider.ANTHROPIC,
-    val apiKey: String = "",
+data class ProviderSummary(
+    val name: String,
+    val format: AiProvider,
+    val baseUrl: String,
+    val hasApiKey: Boolean
+)
+
+enum class ProviderEditorMode { NONE, CREATE, EDIT }
+
+data class ProviderEditorState(
+    val mode: ProviderEditorMode = ProviderEditorMode.NONE,
+    val originalName: String? = null,
+    val name: String = "",
+    val format: AiProvider = AiProvider.ANTHROPIC,
     val baseUrl: String = "",
-    val selectedModel: String = "",
+    val apiKey: String = "",
     val isTesting: Boolean = false,
     val testResult: String? = null
+)
+
+data class PendingDeleteProvider(
+    val name: String,
+    val affectedScopes: List<AiSettingsScope>
 )
 
 data class CloudSyncState(

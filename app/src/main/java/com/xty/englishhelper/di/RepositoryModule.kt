@@ -1,6 +1,7 @@
 package com.xty.englishhelper.di
 
 import com.xty.englishhelper.data.json.JsonImportExporter
+import com.xty.englishhelper.data.repository.AiModelRepositoryImpl
 import com.xty.englishhelper.data.repository.AiRepositoryImpl
 import com.xty.englishhelper.data.repository.ArticleAiRepositoryImpl
 import com.xty.englishhelper.data.repository.ArticleRepositoryImpl
@@ -14,6 +15,7 @@ import com.xty.englishhelper.data.repository.StudyRepositoryImpl
 import com.xty.englishhelper.data.repository.UnitRepositoryImpl
 import com.xty.englishhelper.data.repository.WordPoolRepositoryImpl
 import com.xty.englishhelper.data.repository.WordRepositoryImpl
+import com.xty.englishhelper.domain.repository.AiModelRepository
 import com.xty.englishhelper.domain.repository.AiRepository
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
@@ -49,6 +51,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindAiRepository(impl: AiRepositoryImpl): AiRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAiModelRepository(impl: AiModelRepositoryImpl): AiModelRepository
 
     @Binds
     @Singleton

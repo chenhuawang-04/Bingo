@@ -129,10 +129,10 @@ class QuestionBankScanViewModel @Inject constructor(
 
     private suspend fun doScan(imageBytes: List<ByteArray>) {
         try {
-            val config = settingsDataStore.getAiConfig(AiSettingsScope.SCAN)
+            val config = settingsDataStore.getAiConfig(AiSettingsScope.OCR)
             if (config.apiKey.isBlank()) {
                 _uiState.update {
-                    it.copy(phase = ScanPhase.SELECT, isScanning = false, error = "请先在设置中配置扫描模型")
+                    it.copy(phase = ScanPhase.SELECT, isScanning = false, error = "请先在设置中配置 OCR 模型")
                 }
                 return
             }

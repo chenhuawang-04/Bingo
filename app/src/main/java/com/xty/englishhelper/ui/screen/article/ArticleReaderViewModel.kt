@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.screen.article
+﻿package com.xty.englishhelper.ui.screen.article
 
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
@@ -287,7 +287,7 @@ class ArticleReaderViewModel @Inject constructor(
         }
     }
 
-    // ── Translation ──
+    // 鈹€鈹€ Translation 鈹€鈹€
 
     fun toggleTranslation() {
         val enabled = !_uiState.value.translationEnabled
@@ -310,7 +310,7 @@ class ArticleReaderViewModel @Inject constructor(
         translationJob = viewModelScope.launch {
             val config = settingsDataStore.getFastAiConfig()
             if (config.apiKey.isBlank()) {
-                _uiState.update { it.copy(analyzeError = "请先在设置中配置 API Key") }
+                _uiState.update { it.copy(analyzeError = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
                 return@launch
             }
             val isSaved = _uiState.value.article?.isSaved ?: true
@@ -347,7 +347,7 @@ class ArticleReaderViewModel @Inject constructor(
         viewModelScope.launch {
             val config = settingsDataStore.getFastAiConfig()
             if (config.apiKey.isBlank()) {
-                _uiState.update { it.copy(analyzeError = "请先在设置中配置 API Key") }
+                _uiState.update { it.copy(analyzeError = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
                 return@launch
             }
             val isSaved = _uiState.value.article?.isSaved ?: true
@@ -375,7 +375,7 @@ class ArticleReaderViewModel @Inject constructor(
         }
     }
 
-    // ── Collection notebook ──
+    // 鈹€鈹€ Collection notebook 鈹€鈹€
 
     fun collectWord(word: String, contextSentence: String) {
         if (_uiState.value.collectedWords.any { it.word.equals(word, ignoreCase = true) }) return
@@ -462,12 +462,12 @@ class ArticleReaderViewModel @Inject constructor(
                 // Remove from notebook
                 removeCollectedWord(word)
             } catch (e: Exception) {
-                _uiState.update { it.copy(analyzeError = "加入词典失败：${e.message}") }
+                _uiState.update { it.copy(analyzeError = "鍔犲叆璇嶅吀澶辫触锛?{e.message}") }
             }
         }
     }
 
-    // ── Paragraph analysis ──
+    // 鈹€鈹€ Paragraph analysis 鈹€鈹€
 
     fun analyzeParagraph(paragraphId: Long, paragraphText: String) {
         _uiState.update { it.copy(analyzingParagraphId = paragraphId, analyzeError = null) }
@@ -477,7 +477,7 @@ class ArticleReaderViewModel @Inject constructor(
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.ARTICLE)
 
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "请先在设置中配置 API Key") }
+                    _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
                     return@launch
                 }
 
@@ -496,7 +496,7 @@ class ArticleReaderViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "分析失败：${e.message}") }
+                _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "鍒嗘瀽澶辫触锛?{e.message}") }
             }
         }
     }
@@ -517,17 +517,14 @@ class ArticleReaderViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val apiKey = settingsDataStore.apiKey.first()
-                val model = settingsDataStore.model.first()
-                val baseUrl = settingsDataStore.baseUrl.first()
-                val provider = settingsDataStore.provider.first()
+                val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
 
-                if (apiKey.isBlank()) {
-                    _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "请先在设置中配置 API Key") }
+                if (config.apiKey.isBlank()) {
+                    _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
                     return@launch
                 }
 
-                val result = analyzeSentence(articleId, sentenceId, sentenceText, apiKey, model, baseUrl, provider)
+                val result = analyzeSentence(articleId, sentenceId, sentenceText, config.apiKey, config.model, config.baseUrl, config.provider)
                 _uiState.update {
                     it.copy(
                         sentenceAnalysis = it.sentenceAnalysis + (sentenceId to result),
@@ -535,7 +532,7 @@ class ArticleReaderViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "分析失败：${e.message}") }
+                _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "鍒嗘瀽澶辫触锛?{e.message}") }
             }
         }
     }
@@ -548,7 +545,7 @@ class ArticleReaderViewModel @Inject constructor(
                 _uiState.update { it.copy(isSavingToLocal = false) }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isSavingToLocal = false, analyzeError = "保存失败：${e.message}")
+                    it.copy(isSavingToLocal = false, analyzeError = "淇濆瓨澶辫触锛?{e.message}")
                 }
             }
         }
@@ -607,3 +604,4 @@ class ArticleReaderViewModel @Inject constructor(
         _uiState.update { it.copy(analyzeError = null) }
     }
 }
+

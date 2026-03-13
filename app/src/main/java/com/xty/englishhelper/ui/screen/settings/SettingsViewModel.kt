@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.AiProvider
+import com.xty.englishhelper.domain.model.AiProviderProfile
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.usecase.ai.FetchAiModelsUseCase
 import com.xty.englishhelper.domain.usecase.ai.TestAiConnectionUseCase
 import com.xty.englishhelper.domain.usecase.sync.ForceDownloadUseCase
 import com.xty.englishhelper.domain.usecase.sync.ForceUploadUseCase
@@ -26,6 +28,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val ttsManager: TtsManager,
     private val testAiConnection: TestAiConnectionUseCase,
+    private val fetchAiModels: FetchAiModelsUseCase,
     private val syncUseCase: SyncUseCase,
     private val forceUploadUseCase: ForceUploadUseCase,
     private val forceDownloadUseCase: ForceDownloadUseCase,
@@ -38,28 +41,30 @@ class SettingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            settingsDataStore.provider.collect { provider ->
-                _uiState.update { it.copy(provider = provider) }
+            settingsDataStore.providersWithKeys.collect { list ->
+                val summaries = list.map { summary ->
+                    ProviderSummary(
+                        name = summary.profile.name,
+                        format = summary.profile.provider,
+                        baseUrl = summary.profile.baseUrl,
+                        hasApiKey = summary.hasApiKey
+                    )
+                }
+                _uiState.update { it.copy(providers = summaries) }
             }
         }
         viewModelScope.launch {
-            settingsDataStore.apiKey.collect { key ->
-                _uiState.update { it.copy(apiKey = key) }
+            settingsDataStore.defaultProviderName.collect { name ->
+                _uiState.update { it.copy(defaultProviderName = name) }
             }
         }
-        viewModelScope.launch {
-            settingsDataStore.baseUrl.collect { url ->
-                _uiState.update { it.copy(baseUrl = url) }
-            }
-        }
-        viewModelScope.launch {
-            settingsDataStore.model.collect { model ->
-                _uiState.update { it.copy(selectedModel = model) }
-            }
-        }
-        viewModelScope.launch {
-            settingsDataStore.fastModel.collect { model ->
-                _uiState.update { it.copy(fastModel = model) }
+        AiSettingsScope.values().forEach { scope ->
+            viewModelScope.launch {
+                settingsDataStore.scopeConfig(scope).collect { config ->
+                    _uiState.update { state ->
+                        state.copy(scopeConfigs = state.scopeConfigs + (scope to config))
+                    }
+                }
             }
         }
         viewModelScope.launch {
@@ -97,95 +102,237 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(ttsPrewarmRetry = value) }
             }
         }
-        // Scoped settings
-        initScopedSettings(AiSettingsScope.POOL) { state, scoped -> state.copy(poolAiSettings = scoped) }
-        initScopedSettings(AiSettingsScope.OCR) { state, scoped -> state.copy(ocrAiSettings = scoped) }
-        initScopedSettings(AiSettingsScope.SEARCH) { state, scoped -> state.copy(searchAiSettings = scoped) }
-
-        // Cloud sync settings
         initCloudSync()
     }
 
-    private fun initScopedSettings(
-        scope: AiSettingsScope,
-        updater: (SettingsUiState, ScopedAiSettingsState) -> SettingsUiState
-    ) {
-        viewModelScope.launch {
-            settingsDataStore.scopedProvider(scope).collect { provider ->
-                _uiState.update { state ->
-                    val scoped = getScopedState(state, scope)
-                    updater(state, scoped.copy(enabled = provider != null, provider = provider ?: AiProvider.ANTHROPIC))
-                }
-            }
+    fun startCreateProvider() {
+        _uiState.update {
+            it.copy(
+                providerEditor = ProviderEditorState(
+                    mode = ProviderEditorMode.CREATE,
+                    name = "",
+                    format = AiProvider.ANTHROPIC,
+                    baseUrl = defaultBaseUrl(AiProvider.ANTHROPIC)
+                )
+            )
         }
+    }
+
+    fun startEditProvider(providerName: String) {
         viewModelScope.launch {
-            settingsDataStore.scopedApiKey(scope).collect { key ->
-                _uiState.update { state ->
-                    val scoped = getScopedState(state, scope)
-                    updater(state, scoped.copy(apiKey = key))
-                }
-            }
-        }
-        viewModelScope.launch {
-            settingsDataStore.scopedModel(scope).collect { model ->
-                _uiState.update { state ->
-                    val scoped = getScopedState(state, scope)
-                    updater(state, scoped.copy(selectedModel = model))
-                }
-            }
-        }
-        viewModelScope.launch {
-            settingsDataStore.scopedBaseUrl(scope).collect { url ->
-                _uiState.update { state ->
-                    val scoped = getScopedState(state, scope)
-                    updater(state, scoped.copy(baseUrl = url))
-                }
+            val profile = settingsDataStore.getProvider(providerName) ?: return@launch
+            val apiKey = settingsDataStore.getProviderApiKey(providerName)
+            _uiState.update {
+                it.copy(
+                    providerEditor = ProviderEditorState(
+                        mode = ProviderEditorMode.EDIT,
+                        originalName = profile.name,
+                        name = profile.name,
+                        format = profile.provider,
+                        baseUrl = profile.baseUrl,
+                        apiKey = apiKey
+                    )
+                )
             }
         }
     }
 
-    private fun getScopedState(state: SettingsUiState, scope: AiSettingsScope): ScopedAiSettingsState {
-        return when (scope) {
-            AiSettingsScope.POOL -> state.poolAiSettings
-            AiSettingsScope.OCR -> state.ocrAiSettings
-            AiSettingsScope.ARTICLE -> state.articleAiSettings
-            AiSettingsScope.SEARCH -> state.searchAiSettings
-            AiSettingsScope.MAIN -> ScopedAiSettingsState()
+    fun cancelProviderEditor() {
+        _uiState.update { it.copy(providerEditor = ProviderEditorState()) }
+    }
+
+    fun onProviderNameChange(value: String) {
+        _uiState.update { it.copy(providerEditor = it.providerEditor.copy(name = value)) }
+    }
+
+    fun onProviderFormatChange(format: AiProvider) {
+        _uiState.update {
+            it.copy(providerEditor = it.providerEditor.copy(format = format))
         }
     }
 
-    // ── Main settings ──
+    fun onProviderBaseUrlChange(value: String) {
+        _uiState.update { it.copy(providerEditor = it.providerEditor.copy(baseUrl = value)) }
+    }
 
-    fun onProviderChange(provider: AiProvider) {
-        if (provider == _uiState.value.provider) return
-        _uiState.update { it.copy(provider = provider) }
+    fun onProviderApiKeyChange(value: String) {
+        _uiState.update { it.copy(providerEditor = it.providerEditor.copy(apiKey = value)) }
+    }
+
+    fun saveProvider() {
+        val editor = _uiState.value.providerEditor
+        val rawName = editor.name.trim()
+        if (rawName.isBlank()) {
+            _uiState.update { it.copy(error = "请输入提供商名称") }
+            return
+        }
+        if (editor.mode == ProviderEditorMode.CREATE) {
+            val exists = _uiState.value.providers.any { it.name.equals(rawName, ignoreCase = true) }
+            if (exists) {
+                _uiState.update { it.copy(error = "提供商名称已存在") }
+                return
+            }
+        }
+        val finalName = editor.originalName ?: rawName
+        val profile = AiProviderProfile(
+            name = finalName,
+            provider = editor.format,
+            baseUrl = editor.baseUrl.trim()
+        )
+
         viewModelScope.launch {
-            settingsDataStore.setProvider(provider)
+            if (editor.mode == ProviderEditorMode.CREATE) {
+                settingsDataStore.addProvider(profile)
+            } else if (editor.mode == ProviderEditorMode.EDIT) {
+                settingsDataStore.updateProvider(profile)
+            }
+            settingsDataStore.setProviderApiKey(finalName, editor.apiKey)
+            _uiState.update {
+                it.copy(
+                    providerEditor = ProviderEditorState(),
+                    message = "已保存提供商配置"
+                )
+            }
         }
     }
 
-    fun onApiKeyChange(key: String) {
-        val provider = _uiState.value.provider
-        _uiState.update { it.copy(apiKey = key) }
-        viewModelScope.launch { settingsDataStore.setApiKey(provider, key) }
+    fun setDefaultProvider(providerName: String) {
+        viewModelScope.launch {
+            settingsDataStore.setDefaultProvider(providerName)
+            _uiState.update { it.copy(message = "已设置默认提供商") }
+        }
     }
 
-    fun onBaseUrlChange(url: String) {
-        val provider = _uiState.value.provider
-        _uiState.update { it.copy(baseUrl = url) }
-        viewModelScope.launch { settingsDataStore.setBaseUrl(provider, url) }
+    fun requestDeleteProvider(providerName: String) {
+        viewModelScope.launch {
+            val scopes = settingsDataStore.getScopesUsingProvider(providerName)
+            _uiState.update { it.copy(pendingDelete = PendingDeleteProvider(providerName, scopes)) }
+        }
     }
 
-    fun onModelChange(model: String) {
-        val provider = _uiState.value.provider
-        _uiState.update { it.copy(selectedModel = model) }
-        viewModelScope.launch { settingsDataStore.setModel(provider, model) }
+    fun confirmDeleteProvider() {
+        val pending = _uiState.value.pendingDelete ?: return
+        viewModelScope.launch {
+            val removed = settingsDataStore.deleteProvider(pending.name)
+            if (removed) {
+                _uiState.update { it.copy(pendingDelete = null, message = "已删除提供商") }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        pendingDelete = null,
+                        error = "删除失败，提供商不存在或至少保留一个提供商"
+                    )
+                }
+            }
+        }
     }
 
-    fun onFastModelChange(model: String) {
-        val provider = _uiState.value.provider
-        _uiState.update { it.copy(fastModel = model) }
-        viewModelScope.launch { settingsDataStore.setFastModel(provider, model) }
+    fun dismissDeleteProvider() {
+        _uiState.update { it.copy(pendingDelete = null) }
+    }
+
+    fun testProviderConnection() {
+        val editor = _uiState.value.providerEditor
+        if (editor.apiKey.isBlank()) {
+            _uiState.update { it.copy(error = "请先输入 API Key") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(providerEditor = editor.copy(isTesting = true, testResult = null)) }
+            try {
+                val model = defaultModelFor(editor.format)
+                val baseUrl = editor.baseUrl.ifBlank { defaultBaseUrl(editor.format) }
+                val success = testAiConnection(editor.apiKey, model, baseUrl, editor.format)
+                val result = if (success) "连接成功" else "连接失败"
+                _uiState.update {
+                    it.copy(providerEditor = it.providerEditor.copy(isTesting = false, testResult = result))
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(providerEditor = it.providerEditor.copy(isTesting = false, testResult = "连接失败: ${e.message}"))
+                }
+            }
+        }
+    }
+
+    fun fetchModelsForEditor() {
+        val editor = _uiState.value.providerEditor
+        if (editor.name.isBlank()) {
+            _uiState.update { it.copy(error = "请先填写提供商名称") }
+            return
+        }
+        fetchModels(editor.name.trim(), editor.format, editor.baseUrl, editor.apiKey)
+    }
+
+    fun fetchModelsForProvider(providerName: String) {
+        val provider = _uiState.value.providers.firstOrNull { it.name == providerName }
+        if (provider == null) {
+            _uiState.update { it.copy(error = "提供商不存在") }
+            return
+        }
+        fetchModels(providerName, provider.format, provider.baseUrl, null)
+    }
+
+    private fun fetchModels(providerName: String, format: AiProvider, baseUrl: String, apiKeyOverride: String?) {
+        viewModelScope.launch {
+            val apiKey = apiKeyOverride ?: settingsDataStore.getProviderApiKey(providerName)
+            if (apiKey.isBlank()) {
+                _uiState.update {
+                    it.copy(modelError = it.modelError + (providerName to "请先配置 API Key"))
+                }
+                return@launch
+            }
+            val effectiveBaseUrl = baseUrl.ifBlank { defaultBaseUrl(format) }
+            _uiState.update {
+                it.copy(
+                    modelLoading = it.modelLoading + providerName,
+                    modelError = it.modelError - providerName
+                )
+            }
+            try {
+                val models = fetchAiModels(apiKey, format, effectiveBaseUrl)
+                _uiState.update {
+                    it.copy(
+                        modelOptions = it.modelOptions + (providerName to models),
+                        modelLoading = it.modelLoading - providerName
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        modelLoading = it.modelLoading - providerName,
+                        modelError = it.modelError + (providerName to (e.message ?: "拉取失败"))
+                    )
+                }
+            }
+        }
+    }
+
+    fun onScopeProviderChange(scope: AiSettingsScope, providerName: String) {
+        val provider = _uiState.value.providers.firstOrNull { it.name == providerName }
+        if (provider == null) {
+            _uiState.update { it.copy(error = "提供商不存在") }
+            return
+        }
+        viewModelScope.launch {
+            settingsDataStore.setScopeConfig(scope, providerName, defaultModelFor(provider.format))
+        }
+    }
+
+    fun onScopeModelChange(scope: AiSettingsScope, model: String) {
+        val providerName = _uiState.value.scopeConfigs[scope]?.providerName
+            ?: _uiState.value.defaultProviderName
+        if (providerName.isBlank()) {
+            _uiState.update { it.copy(error = "请先选择提供商") }
+            return
+        }
+        viewModelScope.launch {
+            settingsDataStore.setScopeConfig(scope, providerName, model)
+        }
+    }
+
+    fun clearMessages() {
+        _uiState.update { it.copy(message = null, error = null) }
     }
 
     fun onGuardianDetailConcurrencyChange(value: Int) {
@@ -236,143 +383,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun testConnection() {
-        val state = _uiState.value
-        if (state.apiKey.isBlank()) {
-            _uiState.update { it.copy(error = "请先输入 API Key") }
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isTesting = true, testResult = null, error = null) }
-            try {
-                val model = state.selectedModel.ifBlank {
-                    when (state.provider) {
-                        AiProvider.ANTHROPIC -> Constants.DEFAULT_MODEL
-                        AiProvider.OPENAI_COMPATIBLE -> Constants.DEFAULT_OPENAI_MODEL
-                    }
-                }
-                val baseUrl = state.baseUrl.ifBlank {
-                    when (state.provider) {
-                        AiProvider.ANTHROPIC -> Constants.ANTHROPIC_BASE_URL
-                        AiProvider.OPENAI_COMPATIBLE -> Constants.OPENAI_BASE_URL
-                    }
-                }
-                val success = testAiConnection(state.apiKey, model, baseUrl, state.provider)
-                _uiState.update {
-                    it.copy(
-                        isTesting = false,
-                        testResult = if (success) "连接成功！" else "连接失败"
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(isTesting = false, error = "连接失败：${e.message}")
-                }
-            }
-        }
-    }
-
-    fun clearMessages() {
-        _uiState.update { it.copy(testResult = null, error = null) }
-    }
-
-    // ── Scoped settings ──
-
-    fun onScopedToggle(scope: AiSettingsScope, enabled: Boolean) {
-        viewModelScope.launch {
-            if (enabled) {
-                // Initialize with MAIN's provider
-                val mainProvider = _uiState.value.provider
-                settingsDataStore.setScopedProvider(scope, mainProvider)
-            } else {
-                settingsDataStore.clearScopedSettings(scope)
-            }
-        }
-    }
-
-    fun onScopedProviderChange(scope: AiSettingsScope, provider: AiProvider) {
-        // Update local state immediately to prevent race with subsequent key/model writes
-        val scoped = getScopedState(_uiState.value, scope)
-        updateScopedState(scope, scoped.copy(provider = provider))
-        viewModelScope.launch {
-            settingsDataStore.setScopedProvider(scope, provider)
-        }
-    }
-
-    fun onScopedApiKeyChange(scope: AiSettingsScope, key: String) {
-        val scoped = getScopedState(_uiState.value, scope)
-        updateScopedState(scope, scoped.copy(apiKey = key))
-        viewModelScope.launch {
-            // Re-read from latest state to use correct provider
-            val currentProvider = getScopedState(_uiState.value, scope).provider
-            settingsDataStore.setScopedApiKey(scope, currentProvider, key)
-        }
-    }
-
-    fun onScopedBaseUrlChange(scope: AiSettingsScope, url: String) {
-        val scoped = getScopedState(_uiState.value, scope)
-        updateScopedState(scope, scoped.copy(baseUrl = url))
-        viewModelScope.launch {
-            val currentProvider = getScopedState(_uiState.value, scope).provider
-            settingsDataStore.setScopedBaseUrl(scope, currentProvider, url)
-        }
-    }
-
-    fun onScopedModelChange(scope: AiSettingsScope, model: String) {
-        val scoped = getScopedState(_uiState.value, scope)
-        updateScopedState(scope, scoped.copy(selectedModel = model))
-        viewModelScope.launch {
-            val currentProvider = getScopedState(_uiState.value, scope).provider
-            settingsDataStore.setScopedModel(scope, currentProvider, model)
-        }
-    }
-
-    fun testScopedConnection(scope: AiSettingsScope) {
-        val scoped = getScopedState(_uiState.value, scope)
-        if (scoped.apiKey.isBlank()) {
-            _uiState.update { it.copy(error = "请先输入 API Key") }
-            return
-        }
-
-        viewModelScope.launch {
-            updateScopedState(scope, scoped.copy(isTesting = true, testResult = null))
-            try {
-                val model = scoped.selectedModel.ifBlank {
-                    when (scoped.provider) {
-                        AiProvider.ANTHROPIC -> Constants.DEFAULT_MODEL
-                        AiProvider.OPENAI_COMPATIBLE -> Constants.DEFAULT_OPENAI_MODEL
-                    }
-                }
-                val baseUrl = scoped.baseUrl.ifBlank {
-                    when (scoped.provider) {
-                        AiProvider.ANTHROPIC -> Constants.ANTHROPIC_BASE_URL
-                        AiProvider.OPENAI_COMPATIBLE -> Constants.OPENAI_BASE_URL
-                    }
-                }
-                val success = testAiConnection(scoped.apiKey, model, baseUrl, scoped.provider)
-                val result = if (success) "连接成功！" else "连接失败"
-                updateScopedState(scope, getScopedState(_uiState.value, scope).copy(isTesting = false, testResult = result))
-            } catch (e: Exception) {
-                updateScopedState(scope, getScopedState(_uiState.value, scope).copy(isTesting = false, testResult = "连接失败：${e.message}"))
-            }
-        }
-    }
-
-    private fun updateScopedState(scope: AiSettingsScope, scoped: ScopedAiSettingsState) {
-        _uiState.update { state ->
-            when (scope) {
-                AiSettingsScope.POOL -> state.copy(poolAiSettings = scoped)
-                AiSettingsScope.OCR -> state.copy(ocrAiSettings = scoped)
-                AiSettingsScope.ARTICLE -> state.copy(articleAiSettings = scoped)
-                AiSettingsScope.SEARCH -> state.copy(searchAiSettings = scoped)
-                AiSettingsScope.MAIN -> state
-            }
-        }
-    }
-
-    // ── Cloud Sync ──
-
     private fun initCloudSync() {
         viewModelScope.launch {
             settingsDataStore.githubOwner.collect { owner ->
@@ -389,7 +399,6 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(cloudSync = it.cloudSync.copy(lastSyncAt = ts)) }
             }
         }
-        // Load PAT once
         _uiState.update { it.copy(cloudSync = it.cloudSync.copy(pat = settingsDataStore.getGitHubPat())) }
     }
 
@@ -418,16 +427,17 @@ class SettingsViewModel @Inject constructor(
             _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = null, error = null)) }
             try {
                 val success = testSyncConnectionUseCase()
-                val result = if (success) "连接成功" else "连接失败：仓库不存在或无权限"
+                val result = if (success) "连接成功" else "连接失败: 仓库不存在或无权限"
                 _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = result)) }
                 if (success) {
                     try {
                         val manifest = getCloudManifestUseCase()
                         _uiState.update { it.copy(cloudSync = it.cloudSync.copy(cloudManifest = manifest)) }
-                    } catch (_: Exception) { }
+                    } catch (_: Exception) {
+                    }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = "连接失败：${e.message}")) }
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = "连接失败: ${e.message}")) }
             }
         }
     }
@@ -442,7 +452,7 @@ class SettingsViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "同步失败：${e.message}")) }
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "同步失败: ${e.message}")) }
             }
         }
     }
@@ -457,7 +467,7 @@ class SettingsViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "上传失败：${e.message}")) }
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "上传失败: ${e.message}")) }
             }
         }
     }
@@ -472,12 +482,26 @@ class SettingsViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "下载失败：${e.message}")) }
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "下载失败: ${e.message}")) }
             }
         }
     }
 
     fun clearSyncError() {
         _uiState.update { it.copy(cloudSync = it.cloudSync.copy(error = null, connectionTestResult = null)) }
+    }
+
+    private fun defaultModelFor(provider: AiProvider): String {
+        return when (provider) {
+            AiProvider.ANTHROPIC -> Constants.DEFAULT_MODEL
+            AiProvider.OPENAI_COMPATIBLE -> Constants.DEFAULT_OPENAI_MODEL
+        }
+    }
+
+    private fun defaultBaseUrl(provider: AiProvider): String {
+        return when (provider) {
+            AiProvider.ANTHROPIC -> Constants.ANTHROPIC_BASE_URL
+            AiProvider.OPENAI_COMPATIBLE -> Constants.OPENAI_BASE_URL
+        }
     }
 }

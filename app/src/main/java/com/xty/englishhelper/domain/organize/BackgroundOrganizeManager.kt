@@ -1,7 +1,8 @@
-package com.xty.englishhelper.domain.organize
+﻿package com.xty.englishhelper.domain.organize
 
 import android.util.Log
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.usecase.ai.OrganizeWordWithAiUseCase
 import kotlinx.coroutines.CoroutineScope
@@ -11,7 +12,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -49,28 +49,29 @@ class BackgroundOrganizeManager @Inject constructor(
         }
 
     fun enqueue(wordId: Long, dictionaryId: Long, spelling: String) {
-        // Skip if already organizing
         if (_tasks.value[wordId]?.status == OrganizeTaskStatus.ORGANIZING) return
 
         _tasks.update { it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.ORGANIZING)) }
 
         scope.launch {
             try {
-                val apiKey = settingsDataStore.apiKey.first()
-                val model = settingsDataStore.model.first()
-                val baseUrl = settingsDataStore.baseUrl.first()
-                val provider = settingsDataStore.provider.first()
+                val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
 
-                if (apiKey.isBlank()) {
+                if (config.apiKey.isBlank()) {
                     _tasks.update {
                         it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.FAILED, "API Key 未配置"))
                     }
                     return@launch
                 }
 
-                val result = organizeWordWithAi(spelling, apiKey, model, baseUrl, provider)
+                val result = organizeWordWithAi(
+                    spelling,
+                    config.apiKey,
+                    config.model,
+                    config.baseUrl,
+                    config.provider
+                )
 
-                // Read current word data from DB
                 val currentWord = wordRepository.getWordById(wordId)
                 if (currentWord == null) {
                     _tasks.update {
@@ -79,7 +80,6 @@ class BackgroundOrganizeManager @Inject constructor(
                     return@launch
                 }
 
-                // Merge: only fill blank fields
                 val merged = currentWord.copy(
                     phonetic = currentWord.phonetic.ifBlank { result.phonetic },
                     meanings = currentWord.meanings.ifEmpty { result.meanings },
@@ -96,7 +96,6 @@ class BackgroundOrganizeManager @Inject constructor(
                     it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.SUCCESS))
                 }
 
-                // Auto-dismiss SUCCESS after 3 seconds
                 delay(3000)
                 _tasks.update { it - wordId }
             } catch (e: Exception) {

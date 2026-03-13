@@ -454,11 +454,7 @@ class TtsManager @Inject constructor(
                 .also { focusRequest = it }
             audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         } else {
-            audioManager.requestAudioFocus(
-                focusChangeListener,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
-            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            requestLegacyAudioFocus()
         }
         hasAudioFocus.set(granted)
         return granted
@@ -469,9 +465,23 @@ class TtsManager @Inject constructor(
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         } else {
-            audioManager.abandonAudioFocus(focusChangeListener)
+            abandonLegacyAudioFocus()
         }
         hasAudioFocus.set(false)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun requestLegacyAudioFocus(): Boolean {
+        return audioManager.requestAudioFocus(
+            focusChangeListener,
+            AudioManager.STREAM_MUSIC,
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+        ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+
+    @Suppress("DEPRECATION")
+    private fun abandonLegacyAudioFocus() {
+        audioManager.abandonAudioFocus(focusChangeListener)
     }
 
     private fun currentArticleId(): Long? {

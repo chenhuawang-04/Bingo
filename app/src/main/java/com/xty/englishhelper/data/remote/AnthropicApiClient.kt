@@ -27,7 +27,7 @@ class AnthropicApiClient @Inject constructor(
             system = systemPrompt,
             messages = messages.map { MessageDto(role = it.role, content = it.content) }
         )
-        val response = apiService.createMessage(fullUrl, "Bearer $apiKey", request)
+        val response = apiService.createMessage(fullUrl, apiKey, request)
         return response.content.firstOrNull()?.text
             ?: throw IllegalStateException("Empty response from Anthropic API")
     }
@@ -42,14 +42,14 @@ class AnthropicApiClient @Inject constructor(
     ): String {
         val fullUrl = buildUrl(url)
         val requestBody = buildMultimodalRequestBody(model, imageBytes, prompt, maxTokens)
-        val response = apiService.createMultimodalMessage(fullUrl, "Bearer $apiKey", requestBody)
+        val response = apiService.createMultimodalMessage(fullUrl, apiKey, requestBody)
         return response.content.firstOrNull()?.text
             ?: throw IllegalStateException("Empty response from Anthropic API")
     }
 
     private fun buildUrl(baseUrl: String): String {
         var base = baseUrl.trim().trimEnd('/')
-        // Ensure URL has a scheme — without it, Retrofit treats it as relative
+        // Ensure URL has a scheme - without it, Retrofit treats it as relative
         // and resolves against the hardcoded HTTPS base URL
         if (!base.startsWith("http://", ignoreCase = true) &&
             !base.startsWith("https://", ignoreCase = true)) {

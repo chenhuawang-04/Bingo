@@ -3,4 +3,7 @@ package com.xty.englishhelper.domain.model
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class AiProvider { ANTHROPIC, OPENAI_COMPATIBLE }
+data class AiScopeConfig(
+    val providerName: String,
+    val model: String
+)

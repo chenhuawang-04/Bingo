@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Inflection
@@ -253,24 +254,27 @@ class AddWordViewModel @Inject constructor(
     fun organizeWithAi() {
         val spelling = _uiState.value.spelling.trim()
         if (spelling.isBlank()) {
-            _uiState.update { it.copy(error = "请先输入单词") }
+            _uiState.update { it.copy(error = "璇峰厛杈撳叆鍗曡瘝") }
             return
         }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isAiLoading = true, error = null) }
             try {
-                val apiKey = settingsDataStore.apiKey.first()
-                val model = settingsDataStore.model.first()
-                val baseUrl = settingsDataStore.baseUrl.first()
-                val provider = settingsDataStore.provider.first()
+                val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
 
-                if (apiKey.isBlank()) {
-                    _uiState.update { it.copy(isAiLoading = false, error = "请先在设置中配置 API Key") }
+                if (config.apiKey.isBlank()) {
+                    _uiState.update { it.copy(isAiLoading = false, error = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
                     return@launch
                 }
 
-                val result = organizeWordWithAi(spelling, apiKey, model, baseUrl, provider)
+                val result = organizeWordWithAi(
+                    spelling,
+                    config.apiKey,
+                    config.model,
+                    config.baseUrl,
+                    config.provider
+                )
                 _uiState.update {
                     it.copy(
                         isAiLoading = false,
@@ -406,3 +410,4 @@ class AddWordViewModel @Inject constructor(
         _uiState.update { it.copy(error = null) }
     }
 }
+

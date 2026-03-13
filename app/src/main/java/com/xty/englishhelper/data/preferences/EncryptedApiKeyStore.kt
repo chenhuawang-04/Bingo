@@ -4,9 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,6 +19,7 @@ class EncryptedApiKeyStore @Inject constructor(
         private const val ANTHROPIC_API_KEY = "api_key_anthropic"
         private const val OPENAI_API_KEY = "api_key_openai"
         private const val GITHUB_PAT = "github_pat"
+        private const val PROVIDER_API_KEY_PREFIX = "api_key_provider_"
     }
 
     private val prefs: SharedPreferences by lazy {
@@ -40,41 +41,40 @@ class EncryptedApiKeyStore @Inject constructor(
         prefs.edit().putString(LEGACY_API_KEY, key).apply()
     }
 
-    fun getApiKey(provider: AiProvider): String {
-        val scoped = when (provider) {
-            AiProvider.ANTHROPIC -> prefs.getString(ANTHROPIC_API_KEY, null)
-            AiProvider.OPENAI_COMPATIBLE -> prefs.getString(OPENAI_API_KEY, null)
+    fun getApiKey(providerName: String): String {
+        return prefs.getString(providerKey(providerName), "") ?: ""
+    }
+
+    fun setApiKey(providerName: String, key: String) {
+        prefs.edit().putString(providerKey(providerName), key).apply()
+    }
+
+    fun removeApiKey(providerName: String) {
+        prefs.edit().remove(providerKey(providerName)).apply()
+    }
+
+    fun hasApiKey(providerName: String): Boolean = getApiKey(providerName).isNotBlank()
+
+    fun migrateProviderKeysIfNeeded(
+        anthropicProviderName: String?,
+        openAiProviderName: String?,
+        scopes: List<AiSettingsScope>
+    ) {
+        if (!anthropicProviderName.isNullOrBlank() && getApiKey(anthropicProviderName).isBlank()) {
+            val legacy = prefs.getString(ANTHROPIC_API_KEY, null)
+                ?: prefs.getString(LEGACY_API_KEY, null)
+                ?: findLegacyScopedKey(scopes, "anthropic")
+            if (!legacy.isNullOrBlank()) {
+                setApiKey(anthropicProviderName, legacy)
+            }
         }
-        return scoped ?: getApiKey()
-    }
-
-    fun setApiKey(provider: AiProvider, key: String) {
-        when (provider) {
-            AiProvider.ANTHROPIC -> prefs.edit().putString(ANTHROPIC_API_KEY, key).apply()
-            AiProvider.OPENAI_COMPATIBLE -> prefs.edit().putString(OPENAI_API_KEY, key).apply()
-        }
-    }
-
-    fun getApiKey(scope: AiSettingsScope, provider: AiProvider): String {
-        if (scope == AiSettingsScope.MAIN) return getApiKey(provider)
-        val key = "api_key_${scope.prefix}${provider.name.lowercase()}"
-        return prefs.getString(key, null) ?: ""
-    }
-
-    fun setApiKey(scope: AiSettingsScope, provider: AiProvider, key: String) {
-        if (scope == AiSettingsScope.MAIN) {
-            setApiKey(provider, key)
-            return
-        }
-        val prefKey = "api_key_${scope.prefix}${provider.name.lowercase()}"
-        prefs.edit().putString(prefKey, key).apply()
-    }
-
-    fun clearScopedApiKeys(scope: AiSettingsScope) {
-        if (scope == AiSettingsScope.MAIN) return
-        AiProvider.entries.forEach { provider ->
-            val key = "api_key_${scope.prefix}${provider.name.lowercase()}"
-            prefs.edit().remove(key).apply()
+        if (!openAiProviderName.isNullOrBlank() && getApiKey(openAiProviderName).isBlank()) {
+            val legacy = prefs.getString(OPENAI_API_KEY, null)
+                ?: prefs.getString(LEGACY_API_KEY, null)
+                ?: findLegacyScopedKey(scopes, "openai_compatible")
+            if (!legacy.isNullOrBlank()) {
+                setApiKey(openAiProviderName, legacy)
+            }
         }
     }
 
@@ -86,5 +86,17 @@ class EncryptedApiKeyStore @Inject constructor(
 
     fun clearGitHubPat() {
         prefs.edit().remove(GITHUB_PAT).apply()
+    }
+
+    private fun providerKey(providerName: String): String {
+        val encoded = URLEncoder.encode(providerName, "UTF-8")
+        return "$PROVIDER_API_KEY_PREFIX$encoded"
+    }
+
+    private fun findLegacyScopedKey(scopes: List<AiSettingsScope>, providerKeySuffix: String): String? {
+        return scopes.asSequence()
+            .map { scope -> "api_key_${scope.prefix}$providerKeySuffix" }
+            .mapNotNull { key -> prefs.getString(key, null) }
+            .firstOrNull { it.isNotBlank() }
     }
 }

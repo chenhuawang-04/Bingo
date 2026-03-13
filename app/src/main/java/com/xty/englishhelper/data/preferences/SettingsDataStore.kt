@@ -2,18 +2,23 @@ package com.xty.englishhelper.data.preferences
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.xty.englishhelper.domain.model.AiProvider
+import com.xty.englishhelper.domain.model.AiProviderProfile
+import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.util.Constants
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,6 +39,11 @@ class SettingsDataStore @Inject constructor(
         val OPENAI_BASE_URL = stringPreferencesKey("openai_base_url")
         val FAST_ANTHROPIC_MODEL = stringPreferencesKey("fast_anthropic_model")
         val FAST_OPENAI_MODEL = stringPreferencesKey("fast_openai_model")
+
+        val AI_PROVIDERS_JSON = stringPreferencesKey("ai_providers_v2")
+        val AI_DEFAULT_PROVIDER = stringPreferencesKey("ai_default_provider_v2")
+        val AI_SCOPE_CONFIGS_JSON = stringPreferencesKey("ai_scope_configs_v2")
+
         val GITHUB_OWNER = stringPreferencesKey("github_owner")
         val GITHUB_REPO = stringPreferencesKey("github_repo")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
@@ -48,25 +58,45 @@ class SettingsDataStore @Inject constructor(
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
 
-    val apiKey: Flow<String> = dataStore.data.map { prefs ->
-        val provider = providerFromPrefs(prefs)
-        encryptedApiKeyStore.getApiKey(provider)
-    }
-    val model: Flow<String> = dataStore.data.map { prefs ->
-        val provider = providerFromPrefs(prefs)
-        readModel(prefs, provider)
-    }
-    val baseUrl: Flow<String> = dataStore.data.map { prefs ->
-        val provider = providerFromPrefs(prefs)
-        readBaseUrl(prefs, provider)
-    }
-    val provider: Flow<AiProvider> = dataStore.data.map { prefs ->
-        providerFromPrefs(prefs)
+    private val json = Json { ignoreUnknownKeys = true }
+
+    data class AiConfig(
+        val providerName: String,
+        val provider: AiProvider,
+        val apiKey: String,
+        val model: String,
+        val baseUrl: String
+    )
+
+    data class AiProviderSummary(
+        val profile: AiProviderProfile,
+        val hasApiKey: Boolean
+    )
+
+    data class TtsConfig(
+        val rate: Float,
+        val pitch: Float,
+        val localeTag: String,
+        val prewarmConcurrency: Int,
+        val prewarmRetry: Int
+    )
+
+    val providers: Flow<List<AiProviderProfile>> = dataStore.data.map { prefs ->
+        readProviders(prefs)
     }
 
-    val fastModel: Flow<String> = dataStore.data.map { prefs ->
-        val provider = providerFromPrefs(prefs)
-        readFastModel(prefs, provider)
+    val providersWithKeys: Flow<List<AiProviderSummary>> = providers.map { list ->
+        list.map { profile ->
+            AiProviderSummary(profile, encryptedApiKeyStore.hasApiKey(profile.name))
+        }
+    }
+
+    val defaultProviderName: Flow<String> = dataStore.data.map { prefs ->
+        readDefaultProviderName(prefs)
+    }
+
+    fun scopeConfig(scope: AiSettingsScope): Flow<AiScopeConfig> = dataStore.data.map { prefs ->
+        readScopeConfig(prefs, scope)
     }
 
     val guardianDetailConcurrency: Flow<Int> = dataStore.data.map { prefs ->
@@ -127,64 +157,103 @@ class SettingsDataStore @Inject constructor(
         dataStore.edit { prefs -> prefs[TTS_PREWARM_RETRY] = value }
     }
 
-    suspend fun setApiKey(key: String) {
-        val provider = provider.first()
-        encryptedApiKeyStore.setApiKey(provider, key)
+    suspend fun getProviders(): List<AiProviderProfile> {
+        return readProviders(dataStore.data.first())
     }
 
-    suspend fun setApiKey(provider: AiProvider, key: String) {
-        encryptedApiKeyStore.setApiKey(provider, key)
+    suspend fun getProvider(providerName: String): AiProviderProfile? {
+        return getProviders().firstOrNull { it.name == providerName }
     }
 
-    suspend fun setModel(model: String) {
+    suspend fun addProvider(profile: AiProviderProfile) {
         dataStore.edit { prefs ->
-            val provider = providerFromPrefs(prefs)
-            prefs[modelKey(provider)] = model
-        }
-    }
-
-    suspend fun setModel(provider: AiProvider, model: String) {
-        dataStore.edit { prefs ->
-            prefs[modelKey(provider)] = model
-        }
-    }
-
-    suspend fun setBaseUrl(url: String) {
-        dataStore.edit { prefs ->
-            val provider = providerFromPrefs(prefs)
-            prefs[baseUrlKey(provider)] = url
-        }
-    }
-
-    suspend fun setBaseUrl(provider: AiProvider, url: String) {
-        dataStore.edit { prefs ->
-            prefs[baseUrlKey(provider)] = url
-        }
-    }
-
-    suspend fun setFastModel(model: String) {
-        dataStore.edit { prefs ->
-            val provider = providerFromPrefs(prefs)
-            prefs[fastModelKey(provider)] = model
-        }
-    }
-
-    suspend fun setFastModel(provider: AiProvider, model: String) {
-        dataStore.edit { prefs ->
-            prefs[fastModelKey(provider)] = model
-        }
-    }
-
-    suspend fun setProvider(provider: AiProvider) {
-        dataStore.edit { prefs ->
-            prefs[PROVIDER] = provider.name
-            if (prefs[modelKey(provider)] == null) {
-                prefs[modelKey(provider)] = defaultModel(provider)
+            val providers = readProviders(prefs).toMutableList()
+            if (providers.any { it.name.equals(profile.name, ignoreCase = true) }) {
+                return@edit
             }
-            if (prefs[baseUrlKey(provider)] == null) {
-                prefs[baseUrlKey(provider)] = defaultBaseUrl(provider)
+            val normalized = profile.copy(baseUrl = normalizeBaseUrl(profile.baseUrl, profile.provider))
+            providers.add(normalized)
+            prefs[AI_PROVIDERS_JSON] = json.encodeToString(providers)
+            val currentDefault = prefs[AI_DEFAULT_PROVIDER]
+            if (currentDefault.isNullOrBlank()) {
+                prefs[AI_DEFAULT_PROVIDER] = normalized.name
             }
         }
+    }
+
+    suspend fun updateProvider(profile: AiProviderProfile) {
+        dataStore.edit { prefs ->
+            val providers = readProviders(prefs).toMutableList()
+            val index = providers.indexOfFirst { it.name == profile.name }
+            if (index < 0) return@edit
+            providers[index] = profile.copy(baseUrl = normalizeBaseUrl(profile.baseUrl, profile.provider))
+            prefs[AI_PROVIDERS_JSON] = json.encodeToString(providers)
+        }
+    }
+
+    suspend fun deleteProvider(providerName: String): Boolean {
+        var removed = false
+        dataStore.edit { prefs ->
+            val providers = readProviders(prefs).toMutableList()
+            val index = providers.indexOfFirst { it.name == providerName }
+            if (index < 0) return@edit
+            if (providers.size <= 1) return@edit
+            providers.removeAt(index)
+            removed = true
+            prefs[AI_PROVIDERS_JSON] = json.encodeToString(providers)
+            val defaultName = prefs[AI_DEFAULT_PROVIDER]
+            val newDefault = if (defaultName == providerName) providers.first().name else defaultName
+            if (!newDefault.isNullOrBlank()) {
+                prefs[AI_DEFAULT_PROVIDER] = newDefault
+            }
+            val scopeConfigs = readScopeConfigMap(prefs).toMutableMap()
+            val fallbackProvider = providers.firstOrNull { it.name == newDefault } ?: providers.first()
+            val fallbackModel = defaultModel(fallbackProvider.provider)
+            scopeConfigs.keys.toList().forEach { scopeKey ->
+                val config = scopeConfigs[scopeKey] ?: return@forEach
+                if (config.providerName == providerName) {
+                    scopeConfigs[scopeKey] = config.copy(
+                        providerName = fallbackProvider.name,
+                        model = fallbackModel
+                    )
+                }
+            }
+            prefs[AI_SCOPE_CONFIGS_JSON] = json.encodeToString(scopeConfigs)
+        }
+        if (removed) {
+            encryptedApiKeyStore.removeApiKey(providerName)
+        }
+        return removed
+    }
+
+    suspend fun setDefaultProvider(providerName: String) {
+        dataStore.edit { prefs ->
+            val providers = readProviders(prefs)
+            if (providers.none { it.name == providerName }) return@edit
+            prefs[AI_DEFAULT_PROVIDER] = providerName
+        }
+    }
+
+    fun getProviderApiKey(providerName: String): String = encryptedApiKeyStore.getApiKey(providerName)
+
+    fun setProviderApiKey(providerName: String, key: String) {
+        encryptedApiKeyStore.setApiKey(providerName, key)
+    }
+
+    suspend fun setScopeConfig(scope: AiSettingsScope, providerName: String, model: String) {
+        dataStore.edit { prefs ->
+            val scopeConfigs = readScopeConfigMap(prefs).toMutableMap()
+            scopeConfigs[scope.name] = AiScopeConfig(providerName = providerName, model = model)
+            prefs[AI_SCOPE_CONFIGS_JSON] = json.encodeToString(scopeConfigs)
+        }
+    }
+
+    suspend fun getScopesUsingProvider(providerName: String): List<AiSettingsScope> {
+        val prefs = dataStore.data.first()
+        val configs = readScopeConfigMap(prefs)
+        return configs.filterValues { it.providerName == providerName }
+            .keys
+            .mapNotNull { name -> runCatching { AiSettingsScope.valueOf(name) }.getOrNull() }
     }
 
     suspend fun getLastSelectedUnitIds(dictionaryId: Long): Set<Long> {
@@ -196,10 +265,6 @@ class SettingsDataStore @Inject constructor(
         dataStore.edit { it[lastSelectedUnitIdsKey(dictionaryId)] = ids.joinToString(",") }
     }
 
-    /**
-     * Migrates plaintext API key from DataStore to EncryptedSharedPreferences.
-     * Should be called once during app startup.
-     */
     suspend fun migrateApiKeyIfNeeded() {
         val prefs = dataStore.data.first()
         val oldKey = prefs[API_KEY]
@@ -209,60 +274,133 @@ class SettingsDataStore @Inject constructor(
         }
     }
 
-    // ── Scoped AI config ──
+    suspend fun migrateAiSettingsIfNeeded() {
+        val prefs = dataStore.data.first()
+        val hasProviders = !prefs[AI_PROVIDERS_JSON].isNullOrBlank()
+        val hasScopes = !prefs[AI_SCOPE_CONFIGS_JSON].isNullOrBlank()
 
-    data class AiConfig(
-        val provider: AiProvider,
-        val apiKey: String,
-        val model: String,
-        val baseUrl: String
-    )
+        val existingProviders = if (hasProviders) readProviders(prefs) else emptyList()
+        val fallbackAnthropic = AiProviderProfile(
+            name = "Anthropic",
+            provider = AiProvider.ANTHROPIC,
+            baseUrl = readBaseUrl(prefs, AiProvider.ANTHROPIC)
+        )
+        val fallbackOpenAi = AiProviderProfile(
+            name = "OpenAI Compatible",
+            provider = AiProvider.OPENAI_COMPATIBLE,
+            baseUrl = readBaseUrl(prefs, AiProvider.OPENAI_COMPATIBLE)
+        )
+        val providers = if (existingProviders.isEmpty()) {
+            listOf(fallbackAnthropic, fallbackOpenAi)
+        } else {
+            existingProviders
+        }
+        val anthropicName = providers.firstOrNull { it.provider == AiProvider.ANTHROPIC }?.name
+        val openAiName = providers.firstOrNull { it.provider == AiProvider.OPENAI_COMPATIBLE }?.name
 
-    data class TtsConfig(
-        val rate: Float,
-        val pitch: Float,
-        val localeTag: String,
-        val prewarmConcurrency: Int,
-        val prewarmRetry: Int
-    )
+        val legacyDefault = providerFromPrefs(prefs)
+        val fallbackDefaultName = if (legacyDefault == AiProvider.OPENAI_COMPATIBLE) {
+            openAiName ?: providers.firstOrNull()?.name ?: fallbackOpenAi.name
+        } else {
+            anthropicName ?: providers.firstOrNull()?.name ?: fallbackAnthropic.name
+        }
+        val defaultProviderName = readDefaultProviderName(prefs).ifBlank {
+            providers.firstOrNull()?.name ?: fallbackDefaultName
+        }
+
+        val legacyScopes = listOf(
+            AiSettingsScope.POOL,
+            AiSettingsScope.OCR,
+            AiSettingsScope.ARTICLE,
+            AiSettingsScope.SEARCH
+        )
+        encryptedApiKeyStore.migrateProviderKeysIfNeeded(
+            anthropicProviderName = anthropicName,
+            openAiProviderName = openAiName,
+            scopes = legacyScopes
+        )
+
+        if (hasProviders && hasScopes) return
+
+        val scopeConfigs = if (hasScopes) {
+            readScopeConfigMap(prefs).toMutableMap()
+        } else {
+            mutableMapOf()
+        }
+
+        if (scopeConfigs.isEmpty()) {
+            val mainModel = readModel(prefs, legacyDefault)
+            val fastModel = readFastModel(prefs, legacyDefault)
+            scopeConfigs[AiSettingsScope.MAIN.name] = AiScopeConfig(defaultProviderName, mainModel)
+            scopeConfigs[AiSettingsScope.FAST.name] = AiScopeConfig(defaultProviderName, fastModel)
+
+            legacyScopes.forEach { scope ->
+                val providerName = prefs[stringPreferencesKey("${scope.prefix}provider")]
+                    ?.let { raw ->
+                        when (raw) {
+                            AiProvider.OPENAI_COMPATIBLE.name ->
+                                openAiName ?: providers.firstOrNull()?.name ?: fallbackOpenAi.name
+                            else ->
+                                anthropicName ?: providers.firstOrNull()?.name ?: fallbackAnthropic.name
+                        }
+                    } ?: defaultProviderName
+                val providerFormat = if (providerName == openAiName) {
+                    AiProvider.OPENAI_COMPATIBLE
+                } else {
+                    AiProvider.ANTHROPIC
+                }
+                val modelKey = stringPreferencesKey("${scope.prefix}model_${providerFormat.name.lowercase()}")
+                val scopedModel = prefs[modelKey] ?: defaultModel(providerFormat)
+                scopeConfigs[scope.name] = AiScopeConfig(providerName, scopedModel)
+            }
+        }
+
+        dataStore.edit { mutablePrefs ->
+            if (!hasProviders || existingProviders.isEmpty()) {
+                mutablePrefs[AI_PROVIDERS_JSON] = json.encodeToString(providers)
+            }
+            if (mutablePrefs[AI_DEFAULT_PROVIDER].isNullOrBlank()) {
+                mutablePrefs[AI_DEFAULT_PROVIDER] = defaultProviderName
+            }
+            if (!hasScopes) {
+                mutablePrefs[AI_SCOPE_CONFIGS_JSON] = json.encodeToString(scopeConfigs)
+            }
+        }
+    }
 
     suspend fun getFastAiConfig(): AiConfig {
-        val prefs = dataStore.data.first()
-        val p = providerFromPrefs(prefs)
-        return AiConfig(
-            provider = p,
-            apiKey = encryptedApiKeyStore.getApiKey(p),
-            model = readFastModel(prefs, p),
-            baseUrl = readBaseUrl(prefs, p)
-        )
+        return getAiConfig(AiSettingsScope.FAST)
     }
 
     suspend fun getAiConfig(scope: AiSettingsScope): AiConfig {
-        if (scope == AiSettingsScope.MAIN) {
-            val prefs = dataStore.data.first()
-            val p = providerFromPrefs(prefs)
-            return AiConfig(
-                provider = p,
-                apiKey = encryptedApiKeyStore.getApiKey(p),
-                model = readModel(prefs, p),
-                baseUrl = readBaseUrl(prefs, p)
-            )
-        }
         val prefs = dataStore.data.first()
-        val scopedProviderStr = prefs[stringPreferencesKey("${scope.prefix}provider")]
-            ?: return getAiConfig(AiSettingsScope.MAIN) // not configured, fallback
-        val scopedProvider = try { AiProvider.valueOf(scopedProviderStr) } catch (_: Exception) {
-            return getAiConfig(AiSettingsScope.MAIN)
+        val providers = readProviders(prefs)
+        val defaultProvider = resolveDefaultProvider(prefs, providers)
+        val scopeConfig = readScopeConfig(prefs, scope)
+        val chosen = providers.firstOrNull { it.name == scopeConfig.providerName } ?: defaultProvider
+        val baseUrl = normalizeBaseUrl(chosen.baseUrl, chosen.provider)
+        val model = scopeConfig.model.ifBlank { defaultModel(chosen.provider) }
+        val apiKey = encryptedApiKeyStore.getApiKey(chosen.name)
+
+        if (apiKey.isBlank() && chosen.name != defaultProvider.name) {
+            val fallbackKey = encryptedApiKeyStore.getApiKey(defaultProvider.name)
+            if (fallbackKey.isNotBlank()) {
+                return AiConfig(
+                    providerName = defaultProvider.name,
+                    provider = defaultProvider.provider,
+                    apiKey = fallbackKey,
+                    model = defaultModel(defaultProvider.provider),
+                    baseUrl = normalizeBaseUrl(defaultProvider.baseUrl, defaultProvider.provider)
+                )
+            }
         }
-        val scopedApiKey = encryptedApiKeyStore.getApiKey(scope, scopedProvider)
-        if (scopedApiKey.isBlank()) return getAiConfig(AiSettingsScope.MAIN) // no key, fallback
-        val scopedModel = prefs[stringPreferencesKey("${scope.prefix}model_${scopedProvider.name.lowercase()}")] ?: defaultModel(scopedProvider)
-        val scopedBaseUrl = prefs[stringPreferencesKey("${scope.prefix}base_url_${scopedProvider.name.lowercase()}")] ?: defaultBaseUrl(scopedProvider)
+
         return AiConfig(
-            provider = scopedProvider,
-            apiKey = scopedApiKey,
-            model = scopedModel,
-            baseUrl = scopedBaseUrl
+            providerName = chosen.name,
+            provider = chosen.provider,
+            apiKey = apiKey,
+            model = model,
+            baseUrl = baseUrl
         )
     }
 
@@ -276,65 +414,6 @@ class SettingsDataStore @Inject constructor(
             prewarmRetry = prefs[TTS_PREWARM_RETRY] ?: 2
         )
     }
-
-    fun scopedProvider(scope: AiSettingsScope): Flow<AiProvider?> = dataStore.data.map { prefs ->
-        val raw = prefs[stringPreferencesKey("${scope.prefix}provider")]
-        raw?.let { try { AiProvider.valueOf(it) } catch (_: Exception) { null } }
-    }
-
-    fun scopedApiKey(scope: AiSettingsScope): Flow<String> = dataStore.data.map { prefs ->
-        val providerStr = prefs[stringPreferencesKey("${scope.prefix}provider")] ?: return@map ""
-        val p = try { AiProvider.valueOf(providerStr) } catch (_: Exception) { return@map "" }
-        encryptedApiKeyStore.getApiKey(scope, p)
-    }
-
-    fun scopedModel(scope: AiSettingsScope): Flow<String> = dataStore.data.map { prefs ->
-        val providerStr = prefs[stringPreferencesKey("${scope.prefix}provider")] ?: return@map ""
-        val p = try { AiProvider.valueOf(providerStr) } catch (_: Exception) { return@map "" }
-        prefs[stringPreferencesKey("${scope.prefix}model_${p.name.lowercase()}")] ?: defaultModel(p)
-    }
-
-    fun scopedBaseUrl(scope: AiSettingsScope): Flow<String> = dataStore.data.map { prefs ->
-        val providerStr = prefs[stringPreferencesKey("${scope.prefix}provider")] ?: return@map ""
-        val p = try { AiProvider.valueOf(providerStr) } catch (_: Exception) { return@map "" }
-        prefs[stringPreferencesKey("${scope.prefix}base_url_${p.name.lowercase()}")] ?: defaultBaseUrl(p)
-    }
-
-    suspend fun setScopedProvider(scope: AiSettingsScope, provider: AiProvider) {
-        dataStore.edit { prefs ->
-            prefs[stringPreferencesKey("${scope.prefix}provider")] = provider.name
-        }
-    }
-
-    suspend fun setScopedApiKey(scope: AiSettingsScope, provider: AiProvider, key: String) {
-        encryptedApiKeyStore.setApiKey(scope, provider, key)
-    }
-
-    suspend fun setScopedModel(scope: AiSettingsScope, provider: AiProvider, model: String) {
-        dataStore.edit { prefs ->
-            prefs[stringPreferencesKey("${scope.prefix}model_${provider.name.lowercase()}")] = model
-        }
-    }
-
-    suspend fun setScopedBaseUrl(scope: AiSettingsScope, provider: AiProvider, url: String) {
-        dataStore.edit { prefs ->
-            prefs[stringPreferencesKey("${scope.prefix}base_url_${provider.name.lowercase()}")] = url
-        }
-    }
-
-    suspend fun clearScopedSettings(scope: AiSettingsScope) {
-        if (scope == AiSettingsScope.MAIN) return
-        encryptedApiKeyStore.clearScopedApiKeys(scope)
-        dataStore.edit { prefs ->
-            prefs.remove(stringPreferencesKey("${scope.prefix}provider"))
-            AiProvider.entries.forEach { p ->
-                prefs.remove(stringPreferencesKey("${scope.prefix}model_${p.name.lowercase()}"))
-                prefs.remove(stringPreferencesKey("${scope.prefix}base_url_${p.name.lowercase()}"))
-            }
-        }
-    }
-
-    // ── GitHub Sync config ──
 
     val githubOwner: Flow<String> = dataStore.data.map { it[GITHUB_OWNER] ?: "" }
     val githubRepo: Flow<String> = dataStore.data.map { it[GITHUB_REPO] ?: "" }
@@ -408,5 +487,52 @@ class SettingsDataStore @Inject constructor(
             AiProvider.ANTHROPIC -> Constants.ANTHROPIC_BASE_URL
             AiProvider.OPENAI_COMPATIBLE -> Constants.OPENAI_BASE_URL
         }
+    }
+
+    private fun readProviders(prefs: Preferences): List<AiProviderProfile> {
+        val raw = prefs[AI_PROVIDERS_JSON]
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching { json.decodeFromString<List<AiProviderProfile>>(raw) }.getOrDefault(emptyList())
+    }
+
+    private fun readDefaultProviderName(prefs: Preferences): String {
+        return prefs[AI_DEFAULT_PROVIDER] ?: ""
+    }
+
+    private fun readScopeConfig(prefs: Preferences, scope: AiSettingsScope): AiScopeConfig {
+        val configs = readScopeConfigMap(prefs)
+        val existing = configs[scope.name]
+        if (existing != null) return existing
+        val providers = readProviders(prefs)
+        val defaultProvider = resolveDefaultProvider(prefs, providers)
+        return AiScopeConfig(defaultProvider.name, defaultModel(defaultProvider.provider))
+    }
+
+    private fun readScopeConfigMap(prefs: Preferences): Map<String, AiScopeConfig> {
+        val raw = prefs[AI_SCOPE_CONFIGS_JSON]
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching { json.decodeFromString<Map<String, AiScopeConfig>>(raw) }.getOrDefault(emptyMap())
+    }
+
+    private fun resolveDefaultProvider(
+        prefs: Preferences,
+        providers: List<AiProviderProfile>
+    ): AiProviderProfile {
+        val defaultName = prefs[AI_DEFAULT_PROVIDER]
+        val fromName = providers.firstOrNull { it.name == defaultName }
+        if (fromName != null) return fromName
+        return providers.firstOrNull() ?: AiProviderProfile(
+            name = "Anthropic",
+            provider = AiProvider.ANTHROPIC,
+            baseUrl = Constants.ANTHROPIC_BASE_URL
+        )
+    }
+
+    private fun normalizeBaseUrl(baseUrl: String, provider: AiProvider): String {
+        val trimmed = baseUrl.trim()
+        if (trimmed.isBlank()) {
+            return defaultBaseUrl(provider)
+        }
+        return trimmed
     }
 }

@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.compile.JavaCompile
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -132,4 +134,15 @@ dependencies {
     androidTestImplementation(libs.room.testing)
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test:runner:1.5.2")
+}
+
+// Hilt mirrors KSP processors onto hiltJavaCompile; filter Moshi KAPT processor to avoid warning noise.
+tasks.withType<JavaCompile>().configureEach {
+    if (name.startsWith("hiltJavaCompile")) {
+        val currentPath = options.annotationProcessorPath
+        if (currentPath != null) {
+            val filtered = currentPath.filterNot { it.name.contains("moshi-kotlin-codegen") }
+            options.annotationProcessorPath = files(filtered)
+        }
+    }
 }

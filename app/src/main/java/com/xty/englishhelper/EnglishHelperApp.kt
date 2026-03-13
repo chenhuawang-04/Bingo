@@ -22,11 +22,12 @@ class EnglishHelperApp : Application() {
 
         // One-time migration of plaintext API key to encrypted storage
         val prefs = getSharedPreferences("api_key_migration", MODE_PRIVATE)
-        if (!prefs.getBoolean("migrated", false)) {
-            appScope.launch {
+        appScope.launch {
+            if (!prefs.getBoolean("api_key_migrated", false)) {
                 settingsDataStore.migrateApiKeyIfNeeded()
-                prefs.edit().putBoolean("migrated", true).apply()
+                prefs.edit().putBoolean("api_key_migrated", true).apply()
             }
+            settingsDataStore.migrateAiSettingsIfNeeded()
         }
     }
 }

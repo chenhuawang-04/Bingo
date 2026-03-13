@@ -621,9 +621,9 @@ class QuestionBankReaderViewModel @Inject constructor(
         _uiState.update { it.copy(isScanningAnswers = true) }
         viewModelScope.launch {
             try {
-                val config = settingsDataStore.getAiConfig(AiSettingsScope.SCAN)
+                val config = settingsDataStore.getAiConfig(AiSettingsScope.OCR)
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(isScanningAnswers = false, error = "请先配置扫描模型") }
+                    _uiState.update { it.copy(isScanningAnswers = false, error = "请先配置 OCR 模型") }
                     return@launch
                 }
 

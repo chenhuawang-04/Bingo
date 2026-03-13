@@ -78,7 +78,7 @@ class OpenAiCompatibleApiClient @Inject constructor(
 
     private fun buildUrl(baseUrl: String): String {
         var base = baseUrl.trim().trimEnd('/')
-        // Ensure URL has a scheme — without it, Retrofit treats it as relative
+        // Ensure URL has a scheme - without it, Retrofit treats it as relative
         // and resolves against the hardcoded HTTPS base URL
         if (!base.startsWith("http://", ignoreCase = true) &&
             !base.startsWith("https://", ignoreCase = true)) {
