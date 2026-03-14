@@ -59,11 +59,24 @@ class ArticleListViewModel @Inject constructor(
         viewModelScope.launch {
             articleRepository.getArticleCategories().collectLatest { categories ->
                 val sorted = categories.sortedBy { it.id }
-                if (!hasInitializedCategory && sorted.isNotEmpty()) {
+                if (sorted.isNotEmpty()) {
                     val defaultId = sorted.firstOrNull { it.id == ArticleCategoryDefaults.DEFAULT_ID }?.id
                         ?: sorted.first().id
-                    selectedCategoryId.value = defaultId
-                    hasInitializedCategory = true
+                    val currentId = selectedCategoryId.value
+                    val resolvedId = when {
+                        !hasInitializedCategory && currentId == null -> defaultId
+                        currentId == null -> null
+                        sorted.none { it.id == currentId } -> defaultId
+                        else -> currentId
+                    }
+                    if (resolvedId != currentId) {
+                        selectedCategoryId.value = resolvedId
+                    }
+                    if (!hasInitializedCategory) {
+                        hasInitializedCategory = true
+                    }
+                } else {
+                    selectedCategoryId.value = null
                 }
                 _uiState.update { it.copy(categories = sorted, selectedCategoryId = selectedCategoryId.value) }
             }

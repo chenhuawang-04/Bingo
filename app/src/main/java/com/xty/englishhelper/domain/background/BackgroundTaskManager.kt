@@ -207,6 +207,14 @@ class BackgroundTaskManager @Inject constructor(
 
     private fun launchTask(task: BackgroundTask) {
         if (runningJobs.containsKey(task.id)) return
+        if (task.payload == null) {
+            scope.launch {
+                repository.updateStatus(task.id, BackgroundTaskStatus.FAILED, "任务参数缺失")
+                repository.updateProgress(task.id, 0, 0)
+                schedule()
+            }
+            return
+        }
         if (task.type == BackgroundTaskType.UNKNOWN) {
             scope.launch {
                 repository.updateStatus(task.id, BackgroundTaskStatus.CANCELED, "未知任务类型")
@@ -351,51 +359,53 @@ class BackgroundTaskManager @Inject constructor(
             config.baseUrl,
             config.provider
         )
-        if (result.matched) {
-            questionBankRepository.updateSourceVerification(group.id, 1, null)
-            if (!result.sourceUrl.isNullOrBlank()) {
-                questionBankRepository.updateSourceUrl(group.id, result.sourceUrl)
-                questionBankRepository.updateSourceVerification(group.id, 1, null)
-            }
-            try {
-                val rawParagraphs = result.articleParagraphs
-                    ?.map { it.trim() }
-                    ?.filter { it.isNotBlank() }
-                    ?: emptyList()
-                val rawContent = result.articleContent?.trim().orEmpty()
-                val content = if (rawContent.isBlank() && rawParagraphs.isNotEmpty()) {
-                    rawParagraphs.joinToString("\n\n")
-                } else {
-                    rawContent
-                }
-                val rawParagraphTextLen = rawParagraphs.sumOf { it.length }
-                val useContentParagraphs = content.isNotBlank() &&
-                    (rawParagraphs.isEmpty() || rawParagraphTextLen < content.length * 0.6f)
-                val finalParagraphs = if (useContentParagraphs) {
-                    SmartParagraphSplitter.split(content)
-                } else {
-                    rawParagraphs
-                }
-                val articleId = createArticle(
-                    title = result.articleTitle ?: group.sectionLabel ?: "来源文章",
-                    content = content,
-                    sourceType = ArticleSourceType.AI,
-                    author = result.articleAuthor ?: "",
-                    source = result.sourceUrl ?: group.sourceUrl ?: "",
-                    summary = result.articleSummary ?: "",
-                    paragraphs = finalParagraphs.mapIndexed { i, text ->
-                        ArticleParagraph(paragraphIndex = i, text = text)
-                    },
-                    categoryId = ArticleCategoryDefaults.SOURCE_ID
-                )
-                parseArticle(articleId)
-                questionBankRepository.linkSourceArticle(group.id, articleId)
-            } catch (_: Exception) {
-            }
-            repository.updateProgress(task.id, 1, 1)
-        } else {
+        if (!result.matched) {
             questionBankRepository.updateSourceVerification(group.id, -1, result.errorMessage)
             throw IllegalStateException(result.errorMessage ?: "来源未匹配")
         }
+
+        if (!result.sourceUrl.isNullOrBlank()) {
+            questionBankRepository.updateSourceUrl(group.id, result.sourceUrl)
+        }
+
+        try {
+            val rawParagraphs = result.articleParagraphs
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                ?: emptyList()
+            val rawContent = result.articleContent?.trim().orEmpty()
+            val content = if (rawContent.isBlank() && rawParagraphs.isNotEmpty()) {
+                rawParagraphs.joinToString("\n\n")
+            } else {
+                rawContent
+            }
+            val rawParagraphTextLen = rawParagraphs.sumOf { it.length }
+            val useContentParagraphs = content.isNotBlank() &&
+                (rawParagraphs.isEmpty() || rawParagraphTextLen < content.length * 0.6f)
+            val finalParagraphs = if (useContentParagraphs) {
+                SmartParagraphSplitter.split(content)
+            } else {
+                rawParagraphs
+            }
+            val articleId = createArticle(
+                title = result.articleTitle ?: group.sectionLabel ?: "来源文章",
+                content = content,
+                sourceType = ArticleSourceType.AI,
+                author = result.articleAuthor ?: "",
+                source = result.sourceUrl ?: group.sourceUrl ?: "",
+                summary = result.articleSummary ?: "",
+                paragraphs = finalParagraphs.mapIndexed { i, text ->
+                    ArticleParagraph(paragraphIndex = i, text = text)
+                },
+                categoryId = ArticleCategoryDefaults.SOURCE_ID
+            )
+            parseArticle(articleId)
+            questionBankRepository.linkSourceArticle(group.id, articleId)
+            questionBankRepository.updateSourceVerification(group.id, 1, null)
+        } catch (e: Exception) {
+            questionBankRepository.updateSourceVerification(group.id, -1, "来源文章创建失败")
+            throw IllegalStateException("来源文章创建失败: ${e.message}", e)
+        }
+        repository.updateProgress(task.id, 1, 1)
     }
 }
