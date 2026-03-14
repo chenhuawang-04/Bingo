@@ -1,10 +1,13 @@
 package com.xty.englishhelper.ui.debug
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -34,19 +37,23 @@ fun AiDebugDialogHost(viewModel: AiDebugViewModel = hiltViewModel()) {
         onDismissRequest = viewModel::dismissCurrent,
         title = { Text("AI 调试") },
         text = {
-            Column(
+            Box(
                 modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .padding(top = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .heightIn(max = 520.dp)
+                    .padding(top = 4.dp)
             ) {
-                Text(
-                    text = "${current.method}  ${current.statusCode}  $timeText\n${current.url}",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "${current.method}  ${current.statusCode}  $timeText\n${current.url}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
 
-                DebugJsonBlock(title = "请求 JSON", json = current.requestJson)
-                DebugJsonBlock(title = "响应 JSON", json = current.responseJson)
+                    DebugJsonBlock(title = "请求 JSON", json = current.requestJson)
+                    DebugJsonBlock(title = "响应 JSON", json = current.responseJson)
+                }
             }
         },
         confirmButton = {
@@ -64,13 +71,16 @@ fun AiDebugDialogHost(viewModel: AiDebugViewModel = hiltViewModel()) {
 
 @Composable
 private fun DebugJsonBlock(title: String, json: String) {
+    val horizontalScroll = rememberScrollState()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall)
         SelectionContainer {
             Text(
                 text = if (json.isBlank()) "{}" else json,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(horizontalScroll)
             )
         }
         Spacer(modifier = Modifier.height(2.dp))
