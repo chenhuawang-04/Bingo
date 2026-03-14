@@ -43,6 +43,7 @@ class SettingsDataStore @Inject constructor(
         val AI_PROVIDERS_JSON = stringPreferencesKey("ai_providers_v2")
         val AI_DEFAULT_PROVIDER = stringPreferencesKey("ai_default_provider_v2")
         val AI_SCOPE_CONFIGS_JSON = stringPreferencesKey("ai_scope_configs_v2")
+        val AI_DEBUG_MODE = booleanPreferencesKey("ai_debug_mode")
 
         val GITHUB_OWNER = stringPreferencesKey("github_owner")
         val GITHUB_REPO = stringPreferencesKey("github_repo")
@@ -119,6 +120,10 @@ class SettingsDataStore @Inject constructor(
         prefs[TTS_AUTO_STUDY] ?: true
     }
 
+    val aiDebugMode: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[AI_DEBUG_MODE] ?: false
+    }
+
     val ttsPrewarmConcurrency: Flow<Int> = dataStore.data.map { prefs ->
         prefs[TTS_PREWARM_CONCURRENCY] ?: 2
     }
@@ -147,6 +152,10 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setTtsAutoStudy(value: Boolean) {
         dataStore.edit { prefs -> prefs[TTS_AUTO_STUDY] = value }
+    }
+
+    suspend fun setAiDebugMode(value: Boolean) {
+        dataStore.edit { prefs -> prefs[AI_DEBUG_MODE] = value }
     }
 
     suspend fun setTtsPrewarmConcurrency(value: Int) {

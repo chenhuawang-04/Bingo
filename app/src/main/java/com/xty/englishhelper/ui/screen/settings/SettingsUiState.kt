@@ -22,6 +22,7 @@ data class SettingsUiState(
     val ttsPitch: Float = 1.0f,
     val ttsLocale: String = "system",
     val ttsAutoStudy: Boolean = true,
+    val aiDebugMode: Boolean = false,
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
     val cloudSync: CloudSyncState = CloudSyncState()

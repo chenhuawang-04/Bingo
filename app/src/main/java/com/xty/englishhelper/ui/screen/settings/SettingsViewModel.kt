@@ -93,6 +93,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.aiDebugMode.collect { value ->
+                _uiState.update { it.copy(aiDebugMode = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.ttsPrewarmConcurrency.collect { value ->
                 _uiState.update { it.copy(ttsPrewarmConcurrency = value) }
             }
@@ -360,6 +365,11 @@ class SettingsViewModel @Inject constructor(
     fun onTtsAutoStudyChange(value: Boolean) {
         _uiState.update { it.copy(ttsAutoStudy = value) }
         viewModelScope.launch { settingsDataStore.setTtsAutoStudy(value) }
+    }
+
+    fun onAiDebugModeChange(value: Boolean) {
+        _uiState.update { it.copy(aiDebugMode = value) }
+        viewModelScope.launch { settingsDataStore.setAiDebugMode(value) }
     }
 
     fun onTtsPrewarmConcurrencyChange(value: Int) {

@@ -33,6 +33,7 @@ import com.xty.englishhelper.ui.navigation.StudyRoute
 import com.xty.englishhelper.ui.navigation.StudySetupRoute
 import com.xty.englishhelper.ui.navigation.UnitDetailRoute
 import com.xty.englishhelper.ui.navigation.WordDetailRoute
+import com.xty.englishhelper.ui.debug.AiDebugDialogHost
 import kotlin.reflect.KClass
 
 private val DICTIONARY_TAB_ROUTES: Set<String> = setOf(
@@ -127,6 +128,7 @@ fun MainScaffold(
             }
         ) { innerPadding ->
             content(innerPadding)
+            AiDebugDialogHost()
         }
     } else {
         Row {
@@ -154,5 +156,6 @@ fun MainScaffold(
             }
             content(PaddingValues())
         }
+        AiDebugDialogHost()
     }
 }

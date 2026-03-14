@@ -186,6 +186,24 @@ private fun ProviderListSection(state: SettingsUiState, viewModel: SettingsViewM
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Row(
+                    modifier = Modifier.padding(top = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Switch(
+                        checked = state.aiDebugMode,
+                        onCheckedChange = viewModel::onAiDebugModeChange
+                    )
+                    Column {
+                        Text("调试模式", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "开启后每次 AI 请求都会弹窗展示 JSON。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
             Button(onClick = viewModel::startCreateProvider) {
                 Icon(Icons.Default.Add, contentDescription = null)

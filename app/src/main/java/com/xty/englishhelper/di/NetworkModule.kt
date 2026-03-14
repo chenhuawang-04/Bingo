@@ -6,6 +6,7 @@ import com.xty.englishhelper.BuildConfig
 import com.xty.englishhelper.data.remote.AnthropicApiService
 import com.xty.englishhelper.data.remote.GitHubApiService
 import com.xty.englishhelper.data.remote.OpenAiApiService
+import com.xty.englishhelper.data.remote.interceptor.AiDebugInterceptor
 import com.xty.englishhelper.data.remote.interceptor.AnthropicHeaderInterceptor
 import com.xty.englishhelper.data.remote.guardian.GuardianHtmlParser
 import com.xty.englishhelper.data.remote.guardian.GuardianService
@@ -53,9 +54,12 @@ object NetworkModule {
     @Provides
     @Singleton
     @Named("anthropic")
-    fun provideAnthropicOkHttpClient(): OkHttpClient {
+    fun provideAnthropicOkHttpClient(
+        aiDebugInterceptor: AiDebugInterceptor
+    ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .addInterceptor(AnthropicHeaderInterceptor(Constants.ANTHROPIC_API_VERSION))
+            .addInterceptor(aiDebugInterceptor)
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(300, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
@@ -70,8 +74,11 @@ object NetworkModule {
     @Provides
     @Singleton
     @Named("openai")
-    fun provideOpenAiOkHttpClient(): OkHttpClient {
+    fun provideOpenAiOkHttpClient(
+        aiDebugInterceptor: AiDebugInterceptor
+    ): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .addInterceptor(aiDebugInterceptor)
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(300, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)

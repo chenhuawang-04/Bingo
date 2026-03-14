@@ -1,6 +1,7 @@
 package com.xty.englishhelper
 
 import android.app.Application
+import com.xty.englishhelper.data.debug.AiDebugManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +15,8 @@ class EnglishHelperApp : Application() {
 
     @Inject
     lateinit var settingsDataStore: SettingsDataStore
+    @Inject
+    lateinit var aiDebugManager: AiDebugManager
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -28,6 +31,11 @@ class EnglishHelperApp : Application() {
                 prefs.edit().putBoolean("api_key_migrated", true).apply()
             }
             settingsDataStore.migrateAiSettingsIfNeeded()
+        }
+        appScope.launch {
+            settingsDataStore.aiDebugMode.collect { enabled ->
+                aiDebugManager.setEnabled(enabled)
+            }
         }
     }
 }
