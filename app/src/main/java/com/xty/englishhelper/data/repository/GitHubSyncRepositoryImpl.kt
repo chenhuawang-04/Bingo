@@ -329,6 +329,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 articleRepository.upsertArticle(article)
             }
         }
+        normalizeArticleCategories()
 
         // Import question bank
         if (cloudQuestionBank != null && cloudQuestionBank.papers.isNotEmpty()) {
@@ -572,7 +573,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 else -> defaultId
             }
             if (article.categoryId != targetId) {
-                articleRepository.updateArticleCategory(article.id, targetId)
+                updateArticleCategoryPreservingUpdatedAt(article, targetId)
             }
         }
     }
@@ -585,6 +586,25 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
         articleRepository.replaceCategories(cloudCategories.categories.map { it.toDomain() })
         articleRepository.ensureDefaultCategories()
+    }
+
+    private suspend fun normalizeArticleCategories() {
+        val categories = articleRepository.getArticleCategories().first()
+        if (categories.isEmpty()) return
+        val validIds = categories.map { it.id }.toSet()
+        val defaultId = categories.firstOrNull { it.id == ArticleCategoryDefaults.DEFAULT_ID }?.id
+            ?: categories.first().id
+        val articles = articleRepository.getAllArticles().first()
+        for (article in articles) {
+            if (!validIds.contains(article.categoryId)) {
+                updateArticleCategoryPreservingUpdatedAt(article, defaultId)
+            }
+        }
+    }
+
+    private suspend fun updateArticleCategoryPreservingUpdatedAt(article: Article, targetId: Long) {
+        if (article.categoryId == targetId) return
+        articleRepository.upsertArticle(article.copy(categoryId = targetId, updatedAt = article.updatedAt))
     }
 
     private fun dictFileName(name: String): String {

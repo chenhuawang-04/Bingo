@@ -60,7 +60,24 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
         statuses: List<BackgroundTaskStatus>,
         limit: Int
     ): List<BackgroundTask> {
-        return dao.getByStatuses(statuses.map { it.name }, limit).mapNotNull { it.toDomain() }
+        val entities = dao.getByStatuses(statuses.map { it.name }, limit)
+        val results = mutableListOf<BackgroundTask>()
+        for (entity in entities) {
+            val domain = entity.toDomain()
+            if (domain?.payload == null && domain != null) {
+                dao.updateStatus(
+                    entity.id,
+                    BackgroundTaskStatus.FAILED.name,
+                    "任务参数缺失",
+                    System.currentTimeMillis()
+                )
+                continue
+            }
+            if (domain != null) {
+                results.add(domain)
+            }
+        }
+        return results
     }
 
     override suspend fun updateStatus(id: Long, status: BackgroundTaskStatus, errorMessage: String?) {
