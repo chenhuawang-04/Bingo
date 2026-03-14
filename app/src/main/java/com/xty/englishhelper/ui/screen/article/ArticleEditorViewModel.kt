@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.data.image.ImageCompressionManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.article.SmartParagraphSplitter
 import com.xty.englishhelper.domain.model.ArticleParagraph
@@ -25,6 +26,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class ParagraphInput(
@@ -43,6 +46,7 @@ data class ArticleEditorUiState(
     val coverImageUri: Uri? = null,
     val paragraphs: List<ParagraphInput> = listOf(ParagraphInput()),
     val imageUris: List<Uri> = emptyList(),
+    val isCompressing: Boolean = false,
     val isOcrLoading: Boolean = false,
     val isSaving: Boolean = false,
     val error: String? = null,
@@ -59,7 +63,8 @@ class ArticleEditorViewModel @Inject constructor(
     private val parseArticle: ParseArticleUseCase,
     private val extractFromImages: ExtractArticleFromImagesUseCase,
     private val settingsDataStore: SettingsDataStore,
-    private val repository: ArticleRepository
+    private val repository: ArticleRepository,
+    private val imageCompressionManager: ImageCompressionManager
 ) : ViewModel() {
 
     private val articleId: Long = savedStateHandle["articleId"] ?: 0L
@@ -193,7 +198,7 @@ class ArticleEditorViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isOcrLoading = true, error = null) }
+            _uiState.update { it.copy(isOcrLoading = true, isCompressing = false, error = null) }
             try {
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.OCR)
 
@@ -202,8 +207,28 @@ class ArticleEditorViewModel @Inject constructor(
                     return@launch
                 }
 
-                val imageBytesList = uris.map { readImageBytes(it) }
-                val result = extractFromImages(imageBytesList, _uiState.value.title.ifBlank { null }, config.apiKey, config.model, config.baseUrl, config.provider)
+                val compressionConfig = settingsDataStore.getImageCompressionConfig()
+                val imageBytesList = withContext(Dispatchers.IO) {
+                    uris.map { uri -> readImageBytes(uri) }
+                }
+                if (compressionConfig.enabled) {
+                    _uiState.update { it.copy(isCompressing = true) }
+                }
+                val compressedBytes = try {
+                    imageCompressionManager.compressAll(imageBytesList, compressionConfig)
+                } finally {
+                    if (compressionConfig.enabled) {
+                        _uiState.update { it.copy(isCompressing = false) }
+                    }
+                }
+                val result = extractFromImages(
+                    compressedBytes,
+                    _uiState.value.title.ifBlank { null },
+                    config.apiKey,
+                    config.model,
+                    config.baseUrl,
+                    config.provider
+                )
 
                 // Auto-split OCR result into paragraphs
                 val paragraphs = if (result.content.isNotBlank()) {

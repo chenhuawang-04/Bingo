@@ -23,6 +23,8 @@ data class SettingsUiState(
     val ttsLocale: String = "system",
     val ttsAutoStudy: Boolean = true,
     val aiDebugMode: Boolean = false,
+    val imageCompressionEnabled: Boolean = true,
+    val imageCompressionTargetBytes: Int = 1_000_000,
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
     val cloudSync: CloudSyncState = CloudSyncState()

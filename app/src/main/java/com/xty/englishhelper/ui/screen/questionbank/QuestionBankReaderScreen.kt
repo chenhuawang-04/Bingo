@@ -694,6 +694,21 @@ private fun PracticeActionBar(
             }
         }
 
+        AnimatedVisibility(visible = state.isCompressingAnswers) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                Text(
+                    "正在压缩图片…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         // Scan answers button
         OutlinedButton(
             onClick = onScanAnswers,

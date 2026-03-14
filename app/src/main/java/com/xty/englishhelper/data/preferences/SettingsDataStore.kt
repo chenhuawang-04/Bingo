@@ -44,6 +44,8 @@ class SettingsDataStore @Inject constructor(
         val AI_DEFAULT_PROVIDER = stringPreferencesKey("ai_default_provider_v2")
         val AI_SCOPE_CONFIGS_JSON = stringPreferencesKey("ai_scope_configs_v2")
         val AI_DEBUG_MODE = booleanPreferencesKey("ai_debug_mode")
+        val IMAGE_COMPRESSION_ENABLED = booleanPreferencesKey("image_compression_enabled")
+        val IMAGE_COMPRESSION_TARGET_BYTES = intPreferencesKey("image_compression_target_bytes")
 
         val GITHUB_OWNER = stringPreferencesKey("github_owner")
         val GITHUB_REPO = stringPreferencesKey("github_repo")
@@ -81,6 +83,15 @@ class SettingsDataStore @Inject constructor(
         val prewarmConcurrency: Int,
         val prewarmRetry: Int
     )
+
+    data class ImageCompressionConfig(
+        val enabled: Boolean,
+        val targetBytes: Int
+    )
+
+    private val defaultImageCompressionTargetBytes = 1_000_000
+    private val minImageCompressionTargetBytes = 200 * 1024
+    private val maxImageCompressionTargetBytes = 4 * 1024 * 1024
 
     val providers: Flow<List<AiProviderProfile>> = dataStore.data.map { prefs ->
         readProviders(prefs)
@@ -124,6 +135,14 @@ class SettingsDataStore @Inject constructor(
         prefs[AI_DEBUG_MODE] ?: false
     }
 
+    val imageCompressionEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[IMAGE_COMPRESSION_ENABLED] ?: true
+    }
+
+    val imageCompressionTargetBytes: Flow<Int> = dataStore.data.map { prefs ->
+        clampImageCompressionTarget(prefs[IMAGE_COMPRESSION_TARGET_BYTES] ?: defaultImageCompressionTargetBytes)
+    }
+
     val ttsPrewarmConcurrency: Flow<Int> = dataStore.data.map { prefs ->
         prefs[TTS_PREWARM_CONCURRENCY] ?: 2
     }
@@ -156,6 +175,16 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setAiDebugMode(value: Boolean) {
         dataStore.edit { prefs -> prefs[AI_DEBUG_MODE] = value }
+    }
+
+    suspend fun setImageCompressionEnabled(value: Boolean) {
+        dataStore.edit { prefs -> prefs[IMAGE_COMPRESSION_ENABLED] = value }
+    }
+
+    suspend fun setImageCompressionTargetBytes(value: Int) {
+        dataStore.edit { prefs ->
+            prefs[IMAGE_COMPRESSION_TARGET_BYTES] = clampImageCompressionTarget(value)
+        }
     }
 
     suspend fun setTtsPrewarmConcurrency(value: Int) {
@@ -424,6 +453,16 @@ class SettingsDataStore @Inject constructor(
         )
     }
 
+    suspend fun getImageCompressionConfig(): ImageCompressionConfig {
+        val prefs = dataStore.data.first()
+        return ImageCompressionConfig(
+            enabled = prefs[IMAGE_COMPRESSION_ENABLED] ?: true,
+            targetBytes = clampImageCompressionTarget(
+                prefs[IMAGE_COMPRESSION_TARGET_BYTES] ?: defaultImageCompressionTargetBytes
+            )
+        )
+    }
+
     val githubOwner: Flow<String> = dataStore.data.map { it[GITHUB_OWNER] ?: "" }
     val githubRepo: Flow<String> = dataStore.data.map { it[GITHUB_REPO] ?: "" }
     val lastSyncAt: Flow<Long> = dataStore.data.map { it[LAST_SYNC_AT] ?: 0L }
@@ -543,5 +582,9 @@ class SettingsDataStore @Inject constructor(
             return defaultBaseUrl(provider)
         }
         return trimmed
+    }
+
+    private fun clampImageCompressionTarget(value: Int): Int {
+        return value.coerceIn(minImageCompressionTargetBytes, maxImageCompressionTargetBytes)
     }
 }

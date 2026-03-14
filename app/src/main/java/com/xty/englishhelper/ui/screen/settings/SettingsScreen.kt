@@ -121,6 +121,15 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                ImageCompressionSection(
+                    enabled = state.imageCompressionEnabled,
+                    targetBytes = state.imageCompressionTargetBytes,
+                    onEnabledChange = viewModel::onImageCompressionEnabledChange,
+                    onTargetBytesChange = viewModel::onImageCompressionTargetBytesChange
+                )
+
+                HorizontalDivider()
+
                 OnlineReadingSection(
                     concurrency = state.guardianDetailConcurrency,
                     onConcurrencyChange = viewModel::onGuardianDetailConcurrencyChange
@@ -416,6 +425,73 @@ private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewMo
                 onRefreshModels = { viewModel.fetchModelsForProvider(config.providerName) }
             )
         }
+    }
+}
+
+@Composable
+private fun ImageCompressionSection(
+    enabled: Boolean,
+    targetBytes: Int,
+    onEnabledChange: (Boolean) -> Unit,
+    onTargetBytesChange: (Int) -> Unit
+) {
+    val targetKb = (targetBytes / 1024).coerceAtLeast(1)
+    var input by remember { mutableStateOf(targetKb.toString()) }
+
+    LaunchedEffect(targetBytes) {
+        val current = targetKb.toString()
+        if (input != current) {
+            input = current
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("图片压缩", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "自动压缩 OCR/扫描图片以减少请求体积，默认约 1MB。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("启用图片压缩", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "关闭后将上传原始图片。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnabledChange
+            )
+        }
+
+        OutlinedTextField(
+            value = input,
+            onValueChange = { value ->
+                val filtered = value.filter { it.isDigit() }
+                input = filtered
+                if (filtered.isBlank()) return@OutlinedTextField
+                val kb = filtered.toIntOrNull() ?: return@OutlinedTextField
+                val clampedKb = kb.coerceIn(200, 4096)
+                if (clampedKb * 1024 != targetBytes) {
+                    onTargetBytesChange(clampedKb * 1024)
+                }
+            },
+            enabled = enabled,
+            label = { Text("目标大小 (KB)") },
+            placeholder = { Text("1024") },
+            supportingText = { Text("建议 800-1500 KB") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

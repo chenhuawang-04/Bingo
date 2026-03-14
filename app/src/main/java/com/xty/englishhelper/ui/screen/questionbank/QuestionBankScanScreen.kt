@@ -113,7 +113,21 @@ fun QuestionBankScanScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(Modifier.height(16.dp))
-                        Text("正在识别试卷…", style = MaterialTheme.typography.bodyLarge)
+                        if (state.isCompressing) {
+                            Text(
+                                "正在压缩图片…",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "压缩完成后将开始识别",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(10.dp))
+                        } else {
+                            Text("正在识别试卷…", style = MaterialTheme.typography.bodyLarge)
+                        }
                     }
                 }
             }

@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.data.image.ImageCompressionManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.StudyUnit
@@ -20,6 +21,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class ExtractedWord(
@@ -31,6 +34,7 @@ data class BatchImportUiState(
     val imageUris: List<Uri> = emptyList(),
     val conditions: String = "",
     val isExtracting: Boolean = false,
+    val isCompressing: Boolean = false,
     val extractedWords: List<ExtractedWord> = emptyList(),
     val availableUnits: List<StudyUnit> = emptyList(),
     val selectedUnitIds: Set<Long> = emptySet(),
@@ -48,7 +52,8 @@ class BatchImportViewModel @Inject constructor(
     private val getUnitsWithWordCount: GetUnitsWithWordCountUseCase,
     private val addWordsToUnit: AddWordsToUnitUseCase,
     private val saveWord: SaveWordUseCase,
-    private val backgroundOrganizeManager: BackgroundOrganizeManager
+    private val backgroundOrganizeManager: BackgroundOrganizeManager,
+    private val imageCompressionManager: ImageCompressionManager
 ) : ViewModel() {
 
     val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
@@ -101,7 +106,7 @@ class BatchImportViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isExtracting = true, error = null, extractedWords = emptyList()) }
+            _uiState.update { it.copy(isExtracting = true, isCompressing = false, error = null, extractedWords = emptyList()) }
             try {
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.OCR)
                 if (config.apiKey.isBlank()) {
@@ -109,9 +114,22 @@ class BatchImportViewModel @Inject constructor(
                     return@launch
                 }
 
-                val imageBytesList = state.imageUris.map { readImageBytes(it) }
+                val compressionConfig = settingsDataStore.getImageCompressionConfig()
+                val imageBytesList = withContext(Dispatchers.IO) {
+                    state.imageUris.map { uri -> readImageBytes(uri) }
+                }
+                if (compressionConfig.enabled) {
+                    _uiState.update { it.copy(isCompressing = true) }
+                }
+                val compressedBytes = try {
+                    imageCompressionManager.compressAll(imageBytesList, compressionConfig)
+                } finally {
+                    if (compressionConfig.enabled) {
+                        _uiState.update { it.copy(isCompressing = false) }
+                    }
+                }
                 val words = articleAiRepository.extractWordsFromImages(
-                    imageBytes = imageBytesList,
+                    imageBytes = compressedBytes,
                     conditions = state.conditions,
                     apiKey = config.apiKey,
                     model = config.model,

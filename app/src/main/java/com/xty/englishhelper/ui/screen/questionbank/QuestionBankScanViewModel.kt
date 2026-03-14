@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.data.image.ImageCompressionManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.ArticleParagraph
@@ -37,6 +38,7 @@ data class ScanUiState(
     val phase: ScanPhase = ScanPhase.SELECT,
     val selectedImageUris: List<Uri> = emptyList(),
     val isScanning: Boolean = false,
+    val isCompressing: Boolean = false,
     val scanResult: ScanResult? = null,
     // Editable preview
     val paperTitle: String = "",
@@ -81,7 +83,8 @@ class QuestionBankScanViewModel @Inject constructor(
     private val convertScanResult: ConvertScanResultUseCase,
     private val createArticle: CreateArticleUseCase,
     private val parseArticle: ParseArticleUseCase,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val imageCompressionManager: ImageCompressionManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ScanUiState())
@@ -97,10 +100,21 @@ class QuestionBankScanViewModel @Inject constructor(
 
     fun onPdfSelected(uri: Uri) {
         viewModelScope.launch {
-            _uiState.update { it.copy(phase = ScanPhase.SCANNING, isScanning = true, error = null) }
+            _uiState.update { it.copy(phase = ScanPhase.SCANNING, isScanning = true, isCompressing = false, error = null) }
             try {
+                val compressionConfig = settingsDataStore.getImageCompressionConfig()
                 val imageBytes = PdfPageRenderer.renderPages(appContext, uri)
-                doScan(imageBytes)
+                if (compressionConfig.enabled) {
+                    _uiState.update { it.copy(isCompressing = true) }
+                }
+                val compressed = try {
+                    imageCompressionManager.compressAll(imageBytes, compressionConfig)
+                } finally {
+                    if (compressionConfig.enabled) {
+                        _uiState.update { it.copy(isCompressing = false) }
+                    }
+                }
+                doScan(compressed)
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(phase = ScanPhase.SELECT, isScanning = false, error = "PDF处理失败：${e.message}")
@@ -111,14 +125,25 @@ class QuestionBankScanViewModel @Inject constructor(
 
     private fun startScan(uris: List<Uri>) {
         viewModelScope.launch {
-            _uiState.update { it.copy(phase = ScanPhase.SCANNING, isScanning = true, error = null) }
+            _uiState.update { it.copy(phase = ScanPhase.SCANNING, isScanning = true, isCompressing = false, error = null) }
             try {
+                val compressionConfig = settingsDataStore.getImageCompressionConfig()
                 val imageBytes = withContext(Dispatchers.IO) {
                     uris.mapNotNull { uri ->
                         appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     }
                 }
-                doScan(imageBytes)
+                if (compressionConfig.enabled) {
+                    _uiState.update { it.copy(isCompressing = true) }
+                }
+                val compressed = try {
+                    imageCompressionManager.compressAll(imageBytes, compressionConfig)
+                } finally {
+                    if (compressionConfig.enabled) {
+                        _uiState.update { it.copy(isCompressing = false) }
+                    }
+                }
+                doScan(compressed)
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(phase = ScanPhase.SELECT, isScanning = false, error = "读取图片失败：${e.message}")

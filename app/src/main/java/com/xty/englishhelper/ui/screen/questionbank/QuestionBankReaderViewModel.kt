@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.data.image.ImageCompressionManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.AiSettingsScope
@@ -82,6 +83,7 @@ data class ReaderUiState(
     val linkedArticleId: Long? = null,
     val isVerifying: Boolean = false,
     val isScanningAnswers: Boolean = false,
+    val isCompressingAnswers: Boolean = false,
     // General
     val isLoading: Boolean = true,
     val error: String? = null
@@ -104,7 +106,8 @@ class QuestionBankReaderViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val dictionaryRepository: DictionaryRepository,
     private val unitRepository: UnitRepository,
-    private val backgroundOrganizeManager: BackgroundOrganizeManager
+    private val backgroundOrganizeManager: BackgroundOrganizeManager,
+    private val imageCompressionManager: ImageCompressionManager
 ) : ViewModel() {
 
     private val groupId: Long = savedStateHandle["groupId"] ?: 0L
@@ -584,7 +587,7 @@ class QuestionBankReaderViewModel @Inject constructor(
 
     fun scanAnswerImages(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        _uiState.update { it.copy(isScanningAnswers = true) }
+        _uiState.update { it.copy(isScanningAnswers = true, isCompressingAnswers = false) }
         viewModelScope.launch {
             try {
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.OCR)
@@ -593,15 +596,26 @@ class QuestionBankReaderViewModel @Inject constructor(
                     return@launch
                 }
 
+                val compressionConfig = settingsDataStore.getImageCompressionConfig()
                 val imageBytes = withContext(Dispatchers.IO) {
                     uris.mapNotNull { uri ->
                         appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     }
                 }
+                if (compressionConfig.enabled) {
+                    _uiState.update { it.copy(isCompressingAnswers = true) }
+                }
+                val compressed = try {
+                    imageCompressionManager.compressAll(imageBytes, compressionConfig)
+                } finally {
+                    if (compressionConfig.enabled) {
+                        _uiState.update { it.copy(isCompressingAnswers = false) }
+                    }
+                }
 
                 val numbers = _uiState.value.items.map { it.questionNumber }
                 val results = aiRepository.scanAnswers(
-                    imageBytes, numbers,
+                    compressed, numbers,
                     config.apiKey, config.model, config.baseUrl, config.provider
                 )
 

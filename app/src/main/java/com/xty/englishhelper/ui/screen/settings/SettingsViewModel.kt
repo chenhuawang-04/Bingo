@@ -100,6 +100,16 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.imageCompressionEnabled.collect { value ->
+                _uiState.update { it.copy(imageCompressionEnabled = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.imageCompressionTargetBytes.collect { value ->
+                _uiState.update { it.copy(imageCompressionTargetBytes = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.ttsPrewarmConcurrency.collect { value ->
                 _uiState.update { it.copy(ttsPrewarmConcurrency = value) }
             }
@@ -373,6 +383,16 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(aiDebugMode = value) }
         aiDebugManager.setEnabled(value)
         viewModelScope.launch { settingsDataStore.setAiDebugMode(value) }
+    }
+
+    fun onImageCompressionEnabledChange(value: Boolean) {
+        _uiState.update { it.copy(imageCompressionEnabled = value) }
+        viewModelScope.launch { settingsDataStore.setImageCompressionEnabled(value) }
+    }
+
+    fun onImageCompressionTargetBytesChange(value: Int) {
+        _uiState.update { it.copy(imageCompressionTargetBytes = value) }
+        viewModelScope.launch { settingsDataStore.setImageCompressionTargetBytes(value) }
     }
 
     fun onTtsPrewarmConcurrencyChange(value: Int) {
