@@ -26,7 +26,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): ScanResult {
         val prompt = buildString {
-            append("You are an exam paper OCR specialist with web search capabilities. ")
+            append("You are an exam paper OCR specialist. ")
             append("Carefully extract all content from these exam paper images.\n")
             append("Return strict JSON matching this structure:\n")
             append("""
@@ -64,7 +64,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             append("\nRules:\n")
             append("- Transcribe passage text EXACTLY as printed, preserving all paragraphs.\n")
             append("- sourceUrl: Do NOT extract URLs from the exam paper image (exam papers never print source URLs). ")
-            append("Instead, use your web search capabilities to try to identify and find the original source article for each reading passage. ")
+            append("Instead, use web content to identify and confirm the original source article for each reading passage. ")
             append("If you find a likely match, provide its URL. If not, set to null.\n")
             append("- sourceInfo: a brief description of the source you found (e.g. \"The Guardian, 2024\"), or null.\n")
             append("- wordCount = word count of passage + all questions in the group.\n")
@@ -86,8 +86,9 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         passageText: String, referenceUrl: String,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): VerifyResult {
-        val systemPrompt = "You are a source article research assistant with web search capabilities. " +
-            "Your task is to find the original published article from which an exam reading passage was taken."
+        val systemPrompt = "You are a source article research assistant. " +
+            "Your task is to find the original published article from which an exam reading passage was taken, " +
+            "using web content to confirm the source."
         val userMessage = buildString {
             append("Below is a reading passage extracted from an English exam paper. ")
             append("Find the original published article that this passage comes from.\n\n")
@@ -100,7 +101,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
                 append("\n\n")
             }
             append("Instructions:\n")
-            append("- Search the web to find the original full article.\n")
+            append("- Use web content to find the original full article.\n")
             append("- If found, return matched=true with the complete article text split into paragraphs.\n")
             append("- If the reference URL is wrong, find and return the correct URL.\n")
             append("- If you cannot find the original article at all, return matched=false with an explanation.\n\n")
