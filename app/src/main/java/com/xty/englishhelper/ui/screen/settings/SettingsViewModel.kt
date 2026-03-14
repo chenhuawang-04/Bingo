@@ -2,6 +2,7 @@ package com.xty.englishhelper.ui.screen.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.data.debug.AiDebugManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.AiProvider
@@ -27,6 +28,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val ttsManager: TtsManager,
+    private val aiDebugManager: AiDebugManager,
     private val testAiConnection: TestAiConnectionUseCase,
     private val fetchAiModels: FetchAiModelsUseCase,
     private val syncUseCase: SyncUseCase,
@@ -369,6 +371,7 @@ class SettingsViewModel @Inject constructor(
 
     fun onAiDebugModeChange(value: Boolean) {
         _uiState.update { it.copy(aiDebugMode = value) }
+        aiDebugManager.setEnabled(value)
         viewModelScope.launch { settingsDataStore.setAiDebugMode(value) }
     }
 
