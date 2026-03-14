@@ -22,5 +22,6 @@ data class ArticleJsonModel(
     val author: String = "",
     val source: String = "",
     val coverImageUrl: String? = null,
-    val wordCount: Int = 0
+    val wordCount: Int = 0,
+    val categoryId: Long = com.xty.englishhelper.domain.model.ArticleCategoryDefaults.DEFAULT_ID
 )

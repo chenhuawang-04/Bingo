@@ -46,6 +46,8 @@ data class ArticleEntity(
     val wordCount: Int = 0,
     @ColumnInfo(name = "is_saved")
     val isSaved: Int = 1,
+    @ColumnInfo(name = "category_id")
+    val categoryId: Long = 1,
     @ColumnInfo(name = "source_type_v2")
     val sourceTypeV2: String = "LOCAL"
 )

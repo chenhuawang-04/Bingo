@@ -47,7 +47,8 @@ class CreateArticleUseCase @Inject constructor(
         author: String = "",
         source: String = "",
         paragraphs: List<ArticleParagraph> = emptyList(),
-        coverImageUri: String? = null
+        coverImageUri: String? = null,
+        categoryId: Long = com.xty.englishhelper.domain.model.ArticleCategoryDefaults.DEFAULT_ID
     ): Long {
         val article = Article(
             title = title,
@@ -60,7 +61,8 @@ class CreateArticleUseCase @Inject constructor(
             summary = summary,
             author = author,
             source = source,
-            coverImageUri = coverImageUri
+            coverImageUri = coverImageUri,
+            categoryId = categoryId
         )
         val articleId = repository.upsertArticle(article)
 

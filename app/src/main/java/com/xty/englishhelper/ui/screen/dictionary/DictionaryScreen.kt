@@ -376,11 +376,23 @@ fun DictionaryScreen(
                                             maxLines = 1,
                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                         )
+                                        OrganizeTaskStatus.PAUSED -> Text(
+                                            "已暂停",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
                                 }
                                 if (task.status != OrganizeTaskStatus.ORGANIZING) {
-                                    TextButton(onClick = { viewModel.dismissOrganizeTask(task.wordId) }) {
-                                        Text("清除")
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        if (task.status == OrganizeTaskStatus.PAUSED) {
+                                            TextButton(onClick = { viewModel.resumeOrganizeTask(task.wordId) }) {
+                                                Text("继续")
+                                            }
+                                        }
+                                        TextButton(onClick = { viewModel.dismissOrganizeTask(task.wordId) }) {
+                                            Text("清除")
+                                        }
                                     }
                                 }
                             }
@@ -398,6 +410,11 @@ fun DictionaryScreen(
                     if (state.organizeTasks.any { it.value.status == OrganizeTaskStatus.FAILED }) {
                         TextButton(onClick = viewModel::retryAllFailedOrganizeTasks) {
                             Text("重试全部失败")
+                        }
+                    }
+                    if (state.organizeTasks.any { it.value.status == OrganizeTaskStatus.PAUSED }) {
+                        TextButton(onClick = viewModel::resumeAllPausedOrganizeTasks) {
+                            Text("继续全部暂停")
                         }
                     }
                     if (state.organizeTasks.any { it.value.status != OrganizeTaskStatus.ORGANIZING }) {
@@ -581,6 +598,7 @@ private fun DictionaryListContent(
                                 val organizing = state.organizingCount
                                 val failed = state.organizeTasks.count { it.value.status == OrganizeTaskStatus.FAILED }
                                 val success = state.organizeTasks.count { it.value.status == OrganizeTaskStatus.SUCCESS }
+                                val paused = state.organizeTasks.count { it.value.status == OrganizeTaskStatus.PAUSED }
                                 val label = buildString {
                                     if (organizing > 0) append("整理中: ${organizing}个")
                                     if (success > 0) {
@@ -590,6 +608,10 @@ private fun DictionaryListContent(
                                     if (failed > 0) {
                                         if (isNotEmpty()) append("  ")
                                         append("失败: ${failed}个")
+                                    }
+                                    if (paused > 0) {
+                                        if (isNotEmpty()) append("  ")
+                                        append("已暂停: ${paused}个")
                                     }
                                 }
                                 if (label.isNotEmpty()) {

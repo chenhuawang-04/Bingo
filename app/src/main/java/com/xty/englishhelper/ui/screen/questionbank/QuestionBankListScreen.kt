@@ -121,6 +121,7 @@ fun QuestionBankListScreen(
                     items(groups, key = { it.id }) { group ->
                         QuestionGroupCard(
                             group = group,
+                            isGeneratingAnswers = group.id in state.generatingGroupIds,
                             onClick = { onGroupClick(group.id) },
                             onLongClick = { viewModel.requestDelete(group.id) }
                         )
@@ -154,6 +155,7 @@ fun QuestionBankListScreen(
 @Composable
 private fun QuestionGroupCard(
     group: QuestionGroup,
+    isGeneratingAnswers: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -258,14 +260,29 @@ private fun QuestionGroupCard(
                 }
 
                 // Answer status
-                if (group.hasAiAnswer) {
-                    Text("AI答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
-                }
-                if (group.hasScannedAnswer) {
-                    Text("扫描答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
-                }
-                if (!group.hasAiAnswer && !group.hasScannedAnswer) {
-                    Text("无答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (isGeneratingAnswers) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "答案生成中",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                } else {
+                    if (group.hasAiAnswer) {
+                        Text("AI答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                    }
+                    if (group.hasScannedAnswer) {
+                        Text("扫描答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                    }
+                    if (!group.hasAiAnswer && !group.hasScannedAnswer) {
+                        Text("无答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }

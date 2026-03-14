@@ -1,6 +1,7 @@
 package com.xty.englishhelper.domain.repository
 
 import com.xty.englishhelper.domain.model.Article
+import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleSentence
 import com.xty.englishhelper.domain.model.ArticleWordLink
@@ -42,6 +43,8 @@ data class ParagraphAnalysisCacheData(
 
 interface ArticleRepository {
     fun getAllArticles(): Flow<List<Article>>
+    fun getArticlesByCategory(categoryId: Long): Flow<List<Article>>
+    fun getArticleCategories(): Flow<List<ArticleCategory>>
     fun getArticleById(id: Long): Flow<Article?>
     suspend fun getArticleByIdOnce(id: Long): Article?
     suspend fun upsertArticle(article: Article): Long
@@ -92,6 +95,13 @@ interface ArticleRepository {
     suspend fun deleteImagesByArticle(articleId: Long)
 
     suspend fun updateWordCount(articleId: Long, wordCount: Int)
+    suspend fun updateArticleCategory(articleId: Long, categoryId: Long)
+
+    suspend fun createCategory(name: String, isSystem: Boolean = false): Long
+    suspend fun renameCategory(id: Long, name: String)
+    suspend fun deleteCategory(id: Long)
+    suspend fun replaceCategories(categories: List<ArticleCategory>)
+    suspend fun ensureDefaultCategories()
 
     // Guardian support
     suspend fun getArticleBySourceUrl(sourceUrl: String): Article?

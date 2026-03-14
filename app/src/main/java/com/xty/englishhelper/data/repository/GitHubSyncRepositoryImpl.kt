@@ -4,6 +4,8 @@ import android.os.Build
 import android.util.Base64
 import com.squareup.moshi.Moshi
 import com.xty.englishhelper.BuildConfig
+import com.xty.englishhelper.data.json.ArticleCategoriesExportModel
+import com.xty.englishhelper.data.json.ArticleCategoryJsonModel
 import com.xty.englishhelper.data.json.ArticleJsonModel
 import com.xty.englishhelper.data.json.ArticlesExportModel
 import com.xty.englishhelper.data.json.DictionaryJsonModel
@@ -32,6 +34,8 @@ import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.GitHubApiService
 import com.xty.englishhelper.data.remote.dto.GitHubPutRequest
 import com.xty.englishhelper.domain.model.Article
+import com.xty.englishhelper.domain.model.ArticleCategory
+import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.Dictionary
@@ -77,6 +81,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val articlesAdapter = moshi.adapter(ArticlesExportModel::class.java).indent("  ")
     private val manifestAdapter = moshi.adapter(SyncManifest::class.java).indent("  ")
     private val questionBankAdapter = moshi.adapter(QuestionBankExportModel::class.java).indent("  ")
+    private val articleCategoriesAdapter = moshi.adapter(ArticleCategoriesExportModel::class.java).indent("  ")
 
     private fun authHeader(): String {
         val pat = settingsDataStore.getGitHubPat()
@@ -124,10 +129,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             }
         }
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
+        val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
 
         // 2. Read local data
         onProgress(SyncProgress("读取中", "正在读取本地数据...", 1, 4))
         val localDicts = dictionaryRepository.getAllDictionaries().first()
+        applyCloudCategoriesOnSync(cloudCategories)
         val localArticles = articleRepository.getAllArticles().first()
 
         // 3. Smart merge
@@ -187,6 +194,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
+        // Upload article categories
+        val categoriesExport = exportArticleCategories()
+        uploadJson("article_categories.json", categoriesExport, articleCategoriesAdapter)
+
         // Upload question bank
         val questionBankExport = exportQuestionBank()
         uploadJson("questionbank.json", questionBankExport, questionBankAdapter)
@@ -229,6 +240,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
+        // Upload article categories
+        val categoriesExport = exportArticleCategories()
+        uploadJson("article_categories.json", categoriesExport, articleCategoriesAdapter)
+
         // Upload question bank
         val questionBankExport = exportQuestionBank()
         uploadJson("questionbank.json", questionBankExport, questionBankAdapter)
@@ -264,6 +279,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
+        val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
         val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
 
         // Clear local data
@@ -281,6 +297,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         for (paper in localPapers) {
             questionBankDao.deleteExamPaper(paper.id)
         }
+
+        replaceCategoriesFromCloud(cloudCategories)
 
         // Import cloud data
         onProgress(SyncProgress("导入中", "正在导入辞书...", 2, 3))
@@ -305,7 +323,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     author = articleJson.author,
                     source = articleJson.source,
                     coverImageUrl = articleJson.coverImageUrl,
-                    wordCount = articleJson.wordCount
+                    wordCount = articleJson.wordCount,
+                    categoryId = articleJson.categoryId
                 )
                 articleRepository.upsertArticle(article)
             }
@@ -497,7 +516,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     author = cloud.author,
                     source = cloud.source,
                     coverImageUrl = cloud.coverImageUrl,
-                    wordCount = cloud.wordCount
+                    wordCount = cloud.wordCount,
+                    categoryId = cloud.categoryId
                 )
                 articleRepository.upsertArticle(article)
             } else if (local != null && cloud != null) {
@@ -514,7 +534,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         author = cloud.author,
                         source = cloud.source,
                         coverImageUrl = cloud.coverImageUrl,
-                        wordCount = cloud.wordCount
+                        wordCount = cloud.wordCount,
+                        categoryId = cloud.categoryId
                     )
                     articleRepository.upsertArticle(updated)
                 }
@@ -523,6 +544,47 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         return articleRepository.getAllArticles().first()
+    }
+
+    private suspend fun applyCloudCategoriesOnSync(cloudCategories: ArticleCategoriesExportModel?) {
+        if (cloudCategories == null || cloudCategories.categories.isEmpty()) {
+            articleRepository.ensureDefaultCategories()
+            return
+        }
+
+        val localCategories = articleRepository.getArticleCategories().first()
+        val localIdToName = localCategories.associate { it.id to it.name }
+
+        articleRepository.replaceCategories(cloudCategories.categories.map { it.toDomain() })
+        articleRepository.ensureDefaultCategories()
+
+        val updatedCategories = articleRepository.getArticleCategories().first()
+        val nameToId = updatedCategories.associate { it.name to it.id }
+        val defaultId = nameToId[ArticleCategoryDefaults.DEFAULT_NAME] ?: ArticleCategoryDefaults.DEFAULT_ID
+        val validIds = updatedCategories.map { it.id }.toSet()
+
+        val articles = articleRepository.getAllArticles().first()
+        for (article in articles) {
+            val oldName = localIdToName[article.categoryId]
+            val targetId = when {
+                validIds.contains(article.categoryId) -> article.categoryId
+                oldName != null -> nameToId[oldName] ?: defaultId
+                else -> defaultId
+            }
+            if (article.categoryId != targetId) {
+                articleRepository.updateArticleCategory(article.id, targetId)
+            }
+        }
+    }
+
+    private suspend fun replaceCategoriesFromCloud(cloudCategories: ArticleCategoriesExportModel?) {
+        if (cloudCategories == null || cloudCategories.categories.isEmpty()) {
+            articleRepository.replaceCategories(emptyList())
+            articleRepository.ensureDefaultCategories()
+            return
+        }
+        articleRepository.replaceCategories(cloudCategories.categories.map { it.toDomain() })
+        articleRepository.ensureDefaultCategories()
     }
 
     private fun dictFileName(name: String): String {
@@ -582,6 +644,16 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         return model.copy(wordPools = wordPools)
     }
 
+    private suspend fun exportArticleCategories(): ArticleCategoriesExportModel {
+        articleRepository.ensureDefaultCategories()
+        val categories = articleRepository.getArticleCategories().first()
+        val now = System.currentTimeMillis()
+        return ArticleCategoriesExportModel(
+            schemaVersion = 1,
+            categories = categories.map { it.toCategoryJson(now) }
+        )
+    }
+
     private fun Article.toArticleJson() = ArticleJsonModel(
         articleUid = articleUid.ifBlank { UUID.randomUUID().toString() },
         title = title,
@@ -595,7 +667,22 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         author = author,
         source = source,
         coverImageUrl = coverImageUrl,
-        wordCount = wordCount
+        wordCount = wordCount,
+        categoryId = categoryId
+    )
+
+    private fun ArticleCategory.toCategoryJson(now: Long) = ArticleCategoryJsonModel(
+        id = id,
+        name = name,
+        isSystem = isSystem,
+        createdAt = now,
+        updatedAt = now
+    )
+
+    private fun ArticleCategoryJsonModel.toDomain() = ArticleCategory(
+        id = id,
+        name = name,
+        isSystem = isSystem
     )
 
     private suspend fun importWordPools(

@@ -18,6 +18,8 @@ import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
+import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.UUID
@@ -26,7 +28,8 @@ import javax.inject.Singleton
 
 @Singleton
 class QuestionBankRepositoryImpl @Inject constructor(
-    private val dao: QuestionBankDao
+    private val dao: QuestionBankDao,
+    private val articleRepository: ArticleRepository
 ) : QuestionBankRepository {
 
     // ── ExamPaper ──
@@ -153,6 +156,7 @@ class QuestionBankRepositoryImpl @Inject constructor(
                 verifiedAt = System.currentTimeMillis()
             )
         )
+        articleRepository.updateArticleCategory(articleId, ArticleCategoryDefaults.SOURCE_ID)
     }
 
     override suspend fun getLinkedArticleId(groupId: Long): Long? =

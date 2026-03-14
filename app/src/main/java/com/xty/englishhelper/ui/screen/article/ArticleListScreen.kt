@@ -1,6 +1,7 @@
 package com.xty.englishhelper.ui.screen.article
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,10 +28,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -42,6 +47,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +59,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.xty.englishhelper.domain.model.Article
+import com.xty.englishhelper.domain.model.ArticleCategory
+import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,9 +72,11 @@ fun ArticleListScreen(
     onGuardianBrowse: () -> Unit = {},
     viewModel: ArticleListViewModel = hiltViewModel()
 ) {
-    val articles by viewModel.getArticles().collectAsState(emptyList())
     val uiState by viewModel.uiState.collectAsState()
+    val articles = uiState.articles
     val snackbarHostState = remember { SnackbarHostState() }
+    var showCreateCategoryDialog by rememberSaveable { mutableStateOf(false) }
+    var newCategoryName by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -103,8 +113,16 @@ fun ArticleListScreen(
                     .padding(padding)
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                if (uiState.categories.isNotEmpty()) {
+                    CategoryFilterBar(
+                        categories = uiState.categories,
+                        selectedCategoryId = uiState.selectedCategoryId,
+                        onSelect = viewModel::selectCategory,
+                        onCreate = { showCreateCategoryDialog = true }
+                    )
+                }
                 Text("暂无文章，点击 + 创建新文章", style = MaterialTheme.typography.bodyLarge)
             }
         } else {
@@ -115,15 +133,64 @@ fun ArticleListScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                item {
+                    CategoryFilterBar(
+                        categories = uiState.categories,
+                        selectedCategoryId = uiState.selectedCategoryId,
+                        onSelect = viewModel::selectCategory,
+                        onCreate = { showCreateCategoryDialog = true }
+                    )
+                }
                 items(articles, key = { it.id }) { article ->
                     ArticleCard(
                         article = article,
+                        categoryName = uiState.categories.firstOrNull { it.id == article.categoryId }?.name,
+                        categories = uiState.categories,
                         onRead = { onReadArticle(article.id) },
-                        onDelete = { viewModel.deleteArticle(article.id) }
+                        onDelete = { viewModel.deleteArticle(article.id) },
+                        onMoveCategory = { categoryId ->
+                            viewModel.moveArticleToCategory(article.id, categoryId)
+                        }
                     )
                 }
             }
         }
+    }
+
+    if (showCreateCategoryDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showCreateCategoryDialog = false
+                newCategoryName = ""
+            },
+            title = { Text("新建分类") },
+            text = {
+                OutlinedTextField(
+                    value = newCategoryName,
+                    onValueChange = { newCategoryName = it },
+                    label = { Text("分类名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.createCategory(newCategoryName)
+                        showCreateCategoryDialog = false
+                        newCategoryName = ""
+                    }
+                ) { Text("创建") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCreateCategoryDialog = false
+                        newCategoryName = ""
+                    }
+                ) { Text("取消") }
+            }
+        )
     }
 }
 
@@ -131,11 +198,16 @@ fun ArticleListScreen(
 @Composable
 private fun ArticleCard(
     article: Article,
+    categoryName: String?,
+    categories: List<ArticleCategory>,
     onRead: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onMoveCategory: (Long) -> Unit
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showMoveDialog by remember { mutableStateOf(false) }
+    var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
 
     val hasCover = article.coverImageUri != null || article.coverImageUrl != null
 
@@ -197,6 +269,13 @@ private fun ArticleCard(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        if (!categoryName.isNullOrBlank()) {
+                            Text(
+                                categoryName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
                         val statusText = parseStatusText(article.parseStatus)
                         if (statusText != null) {
                             Text(
@@ -213,6 +292,14 @@ private fun ArticleCard(
                         Text("···", style = MaterialTheme.typography.bodyMedium)
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("移动到分类") },
+                            onClick = {
+                                showMenu = false
+                                selectedCategoryId = article.categoryId
+                                showMoveDialog = true
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text("删除") },
                             onClick = {
@@ -270,6 +357,13 @@ private fun ArticleCard(
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                                 )
                             }
+                            if (!categoryName.isNullOrBlank()) {
+                                Text(
+                                    categoryName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                )
+                            }
                             val statusText = parseStatusText(article.parseStatus)
                             if (statusText != null) {
                                 Text(
@@ -285,6 +379,14 @@ private fun ArticleCard(
                                 Text("···", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("移动到分类") },
+                                    onClick = {
+                                        showMenu = false
+                                        selectedCategoryId = article.categoryId
+                                        showMoveDialog = true
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text("删除") },
                                     onClick = {
@@ -321,6 +423,85 @@ private fun ArticleCard(
                 }
             }
         )
+    }
+
+    if (showMoveDialog) {
+        AlertDialog(
+            onDismissRequest = { showMoveDialog = false },
+            title = { Text("移动到分类") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    categories.forEach { category ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedCategoryId = category.id },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedCategoryId == category.id,
+                                onClick = { selectedCategoryId = category.id }
+                            )
+                            Text(category.name)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val targetId = selectedCategoryId
+                        if (targetId != null) {
+                            onMoveCategory(targetId)
+                        }
+                        showMoveDialog = false
+                    }
+                ) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMoveDialog = false }) { Text("取消") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun CategoryFilterBar(
+    categories: List<ArticleCategory>,
+    selectedCategoryId: Long?,
+    onSelect: (Long?) -> Unit,
+    onCreate: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                FilterChip(
+                    selected = selectedCategoryId == null,
+                    onClick = { onSelect(null) },
+                    label = { Text("全部") }
+                )
+            }
+            items(categories, key = { it.id }) { category ->
+                FilterChip(
+                    selected = selectedCategoryId == category.id,
+                    onClick = { onSelect(category.id) },
+                    label = { Text(category.name) }
+                )
+            }
+            item {
+                TextButton(onClick = onCreate) {
+                    Text("新建分类")
+                }
+            }
+        }
+        if (selectedCategoryId == ArticleCategoryDefaults.SOURCE_ID) {
+            Text(
+                "题目来源文章将默认进入此分类",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

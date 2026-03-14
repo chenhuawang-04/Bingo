@@ -6,6 +6,8 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.xty.englishhelper.data.local.dao.ArticleDao
+import com.xty.englishhelper.data.local.dao.ArticleCategoryDao
+import com.xty.englishhelper.data.local.dao.BackgroundTaskDao
 import com.xty.englishhelper.data.local.dao.DictionaryDao
 import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.StudyDao
@@ -13,11 +15,13 @@ import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
+import com.xty.englishhelper.data.local.entity.ArticleCategoryEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
 import com.xty.englishhelper.data.local.entity.ArticleParagraphEntity
 import com.xty.englishhelper.data.local.entity.ArticleSentenceEntity
 import com.xty.englishhelper.data.local.entity.ArticleWordLinkEntity
 import com.xty.englishhelper.data.local.entity.ArticleWordStatEntity
+import com.xty.englishhelper.data.local.entity.BackgroundTaskEntity
 import com.xty.englishhelper.data.local.entity.ParagraphAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.CognateEntity
 import com.xty.englishhelper.data.local.entity.DictionaryEntity
@@ -67,9 +71,11 @@ import java.util.UUID
         QuestionGroupParagraphEntity::class,
         QuestionItemEntity::class,
         PracticeRecordEntity::class,
-        QuestionSourceArticleEntity::class
+        QuestionSourceArticleEntity::class,
+        BackgroundTaskEntity::class,
+        ArticleCategoryEntity::class
     ],
-    version = 13,
+    version = 15,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -80,6 +86,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun articleDao(): ArticleDao
     abstract fun wordPoolDao(): WordPoolDao
     abstract fun questionBankDao(): QuestionBankDao
+    abstract fun backgroundTaskDao(): BackgroundTaskDao
+    abstract fun articleCategoryDao(): ArticleCategoryDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -642,6 +650,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `background_tasks` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `payload_json` TEXT NOT NULL,
+                        `progress_current` INTEGER NOT NULL DEFAULT 0,
+                        `progress_total` INTEGER NOT NULL DEFAULT 0,
+                        `attempt` INTEGER NOT NULL DEFAULT 0,
+                        `error_message` TEXT,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        `dedupe_key` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_background_tasks_status` ON `background_tasks` (`status`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_background_tasks_type` ON `background_tasks` (`type`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_background_tasks_dedupe_key` ON `background_tasks` (`dedupe_key`)")
+            }
+        }
+
         private fun smartSplitParagraphs(content: String): List<String> {
             // If content already has blank-line paragraph breaks, use them
             val blankLineSplit = content.split(Regex("\\n\\s*\\n"))
@@ -673,6 +706,40 @@ abstract class AppDatabase : RoomDatabase() {
                 paragraphs.add(buffer.joinToString(" "))
             }
             return paragraphs
+        }
+
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val now = System.currentTimeMillis()
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `article_categories` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `is_system` INTEGER NOT NULL DEFAULT 0,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_article_categories_name` ON `article_categories` (`name`)")
+
+                db.execSQL("ALTER TABLE articles ADD COLUMN category_id INTEGER NOT NULL DEFAULT 1")
+
+                db.execSQL(
+                    "INSERT OR IGNORE INTO article_categories (id, name, is_system, created_at, updated_at) VALUES " +
+                        "(1, '普通文章', 1, $now, $now)," +
+                        "(2, '题目来源', 1, $now, $now)"
+                )
+
+                db.execSQL(
+                    """
+                    UPDATE articles
+                    SET category_id = 2
+                    WHERE id IN (SELECT linked_article_id FROM question_source_articles)
+                    """.trimIndent()
+                )
+            }
         }
     }
 }

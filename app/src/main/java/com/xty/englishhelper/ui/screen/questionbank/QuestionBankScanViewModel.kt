@@ -6,18 +6,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.image.ImageCompressionManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.ArticleParagraph
-import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.ExamPaper
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.ScanResult
-import com.xty.englishhelper.domain.usecase.article.CreateArticleUseCase
-import com.xty.englishhelper.domain.usecase.article.ParseArticleUseCase
-import com.xty.englishhelper.domain.usecase.questionbank.ConvertScanResultUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -80,11 +77,9 @@ class QuestionBankScanViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val aiRepository: QuestionBankAiRepository,
     private val repository: QuestionBankRepository,
-    private val convertScanResult: ConvertScanResultUseCase,
-    private val createArticle: CreateArticleUseCase,
-    private val parseArticle: ParseArticleUseCase,
     private val settingsDataStore: SettingsDataStore,
-    private val imageCompressionManager: ImageCompressionManager
+    private val imageCompressionManager: ImageCompressionManager,
+    private val backgroundTaskManager: BackgroundTaskManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ScanUiState())
@@ -302,7 +297,7 @@ class QuestionBankScanViewModel @Inject constructor(
                 val paperId = repository.saveScannedPaper(paper, groups)
 
                 // Trigger background tasks for each group
-                launchBackgroundTasks(paperId)
+                launchBackgroundTasks(paperId, paper.title)
 
                 _uiState.update { it.copy(isSaving = false) }
                 _savedPaperId.emit(paperId)
@@ -312,81 +307,24 @@ class QuestionBankScanViewModel @Inject constructor(
         }
     }
 
-    private fun launchBackgroundTasks(paperId: Long) {
+    private fun launchBackgroundTasks(paperId: Long, paperTitle: String) {
         viewModelScope.launch {
             try {
                 val groupList = repository.getGroupsByPaper(paperId).first()
                 for (group in groupList) {
-                    launchAnswerGeneration(group)
-                    launchSourceVerification(group)
-                }
-            } catch (_: Exception) { }
-        }
-    }
-
-    private fun launchAnswerGeneration(group: QuestionGroup) {
-        viewModelScope.launch {
-            try {
-                val config = settingsDataStore.getFastAiConfig()
-                if (config.apiKey.isBlank()) return@launch
-
-                val items = repository.getItemsByGroup(group.id)
-                if (items.isEmpty()) return@launch
-
-                val results = aiRepository.generateAnswers(
-                    group.passageText, items,
-                    config.apiKey, config.model, config.baseUrl, config.provider
-                )
-
-                for (result in results) {
-                    val item = items.find { it.questionNumber == result.questionNumber } ?: continue
-                    repository.updateAnswer(
-                        item.id, result.answer, "AI",
-                        result.explanation, result.difficultyLevel, result.difficultyScore
+                    backgroundTaskManager.enqueueQuestionAnswerGeneration(
+                        groupId = group.id,
+                        paperTitle = paperTitle,
+                        sectionLabel = group.sectionLabel.orEmpty()
+                    )
+                    backgroundTaskManager.enqueueQuestionSourceVerify(
+                        groupId = group.id,
+                        paperTitle = paperTitle,
+                        sectionLabel = group.sectionLabel.orEmpty(),
+                        sourceUrlOverride = group.sourceUrl
                     )
                 }
-                repository.markHasAiAnswer(group.id)
             } catch (_: Exception) { }
-        }
-    }
-
-    private fun launchSourceVerification(group: QuestionGroup) {
-        viewModelScope.launch {
-            try {
-                val config = settingsDataStore.getAiConfig(AiSettingsScope.SEARCH)
-                if (config.apiKey.isBlank()) return@launch
-
-                val result = aiRepository.verifySource(
-                    group.passageText, group.sourceUrl ?: "",
-                    config.apiKey, config.model, config.baseUrl, config.provider
-                )
-
-                if (result.matched) {
-                    repository.updateSourceVerification(group.id, 1, null)
-                    if (!result.sourceUrl.isNullOrBlank()) {
-                        repository.updateSourceUrl(group.id, result.sourceUrl)
-                    }
-                    try {
-                        val articleId = createArticle(
-                            title = result.articleTitle ?: group.sectionLabel ?: "来源文章",
-                            content = result.articleContent ?: "",
-                            sourceType = ArticleSourceType.AI,
-                            author = result.articleAuthor ?: "",
-                            source = result.sourceUrl ?: group.sourceUrl ?: "",
-                            summary = result.articleSummary ?: "",
-                            paragraphs = result.articleParagraphs?.mapIndexed { i, text ->
-                                ArticleParagraph(paragraphIndex = i, text = text)
-                            } ?: emptyList()
-                        )
-                        parseArticle(articleId)
-                        repository.linkSourceArticle(group.id, articleId)
-                    } catch (_: Exception) { /* article creation failure should not revert verification */ }
-                } else {
-                    repository.updateSourceVerification(group.id, -1, result.errorMessage)
-                }
-            } catch (e: Exception) {
-                repository.updateSourceVerification(group.id, -1, e.message)
-            }
         }
     }
 

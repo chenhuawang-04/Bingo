@@ -24,6 +24,9 @@ interface ArticleDao {
     @Query("SELECT * FROM articles WHERE is_saved = 1 ORDER BY updated_at DESC")
     fun getAllArticles(): Flow<List<ArticleEntity>>
 
+    @Query("SELECT * FROM articles WHERE is_saved = 1 AND category_id = :categoryId ORDER BY updated_at DESC")
+    fun getArticlesByCategory(categoryId: Long): Flow<List<ArticleEntity>>
+
     @Query("SELECT * FROM articles WHERE id = :id")
     fun getArticleById(id: Long): Flow<ArticleEntity?>
 
@@ -76,6 +79,16 @@ interface ArticleDao {
     // Word count update
     @Query("UPDATE articles SET word_count = :wordCount, updated_at = :now WHERE id = :articleId")
     suspend fun updateWordCount(articleId: Long, wordCount: Int, now: Long = System.currentTimeMillis())
+
+    @Query("UPDATE articles SET category_id = :categoryId, updated_at = :now WHERE id = :articleId")
+    suspend fun updateCategory(articleId: Long, categoryId: Long, now: Long = System.currentTimeMillis())
+
+    @Query("UPDATE articles SET category_id = :targetCategoryId, updated_at = :now WHERE category_id = :sourceCategoryId")
+    suspend fun moveArticlesToCategory(
+        sourceCategoryId: Long,
+        targetCategoryId: Long,
+        now: Long = System.currentTimeMillis()
+    )
 
     // Word stats
     @Insert(onConflict = OnConflictStrategy.REPLACE)

@@ -20,6 +20,7 @@ import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
 import com.xty.englishhelper.ui.screen.home.HomeScreen
 import com.xty.englishhelper.ui.screen.importexport.ImportExportScreen
 import com.xty.englishhelper.ui.screen.main.MainScaffold
+import com.xty.englishhelper.ui.screen.backgroundtask.BackgroundTaskScreen
 import com.xty.englishhelper.ui.screen.settings.SettingsScreen
 import com.xty.englishhelper.ui.screen.settings.TtsDiagnosticsScreen
 import com.xty.englishhelper.ui.screen.study.StudyScreen
@@ -113,12 +114,19 @@ fun NavGraph(navController: NavHostController) {
             composable<SettingsRoute> {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
-                    onTtsDiagnostics = { navController.navigate(TtsDiagnosticsRoute) }
+                    onTtsDiagnostics = { navController.navigate(TtsDiagnosticsRoute) },
+                    onBackgroundTasks = { navController.navigate(BackgroundTaskRoute) }
                 )
             }
 
             composable<TtsDiagnosticsRoute> {
                 TtsDiagnosticsScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<BackgroundTaskRoute> {
+                BackgroundTaskScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

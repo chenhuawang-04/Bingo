@@ -36,6 +36,9 @@ data object SettingsRoute
 data object TtsDiagnosticsRoute
 
 @Serializable
+data object BackgroundTaskRoute
+
+@Serializable
 data class UnitDetailRoute(val unitId: Long, val dictionaryId: Long)
 
 @Serializable

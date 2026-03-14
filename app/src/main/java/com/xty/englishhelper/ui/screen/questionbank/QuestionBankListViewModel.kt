@@ -3,6 +3,10 @@ package com.xty.englishhelper.ui.screen.questionbank
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.model.QuestionGroup
+import com.xty.englishhelper.domain.model.BackgroundTaskStatus
+import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
+import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,13 +19,15 @@ import javax.inject.Inject
 data class QuestionBankListUiState(
     val groups: List<QuestionGroup> = emptyList(),
     val isLoading: Boolean = true,
+    val generatingGroupIds: Set<Long> = emptySet(),
     val deleteConfirmGroupId: Long? = null,
     val error: String? = null
 )
 
 @HiltViewModel
 class QuestionBankListViewModel @Inject constructor(
-    private val repository: QuestionBankRepository
+    private val repository: QuestionBankRepository,
+    private val taskRepository: BackgroundTaskRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(QuestionBankListUiState())
@@ -31,6 +37,18 @@ class QuestionBankListViewModel @Inject constructor(
         viewModelScope.launch {
             repository.getAllGroupsWithPaperTitle().collect { groups ->
                 _uiState.update { it.copy(groups = groups, isLoading = false) }
+            }
+        }
+        viewModelScope.launch {
+            taskRepository.observeAllTasks().collect { tasks ->
+                val generating = tasks.asSequence()
+                    .filter {
+                        it.type == BackgroundTaskType.QUESTION_ANSWER_GENERATE &&
+                            (it.status == BackgroundTaskStatus.PENDING || it.status == BackgroundTaskStatus.RUNNING)
+                    }
+                    .mapNotNull { (it.payload as? QuestionAnswerGeneratePayload)?.groupId }
+                    .toSet()
+                _uiState.update { it.copy(generatingGroupIds = generating) }
             }
         }
     }

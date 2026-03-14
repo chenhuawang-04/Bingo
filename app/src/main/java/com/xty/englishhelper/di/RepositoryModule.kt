@@ -5,6 +5,7 @@ import com.xty.englishhelper.data.repository.AiModelRepositoryImpl
 import com.xty.englishhelper.data.repository.AiRepositoryImpl
 import com.xty.englishhelper.data.repository.ArticleAiRepositoryImpl
 import com.xty.englishhelper.data.repository.ArticleRepositoryImpl
+import com.xty.englishhelper.data.repository.BackgroundTaskRepositoryImpl
 import com.xty.englishhelper.data.repository.DictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.GitHubSyncRepositoryImpl
 import com.xty.englishhelper.data.repository.GuardianRepositoryImpl
@@ -19,6 +20,7 @@ import com.xty.englishhelper.domain.repository.AiModelRepository
 import com.xty.englishhelper.domain.repository.AiRepository
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
@@ -55,6 +57,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindAiModelRepository(impl: AiModelRepositoryImpl): AiModelRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindBackgroundTaskRepository(impl: BackgroundTaskRepositoryImpl): BackgroundTaskRepository
 
     @Binds
     @Singleton

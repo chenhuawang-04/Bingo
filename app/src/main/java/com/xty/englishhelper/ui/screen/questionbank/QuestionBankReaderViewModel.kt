@@ -8,27 +8,30 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.image.ImageCompressionManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
+import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.AnswerSource
 import com.xty.englishhelper.domain.model.ArticleParagraph
-import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.ArticleWordLink
+import com.xty.englishhelper.domain.model.BackgroundTaskStatus
+import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.CollectedWord
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.DifficultyLevel
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.PracticeRecord
+import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
+import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.TtsState
 import com.xty.englishhelper.domain.repository.DictionaryRepository
+import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.usecase.article.AnalyzeParagraphUseCase
-import com.xty.englishhelper.domain.usecase.article.CreateArticleUseCase
-import com.xty.englishhelper.domain.usecase.article.ParseArticleUseCase
 import com.xty.englishhelper.domain.usecase.article.QuickAnalyzeWordUseCase
 import com.xty.englishhelper.domain.usecase.article.ScanWordLinksUseCase
 import com.xty.englishhelper.domain.usecase.article.TranslateParagraphUseCase
@@ -100,13 +103,13 @@ class QuestionBankReaderViewModel @Inject constructor(
     private val translateParagraph: TranslateParagraphUseCase,
     private val quickAnalyzeWord: QuickAnalyzeWordUseCase,
     private val saveWord: SaveWordUseCase,
-    private val createArticle: CreateArticleUseCase,
-    private val parseArticle: ParseArticleUseCase,
     private val ttsManager: TtsManager,
     private val settingsDataStore: SettingsDataStore,
     private val dictionaryRepository: DictionaryRepository,
     private val unitRepository: UnitRepository,
     private val backgroundOrganizeManager: BackgroundOrganizeManager,
+    private val backgroundTaskManager: BackgroundTaskManager,
+    private val taskRepository: BackgroundTaskRepository,
     private val imageCompressionManager: ImageCompressionManager
 ) : ViewModel() {
 
@@ -120,6 +123,7 @@ class QuestionBankReaderViewModel @Inject constructor(
 
     init {
         observeTtsState()
+        observeBackgroundTasks()
         loadData()
         loadDictionaries()
     }
@@ -190,6 +194,63 @@ class QuestionBankReaderViewModel @Inject constructor(
                 _uiState.update { it.copy(ttsState = tts) }
             }
         }
+    }
+
+    private fun observeBackgroundTasks() {
+        viewModelScope.launch {
+            var lastAnswerStatus: BackgroundTaskStatus? = null
+            var lastVerifyStatus: BackgroundTaskStatus? = null
+            taskRepository.observeAllTasks().collect { tasks ->
+                val answerTask = tasks
+                    .filter { it.type == BackgroundTaskType.QUESTION_ANSWER_GENERATE }
+                    .filter { (it.payload as? QuestionAnswerGeneratePayload)?.groupId == groupId }
+                    .maxByOrNull { it.updatedAt }
+                val verifyTask = tasks
+                    .filter { it.type == BackgroundTaskType.QUESTION_SOURCE_VERIFY }
+                    .filter { (it.payload as? QuestionSourceVerifyPayload)?.groupId == groupId }
+                    .maxByOrNull { it.updatedAt }
+
+                val verifying = verifyTask?.status == BackgroundTaskStatus.PENDING ||
+                    verifyTask?.status == BackgroundTaskStatus.RUNNING
+                if (_uiState.value.isVerifying != verifying) {
+                    _uiState.update { it.copy(isVerifying = verifying) }
+                }
+
+                if (answerTask != null && answerTask.status != lastAnswerStatus) {
+                    if (answerTask.status == BackgroundTaskStatus.SUCCESS) {
+                        refreshItemsAndResults()
+                    }
+                }
+                if (verifyTask != null && verifyTask.status != lastVerifyStatus) {
+                    if (verifyTask.status == BackgroundTaskStatus.FAILED) {
+                        _uiState.update {
+                            it.copy(error = verifyTask.errorMessage ?: "来源审查失败")
+                        }
+                    } else if (verifyTask.status == BackgroundTaskStatus.SUCCESS) {
+                        _uiState.update { it.copy(error = null) }
+                    }
+                    if (verifyTask.status != BackgroundTaskStatus.PENDING &&
+                        verifyTask.status != BackgroundTaskStatus.RUNNING
+                    ) {
+                        refreshSourceInfo()
+                    }
+                }
+                lastAnswerStatus = answerTask?.status
+                lastVerifyStatus = verifyTask?.status
+            }
+        }
+    }
+
+    private suspend fun refreshItemsAndResults() {
+        val refreshedItems = repository.getItemsByGroup(groupId)
+        val wrongIds = repository.getWrongItemIds(groupId).toSet()
+        _uiState.update { it.copy(items = refreshedItems, wrongItemIds = wrongIds) }
+    }
+
+    private suspend fun refreshSourceInfo() {
+        val updatedGroup = repository.getGroupById(groupId)
+        val linkedId = repository.getLinkedArticleId(groupId)
+        _uiState.update { it.copy(group = updatedGroup, linkedArticleId = linkedId) }
     }
 
     // ── Translation ──
@@ -527,60 +588,24 @@ class QuestionBankReaderViewModel @Inject constructor(
 
     fun verifySource() {
         val group = _uiState.value.group ?: return
-        _uiState.update { it.copy(isVerifying = true) }
         viewModelScope.launch {
             try {
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.SEARCH)
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(isVerifying = false, error = "请先配置搜索模型") }
+                    _uiState.update { it.copy(error = "请先配置搜索模型") }
                     return@launch
                 }
-
-                val result = aiRepository.verifySource(
-                    group.passageText, group.sourceUrl ?: "",
-                    config.apiKey, config.model, config.baseUrl, config.provider
+                backgroundTaskManager.enqueueQuestionSourceVerify(
+                    groupId = group.id,
+                    paperTitle = _uiState.value.paperTitle,
+                    sectionLabel = group.sectionLabel.orEmpty(),
+                    sourceUrlOverride = group.sourceUrl,
+                    force = true
                 )
-
-                if (result.matched) {
-                    repository.updateSourceVerification(groupId, 1, null)
-                    if (!result.sourceUrl.isNullOrBlank()) {
-                        repository.updateSourceUrl(groupId, result.sourceUrl)
-                        // updateSourceUrl resets verification, so re-mark as verified
-                        repository.updateSourceVerification(groupId, 1, null)
-                    }
-                    createLinkedArticle(result, group)
-                } else {
-                    repository.updateSourceVerification(groupId, -1, result.errorMessage)
-                }
-
-                val updated = repository.getGroupById(groupId)
-                val linkedId = repository.getLinkedArticleId(groupId)
-                _uiState.update { it.copy(group = updated, linkedArticleId = linkedId, isVerifying = false) }
             } catch (e: Exception) {
-                repository.updateSourceVerification(groupId, -1, e.message)
-                val updated = repository.getGroupById(groupId)
-                _uiState.update { it.copy(group = updated, isVerifying = false) }
+                _uiState.update { it.copy(error = "来源验证任务创建失败：${e.message}") }
             }
         }
-    }
-
-    private suspend fun createLinkedArticle(
-        result: com.xty.englishhelper.domain.repository.VerifyResult,
-        group: QuestionGroup
-    ) {
-        val articleId = createArticle(
-            title = result.articleTitle ?: group.sectionLabel ?: "来源文章",
-            content = result.articleContent ?: "",
-            sourceType = ArticleSourceType.AI,
-            author = result.articleAuthor ?: "",
-            source = result.sourceUrl ?: group.sourceUrl ?: "",
-            summary = result.articleSummary ?: "",
-            paragraphs = result.articleParagraphs?.mapIndexed { i, text ->
-                ArticleParagraph(paragraphIndex = i, text = text)
-            } ?: emptyList()
-        )
-        parseArticle(articleId)
-        repository.linkSourceArticle(groupId, articleId)
     }
 
     // ── Scan Answers ──

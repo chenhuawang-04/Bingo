@@ -3,6 +3,7 @@ package com.xty.englishhelper
 import android.app.Application
 import com.xty.englishhelper.data.debug.AiDebugManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,8 @@ class EnglishHelperApp : Application() {
     lateinit var settingsDataStore: SettingsDataStore
     @Inject
     lateinit var aiDebugManager: AiDebugManager
+    @Inject
+    lateinit var backgroundTaskManager: BackgroundTaskManager
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -36,6 +39,9 @@ class EnglishHelperApp : Application() {
             settingsDataStore.aiDebugMode.collect { enabled ->
                 aiDebugManager.setEnabled(enabled)
             }
+        }
+        appScope.launch {
+            backgroundTaskManager.start()
         }
     }
 }

@@ -1,24 +1,22 @@
-﻿package com.xty.englishhelper.domain.organize
+package com.xty.englishhelper.domain.organize
 
-import android.util.Log
-import com.xty.englishhelper.data.preferences.SettingsDataStore
-import com.xty.englishhelper.domain.model.AiSettingsScope
-import com.xty.englishhelper.domain.repository.WordRepository
-import com.xty.englishhelper.domain.usecase.ai.OrganizeWordWithAiUseCase
+import com.xty.englishhelper.domain.background.BackgroundTaskManager
+import com.xty.englishhelper.domain.model.BackgroundTaskStatus
+import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.WordOrganizePayload
+import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
-enum class OrganizeTaskStatus { ORGANIZING, SUCCESS, FAILED }
+enum class OrganizeTaskStatus { ORGANIZING, SUCCESS, FAILED, PAUSED }
 
 data class OrganizeTask(
     val wordId: Long,
@@ -30,106 +28,94 @@ data class OrganizeTask(
 
 @Singleton
 class BackgroundOrganizeManager @Inject constructor(
-    private val organizeWordWithAi: OrganizeWordWithAiUseCase,
-    private val wordRepository: WordRepository,
-    private val settingsDataStore: SettingsDataStore
+    private val taskRepository: BackgroundTaskRepository,
+    private val backgroundTaskManager: BackgroundTaskManager
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _tasks = MutableStateFlow<Map<Long, OrganizeTask>>(emptyMap())
     val tasks: StateFlow<Map<Long, OrganizeTask>> = _tasks.asStateFlow()
 
-    val organizingWordIds: StateFlow<Set<Long>> =
-        MutableStateFlow<Set<Long>>(emptySet()).also { derived ->
-            scope.launch {
-                _tasks.map { map ->
-                    map.filterValues { it.status == OrganizeTaskStatus.ORGANIZING }.keys
-                }.collect { derived.value = it }
-            }
-        }
+    private val _organizingWordIds = MutableStateFlow<Set<Long>>(emptySet())
+    val organizingWordIds: StateFlow<Set<Long>> = _organizingWordIds.asStateFlow()
 
-    fun enqueue(wordId: Long, dictionaryId: Long, spelling: String) {
-        if (_tasks.value[wordId]?.status == OrganizeTaskStatus.ORGANIZING) return
+    private val taskIdByWordId = mutableMapOf<Long, Long>()
 
-        _tasks.update { it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.ORGANIZING)) }
-
+    init {
         scope.launch {
-            try {
-                val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
-
-                if (config.apiKey.isBlank()) {
-                    _tasks.update {
-                        it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.FAILED, "API Key 未配置"))
+            taskRepository.observeAllTasks().collect { allTasks ->
+                val map = mutableMapOf<Long, OrganizeTask>()
+                val idMap = mutableMapOf<Long, Long>()
+                allTasks.asSequence()
+                    .filter { it.type == BackgroundTaskType.WORD_ORGANIZE }
+                    .forEach { task ->
+                        val payload = task.payload as? WordOrganizePayload ?: return@forEach
+                        val status = when (task.status) {
+                            BackgroundTaskStatus.PENDING, BackgroundTaskStatus.RUNNING -> OrganizeTaskStatus.ORGANIZING
+                            BackgroundTaskStatus.SUCCESS -> OrganizeTaskStatus.SUCCESS
+                            BackgroundTaskStatus.FAILED -> OrganizeTaskStatus.FAILED
+                            BackgroundTaskStatus.PAUSED -> OrganizeTaskStatus.PAUSED
+                            BackgroundTaskStatus.CANCELED -> null
+                        }
+                        if (status != null) {
+                            map[payload.wordId] = OrganizeTask(
+                                wordId = payload.wordId,
+                                dictionaryId = payload.dictionaryId,
+                                spelling = payload.spelling,
+                                status = status,
+                                error = task.errorMessage
+                            )
+                            idMap[payload.wordId] = task.id
+                        }
                     }
-                    return@launch
-                }
 
-                val result = organizeWordWithAi(
-                    spelling,
-                    config.apiKey,
-                    config.model,
-                    config.baseUrl,
-                    config.provider
-                )
-
-                val currentWord = wordRepository.getWordById(wordId)
-                if (currentWord == null) {
-                    _tasks.update {
-                        it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.FAILED, "单词不存在"))
-                    }
-                    return@launch
-                }
-
-                val merged = currentWord.copy(
-                    phonetic = currentWord.phonetic.ifBlank { result.phonetic },
-                    meanings = currentWord.meanings.ifEmpty { result.meanings },
-                    rootExplanation = currentWord.rootExplanation.ifBlank { result.rootExplanation },
-                    decomposition = currentWord.decomposition.ifEmpty { result.decomposition },
-                    synonyms = currentWord.synonyms.ifEmpty { result.synonyms },
-                    similarWords = currentWord.similarWords.ifEmpty { result.similarWords },
-                    cognates = currentWord.cognates.ifEmpty { result.cognates },
-                    inflections = currentWord.inflections.ifEmpty { result.inflections }
-                )
-                wordRepository.updateWord(merged)
-
-                _tasks.update {
-                    it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.SUCCESS))
-                }
-
-                delay(3000)
-                _tasks.update { it - wordId }
-            } catch (e: Exception) {
-                Log.w("BgOrganize", "Failed to organize word $spelling", e)
-                _tasks.update {
-                    it + (wordId to OrganizeTask(wordId, dictionaryId, spelling, OrganizeTaskStatus.FAILED, e.message))
-                }
+                _tasks.value = map
+                taskIdByWordId.clear()
+                taskIdByWordId.putAll(idMap)
+                _organizingWordIds.value = map.filterValues { it.status == OrganizeTaskStatus.ORGANIZING }.keys
             }
         }
+    }
+
+    fun enqueue(wordId: Long, dictionaryId: Long, spelling: String, force: Boolean = false) {
+        backgroundTaskManager.enqueueWordOrganize(wordId, dictionaryId, spelling, force)
     }
 
     fun dismissTask(wordId: Long) {
-        _tasks.update { it - wordId }
+        val taskId = taskIdByWordId[wordId] ?: return
+        backgroundTaskManager.deleteTask(taskId)
     }
 
     fun dismissAll() {
-        _tasks.update { map ->
-            map.filterValues { it.status == OrganizeTaskStatus.ORGANIZING }
-        }
+        val ids = _tasks.value.values
+            .filter { it.status != OrganizeTaskStatus.ORGANIZING }
+            .mapNotNull { taskIdByWordId[it.wordId] }
+        ids.forEach { backgroundTaskManager.deleteTask(it) }
     }
 
     fun retryAllFailed() {
-        val failed = _tasks.value.values.filter { it.status == OrganizeTaskStatus.FAILED }
-        for (task in failed) {
-            enqueue(task.wordId, task.dictionaryId, task.spelling)
-        }
+        val ids = _tasks.value.values
+            .filter { it.status == OrganizeTaskStatus.FAILED }
+            .mapNotNull { taskIdByWordId[it.wordId] }
+        ids.forEach { backgroundTaskManager.restartTask(it) }
+    }
+
+    fun resumePausedForDictionary(dictionaryId: Long) {
+        val ids = _tasks.value.values
+            .filter { it.status == OrganizeTaskStatus.PAUSED && it.dictionaryId == dictionaryId }
+            .mapNotNull { taskIdByWordId[it.wordId] }
+        ids.forEach { backgroundTaskManager.resumeTask(it) }
+    }
+
+    fun resumeTask(wordId: Long) {
+        val taskId = taskIdByWordId[wordId] ?: return
+        backgroundTaskManager.resumeTask(taskId)
     }
 
     fun retryFailedForDictionary(dictionaryId: Long) {
-        val failed = _tasks.value.values.filter {
-            it.status == OrganizeTaskStatus.FAILED && it.dictionaryId == dictionaryId
-        }
-        for (task in failed) {
-            enqueue(task.wordId, task.dictionaryId, task.spelling)
-        }
+        val ids = _tasks.value.values
+            .filter { it.status == OrganizeTaskStatus.FAILED && it.dictionaryId == dictionaryId }
+            .mapNotNull { taskIdByWordId[it.wordId] }
+        ids.forEach { backgroundTaskManager.restartTask(it) }
     }
 }

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.article.SentenceSplitter
+import com.xty.englishhelper.domain.article.SmartParagraphSplitter
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleParseStatus
@@ -31,6 +32,7 @@ import com.xty.englishhelper.domain.usecase.article.AnalyzeParagraphUseCase
 import com.xty.englishhelper.domain.usecase.article.AnalyzeSentenceUseCase
 import com.xty.englishhelper.domain.usecase.article.GetArticleDetailUseCase
 import com.xty.englishhelper.domain.usecase.article.GetArticleStatisticsUseCase
+import com.xty.englishhelper.domain.usecase.article.ParseArticleUseCase
 import com.xty.englishhelper.domain.usecase.article.QuickAnalyzeWordUseCase
 import com.xty.englishhelper.domain.usecase.article.ScanWordLinksUseCase
 import com.xty.englishhelper.domain.usecase.article.TranslateParagraphUseCase
@@ -88,6 +90,7 @@ class ArticleReaderViewModel @Inject constructor(
     private val translateParagraph: TranslateParagraphUseCase,
     private val quickAnalyzeWord: QuickAnalyzeWordUseCase,
     private val saveWord: SaveWordUseCase,
+    private val parseArticle: ParseArticleUseCase,
     private val guardianRepository: GuardianRepository,
     private val dictionaryRepository: DictionaryRepository,
     private val unitRepository: UnitRepository,
@@ -164,9 +167,35 @@ class ArticleReaderViewModel @Inject constructor(
 
     private suspend fun loadArticleData() {
         // Load paragraphs
-        val paragraphs = repository.getParagraphs(articleId)
-        val sentences = repository.getSentences(articleId)
+        var paragraphs = repository.getParagraphs(articleId)
+        var sentences = repository.getSentences(articleId)
         val article = _uiState.value.article
+
+        if (article?.isSaved == true && article.content.isNotBlank()) {
+            val paragraphTextLen = paragraphs.sumOf { it.text.length }
+            val contentLen = article.content.length
+            val needsRepair = paragraphs.isEmpty() || paragraphTextLen < contentLen * 0.6f
+            if (needsRepair) {
+                val rebuilt = SmartParagraphSplitter.split(article.content).mapIndexed { index, text ->
+                    ArticleParagraph(
+                        articleId = articleId,
+                        paragraphIndex = index,
+                        text = text
+                    )
+                }
+                repository.deleteParagraphsByArticle(articleId)
+                repository.insertParagraphs(rebuilt)
+                paragraphs = rebuilt
+                sentences = emptyList()
+                viewModelScope.launch {
+                    try {
+                        parseArticle(articleId)
+                    } catch (e: Exception) {
+                        Log.w("ArticleReaderVM", "Re-parse failed for articleId=$articleId", e)
+                    }
+                }
+            }
+        }
 
         val wordLinks = if (article?.isSaved == true) {
             // Local/saved article: read persisted word links from DB

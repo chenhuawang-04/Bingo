@@ -1,8 +1,10 @@
 package com.xty.englishhelper.data.repository
 
 import com.xty.englishhelper.data.local.dao.ArticleDao
+import com.xty.englishhelper.data.local.dao.ArticleCategoryDao
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
+import com.xty.englishhelper.data.local.entity.ArticleCategoryEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
 import com.xty.englishhelper.data.local.entity.ArticleParagraphEntity
 import com.xty.englishhelper.data.local.entity.ArticleSentenceEntity
@@ -13,6 +15,8 @@ import com.xty.englishhelper.data.local.entity.SentenceAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.WordExampleEntity
 import com.xty.englishhelper.data.mapper.parseInflections
 import com.xty.englishhelper.domain.model.Article
+import com.xty.englishhelper.domain.model.ArticleCategory
+import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSentence
@@ -36,6 +40,7 @@ import javax.inject.Singleton
 @Singleton
 class ArticleRepositoryImpl @Inject constructor(
     private val articleDao: ArticleDao,
+    private val articleCategoryDao: ArticleCategoryDao,
     private val wordDao: WordDao
 ) : ArticleRepository {
 
@@ -44,6 +49,14 @@ class ArticleRepositoryImpl @Inject constructor(
 
     override fun getAllArticles(): Flow<List<Article>> {
         return articleDao.getAllArticles().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun getArticlesByCategory(categoryId: Long): Flow<List<Article>> {
+        return articleDao.getArticlesByCategory(categoryId).map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun getArticleCategories(): Flow<List<ArticleCategory>> {
+        return articleCategoryDao.observeAll().map { list -> list.map { it.toDomain() } }
     }
 
     override fun getArticleById(id: Long): Flow<Article?> {
@@ -242,6 +255,86 @@ class ArticleRepositoryImpl @Inject constructor(
         articleDao.updateWordCount(articleId, wordCount)
     }
 
+    override suspend fun updateArticleCategory(articleId: Long, categoryId: Long) {
+        articleDao.updateCategory(articleId, categoryId)
+    }
+
+    override suspend fun createCategory(name: String, isSystem: Boolean): Long {
+        val trimmed = name.trim()
+        val existing = articleCategoryDao.getByName(trimmed)
+        if (existing != null) return existing.id
+
+        val now = System.currentTimeMillis()
+        val entity = ArticleCategoryEntity(
+            name = trimmed,
+            isSystem = if (isSystem) 1 else 0,
+            createdAt = now,
+            updatedAt = now
+        )
+        val inserted = articleCategoryDao.insert(entity)
+        return if (inserted > 0) inserted else articleCategoryDao.getByName(trimmed)?.id ?: 0L
+    }
+
+    override suspend fun renameCategory(id: Long, name: String) {
+        articleCategoryDao.updateName(id, name.trim(), System.currentTimeMillis())
+    }
+
+    override suspend fun deleteCategory(id: Long) {
+        if (id == ArticleCategoryDefaults.DEFAULT_ID || id == ArticleCategoryDefaults.SOURCE_ID) {
+            return
+        }
+        ensureDefaultCategories()
+        val defaultCategoryId = articleCategoryDao.getById(ArticleCategoryDefaults.DEFAULT_ID)?.id
+            ?: articleCategoryDao.getByName(ArticleCategoryDefaults.DEFAULT_NAME)?.id
+            ?: ArticleCategoryDefaults.DEFAULT_ID
+        articleDao.moveArticlesToCategory(id, defaultCategoryId)
+        articleCategoryDao.deleteById(id)
+    }
+
+    override suspend fun replaceCategories(categories: List<ArticleCategory>) {
+        articleCategoryDao.deleteAll()
+        val now = System.currentTimeMillis()
+        categories.forEach { category ->
+            articleCategoryDao.insert(
+                ArticleCategoryEntity(
+                    id = category.id,
+                    name = category.name,
+                    isSystem = if (category.isSystem) 1 else 0,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+        }
+    }
+
+    override suspend fun ensureDefaultCategories() {
+        val now = System.currentTimeMillis()
+        val existingDefault = articleCategoryDao.getById(ArticleCategoryDefaults.DEFAULT_ID)
+        if (existingDefault == null) {
+            articleCategoryDao.insert(
+                ArticleCategoryEntity(
+                    id = ArticleCategoryDefaults.DEFAULT_ID,
+                    name = ArticleCategoryDefaults.DEFAULT_NAME,
+                    isSystem = 1,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+        }
+        val existingSource = articleCategoryDao.getById(ArticleCategoryDefaults.SOURCE_ID)
+        if (existingSource == null) {
+            articleCategoryDao.insert(
+                ArticleCategoryEntity(
+                    id = ArticleCategoryDefaults.SOURCE_ID,
+                    name = ArticleCategoryDefaults.SOURCE_NAME,
+                    isSystem = 1,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+        }
+    }
+
     override suspend fun getArticleBySourceUrl(sourceUrl: String): Article? {
         return articleDao.getArticleBySourceUrl(sourceUrl)?.toDomain()
     }
@@ -279,6 +372,7 @@ class ArticleRepositoryImpl @Inject constructor(
         coverImageUrl = coverImageUrl,
         wordCount = wordCount,
         isSaved = isSaved == 1,
+        categoryId = categoryId,
         sourceTypeV2 = runCatching { ArticleSourceTypeV2.valueOf(sourceTypeV2) }.getOrDefault(ArticleSourceTypeV2.LOCAL)
     )
 
@@ -302,7 +396,14 @@ class ArticleRepositoryImpl @Inject constructor(
         coverImageUrl = coverImageUrl,
         wordCount = wordCount,
         isSaved = if (isSaved) 1 else 0,
+        categoryId = categoryId,
         sourceTypeV2 = sourceTypeV2.name
+    )
+
+    private fun ArticleCategoryEntity.toDomain() = ArticleCategory(
+        id = id,
+        name = name,
+        isSystem = isSystem == 1
     )
 
     private fun ArticleSentenceEntity.toDomain() = ArticleSentence(

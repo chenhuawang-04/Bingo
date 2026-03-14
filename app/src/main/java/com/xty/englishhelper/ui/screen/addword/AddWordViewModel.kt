@@ -397,7 +397,7 @@ class AddWordViewModel @Inject constructor(
                 settingsDataStore.setLastSelectedUnitIds(dictionaryId, selectedIds)
 
                 // Enqueue background organize
-                backgroundOrganizeManager.enqueue(savedWordId, dictionaryId, state.spelling.trim())
+                backgroundOrganizeManager.enqueue(savedWordId, dictionaryId, state.spelling.trim(), force = true)
 
                 _uiState.update { it.copy(isSaving = false, savedSuccessfully = true) }
             } catch (e: Exception) {

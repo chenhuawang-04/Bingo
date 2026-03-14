@@ -63,6 +63,7 @@ import com.xty.englishhelper.util.Constants
 fun SettingsScreen(
     onBack: () -> Unit,
     onTtsDiagnostics: () -> Unit,
+    onBackgroundTasks: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -117,16 +118,22 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
-                ScopeConfigSection(state, viewModel)
-
-                HorizontalDivider()
-
                 ImageCompressionSection(
                     enabled = state.imageCompressionEnabled,
                     targetBytes = state.imageCompressionTargetBytes,
                     onEnabledChange = viewModel::onImageCompressionEnabledChange,
                     onTargetBytesChange = viewModel::onImageCompressionTargetBytesChange
                 )
+
+                HorizontalDivider()
+
+                BackgroundTaskSection(
+                    onManage = onBackgroundTasks
+                )
+
+                HorizontalDivider()
+
+                ScopeConfigSection(state, viewModel)
 
                 HorizontalDivider()
 
@@ -492,6 +499,26 @@ private fun ImageCompressionSection(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+@Composable
+private fun BackgroundTaskSection(
+    onManage: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("后台任务", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "查看与管理后台整理、题库答案生成等任务。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(
+            onClick = onManage,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("打开后台任务管理")
+        }
     }
 }
 
