@@ -522,46 +522,7 @@ class QuestionBankReaderViewModel @Inject constructor(
         }
     }
 
-    fun retryVerification() {
-        val group = _uiState.value.group ?: return
-        if (group.sourceUrl.isNullOrBlank()) {
-            _uiState.update { it.copy(error = "请先输入来源 URL") }
-            return
-        }
-        _uiState.update { it.copy(isVerifying = true) }
-        viewModelScope.launch {
-            try {
-                val config = settingsDataStore.getAiConfig(AiSettingsScope.SEARCH)
-                if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(isVerifying = false, error = "请先配置搜索模型") }
-                    return@launch
-                }
-
-                val result = aiRepository.verifySource(
-                    group.sourceUrl!!, group.passageText.take(200),
-                    config.apiKey, config.model, config.baseUrl, config.provider
-                )
-
-                if (result.matched) {
-                    repository.updateSourceVerification(groupId, 1, null)
-                    // Create article from verified source
-                    createLinkedArticle(result, group)
-                } else {
-                    repository.updateSourceVerification(groupId, -1, result.errorMessage)
-                }
-
-                val updated = repository.getGroupById(groupId)
-                val linkedId = repository.getLinkedArticleId(groupId)
-                _uiState.update { it.copy(group = updated, linkedArticleId = linkedId, isVerifying = false) }
-            } catch (e: Exception) {
-                repository.updateSourceVerification(groupId, -1, e.message)
-                val updated = repository.getGroupById(groupId)
-                _uiState.update { it.copy(group = updated, isVerifying = false) }
-            }
-        }
-    }
-
-    fun researchSource() {
+    fun verifySource() {
         val group = _uiState.value.group ?: return
         _uiState.update { it.copy(isVerifying = true) }
         viewModelScope.launch {
@@ -573,12 +534,17 @@ class QuestionBankReaderViewModel @Inject constructor(
                 }
 
                 val result = aiRepository.verifySource(
-                    group.sourceUrl ?: "", group.passageText.take(500),
+                    group.passageText, group.sourceUrl ?: "",
                     config.apiKey, config.model, config.baseUrl, config.provider
                 )
 
                 if (result.matched) {
                     repository.updateSourceVerification(groupId, 1, null)
+                    if (!result.sourceUrl.isNullOrBlank()) {
+                        repository.updateSourceUrl(groupId, result.sourceUrl)
+                        // updateSourceUrl resets verification, so re-mark as verified
+                        repository.updateSourceVerification(groupId, 1, null)
+                    }
                     createLinkedArticle(result, group)
                 } else {
                     repository.updateSourceVerification(groupId, -1, result.errorMessage)

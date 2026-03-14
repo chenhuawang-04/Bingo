@@ -223,8 +223,7 @@ fun QuestionBankReaderScreen(
                     showSourceEditor = false
                 },
                 onCancelSourceEditor = { showSourceEditor = false },
-                onRetryVerification = { viewModel.retryVerification() },
-                onResearchSource = { viewModel.researchSource() },
+                onVerifySource = { viewModel.verifySource() },
                 onViewArticle = { state.linkedArticleId?.let { id -> onViewArticle?.invoke(id) } },
                 onAnalyzeParagraph = viewModel::analyzeParagraph,
                 onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
@@ -264,8 +263,7 @@ private fun ReaderContent(
     onShowSourceEditor: () -> Unit,
     onSaveSourceUrl: () -> Unit,
     onCancelSourceEditor: () -> Unit,
-    onRetryVerification: () -> Unit,
-    onResearchSource: () -> Unit,
+    onVerifySource: () -> Unit,
     onViewArticle: () -> Unit,
     onAnalyzeParagraph: (Long, String) -> Unit,
     onRetryTranslateParagraph: (Long, String) -> Unit,
@@ -321,8 +319,7 @@ private fun ReaderContent(
                     onShowSourceEditor = onShowSourceEditor,
                     onSaveSourceUrl = onSaveSourceUrl,
                     onCancelSourceEditor = onCancelSourceEditor,
-                    onRetryVerification = onRetryVerification,
-                    onResearchSource = onResearchSource,
+                    onVerifySource = onVerifySource,
                     onViewArticle = onViewArticle
                 )
 
@@ -416,8 +413,7 @@ private fun SourceStatusRow(
     onShowSourceEditor: () -> Unit,
     onSaveSourceUrl: () -> Unit,
     onCancelSourceEditor: () -> Unit,
-    onRetryVerification: () -> Unit,
-    onResearchSource: () -> Unit,
+    onVerifySource: () -> Unit,
     onViewArticle: () -> Unit
 ) {
     Column {
@@ -470,17 +466,10 @@ private fun SourceStatusRow(
                     Spacer(Modifier.width(4.dp))
                     Text(if (group.sourceUrl.isNullOrBlank()) "输入来源 URL" else "编辑来源", style = MaterialTheme.typography.labelSmall)
                 }
-                if (!group.sourceUrl.isNullOrBlank()) {
-                    TextButton(onClick = onRetryVerification, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("重新验证", style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-                TextButton(onClick = onResearchSource, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                TextButton(onClick = onVerifySource, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
                     Icon(Icons.Default.Search, null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("重新搜索", style = MaterialTheme.typography.labelSmall)
+                    Text("验证来源", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

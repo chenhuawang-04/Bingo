@@ -13,7 +13,7 @@ interface QuestionBankAiRepository {
 
     // ── Verify source ──
     suspend fun verifySource(
-        sourceUrl: String, passageExcerpt: String,
+        passageText: String, referenceUrl: String,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): VerifyResult
 

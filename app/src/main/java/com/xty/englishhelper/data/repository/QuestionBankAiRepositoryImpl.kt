@@ -26,7 +26,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): ScanResult {
         val prompt = buildString {
-            append("You are an exam paper OCR specialist. Carefully extract all content from these exam paper images.\n")
+            append("You are an exam paper OCR specialist with web search capabilities. ")
+            append("Carefully extract all content from these exam paper images.\n")
             append("Return strict JSON matching this structure:\n")
             append("""
 {
@@ -38,7 +39,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
       "directions": "directions text or null",
       "passageParagraphs": ["paragraph 1", "paragraph 2"],
       "sourceInfo": "source description or null",
-      "sourceUrl": "source URL if visible or null",
+      "sourceUrl": "URL you found via search, or null",
       "questions": [
         {
           "questionNumber": 21,
@@ -62,6 +63,10 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 """.trimIndent())
             append("\nRules:\n")
             append("- Transcribe passage text EXACTLY as printed, preserving all paragraphs.\n")
+            append("- sourceUrl: Do NOT extract URLs from the exam paper image (exam papers never print source URLs). ")
+            append("Instead, use your web search capabilities to try to identify and find the original source article for each reading passage. ")
+            append("If you find a likely match, provide its URL. If not, set to null.\n")
+            append("- sourceInfo: a brief description of the source you found (e.g. \"The Guardian, 2024\"), or null.\n")
             append("- wordCount = word count of passage + all questions in the group.\n")
             append("- difficultyLevel: EASY/MEDIUM/HARD based on vocabulary and sentence complexity.\n")
             append("- confidence: your overall OCR confidence (0-1).\n")
@@ -78,29 +83,41 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
     }
 
     override suspend fun verifySource(
-        sourceUrl: String, passageExcerpt: String,
+        passageText: String, referenceUrl: String,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): VerifyResult {
-        val systemPrompt = "You are a source verification assistant with web search capabilities."
+        val systemPrompt = "You are a source article research assistant with web search capabilities. " +
+            "Your task is to find the original published article from which an exam reading passage was taken."
         val userMessage = buildString {
-            append("Verify if the following passage excerpt comes from the given source URL.\n")
-            append("Source URL: $sourceUrl\n")
-            append("Passage excerpt (first 200 chars): ${passageExcerpt.take(200)}\n\n")
-            append("If you can find the original article, return the full text.\n")
+            append("Below is a reading passage extracted from an English exam paper. ")
+            append("Find the original published article that this passage comes from.\n\n")
+            append("=== PASSAGE TEXT ===\n")
+            append(passageText)
+            append("\n=== END PASSAGE ===\n\n")
+            if (referenceUrl.isNotBlank()) {
+                append("A previous search suggested this URL as a possible source (use it as a hint, but do NOT limit your search to it — it may be incorrect):\n")
+                append(referenceUrl)
+                append("\n\n")
+            }
+            append("Instructions:\n")
+            append("- Search the web to find the original full article.\n")
+            append("- If found, return matched=true with the complete article text split into paragraphs.\n")
+            append("- If the reference URL is wrong, find and return the correct URL.\n")
+            append("- If you cannot find the original article at all, return matched=false with an explanation.\n\n")
             append("Return strict JSON:\n")
             append("""
 {
   "matched": true,
   "errorMessage": null,
-  "articleTitle": "title",
-  "articleAuthor": "author",
-  "articleContent": "full article text",
-  "articleSummary": "brief summary",
-  "articleParagraphs": ["paragraph 1", "paragraph 2"],
-  "sourceUrl": "the actual/canonical URL of the source article"
+  "articleTitle": "title of the original article",
+  "articleAuthor": "author name",
+  "articleContent": "full article text (all paragraphs joined)",
+  "articleSummary": "brief 1-2 sentence summary",
+  "articleParagraphs": ["paragraph 1", "paragraph 2", "..."],
+  "sourceUrl": "the actual canonical URL of the source article"
 }
 """.trimIndent())
-            append("\nIf not matched, set matched=false and explain in errorMessage.")
+            append("\nIf not found, set matched=false and explain in errorMessage. Return JSON only, no markdown fences.")
         }
 
         val client = clientProvider.getClient(provider)

@@ -69,7 +69,7 @@ import java.util.UUID
         PracticeRecordEntity::class,
         QuestionSourceArticleEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -627,11 +627,18 @@ abstract class AppDatabase : RoomDatabase() {
                         `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         `question_group_id` INTEGER NOT NULL,
                         `linked_article_id` INTEGER NOT NULL,
+                        `linked_article_uid` TEXT NOT NULL DEFAULT '',
                         `verified_at` INTEGER NOT NULL,
                         FOREIGN KEY(`question_group_id`) REFERENCES `question_groups`(`id`) ON DELETE CASCADE
                     )
                 """.trimIndent())
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_question_source_articles_question_group_id` ON `question_source_articles`(`question_group_id`)")
+            }
+        }
+
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE question_source_articles ADD COLUMN linked_article_uid TEXT NOT NULL DEFAULT ''")
             }
         }
 

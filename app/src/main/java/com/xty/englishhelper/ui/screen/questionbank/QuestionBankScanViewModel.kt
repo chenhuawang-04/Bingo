@@ -293,9 +293,7 @@ class QuestionBankScanViewModel @Inject constructor(
                 val groupList = repository.getGroupsByPaper(paperId).first()
                 for (group in groupList) {
                     launchAnswerGeneration(group)
-                    if (!group.sourceUrl.isNullOrBlank()) {
-                        launchSourceVerification(group)
-                    }
+                    launchSourceVerification(group)
                 }
             } catch (_: Exception) { }
         }
@@ -334,13 +332,15 @@ class QuestionBankScanViewModel @Inject constructor(
                 if (config.apiKey.isBlank()) return@launch
 
                 val result = aiRepository.verifySource(
-                    group.sourceUrl!!, group.passageText.take(200),
+                    group.passageText, group.sourceUrl ?: "",
                     config.apiKey, config.model, config.baseUrl, config.provider
                 )
 
                 if (result.matched) {
                     repository.updateSourceVerification(group.id, 1, null)
-                    // Create linked article from verified source
+                    if (!result.sourceUrl.isNullOrBlank()) {
+                        repository.updateSourceUrl(group.id, result.sourceUrl)
+                    }
                     try {
                         val articleId = createArticle(
                             title = result.articleTitle ?: group.sectionLabel ?: "来源文章",

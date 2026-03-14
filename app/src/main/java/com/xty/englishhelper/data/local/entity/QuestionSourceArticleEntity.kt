@@ -27,6 +27,8 @@ data class QuestionSourceArticleEntity(
     val questionGroupId: Long,
     @ColumnInfo(name = "linked_article_id")
     val linkedArticleId: Long,
+    @ColumnInfo(name = "linked_article_uid", defaultValue = "")
+    val linkedArticleUid: String = "",
     @ColumnInfo(name = "verified_at")
     val verifiedAt: Long
 )

@@ -7,12 +7,25 @@ import com.xty.englishhelper.BuildConfig
 import com.xty.englishhelper.data.json.ArticleJsonModel
 import com.xty.englishhelper.data.json.ArticlesExportModel
 import com.xty.englishhelper.data.json.DictionaryJsonModel
+import com.xty.englishhelper.data.json.ExamPaperJson
 import com.xty.englishhelper.data.json.InflectionJsonModel
+import com.xty.englishhelper.data.json.ParagraphJson
+import com.xty.englishhelper.data.json.PracticeRecordJson
+import com.xty.englishhelper.data.json.QuestionBankExportModel
+import com.xty.englishhelper.data.json.QuestionGroupJson
+import com.xty.englishhelper.data.json.QuestionItemJson
 import com.xty.englishhelper.data.json.StudyStateJsonModel
 import com.xty.englishhelper.data.json.SyncManifest
 import com.xty.englishhelper.data.json.UnitJsonModel
 import com.xty.englishhelper.data.json.WordPoolJsonModel
+import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
+import com.xty.englishhelper.data.local.entity.ExamPaperEntity
+import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
+import com.xty.englishhelper.data.local.entity.QuestionGroupEntity
+import com.xty.englishhelper.data.local.entity.QuestionGroupParagraphEntity
+import com.xty.englishhelper.data.local.entity.QuestionItemEntity
+import com.xty.englishhelper.data.local.entity.QuestionSourceArticleEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
 import com.xty.englishhelper.data.preferences.SettingsDataStore
@@ -53,6 +66,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val articleRepository: ArticleRepository,
     private val wordPoolRepository: WordPoolRepository,
     private val wordPoolDao: WordPoolDao,
+    private val questionBankDao: QuestionBankDao,
     private val importExporter: DictionaryImportExporter,
     private val exportDictionary: ExportDictionaryUseCase,
     private val transactionRunner: TransactionRunner,
@@ -62,6 +76,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val dictAdapter = moshi.adapter(DictionaryJsonModel::class.java).indent("  ")
     private val articlesAdapter = moshi.adapter(ArticlesExportModel::class.java).indent("  ")
     private val manifestAdapter = moshi.adapter(SyncManifest::class.java).indent("  ")
+    private val questionBankAdapter = moshi.adapter(QuestionBankExportModel::class.java).indent("  ")
 
     private fun authHeader(): String {
         val pat = settingsDataStore.getGitHubPat()
@@ -143,6 +158,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         // Merge articles
         val mergedArticles = mergeArticles(localArticles, cloudArticles)
 
+        // Merge question bank (after articles, so source links can resolve)
+        val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
+        val articleUidToId = buildArticleUidToIdMap()
+        mergeQuestionBank(cloudQuestionBank, articleUidToId)
+
         // Re-export local dicts that were merged (to pick up cloud-only words)
         val finalDictJsons = mutableListOf<DictionaryJsonModel>()
         val allLocalDicts = dictionaryRepository.getAllDictionaries().first()
@@ -167,6 +187,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
+        // Upload question bank
+        val questionBankExport = exportQuestionBank()
+        uploadJson("questionbank.json", questionBankExport, questionBankAdapter)
+
         // Upload manifest
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
@@ -174,7 +198,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             syncedAt = System.currentTimeMillis(),
             deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
             dictionaries = fileNames,
-            hasArticles = allArticles.isNotEmpty()
+            hasArticles = allArticles.isNotEmpty(),
+            hasQuestionBank = questionBankExport.papers.isNotEmpty()
         )
         uploadJson("manifest.json", manifest, manifestAdapter)
 
@@ -204,6 +229,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
+        // Upload question bank
+        val questionBankExport = exportQuestionBank()
+        uploadJson("questionbank.json", questionBankExport, questionBankAdapter)
+
         // Upload manifest
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
@@ -211,7 +240,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             syncedAt = System.currentTimeMillis(),
             deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
             dictionaries = fileNames,
-            hasArticles = allArticles.isNotEmpty()
+            hasArticles = allArticles.isNotEmpty(),
+            hasQuestionBank = questionBankExport.papers.isNotEmpty()
         )
         uploadJson("manifest.json", manifest, manifestAdapter)
 
@@ -234,6 +264,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
+        val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
 
         // Clear local data
         onProgress(SyncProgress("导入中", "正在清空本地数据...", 1, 3))
@@ -244,6 +275,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val localArticles = articleRepository.getAllArticles().first()
         for (article in localArticles) {
             articleRepository.deleteArticle(article.id)
+        }
+        // Clear local question bank (CASCADE deletes child tables)
+        val localPapers = questionBankDao.getAllExamPapers().first()
+        for (paper in localPapers) {
+            questionBankDao.deleteExamPaper(paper.id)
         }
 
         // Import cloud data
@@ -273,6 +309,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 )
                 articleRepository.upsertArticle(article)
             }
+        }
+
+        // Import question bank
+        if (cloudQuestionBank != null && cloudQuestionBank.papers.isNotEmpty()) {
+            val articleUidToId = buildArticleUidToIdMap()
+            importQuestionBank(cloudQuestionBank, articleUidToId)
         }
 
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
@@ -646,6 +688,281 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             throw IllegalStateException("导入辞书 ${cloudDict.name} 失败: ${e.message}", e)
         }
+    }
+
+    // ── Question Bank Export/Import/Merge ──
+
+    private suspend fun buildArticleUidToIdMap(): Map<String, Long> {
+        val articles = articleRepository.getAllArticles().first()
+        return articles.filter { it.articleUid.isNotBlank() }.associate { it.articleUid to it.id }
+    }
+
+    private suspend fun exportQuestionBank(): QuestionBankExportModel {
+        val articles = articleRepository.getAllArticles().first()
+        val articleIdToUid = articles.associate { it.id to it.articleUid }
+
+        val papers = questionBankDao.getAllExamPapers().first()
+        val paperJsons = papers.map { paper ->
+            val groups = questionBankDao.getGroupsByPaperOnce(paper.id)
+            val groupJsons = groups.map { group ->
+                val paragraphs = questionBankDao.getParagraphs(group.id)
+                val items = questionBankDao.getItemsByGroup(group.id)
+                val sourceArticle = questionBankDao.getSourceArticle(group.id)
+
+                val linkedArticleUid = if (sourceArticle != null) {
+                    // Prefer stored UID (survives even if article was deleted)
+                    sourceArticle.linkedArticleUid.ifBlank {
+                        articleIdToUid[sourceArticle.linkedArticleId] ?: ""
+                    }
+                } else ""
+
+                val itemJsons = items.map { item ->
+                    val records = questionBankDao.getRecordsByItem(item.id)
+                    QuestionItemJson(
+                        questionNumber = item.questionNumber,
+                        questionText = item.questionText,
+                        optionA = item.optionA,
+                        optionB = item.optionB,
+                        optionC = item.optionC,
+                        optionD = item.optionD,
+                        correctAnswer = item.correctAnswer,
+                        answerSource = item.answerSource,
+                        explanation = item.explanation,
+                        orderInGroup = item.orderInGroup,
+                        wordCount = item.wordCount,
+                        difficultyLevel = item.difficultyLevel,
+                        difficultyScore = item.difficultyScore,
+                        wrongCount = item.wrongCount,
+                        extraData = item.extraData,
+                        practiceRecords = records.map { r ->
+                            PracticeRecordJson(
+                                userAnswer = r.userAnswer,
+                                isCorrect = r.isCorrect,
+                                practicedAt = r.practicedAt
+                            )
+                        }
+                    )
+                }
+
+                val paragraphJsons = paragraphs.map { p ->
+                    ParagraphJson(
+                        paragraphIndex = p.paragraphIndex,
+                        text = p.text,
+                        paragraphType = p.paragraphType,
+                        imageUrl = p.imageUrl
+                    )
+                }
+
+                QuestionGroupJson(
+                    uid = group.uid,
+                    questionType = group.questionType,
+                    sectionLabel = group.sectionLabel,
+                    orderInPaper = group.orderInPaper,
+                    directions = group.directions,
+                    passageText = group.passageText,
+                    sourceInfo = group.sourceInfo,
+                    sourceUrl = group.sourceUrl,
+                    sourceAuthor = group.sourceAuthor,
+                    sourceVerified = group.sourceVerified,
+                    sourceVerifyError = group.sourceVerifyError,
+                    wordCount = group.wordCount,
+                    difficultyLevel = group.difficultyLevel,
+                    difficultyScore = group.difficultyScore,
+                    hasAiAnswer = group.hasAiAnswer,
+                    hasScannedAnswer = group.hasScannedAnswer,
+                    createdAt = group.createdAt,
+                    updatedAt = group.updatedAt,
+                    linkedArticleUid = linkedArticleUid,
+                    paragraphs = paragraphJsons,
+                    items = itemJsons
+                )
+            }
+
+            ExamPaperJson(
+                uid = paper.uid,
+                title = paper.title,
+                description = paper.description,
+                totalQuestions = paper.totalQuestions,
+                createdAt = paper.createdAt,
+                updatedAt = paper.updatedAt,
+                groups = groupJsons
+            )
+        }
+
+        return QuestionBankExportModel(schemaVersion = 1, papers = paperJsons)
+    }
+
+    private suspend fun importQuestionBank(
+        model: QuestionBankExportModel,
+        articleUidToId: Map<String, Long>
+    ) {
+        if (model.schemaVersion > 1) {
+            throw IllegalStateException("不支持的题库数据版本: ${model.schemaVersion}，请升级应用")
+        }
+        transactionRunner.runInTransaction {
+            for (paperJson in model.papers) {
+            val paperId = questionBankDao.insertExamPaper(
+                ExamPaperEntity(
+                    uid = paperJson.uid.ifBlank { UUID.randomUUID().toString() },
+                    title = paperJson.title,
+                    description = paperJson.description,
+                    totalQuestions = paperJson.totalQuestions,
+                    createdAt = paperJson.createdAt,
+                    updatedAt = paperJson.updatedAt
+                )
+            )
+
+            for (groupJson in paperJson.groups) {
+                val groupId = questionBankDao.insertQuestionGroup(
+                    QuestionGroupEntity(
+                        uid = groupJson.uid.ifBlank { UUID.randomUUID().toString() },
+                        examPaperId = paperId,
+                        questionType = groupJson.questionType,
+                        sectionLabel = groupJson.sectionLabel,
+                        orderInPaper = groupJson.orderInPaper,
+                        directions = groupJson.directions,
+                        passageText = groupJson.passageText,
+                        sourceInfo = groupJson.sourceInfo,
+                        sourceUrl = groupJson.sourceUrl,
+                        sourceAuthor = groupJson.sourceAuthor,
+                        sourceVerified = groupJson.sourceVerified,
+                        sourceVerifyError = groupJson.sourceVerifyError,
+                        wordCount = groupJson.wordCount,
+                        difficultyLevel = groupJson.difficultyLevel,
+                        difficultyScore = groupJson.difficultyScore,
+                        hasAiAnswer = groupJson.hasAiAnswer,
+                        hasScannedAnswer = groupJson.hasScannedAnswer,
+                        createdAt = groupJson.createdAt,
+                        updatedAt = groupJson.updatedAt
+                    )
+                )
+
+                // Insert paragraphs
+                if (groupJson.paragraphs.isNotEmpty()) {
+                    questionBankDao.insertParagraphs(
+                        groupJson.paragraphs.map { p ->
+                            QuestionGroupParagraphEntity(
+                                questionGroupId = groupId,
+                                paragraphIndex = p.paragraphIndex,
+                                text = p.text,
+                                paragraphType = p.paragraphType,
+                                imageUrl = p.imageUrl
+                            )
+                        }
+                    )
+                }
+
+                // Insert items one by one (need itemId for practice records)
+                for (itemJson in groupJson.items) {
+                    val itemId = questionBankDao.insertQuestionItem(
+                        QuestionItemEntity(
+                            questionGroupId = groupId,
+                            questionNumber = itemJson.questionNumber,
+                            questionText = itemJson.questionText,
+                            optionA = itemJson.optionA,
+                            optionB = itemJson.optionB,
+                            optionC = itemJson.optionC,
+                            optionD = itemJson.optionD,
+                            correctAnswer = itemJson.correctAnswer,
+                            answerSource = itemJson.answerSource,
+                            explanation = itemJson.explanation,
+                            orderInGroup = itemJson.orderInGroup,
+                            wordCount = itemJson.wordCount,
+                            difficultyLevel = itemJson.difficultyLevel,
+                            difficultyScore = itemJson.difficultyScore,
+                            wrongCount = itemJson.wrongCount,
+                            extraData = itemJson.extraData
+                        )
+                    )
+
+                    // Insert practice records
+                    if (itemJson.practiceRecords.isNotEmpty()) {
+                        questionBankDao.insertPracticeRecords(
+                            itemJson.practiceRecords.map { r ->
+                                PracticeRecordEntity(
+                                    questionItemId = itemId,
+                                    userAnswer = r.userAnswer,
+                                    isCorrect = r.isCorrect,
+                                    practicedAt = r.practicedAt
+                                )
+                            }
+                        )
+                    }
+                }
+
+                // Insert source article link (always preserve UID even if article not yet imported)
+                if (groupJson.linkedArticleUid.isNotBlank()) {
+                    val linkedArticleId = articleUidToId[groupJson.linkedArticleUid] ?: 0L
+                    questionBankDao.insertSourceArticle(
+                        QuestionSourceArticleEntity(
+                            questionGroupId = groupId,
+                            linkedArticleId = linkedArticleId,
+                            linkedArticleUid = groupJson.linkedArticleUid,
+                            verifiedAt = groupJson.updatedAt
+                        )
+                    )
+                }
+            }
+
+            // Update total questions count
+            var totalItems = 0
+            for (groupJson in paperJson.groups) {
+                totalItems += groupJson.items.size
+            }
+            questionBankDao.updateTotalQuestions(paperId, totalItems, paperJson.updatedAt)
+            }
+        }
+    }
+
+    private suspend fun mergeQuestionBank(
+        cloudModel: QuestionBankExportModel?,
+        articleUidToId: Map<String, Long>
+    ) {
+        if (cloudModel == null || cloudModel.papers.isEmpty()) return
+
+        val localPapers = questionBankDao.getAllExamPapers().first()
+        val localByUid = localPapers.filter { it.uid.isNotBlank() }.associateBy { it.uid }
+        val cloudByUid = cloudModel.papers.filter { it.uid.isNotBlank() }.associateBy { it.uid }
+        val allUids = localByUid.keys + cloudByUid.keys
+
+        for (uid in allUids) {
+            val local = localByUid[uid]
+            val cloud = cloudByUid[uid]
+
+            if (local == null && cloud != null) {
+                // Cloud-only → import
+                importQuestionBank(
+                    QuestionBankExportModel(papers = listOf(cloud)),
+                    articleUidToId
+                )
+            } else if (local != null && cloud != null) {
+                // Both exist → newer wins (using effective updatedAt that includes child changes)
+                val localEffective = questionBankDao.getEffectiveUpdatedAt(local.id) ?: local.updatedAt
+                val cloudEffective = cloudEffectiveUpdatedAt(cloud)
+                if (cloudEffective > localEffective) {
+                    // Delete local (CASCADE clears child tables), then import cloud
+                    questionBankDao.deleteExamPaper(local.id)
+                    importQuestionBank(
+                        QuestionBankExportModel(papers = listOf(cloud)),
+                        articleUidToId
+                    )
+                }
+            }
+            // local-only → keep (will be uploaded)
+        }
+    }
+
+    private fun cloudEffectiveUpdatedAt(paper: ExamPaperJson): Long {
+        var max = paper.updatedAt
+        for (group in paper.groups) {
+            if (group.updatedAt > max) max = group.updatedAt
+            for (item in group.items) {
+                for (record in item.practiceRecords) {
+                    if (record.practicedAt > max) max = record.practicedAt
+                }
+            }
+        }
+        return max
     }
 
     // ── GitHub API Helpers ──

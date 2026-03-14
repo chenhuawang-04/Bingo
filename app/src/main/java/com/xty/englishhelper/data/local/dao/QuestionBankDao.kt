@@ -37,6 +37,20 @@ interface QuestionBankDao {
     @Query("UPDATE exam_papers SET total_questions = :count, updated_at = :updatedAt WHERE id = :paperId")
     suspend fun updateTotalQuestions(paperId: Long, count: Int, updatedAt: Long)
 
+    @Query("""
+        SELECT MAX(ts) FROM (
+            SELECT updated_at AS ts FROM exam_papers WHERE id = :paperId
+            UNION ALL
+            SELECT MAX(updated_at) FROM question_groups WHERE exam_paper_id = :paperId
+            UNION ALL
+            SELECT MAX(pr.practiced_at) FROM practice_records pr
+            INNER JOIN question_items qi ON pr.question_item_id = qi.id
+            INNER JOIN question_groups qg ON qi.question_group_id = qg.id
+            WHERE qg.exam_paper_id = :paperId
+        )
+    """)
+    suspend fun getEffectiveUpdatedAt(paperId: Long): Long?
+
     // ── QuestionGroup ──
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -100,6 +114,9 @@ interface QuestionBankDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertQuestionItems(items: List<QuestionItemEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertQuestionItem(item: QuestionItemEntity): Long
 
     @Update
     suspend fun updateQuestionItem(item: QuestionItemEntity)
