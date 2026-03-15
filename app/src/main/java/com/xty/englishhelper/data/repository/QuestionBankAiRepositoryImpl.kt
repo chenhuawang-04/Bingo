@@ -141,8 +141,9 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
     override suspend fun generateAnswers(
         passageText: String, questions: List<QuestionItem>,
         questionType: String,
-        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+        apiKey: String, model: String, baseUrl: String, providerName: String, provider: AiProvider
     ): List<AnswerResult> {
+        @Suppress("UNUSED_PARAMETER") val _providerName = providerName
         val isCloze = questionType == "CLOZE"
         val isTranslation = questionType == "TRANSLATION"
         val systemPrompt = when {

@@ -300,9 +300,11 @@ class BackgroundTaskManager @Inject constructor(
         val results = questionBankAiRepository.generateAnswers(
             group.passageText,
             items,
+            group.questionType.name,
             config.apiKey,
             config.model,
             config.baseUrl,
+            config.providerName,
             config.provider
         )
         var done = 0

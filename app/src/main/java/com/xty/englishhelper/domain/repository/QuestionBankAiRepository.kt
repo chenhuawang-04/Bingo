@@ -21,7 +21,7 @@ interface QuestionBankAiRepository {
     suspend fun generateAnswers(
         passageText: String, questions: List<QuestionItem>,
         questionType: String,
-        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+        apiKey: String, model: String, baseUrl: String, providerName: String, provider: AiProvider
     ): List<AnswerResult>
 
     // ── Scan answers ──
