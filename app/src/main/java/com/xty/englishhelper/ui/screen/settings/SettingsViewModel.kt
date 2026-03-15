@@ -8,6 +8,7 @@ import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiProviderProfile
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.domain.usecase.ai.FetchAiModelsUseCase
 import com.xty.englishhelper.domain.usecase.ai.TestAiConnectionUseCase
 import com.xty.englishhelper.domain.usecase.sync.ForceDownloadUseCase
@@ -72,6 +73,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsDataStore.guardianDetailConcurrency.collect { value ->
                 _uiState.update { it.copy(guardianDetailConcurrency = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.onlineReadingSource.collect { value ->
+                val source = OnlineReadingSource.fromKey(value)
+                _uiState.update { it.copy(onlineReadingSource = source) }
             }
         }
         viewModelScope.launch {
@@ -355,6 +362,11 @@ class SettingsViewModel @Inject constructor(
     fun onGuardianDetailConcurrencyChange(value: Int) {
         _uiState.update { it.copy(guardianDetailConcurrency = value) }
         viewModelScope.launch { settingsDataStore.setGuardianDetailConcurrency(value) }
+    }
+
+    fun onOnlineReadingSourceChange(source: OnlineReadingSource) {
+        _uiState.update { it.copy(onlineReadingSource = source) }
+        viewModelScope.launch { settingsDataStore.setOnlineReadingSource(source.key) }
     }
 
     fun onTtsRateChange(value: Float) {

@@ -26,7 +26,6 @@ import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.DictionaryRepository
-import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.usecase.article.AnalyzeParagraphUseCase
 import com.xty.englishhelper.domain.usecase.article.AnalyzeSentenceUseCase
@@ -91,7 +90,6 @@ class ArticleReaderViewModel @Inject constructor(
     private val quickAnalyzeWord: QuickAnalyzeWordUseCase,
     private val saveWord: SaveWordUseCase,
     private val parseArticle: ParseArticleUseCase,
-    private val guardianRepository: GuardianRepository,
     private val dictionaryRepository: DictionaryRepository,
     private val unitRepository: UnitRepository,
     private val backgroundOrganizeManager: BackgroundOrganizeManager,
@@ -570,7 +568,8 @@ class ArticleReaderViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isSavingToLocal = true) }
-                guardianRepository.saveToLocal(articleId)
+                repository.markArticleSaved(articleId)
+                parseArticle(articleId)
                 _uiState.update { it.copy(isSavingToLocal = false) }
             } catch (e: Exception) {
                 _uiState.update {

@@ -4,6 +4,7 @@ import com.xty.englishhelper.data.json.SyncManifest
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.domain.repository.SyncProgress
 
 data class SettingsUiState(
@@ -18,6 +19,7 @@ data class SettingsUiState(
     val message: String? = null,
     val error: String? = null,
     val guardianDetailConcurrency: Int = 5,
+    val onlineReadingSource: OnlineReadingSource = OnlineReadingSource.GUARDIAN,
     val ttsRate: Float = 1.0f,
     val ttsPitch: Float = 1.0f,
     val ttsLocale: String = "system",

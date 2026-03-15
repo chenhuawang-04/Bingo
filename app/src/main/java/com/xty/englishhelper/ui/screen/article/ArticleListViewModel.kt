@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
-import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.usecase.article.DeleteArticleUseCase
 import com.xty.englishhelper.domain.usecase.article.GetArticleListUseCase
 import com.xty.englishhelper.domain.repository.ArticleRepository
@@ -33,7 +32,6 @@ data class ArticleListUiState(
 class ArticleListViewModel @Inject constructor(
     private val getArticleList: GetArticleListUseCase,
     private val deleteArticleUseCase: DeleteArticleUseCase,
-    private val guardianRepository: GuardianRepository,
     private val articleRepository: ArticleRepository
 ) : ViewModel() {
 
@@ -43,10 +41,11 @@ class ArticleListViewModel @Inject constructor(
     private var hasInitializedCategory = false
 
     init {
-        // Cleanup old unsaved Guardian articles on entry
+        // Cleanup old unsaved online articles on entry
         viewModelScope.launch {
             try {
-                guardianRepository.cleanupUnsavedArticles()
+                val cutoff = System.currentTimeMillis() - java.util.concurrent.TimeUnit.DAYS.toMillis(7)
+                articleRepository.deleteUnsavedArticlesBefore(cutoff)
             } catch (e: Exception) {
                 Log.w("ArticleListVM", "Cleanup unsaved articles failed", e)
             }

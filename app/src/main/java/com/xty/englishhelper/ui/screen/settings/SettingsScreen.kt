@@ -55,6 +55,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.util.Constants
 
@@ -139,6 +140,8 @@ fun SettingsScreen(
 
                 OnlineReadingSection(
                     concurrency = state.guardianDetailConcurrency,
+                    selectedSource = state.onlineReadingSource,
+                    onSourceChange = viewModel::onOnlineReadingSourceChange,
                     onConcurrencyChange = viewModel::onGuardianDetailConcurrencyChange
                 )
 
@@ -680,6 +683,8 @@ private fun DeleteProviderDialog(
 @Composable
 private fun OnlineReadingSection(
     concurrency: Int,
+    selectedSource: OnlineReadingSource,
+    onSourceChange: (OnlineReadingSource) -> Unit,
     onConcurrencyChange: (Int) -> Unit
 ) {
     var input by remember { mutableStateOf(concurrency.toString()) }
@@ -694,10 +699,20 @@ private fun OnlineReadingSection(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("在线阅读", style = MaterialTheme.typography.titleMedium)
         Text(
-            "设置在线文章详情的并发加载数量。",
+            "设置默认阅读源与在线文章详情并发加载数量。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OnlineReadingSource.values().forEach { source ->
+                FilterChip(
+                    selected = source == selectedSource,
+                    onClick = { onSourceChange(source) },
+                    label = { Text(source.label) }
+                )
+            }
+        }
 
         OutlinedTextField(
             value = input,

@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.xty.englishhelper.domain.model.OnlineReadingSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +87,12 @@ fun GuardianBrowseScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            SourceChips(
+                sources = uiState.sources,
+                selectedSource = uiState.selectedSource,
+                onSourceSelected = viewModel::selectSource
+            )
+
             // Section chips
             SectionChips(
                 sections = uiState.sections,
@@ -166,6 +173,26 @@ fun GuardianBrowseScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SourceChips(
+    sources: List<OnlineReadingSource>,
+    selectedSource: OnlineReadingSource,
+    onSourceSelected: (OnlineReadingSource) -> Unit
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        items(sources, key = { it.key }) { source ->
+            FilterChip(
+                selected = source == selectedSource,
+                onClick = { onSourceSelected(source) },
+                label = { Text(source.label) }
+            )
         }
     }
 }

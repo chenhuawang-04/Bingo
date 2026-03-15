@@ -8,6 +8,7 @@ import com.xty.englishhelper.data.repository.ArticleRepositoryImpl
 import com.xty.englishhelper.data.repository.BackgroundTaskRepositoryImpl
 import com.xty.englishhelper.data.repository.DictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.GitHubSyncRepositoryImpl
+import com.xty.englishhelper.data.repository.CsMonitorRepositoryImpl
 import com.xty.englishhelper.data.repository.GuardianRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankAiRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankRepositoryImpl
@@ -22,6 +23,7 @@ import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
+import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
@@ -97,6 +99,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindGuardianRepository(impl: GuardianRepositoryImpl): GuardianRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCsMonitorRepository(impl: CsMonitorRepositoryImpl): CsMonitorRepository
 
     @Binds
     @Singleton

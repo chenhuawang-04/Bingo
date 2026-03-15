@@ -12,6 +12,7 @@ import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiProviderProfile
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.util.Constants
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -51,6 +52,7 @@ class SettingsDataStore @Inject constructor(
         val GITHUB_REPO = stringPreferencesKey("github_repo")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
         val GUARDIAN_DETAIL_CONCURRENCY = intPreferencesKey("guardian_detail_concurrency")
+        val ONLINE_READING_SOURCE = stringPreferencesKey("online_reading_source")
         val TTS_RATE = floatPreferencesKey("tts_rate")
         val TTS_PITCH = floatPreferencesKey("tts_pitch")
         val TTS_LOCALE = stringPreferencesKey("tts_locale")
@@ -115,6 +117,10 @@ class SettingsDataStore @Inject constructor(
         prefs[GUARDIAN_DETAIL_CONCURRENCY] ?: 5
     }
 
+    val onlineReadingSource: Flow<String> = dataStore.data.map { prefs ->
+        prefs[ONLINE_READING_SOURCE] ?: OnlineReadingSource.GUARDIAN.key
+    }
+
     val ttsRate: Flow<Float> = dataStore.data.map { prefs ->
         prefs[TTS_RATE] ?: 1.0f
     }
@@ -154,6 +160,12 @@ class SettingsDataStore @Inject constructor(
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
+        }
+    }
+
+    suspend fun setOnlineReadingSource(value: String) {
+        dataStore.edit { prefs ->
+            prefs[ONLINE_READING_SOURCE] = value
         }
     }
 

@@ -4,6 +4,9 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.model.ArticleParagraph
+import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -11,6 +14,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -33,7 +37,7 @@ data class GuardianBrowseItem(
     val detailError: String? = null
 )
 
-val defaultSections = listOf(
+val guardianSections = listOf(
     // Main
     GuardianSection("international", "\u9996\u9875", "Main"),
     GuardianSection("world", "World", "Main"),
@@ -72,8 +76,23 @@ val defaultSections = listOf(
     GuardianSection("us-news/us-politics", "US Politics", "World")
 )
 
+val csMonitorSections = listOf(
+    GuardianSection("", "首页", "Main"),
+    GuardianSection("World", "World", "Main"),
+    GuardianSection("USA", "USA", "Main"),
+    GuardianSection("Business", "Business", "Main"),
+    GuardianSection("Environment", "Environment", "Topics"),
+    GuardianSection("Editorials", "Editorials", "Opinion"),
+    GuardianSection("The-Culture", "Culture", "Culture"),
+    GuardianSection("The-Culture/Faith-Religion", "Faith & Religion", "Culture"),
+    GuardianSection("Podcasts", "Podcasts", "Media"),
+    GuardianSection("magazine", "Magazine", "Media")
+)
+
 data class GuardianBrowseUiState(
-    val sections: List<GuardianSection> = defaultSections,
+    val sources: List<OnlineReadingSource> = OnlineReadingSource.values().toList(),
+    val selectedSource: OnlineReadingSource = OnlineReadingSource.GUARDIAN,
+    val sections: List<GuardianSection> = guardianSections,
     val selectedSection: String = "international",
     val articles: List<GuardianBrowseItem> = emptyList(),
     val isLoading: Boolean = false,
@@ -84,6 +103,7 @@ data class GuardianBrowseUiState(
 @HiltViewModel
 class GuardianBrowseViewModel @Inject constructor(
     private val guardianRepository: GuardianRepository,
+    private val csMonitorRepository: CsMonitorRepository,
     private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
@@ -91,33 +111,64 @@ class GuardianBrowseViewModel @Inject constructor(
     val uiState: StateFlow<GuardianBrowseUiState> = _uiState.asStateFlow()
 
     private var detailJob: Job? = null
+    private var sourceInitialized = false
+    private val lastSectionBySource = mutableMapOf(
+        OnlineReadingSource.GUARDIAN to "international",
+        OnlineReadingSource.CSMONITOR to ""
+    )
 
     init {
-        loadSection("international")
+        viewModelScope.launch {
+            settingsDataStore.onlineReadingSource.collectLatest { key ->
+                val source = OnlineReadingSource.fromKey(key)
+                if (!sourceInitialized || _uiState.value.selectedSource != source) {
+                    sourceInitialized = true
+                    applySource(source, forceReload = true)
+                }
+            }
+        }
     }
 
     fun loadSection(section: String) {
+        val source = _uiState.value.selectedSource
         detailJob?.cancel()
         detailJob = null
         _uiState.update { it.copy(selectedSection = section, isLoading = true, error = null) }
+        lastSectionBySource[source] = section
 
         viewModelScope.launch {
             try {
-                val articles = guardianRepository.getSectionArticles(section)
-                val items = articles.map { preview ->
-                    GuardianBrowseItem(
-                        title = preview.title,
-                        url = preview.url,
-                        trailText = preview.trailText,
-                        thumbnailUrl = preview.thumbnailUrl,
-                        author = preview.author,
-                        isAuthorLoading = true,
-                        isWordCountLoading = true
-                    )
+                val items = when (source) {
+                    OnlineReadingSource.GUARDIAN -> {
+                        guardianRepository.getSectionArticles(section).map { preview ->
+                            GuardianBrowseItem(
+                                title = preview.title,
+                                url = preview.url,
+                                trailText = preview.trailText,
+                                thumbnailUrl = preview.thumbnailUrl,
+                                author = preview.author,
+                                isAuthorLoading = true,
+                                isWordCountLoading = true
+                            )
+                        }
+                    }
+                    OnlineReadingSource.CSMONITOR -> {
+                        csMonitorRepository.getSectionArticles(section).map { preview ->
+                            GuardianBrowseItem(
+                                title = preview.title,
+                                url = preview.url,
+                                trailText = preview.trailText,
+                                thumbnailUrl = preview.thumbnailUrl,
+                                author = preview.author,
+                                isAuthorLoading = true,
+                                isWordCountLoading = true
+                            )
+                        }
+                    }
                 }
                 _uiState.update { it.copy(articles = items, isLoading = false) }
                 detailJob = viewModelScope.launch {
-                    loadArticleDetails(items)
+                    loadArticleDetails(items, source)
                 }
             } catch (e: Exception) {
                 Log.e("GuardianBrowseVM", "Failed to load section: $section", e)
@@ -126,7 +177,7 @@ class GuardianBrowseViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadArticleDetails(items: List<GuardianBrowseItem>) {
+    private suspend fun loadArticleDetails(items: List<GuardianBrowseItem>, source: OnlineReadingSource) {
         if (items.isEmpty()) return
         val concurrency = settingsDataStore.guardianDetailConcurrency.first().coerceIn(1, 10)
         val semaphore = Semaphore(concurrency)
@@ -137,7 +188,7 @@ class GuardianBrowseViewModel @Inject constructor(
                 launch {
                     semaphore.withPermit {
                         try {
-                            val detail = guardianRepository.getArticleDetail(item.url)
+                            val detail = fetchArticleDetail(source, item.url)
                             val wordCount = detail.paragraphs
                                 .joinToString(" ") { it.text }
                                 .split(Regex("\\s+"))
@@ -186,17 +237,32 @@ class GuardianBrowseViewModel @Inject constructor(
         loadSection(_uiState.value.selectedSection)
     }
 
+    fun selectSource(source: OnlineReadingSource) {
+        if (source == _uiState.value.selectedSource) return
+        viewModelScope.launch { settingsDataStore.setOnlineReadingSource(source.key) }
+        applySource(source, forceReload = true)
+    }
+
     fun openArticle(
         articleUrl: String,
         onNavigate: (Long) -> Unit
     ) {
         if (_uiState.value.isLoadingArticle) return
         _uiState.update { it.copy(isLoadingArticle = true, error = null) }
+        val source = _uiState.value.selectedSource
 
         viewModelScope.launch {
             try {
-                val detail = guardianRepository.getArticleDetail(articleUrl)
-                val articleId = guardianRepository.createTemporaryArticle(detail)
+                val articleId = when (source) {
+                    OnlineReadingSource.GUARDIAN -> {
+                        val detail = guardianRepository.getArticleDetail(articleUrl)
+                        guardianRepository.createTemporaryArticle(detail)
+                    }
+                    OnlineReadingSource.CSMONITOR -> {
+                        val detail = csMonitorRepository.getArticleDetail(articleUrl)
+                        csMonitorRepository.createTemporaryArticle(detail)
+                    }
+                }
                 _uiState.update { it.copy(isLoadingArticle = false) }
                 onNavigate(articleId)
             } catch (e: Exception) {
@@ -208,5 +274,48 @@ class GuardianBrowseViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    private fun applySource(source: OnlineReadingSource, forceReload: Boolean) {
+        val sections = when (source) {
+            OnlineReadingSource.GUARDIAN -> guardianSections
+            OnlineReadingSource.CSMONITOR -> csMonitorSections
+        }
+        val preferred = lastSectionBySource[source]?.takeIf { key ->
+            sections.any { it.key == key }
+        } ?: sections.firstOrNull()?.key.orEmpty()
+
+        if (!forceReload && _uiState.value.selectedSource == source) return
+
+        _uiState.update {
+            it.copy(
+                selectedSource = source,
+                sections = sections,
+                selectedSection = preferred,
+                articles = emptyList(),
+                isLoading = true,
+                error = null
+            )
+        }
+        loadSection(preferred)
+    }
+
+    private data class OnlineDetail(
+        val author: String,
+        val coverImageUrl: String?,
+        val paragraphs: List<ArticleParagraph>
+    )
+
+    private suspend fun fetchArticleDetail(source: OnlineReadingSource, url: String): OnlineDetail {
+        return when (source) {
+            OnlineReadingSource.GUARDIAN -> {
+                val detail = guardianRepository.getArticleDetail(url)
+                OnlineDetail(detail.author, detail.coverImageUrl, detail.paragraphs)
+            }
+            OnlineReadingSource.CSMONITOR -> {
+                val detail = csMonitorRepository.getArticleDetail(url)
+                OnlineDetail(detail.author, detail.coverImageUrl, detail.paragraphs)
+            }
+        }
     }
 }
