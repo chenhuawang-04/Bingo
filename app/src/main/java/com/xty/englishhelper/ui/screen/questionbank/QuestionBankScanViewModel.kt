@@ -12,6 +12,7 @@ import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ExamPaper
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
+import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.ScanResult
@@ -50,6 +51,8 @@ enum class ScanPhase { SELECT, SCANNING, PREVIEW }
 
 data class EditableQuestionGroup(
     val uid: String = UUID.randomUUID().toString(),
+    val questionType: String = "READING_COMPREHENSION",
+    val directions: String? = null,
     val sectionLabel: String = "",
     val sourceInfo: String = "",
     val sourceUrl: String = "",
@@ -163,6 +166,8 @@ class QuestionBankScanViewModel @Inject constructor(
 
             val editableGroups = result.questionGroups.map { group ->
                 EditableQuestionGroup(
+                    questionType = group.questionType,
+                    directions = group.directions,
                     sectionLabel = group.sectionLabel ?: "",
                     sourceInfo = group.sourceInfo ?: "",
                     sourceUrl = group.sourceUrl ?: "",
@@ -259,9 +264,11 @@ class QuestionBankScanViewModel @Inject constructor(
                     QuestionGroup(
                         uid = eg.uid,
                         examPaperId = 0,
-                        questionType = com.xty.englishhelper.domain.model.QuestionType.READING_COMPREHENSION,
+                        questionType = com.xty.englishhelper.domain.model.QuestionType.entries.find { it.name == eg.questionType }
+                            ?: com.xty.englishhelper.domain.model.QuestionType.READING_COMPREHENSION,
                         sectionLabel = eg.sectionLabel.ifBlank { null },
                         orderInPaper = i,
+                        directions = eg.directions,
                         passageText = eg.passageParagraphs.joinToString("\n"),
                         sourceInfo = eg.sourceInfo.ifBlank { null },
                         sourceUrl = eg.sourceUrl.ifBlank { null },
@@ -317,12 +324,14 @@ class QuestionBankScanViewModel @Inject constructor(
                         paperTitle = paperTitle,
                         sectionLabel = group.sectionLabel.orEmpty()
                     )
-                    backgroundTaskManager.enqueueQuestionSourceVerify(
-                        groupId = group.id,
-                        paperTitle = paperTitle,
-                        sectionLabel = group.sectionLabel.orEmpty(),
-                        sourceUrlOverride = group.sourceUrl
-                    )
+                    if (group.questionType != QuestionType.TRANSLATION) {
+                        backgroundTaskManager.enqueueQuestionSourceVerify(
+                            groupId = group.id,
+                            paperTitle = paperTitle,
+                            sectionLabel = group.sectionLabel.orEmpty(),
+                            sourceUrlOverride = group.sourceUrl
+                        )
+                    }
                 }
             } catch (_: Exception) { }
         }

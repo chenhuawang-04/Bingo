@@ -23,6 +23,7 @@ import com.xty.englishhelper.domain.model.PracticeRecord
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
+import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
 import com.xty.englishhelper.domain.model.StudyUnit
@@ -31,6 +32,8 @@ import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
+import com.xty.englishhelper.domain.repository.TranslationScore
+import com.xty.englishhelper.domain.repository.TranslationScoreInput
 import com.xty.englishhelper.domain.usecase.article.AnalyzeParagraphUseCase
 import com.xty.englishhelper.domain.usecase.article.QuickAnalyzeWordUseCase
 import com.xty.englishhelper.domain.usecase.article.ScanWordLinksUseCase
@@ -82,6 +85,9 @@ data class ReaderUiState(
     val showingAnswers: Boolean = false,
     val wrongItemIds: Set<Long> = emptySet(),
     val practiceResults: Map<Long, Boolean> = emptyMap(),
+    // Translation scoring
+    val translationScores: Map<Long, TranslationScore> = emptyMap(),
+    val isScoringTranslation: Boolean = false,
     // Source
     val linkedArticleId: Long? = null,
     val isVerifying: Boolean = false,
@@ -504,9 +510,31 @@ class QuestionBankReaderViewModel @Inject constructor(
         if (state.isSubmitted || state.items.isEmpty()) return
 
         viewModelScope.launch {
-            val results = mutableMapOf<Long, Boolean>()
             val records = mutableListOf<PracticeRecord>()
             val now = System.currentTimeMillis()
+
+            val isTranslation = state.group?.questionType == QuestionType.TRANSLATION
+            if (isTranslation) {
+                for (item in state.items) {
+                    val userAnswer = state.selectedAnswers[item.id] ?: continue
+                    records.add(
+                        PracticeRecord(
+                            questionItemId = item.id,
+                            userAnswer = userAnswer,
+                            isCorrect = true,
+                            practicedAt = now
+                        )
+                    )
+                }
+                if (records.isNotEmpty()) {
+                    repository.insertPracticeRecords(records)
+                }
+                _uiState.update { it.copy(isSubmitted = true, isScoringTranslation = true) }
+                scoreTranslationAnswers()
+                return@launch
+            }
+
+            val results = mutableMapOf<Long, Boolean>()
 
             for (item in state.items) {
                 val userAnswer = state.selectedAnswers[item.id]
@@ -557,6 +585,52 @@ class QuestionBankReaderViewModel @Inject constructor(
         }
     }
 
+    private fun scoreTranslationAnswers() {
+        viewModelScope.launch {
+            try {
+                val config = settingsDataStore.getFastAiConfig()
+                if (config.apiKey.isBlank()) {
+                    _uiState.update { it.copy(isScoringTranslation = false, error = "请先配置 AI 模型") }
+                    return@launch
+                }
+                val state = _uiState.value
+                val inputs = state.items.mapNotNull { item ->
+                    val userAnswer = state.selectedAnswers[item.id] ?: return@mapNotNull null
+                    val reference = item.correctAnswer ?: return@mapNotNull null
+                    TranslationScoreInput(
+                        questionNumber = item.questionNumber,
+                        originalText = item.questionText,
+                        referenceTranslation = reference,
+                        userTranslation = userAnswer
+                    )
+                }
+                if (inputs.isEmpty()) {
+                    _uiState.update { it.copy(isScoringTranslation = false) }
+                    return@launch
+                }
+                val scores = aiRepository.scoreTranslations(
+                    inputs, config.apiKey, config.model, config.baseUrl, config.provider
+                )
+                val scoreMap = mutableMapOf<Long, TranslationScore>()
+                for (score in scores) {
+                    val item = state.items.find { it.questionNumber == score.questionNumber }
+                    if (item != null) scoreMap[item.id] = score
+                }
+                val missing = inputs.size - scoreMap.size
+                val errorMsg = if (missing > 0) "AI 评分不完整（缺少 $missing 题），请重试" else null
+                _uiState.update {
+                    it.copy(
+                        translationScores = scoreMap,
+                        isScoringTranslation = false,
+                        error = errorMsg ?: it.error
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isScoringTranslation = false, error = "AI 评分失败：${e.message}") }
+            }
+        }
+    }
+
     fun showAnswers() {
         _uiState.update { it.copy(showingAnswers = true) }
     }
@@ -567,7 +641,9 @@ class QuestionBankReaderViewModel @Inject constructor(
                 selectedAnswers = emptyMap(),
                 isSubmitted = false,
                 showingAnswers = false,
-                practiceResults = emptyMap()
+                practiceResults = emptyMap(),
+                translationScores = emptyMap(),
+                isScoringTranslation = false
             )
         }
     }

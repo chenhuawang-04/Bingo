@@ -308,8 +308,8 @@ private fun PreviewPhaseContent(
                                     )
                                 }
 
-                                // Validation: empty question text
-                                if (question.questionText.isBlank()) {
+                                // Validation: empty question text (skip for CLOZE where it's intentionally empty)
+                                if (question.questionText.isBlank() && group.questionType != "CLOZE" && group.questionType != "TRANSLATION") {
                                     Text(
                                         "此字段不能为空",
                                         style = MaterialTheme.typography.labelSmall,

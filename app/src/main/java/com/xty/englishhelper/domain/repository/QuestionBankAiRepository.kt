@@ -20,6 +20,7 @@ interface QuestionBankAiRepository {
     // ── Generate answers ──
     suspend fun generateAnswers(
         passageText: String, questions: List<QuestionItem>,
+        questionType: String,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): List<AnswerResult>
 
@@ -28,7 +29,26 @@ interface QuestionBankAiRepository {
         images: List<ByteArray>, questionNumbers: List<Int>,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): List<AnswerResult>
+    // ── Score translations ──
+    suspend fun scoreTranslations(
+        items: List<TranslationScoreInput>,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): List<TranslationScore>
 }
+
+data class TranslationScoreInput(
+    val questionNumber: Int,
+    val originalText: String,
+    val referenceTranslation: String,
+    val userTranslation: String
+)
+
+data class TranslationScore(
+    val questionNumber: Int = 0,
+    val score: Float = 0f,
+    val maxScore: Float = 2f,
+    val feedback: String = ""
+)
 
 data class ScanResult(
     val examPaperTitle: String = "",

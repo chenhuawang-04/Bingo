@@ -11,6 +11,8 @@ import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.ScanResult
 import com.xty.englishhelper.domain.repository.ScannedQuestion
 import com.xty.englishhelper.domain.repository.ScannedQuestionGroup
+import com.xty.englishhelper.domain.repository.TranslationScore
+import com.xty.englishhelper.domain.repository.TranslationScoreInput
 import com.xty.englishhelper.domain.repository.VerifyResult
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -62,6 +64,10 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
 """.trimIndent())
             append("\nRules:\n")
+            append("- questionType: \"READING_COMPREHENSION\" for standard reading comprehension, \"CLOZE\" for cloze/fill-in-the-blank (e.g. Section I / Use of English), \"TRANSLATION\" for translation sections.\n")
+            append("- CLOZE rules: Mark blanks in passageParagraphs as __N__ where N is the exact questionNumber of the corresponding question (e.g. if questions are numbered 1-20, blanks are __1__ to __20__; if 21-40, blanks are __21__ to __40__). questionText should be empty for CLOZE questions. Options are the candidate words.\n")
+            append("- TRANSLATION rules (英语一 / multiple underlined sentences): In passageParagraphs, wrap each underlined sentence with ((N))sentence text((/N)) where N = questionNumber. Each marked sentence becomes one question with questionText = the English sentence to translate. optionA/B/C/D must all be null.\n")
+            append("- TRANSLATION rules (英语二 / single paragraph translation): passageParagraphs contain the full paragraph. Only 1 question, questionText = the full English text to translate. optionA/B/C/D must all be null.\n")
             append("- Transcribe passage text EXACTLY as printed, preserving all paragraphs.\n")
             append("- sourceUrl: Do NOT extract URLs from the exam paper image (exam papers never print source URLs). ")
             append("Instead, use web content to identify and confirm the original source article for each reading passage. ")
@@ -134,24 +140,58 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 
     override suspend fun generateAnswers(
         passageText: String, questions: List<QuestionItem>,
+        questionType: String,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): List<AnswerResult> {
-        val systemPrompt = "You are an expert English exam answer generator. Read the passage and answer each multiple-choice question."
+        val isCloze = questionType == "CLOZE"
+        val isTranslation = questionType == "TRANSLATION"
+        val systemPrompt = when {
+            isCloze -> "You are an expert English cloze test solver. " +
+                "Read the passage with numbered blanks (__1__, __2__, etc.) and choose the best word for each blank based on context, grammar, collocations and meaning."
+            isTranslation -> "You are an expert English-to-Chinese translator for 考研英语 (postgraduate entrance exam). " +
+                "Provide accurate, natural Chinese translations and key translation notes."
+            else -> "You are an expert English exam answer generator. Read the passage and answer each multiple-choice question."
+        }
         val userMessage = buildString {
-            append("Passage:\n$passageText\n\nQuestions:\n")
-            questions.forEach { q ->
-                append("${q.questionNumber}. ${q.questionText}\n")
-                q.optionA?.let { append("[A] $it\n") }
-                q.optionB?.let { append("[B] $it\n") }
-                q.optionC?.let { append("[C] $it\n") }
-                q.optionD?.let { append("[D] $it\n") }
-                append("\n")
-            }
-            append("Return strict JSON array:\n")
-            append("""
+            if (isTranslation) {
+                append("Passage:\n$passageText\n\n")
+                append("Translate the following English sentences into Chinese:\n")
+                questions.forEach { q ->
+                    append("${q.questionNumber}. ${q.questionText}\n")
+                }
+                append("\nReturn strict JSON array:\n")
+                val exampleNum = questions.firstOrNull()?.questionNumber ?: 1
+                append("""
 [
   {
-    "questionNumber": 21,
+    "questionNumber": $exampleNum,
+    "answer": "中文参考译文",
+    "explanation": "翻译要点：关键词汇、句式结构、得分点分析",
+    "difficultyLevel": "MEDIUM",
+    "difficultyScore": 0.6
+  }
+]
+""".trimIndent())
+            } else {
+                append("Passage:\n$passageText\n\nQuestions:\n")
+                questions.forEach { q ->
+                    if (isCloze) {
+                        append("${q.questionNumber}. ")
+                    } else {
+                        append("${q.questionNumber}. ${q.questionText}\n")
+                    }
+                    q.optionA?.let { append("[A] $it ") }
+                    q.optionB?.let { append("[B] $it ") }
+                    q.optionC?.let { append("[C] $it ") }
+                    q.optionD?.let { append("[D] $it") }
+                    append("\n")
+                }
+                append("Return strict JSON array:\n")
+                val exampleNum = questions.firstOrNull()?.questionNumber ?: 1
+                append("""
+[
+  {
+    "questionNumber": $exampleNum,
     "answer": "A",
     "explanation": "brief explanation",
     "difficultyLevel": "MEDIUM",
@@ -159,6 +199,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
   }
 ]
 """.trimIndent())
+            }
+            append("\nIMPORTANT: questionNumber in your response must match the actual question numbers provided above (${questions.firstOrNull()?.questionNumber}–${questions.lastOrNull()?.questionNumber}).")
         }
 
         val client = clientProvider.getClient(provider)
@@ -194,6 +236,47 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         return parseAnswerResults(responseText)
+    }
+
+    override suspend fun scoreTranslations(
+        items: List<TranslationScoreInput>,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): List<TranslationScore> {
+        val systemPrompt = "You are a 考研英语翻译评分专家. " +
+            "Score each translation on a 0-2 scale based on accuracy of key terms, sentence structure, and naturalness of the Chinese expression. " +
+            "Provide specific feedback on scoring points gained and lost."
+        val userMessage = buildString {
+            append("Score the following translations:\n\n")
+            items.forEach { item ->
+                append("--- Question ${item.questionNumber} ---\n")
+                append("Original: ${item.originalText}\n")
+                append("Reference: ${item.referenceTranslation}\n")
+                append("Student: ${item.userTranslation}\n\n")
+            }
+            append("Return strict JSON array with EXACTLY ${items.size} elements, one per question above.\n")
+            append("IMPORTANT: You must return a score for EVERY question number listed above (${items.joinToString(", ") { it.questionNumber.toString() }}). Do not skip any.\n")
+            append("""
+[
+  {
+    "questionNumber": ${items.firstOrNull()?.questionNumber ?: 1},
+    "score": 1.5,
+    "maxScore": 2,
+    "feedback": "得分点：xxx；失分点：xxx"
+  }
+]
+""".trimIndent())
+            append("\nReturn JSON only, no markdown fences.")
+        }
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl, apiKey = apiKey, model = model,
+            systemPrompt = systemPrompt,
+            messages = listOf(ChatMessage(role = "user", content = userMessage)),
+            maxTokens = 4096
+        )
+
+        return parseTranslationScores(responseText)
     }
 
     // ── JSON Parsing ──
@@ -254,6 +337,24 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
                 explanation = it.explanation,
                 difficultyLevel = it.difficultyLevel,
                 difficultyScore = it.difficultyScore
+            )
+        } ?: emptyList()
+    }
+
+    private fun parseTranslationScores(responseText: String): List<TranslationScore> {
+        val cleaned = stripCodeFence(responseText)
+        val json = extractFirstJsonArray(cleaned) ?: cleaned.trim()
+        val type = Types.newParameterizedType(List::class.java, TranslationScoreJson::class.java)
+        val adapter = moshi.adapter<List<TranslationScoreJson>>(type).lenient()
+        val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
+            ?: runCatching { adapter.fromJson(removeTrailingCommas(json)) }.getOrNull()
+
+        return parsed?.map {
+            TranslationScore(
+                questionNumber = it.questionNumber ?: 0,
+                score = it.score ?: 0f,
+                maxScore = it.maxScore ?: 2f,
+                feedback = it.feedback ?: ""
             )
         } ?: emptyList()
     }
@@ -376,4 +477,11 @@ private data class AnswerResultJson(
     val explanation: String? = null,
     val difficultyLevel: String? = null,
     val difficultyScore: Float? = null
+)
+
+private data class TranslationScoreJson(
+    val questionNumber: Int? = null,
+    val score: Float? = null,
+    val maxScore: Float? = null,
+    val feedback: String? = null
 )
