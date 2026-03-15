@@ -99,7 +99,9 @@ class CsMonitorHtmlParser {
         if (url.isBlank()) return false
         val lower = url.lowercase()
         if (!lower.contains("csmonitor.com")) return false
-        if (lower.contains("/podcasts")) return false
+        if (lower.contains("/podcasts")) {
+            return lower.matches(Regex(".*\\/podcasts\\/\\d{4}\\/\\d{2}\\/\\d{2}\\/.*"))
+        }
         return lower.matches(Regex(".*\\/\\d{4}\\/\\d{4}\\/.*")) ||
             lower.matches(Regex(".*\\/\\d{4}\\/\\d{2}\\/\\d{2}\\/.*"))
     }
