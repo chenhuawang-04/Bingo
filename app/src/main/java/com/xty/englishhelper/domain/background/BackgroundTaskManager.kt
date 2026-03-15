@@ -11,6 +11,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
+import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
@@ -87,6 +88,16 @@ class BackgroundTaskManager @Inject constructor(
     ) {
         val payload = QuestionSourceVerifyPayload(groupId, paperTitle, sectionLabel, sourceUrlOverride)
         enqueueTask(BackgroundTaskType.QUESTION_SOURCE_VERIFY, payload, "verify:$groupId", force)
+    }
+
+    fun enqueueQuestionWritingSampleSearch(
+        groupId: Long,
+        paperTitle: String,
+        questionSnippet: String,
+        force: Boolean = false
+    ) {
+        val payload = QuestionWritingSamplePayload(groupId, paperTitle, questionSnippet)
+        enqueueTask(BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH, payload, "writing_sample:$groupId", force)
     }
 
     fun pauseTask(taskId: Long) {
@@ -251,6 +262,7 @@ class BackgroundTaskManager @Inject constructor(
             BackgroundTaskType.WORD_POOL_REBUILD -> executeWordPoolRebuild(task)
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> executeAnswerGenerate(task)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> executeSourceVerify(task)
+            BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> executeWritingSampleSearch(task)
             BackgroundTaskType.UNKNOWN -> throw IllegalStateException("未知任务类型")
         }
     }
@@ -408,6 +420,48 @@ class BackgroundTaskManager @Inject constructor(
             questionBankRepository.updateSourceVerification(group.id, -1, "来源文章创建失败")
             throw IllegalStateException("来源文章创建失败: ${e.message}", e)
         }
+        repository.updateProgress(task.id, 1, 1)
+    }
+
+    private suspend fun executeWritingSampleSearch(task: BackgroundTask) {
+        val payload = task.payload as? QuestionWritingSamplePayload ?: throw IllegalStateException("任务参数缺失")
+        val group = questionBankRepository.getGroupById(payload.groupId) ?: throw IllegalStateException("题组不存在")
+        val items = questionBankRepository.getItemsByGroup(group.id)
+        if (items.isEmpty()) {
+            repository.updateProgress(task.id, 0, 0)
+            return
+        }
+        val config = settingsDataStore.getAiConfig(AiSettingsScope.SEARCH)
+        if (config.apiKey.isBlank()) {
+            throw IllegalStateException("搜索模型未配置")
+        }
+        repository.updateProgress(task.id, 0, 1)
+        val mainItem = items.first()
+        val questionText = if (mainItem.questionText.isNotBlank()) {
+            mainItem.questionText
+        } else {
+            payload.questionSnippet
+        }
+        val result = questionBankAiRepository.searchWritingSample(
+            payload.paperTitle.ifBlank { group.sectionLabel.orEmpty() },
+            questionText,
+            config.apiKey,
+            config.model,
+            config.baseUrl,
+            config.provider
+        )
+        if (!result.matched || result.sampleText.isNullOrBlank() || result.sourceUrl.isNullOrBlank()) {
+            throw IllegalStateException(result.errorMessage ?: "未找到真实范文")
+        }
+        questionBankRepository.updateWritingSample(
+            mainItem.id,
+            result.sampleText,
+            "WEB",
+            result.sampleTitle,
+            result.sourceUrl,
+            result.sourceInfo
+        )
+        questionBankRepository.markHasAiAnswer(group.id)
         repository.updateProgress(task.id, 1, 1)
     }
 }

@@ -8,7 +8,7 @@ enum class QuestionType(val displayName: String) {
     WRITING("写作");
 }
 
-enum class AnswerSource { NONE, AI, SCANNED }
+enum class AnswerSource { NONE, AI, SCANNED, WEB }
 
 enum class DifficultyLevel(val displayName: String) {
     EASY("简单"), MEDIUM("中等"), HARD("困难")

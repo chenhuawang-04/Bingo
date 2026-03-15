@@ -841,6 +841,9 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         difficultyScore = item.difficultyScore,
                         wrongCount = item.wrongCount,
                         extraData = item.extraData,
+                        sampleSourceTitle = item.sampleSourceTitle,
+                        sampleSourceUrl = item.sampleSourceUrl,
+                        sampleSourceInfo = item.sampleSourceInfo,
                         practiceRecords = records.map { r ->
                             PracticeRecordJson(
                                 userAnswer = r.userAnswer,
@@ -978,7 +981,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                             difficultyLevel = itemJson.difficultyLevel,
                             difficultyScore = itemJson.difficultyScore,
                             wrongCount = itemJson.wrongCount,
-                            extraData = itemJson.extraData
+                            extraData = itemJson.extraData,
+                            sampleSourceTitle = itemJson.sampleSourceTitle,
+                            sampleSourceUrl = itemJson.sampleSourceUrl,
+                            sampleSourceInfo = itemJson.sampleSourceInfo
                         )
                     )
 

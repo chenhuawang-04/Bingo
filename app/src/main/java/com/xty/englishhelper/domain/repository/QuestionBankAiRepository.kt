@@ -34,6 +34,33 @@ interface QuestionBankAiRepository {
         items: List<TranslationScoreInput>,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): List<TranslationScore>
+
+    // ── Writing: prompt source search ──
+    suspend fun searchWritingPromptSource(
+        paperTitle: String,
+        questionText: String,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): WritingPromptSourceResult
+
+    // ── Writing: sample search ──
+    suspend fun searchWritingSample(
+        paperTitle: String,
+        questionText: String,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): WritingSampleResult
+
+    // ── Writing: OCR essay ──
+    suspend fun extractWritingFromImages(
+        images: List<ByteArray>,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): String
+
+    // ── Writing: scoring ──
+    suspend fun scoreWriting(
+        questionText: String,
+        essayText: String,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): WritingScore
 }
 
 data class TranslationScoreInput(
@@ -48,6 +75,48 @@ data class TranslationScore(
     val score: Float = 0f,
     val maxScore: Float = 2f,
     val feedback: String = ""
+)
+
+data class WritingSampleResult(
+    val matched: Boolean = false,
+    val sampleTitle: String? = null,
+    val sampleText: String? = null,
+    val sourceUrl: String? = null,
+    val sourceInfo: String? = null,
+    val confidence: Float = 0f,
+    val errorMessage: String? = null
+)
+
+data class WritingPromptSourceResult(
+    val matched: Boolean = false,
+    val sourceUrl: String? = null,
+    val sourceInfo: String? = null,
+    val confidence: Float = 0f,
+    val errorMessage: String? = null
+)
+
+data class WritingScore(
+    val writingType: String = "UNKNOWN",
+    val wordCount: Int = 0,
+    val band: String = "",
+    val totalScore: Float = 0f,
+    val maxScore: Float = 0f,
+    val subScores: WritingSubScores = WritingSubScores(),
+    val deductions: List<WritingDeduction> = emptyList(),
+    val summary: String = "",
+    val suggestions: List<String> = emptyList()
+)
+
+data class WritingSubScores(
+    val content: Float = 0f,
+    val language: Float = 0f,
+    val structure: Float = 0f,
+    val format: Float = 0f
+)
+
+data class WritingDeduction(
+    val reason: String = "",
+    val score: Float = 0f
 )
 
 data class ScanResult(

@@ -84,6 +84,10 @@ class QuestionBankRepositoryImpl @Inject constructor(
         dao.updateSourceUrl(groupId, url, System.currentTimeMillis())
     }
 
+    override suspend fun updateSourceMeta(groupId: Long, url: String?, info: String?) {
+        dao.updateSourceMeta(groupId, url, info, System.currentTimeMillis())
+    }
+
     override suspend fun markHasAiAnswer(groupId: Long) {
         dao.markHasAiAnswer(groupId, System.currentTimeMillis())
     }
@@ -127,6 +131,17 @@ class QuestionBankRepositoryImpl @Inject constructor(
         explanation: String?, difficultyLevel: String?, difficultyScore: Float?
     ) {
         dao.updateAnswer(itemId, answer, source, explanation, difficultyLevel, difficultyScore)
+    }
+
+    override suspend fun updateWritingSample(
+        itemId: Long,
+        sampleText: String,
+        source: String,
+        sampleTitle: String?,
+        sampleUrl: String?,
+        sampleInfo: String?
+    ) {
+        dao.updateWritingSample(itemId, sampleText, source, sampleTitle, sampleUrl, sampleInfo)
     }
 
     override suspend fun incrementWrongCount(itemId: Long) = dao.incrementWrongCount(itemId)
@@ -294,7 +309,11 @@ class QuestionBankRepositoryImpl @Inject constructor(
         wordCount = wordCount,
         difficultyLevel = DifficultyLevel.entries.find { it.name == difficultyLevel },
         difficultyScore = difficultyScore,
-        wrongCount = wrongCount, extraData = extraData
+        wrongCount = wrongCount,
+        extraData = extraData,
+        sampleSourceTitle = sampleSourceTitle,
+        sampleSourceUrl = sampleSourceUrl,
+        sampleSourceInfo = sampleSourceInfo
     )
 
     private fun QuestionItem.toEntity(index: Int) = QuestionItemEntity(
@@ -305,7 +324,11 @@ class QuestionBankRepositoryImpl @Inject constructor(
         explanation = explanation, orderInGroup = index,
         wordCount = wordCount,
         difficultyLevel = difficultyLevel?.name, difficultyScore = difficultyScore,
-        wrongCount = wrongCount, extraData = extraData
+        wrongCount = wrongCount,
+        extraData = extraData,
+        sampleSourceTitle = sampleSourceTitle,
+        sampleSourceUrl = sampleSourceUrl,
+        sampleSourceInfo = sampleSourceInfo
     )
 
     private fun PracticeRecord.toEntity() = PracticeRecordEntity(

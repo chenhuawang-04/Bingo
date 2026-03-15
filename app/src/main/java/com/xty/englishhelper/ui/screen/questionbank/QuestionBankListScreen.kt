@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.QuestionGroup
+import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
@@ -268,14 +269,15 @@ private fun QuestionGroupCard(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            "答案生成中",
+                            if (group.questionType == QuestionType.WRITING) "范文检索中" else "答案生成中",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
                 } else {
                     if (group.hasAiAnswer) {
-                        Text("AI答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                        val label = if (group.questionType == QuestionType.WRITING) "范文" else "AI答案"
+                        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                     }
                     if (group.hasScannedAnswer) {
                         Text("扫描答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)

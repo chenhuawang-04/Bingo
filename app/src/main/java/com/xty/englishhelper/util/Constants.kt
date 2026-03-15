@@ -59,7 +59,8 @@ object Constants {
   "cognates": [
     {"word": "同根词", "meaning": "含义", "sharedRoot": "共同词根"}
   ]
-}"""
+}
+- Return JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT."""
 
     const val AI_USER_PROMPT_TEMPLATE = "请分析单词：%s"
 }

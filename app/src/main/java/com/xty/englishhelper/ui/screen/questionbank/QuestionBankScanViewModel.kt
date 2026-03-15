@@ -319,18 +319,27 @@ class QuestionBankScanViewModel @Inject constructor(
             try {
                 val groupList = repository.getGroupsByPaper(paperId).first()
                 for (group in groupList) {
-                    backgroundTaskManager.enqueueQuestionAnswerGeneration(
-                        groupId = group.id,
-                        paperTitle = paperTitle,
-                        sectionLabel = group.sectionLabel.orEmpty()
-                    )
-                    if (group.questionType != QuestionType.TRANSLATION) {
-                        backgroundTaskManager.enqueueQuestionSourceVerify(
+                    if (group.questionType == QuestionType.WRITING) {
+                        val snippet = group.items.firstOrNull()?.questionText?.take(300).orEmpty()
+                        backgroundTaskManager.enqueueQuestionWritingSampleSearch(
                             groupId = group.id,
                             paperTitle = paperTitle,
-                            sectionLabel = group.sectionLabel.orEmpty(),
-                            sourceUrlOverride = group.sourceUrl
+                            questionSnippet = snippet
                         )
+                    } else {
+                        backgroundTaskManager.enqueueQuestionAnswerGeneration(
+                            groupId = group.id,
+                            paperTitle = paperTitle,
+                            sectionLabel = group.sectionLabel.orEmpty()
+                        )
+                        if (group.questionType != QuestionType.TRANSLATION) {
+                            backgroundTaskManager.enqueueQuestionSourceVerify(
+                                groupId = group.id,
+                                paperTitle = paperTitle,
+                                sectionLabel = group.sectionLabel.orEmpty(),
+                                sourceUrlOverride = group.sourceUrl
+                            )
+                        }
                     }
                 }
             } catch (_: Exception) { }

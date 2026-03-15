@@ -93,6 +93,17 @@ interface QuestionBankDao {
     """)
     suspend fun updateSourceUrl(groupId: Long, url: String, updatedAt: Long)
 
+    @Query("""
+        UPDATE question_groups
+        SET source_url = :url,
+            source_info = :info,
+            source_verified = 0,
+            source_verify_error = NULL,
+            updated_at = :updatedAt
+        WHERE id = :groupId
+    """)
+    suspend fun updateSourceMeta(groupId: Long, url: String?, info: String?, updatedAt: Long)
+
     @Query("UPDATE question_groups SET has_ai_answer = 1, updated_at = :updatedAt WHERE id = :groupId")
     suspend fun markHasAiAnswer(groupId: Long, updatedAt: Long)
 
@@ -136,6 +147,24 @@ interface QuestionBankDao {
     suspend fun updateAnswer(
         itemId: Long, answer: String, source: String,
         explanation: String?, difficultyLevel: String?, difficultyScore: Float?
+    )
+
+    @Query("""
+        UPDATE question_items
+        SET correct_answer = :sampleText,
+            answer_source = :source,
+            sample_source_title = :sampleTitle,
+            sample_source_url = :sampleUrl,
+            sample_source_info = :sampleInfo
+        WHERE id = :itemId
+    """)
+    suspend fun updateWritingSample(
+        itemId: Long,
+        sampleText: String,
+        source: String,
+        sampleTitle: String?,
+        sampleUrl: String?,
+        sampleInfo: String?
     )
 
     @Query("UPDATE question_items SET wrong_count = wrong_count + 1 WHERE id = :itemId")

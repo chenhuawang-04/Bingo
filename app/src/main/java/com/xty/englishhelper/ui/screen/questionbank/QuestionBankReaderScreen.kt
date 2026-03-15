@@ -82,6 +82,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -97,6 +98,7 @@ import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
 import com.xty.englishhelper.domain.repository.TranslationScore
+import com.xty.englishhelper.domain.repository.WritingScore
 import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
 import com.xty.englishhelper.ui.screen.article.CollectionNotebookSheet
@@ -121,6 +123,15 @@ fun QuestionBankReaderScreen(
         ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) viewModel.scanAnswerImages(uris)
+    }
+    val writingImageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.scanWritingImages(uris)
+        } else {
+            viewModel.cancelWritingOcrSubmit()
+        }
     }
 
     LaunchedEffect(state.error) {
@@ -235,6 +246,7 @@ fun QuestionBankReaderScreen(
         } else {
             val isCloze = state.group?.questionType == QuestionType.CLOZE
             val isTranslation = state.group?.questionType == QuestionType.TRANSLATION
+            val isWriting = state.group?.questionType == QuestionType.WRITING
             when {
                 isCloze -> ClozeReaderContent(
                     state = state,
@@ -251,6 +263,17 @@ fun QuestionBankReaderScreen(
                     onSubmitAnswers = { viewModel.submitAnswers() },
                     onShowAnswers = { viewModel.showAnswers() },
                     onRetryPractice = { viewModel.retryPractice() },
+                    modifier = Modifier.fillMaxSize().padding(padding)
+                )
+                isWriting -> WritingReaderContent(
+                    state = state,
+                    onSelectAnswer = viewModel::selectAnswer,
+                    onSubmitAnswers = { viewModel.submitAnswers() },
+                    onRetryPractice = { viewModel.retryPractice() },
+                    onScanWriting = { writingImageLauncher.launch("image/*") },
+                    onSearchSample = { viewModel.searchWritingSample(true) },
+                    onSearchPromptSource = { viewModel.searchWritingPromptSource() },
+                    onPrepareOcrSubmit = { viewModel.prepareWritingOcrSubmit() },
                     modifier = Modifier.fillMaxSize().padding(padding)
                 )
                 else -> ReaderContent(
@@ -657,6 +680,7 @@ private fun QuestionCard(
                                 when (source) {
                                     com.xty.englishhelper.domain.model.AnswerSource.AI -> "(AI)"
                                     com.xty.englishhelper.domain.model.AnswerSource.SCANNED -> "(扫描)"
+                                    com.xty.englishhelper.domain.model.AnswerSource.WEB -> "(范文)"
                                     else -> ""
                                 },
                                 style = MaterialTheme.typography.labelSmall,
@@ -1531,5 +1555,371 @@ private fun TranslationActionBar(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+// ── WRITING Reader ──
+
+@Composable
+private fun WritingReaderContent(
+    state: ReaderUiState,
+    onSelectAnswer: (Long, String) -> Unit,
+    onSubmitAnswers: () -> Unit,
+    onRetryPractice: () -> Unit,
+    onScanWriting: () -> Unit,
+    onSearchSample: () -> Unit,
+    onSearchPromptSource: () -> Unit,
+    onPrepareOcrSubmit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    if (isLandscape) {
+        Row(modifier = modifier.height(IntrinsicSize.Min)) {
+            WritingPassagePanel(
+                state = state,
+                onSearchSample = onSearchSample,
+                onSearchPromptSource = onSearchPromptSource,
+                modifier = Modifier.weight(0.5f).fillMaxHeight()
+            )
+            VerticalDivider()
+            WritingAnswerPanel(
+                state = state,
+                onSelectAnswer = onSelectAnswer,
+                onSubmitAnswers = onSubmitAnswers,
+                onRetryPractice = onRetryPractice,
+                onScanWriting = onScanWriting,
+                onPrepareOcrSubmit = onPrepareOcrSubmit,
+                modifier = Modifier.weight(0.5f).fillMaxHeight()
+            )
+        }
+    } else {
+        Column(modifier = modifier) {
+            WritingPassagePanel(
+                state = state,
+                onSearchSample = onSearchSample,
+                onSearchPromptSource = onSearchPromptSource,
+                modifier = Modifier.weight(0.45f)
+            )
+            HorizontalDivider()
+            WritingAnswerPanel(
+                state = state,
+                onSelectAnswer = onSelectAnswer,
+                onSubmitAnswers = onSubmitAnswers,
+                onRetryPractice = onRetryPractice,
+                onScanWriting = onScanWriting,
+                onPrepareOcrSubmit = onPrepareOcrSubmit,
+                modifier = Modifier.weight(0.55f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun WritingPassagePanel(
+    state: ReaderUiState,
+    onSearchSample: () -> Unit,
+    onSearchPromptSource: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val group = state.group ?: return
+    val item = state.items.firstOrNull()
+    val uriHandler = LocalUriHandler.current
+
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "writing_header") {
+            Column {
+                if (state.paperTitle.isNotBlank()) {
+                    Text(
+                        state.paperTitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    group.sectionLabel ?: group.questionType.displayName,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (!group.directions.isNullOrBlank()) {
+                    Text(
+                        group.directions!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider()
+            }
+        }
+
+        item(key = "writing_prompt") {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("题干", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        item?.questionText.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (!group.sourceUrl.isNullOrBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text("题干来源", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            group.sourceUrl!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { uriHandler.openUri(group.sourceUrl!!) }
+                        )
+                    } else {
+                        Text(
+                            "未填写题干来源",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (state.isSearchingWritingSource) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Text(
+                                "检索中…",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            TextButton(onClick = onSearchPromptSource) {
+                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("重新补录来源")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (group.passageText.isNotBlank()) {
+            item(key = "writing_passage") {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("背景材料", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(group.passageText, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+
+        item(key = "writing_sample_header") {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("参考范文", style = MaterialTheme.typography.titleSmall)
+                if (state.isSearchingWritingSample) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Text("检索中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                } else {
+                    TextButton(onClick = onSearchSample) { Text("重新检索") }
+                }
+            }
+        }
+
+        item(key = "writing_sample_body") {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val sampleTitle = item?.sampleSourceTitle
+                    val sampleInfo = item?.sampleSourceInfo
+                    val sampleUrl = item?.sampleSourceUrl
+                    val sampleText = item?.correctAnswer
+                    if (!sampleTitle.isNullOrBlank()) {
+                        Text(sampleTitle, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+                    if (!sampleInfo.isNullOrBlank()) {
+                        Text(sampleInfo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (!sampleUrl.isNullOrBlank()) {
+                        Text(
+                            sampleUrl,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { uriHandler.openUri(sampleUrl) }
+                        )
+                    }
+                    if (!sampleText.isNullOrBlank()) {
+                        Text(sampleText, style = MaterialTheme.typography.bodySmall)
+                    } else if (!state.writingSampleError.isNullOrBlank()) {
+                        Text(
+                            "检索失败：${state.writingSampleError}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        Text(
+                            "暂无范文，请检索或稍后再试",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WritingAnswerPanel(
+    state: ReaderUiState,
+    onSelectAnswer: (Long, String) -> Unit,
+    onSubmitAnswers: () -> Unit,
+    onRetryPractice: () -> Unit,
+    onScanWriting: () -> Unit,
+    onPrepareOcrSubmit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val item = state.items.firstOrNull()
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "writing_answer_header") {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("作答", style = MaterialTheme.typography.titleSmall)
+                if (state.isOcrWriting) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Text("OCR 中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                } else if (state.isCompressingWriting) {
+                    Text("压缩图片中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+
+        item(key = "writing_input") {
+            if (item == null) return@item
+            OutlinedTextField(
+                value = state.selectedAnswers[item.id].orEmpty(),
+                onValueChange = { onSelectAnswer(item.id, it) },
+                label = { Text("输入作文") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 6,
+                maxLines = 12,
+                enabled = !state.isSubmitted
+            )
+        }
+
+        item(key = "writing_actions") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onScanWriting,
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.isSubmitted && !state.isOcrWriting
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("扫描作文")
+                }
+                if (!state.isSubmitted) {
+                    Button(
+                        onClick = {
+                            val current = item?.let { state.selectedAnswers[it.id].orEmpty() }.orEmpty()
+                            if (current.isBlank()) {
+                                onPrepareOcrSubmit()
+                                onScanWriting()
+                            } else {
+                                onSubmitAnswers()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = item != null && !state.isOcrWriting && !state.isCompressingWriting
+                    ) { Text("提交批阅") }
+                } else {
+                    Button(
+                        onClick = onRetryPractice,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("重做") }
+                }
+            }
+        }
+
+        item(key = "writing_score") {
+            val score = item?.let { state.writingScores[it.id] }
+            if (state.isScoringWriting) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text("批阅中…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (score != null) {
+                WritingScoreCard(score = score)
+            }
+        }
+
+        item(key = "writing_bottom") {
+            Spacer(Modifier.height(80.dp))
+        }
+    }
+}
+
+@Composable
+private fun WritingScoreCard(score: WritingScore) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "评分：",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "${score.totalScore}/${score.maxScore}（${score.band}）",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Text(
+                "字数：${score.wordCount}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("内容 ${score.subScores.content}", style = MaterialTheme.typography.bodySmall)
+                Text("语言 ${score.subScores.language}", style = MaterialTheme.typography.bodySmall)
+                Text("结构 ${score.subScores.structure}", style = MaterialTheme.typography.bodySmall)
+                Text("格式 ${score.subScores.format}", style = MaterialTheme.typography.bodySmall)
+            }
+            if (score.deductions.isNotEmpty()) {
+                Text("扣分项：", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                score.deductions.forEach { d ->
+                    Text("${d.reason} (${d.score})", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (score.summary.isNotBlank()) {
+                Text("总体评价", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text(score.summary, style = MaterialTheme.typography.bodySmall)
+            }
+            if (score.suggestions.isNotEmpty()) {
+                Text("改进建议", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                score.suggestions.forEach { s ->
+                    Text("• $s", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
     }
 }

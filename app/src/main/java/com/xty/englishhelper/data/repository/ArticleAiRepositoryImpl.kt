@@ -40,6 +40,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
                 }
                 """.trimIndent()
             )
+            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
             if (!hint.isNullOrBlank()) {
                 append("\nHint: ")
                 append(hint)
@@ -67,7 +68,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
         baseUrl: String,
         provider: AiProvider
     ): SentenceAnalysisResult {
-        val systemPrompt =
+        val userMessage =
             """
             You are an English sentence analysis assistant.
             Return strict JSON only:
@@ -81,16 +82,16 @@ class ArticleAiRepositoryImpl @Inject constructor(
               ]
             }
             """.trimIndent()
+                .plus("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+                .plus("\n\nAnalyze this sentence: $sentence")
 
         val client = clientProvider.getClient(provider)
         val responseText = client.sendMessage(
             url = baseUrl,
             apiKey = apiKey,
             model = model,
-            systemPrompt = systemPrompt,
-            messages = listOf(
-                ChatMessage(role = "user", content = "Analyze this sentence: $sentence")
-            ),
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = userMessage)),
             maxTokens = 1024
         )
 
@@ -107,7 +108,10 @@ class ArticleAiRepositoryImpl @Inject constructor(
         provider: AiProvider
     ): List<String> {
         val conditionClause = if (conditions.isBlank()) "" else "${conditions}的"
-        val prompt = "请扫描图片，提取出所有${conditionClause}英语单词，以JSON数组格式返回，如 [\"word1\", \"word2\"]。只返回JSON数组，不要其他文字。"
+        val prompt = buildString {
+            append("请扫描图片，提取出所有${conditionClause}英语单词，以JSON数组格式返回，如 [\"word1\", \"word2\"]。只返回JSON数组，不要其他文字。")
+            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+        }
 
         val client = clientProvider.getClient(provider)
         val responseText = client.sendMultimodalMessage(
@@ -129,7 +133,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
         baseUrl: String,
         provider: AiProvider
     ): ParagraphAnalysisResult {
-        val systemPrompt =
+        val userMessage =
             """
             You are an English paragraph analysis assistant for Chinese learners.
             Analyze the paragraph by:
@@ -151,16 +155,16 @@ class ArticleAiRepositoryImpl @Inject constructor(
               ]
             }
             """.trimIndent()
+                .plus("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+                .plus("\n\nAnalyze this paragraph:\n\n$paragraphText")
 
         val client = clientProvider.getClient(provider)
         val responseText = client.sendMessage(
             url = baseUrl,
             apiKey = apiKey,
             model = model,
-            systemPrompt = systemPrompt,
-            messages = listOf(
-                ChatMessage(role = "user", content = "Analyze this paragraph:\n\n$paragraphText")
-            ),
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = userMessage)),
             maxTokens = 2048
         )
 
@@ -175,17 +179,18 @@ class ArticleAiRepositoryImpl @Inject constructor(
         baseUrl: String,
         provider: AiProvider
     ): String {
-        val systemPrompt = "你是一位专业的英汉翻译。请将用户提供的英文段落翻译为流畅自然的中文。只返回中文译文，不要添加任何解释、注释或原文。"
+        val userMessage = buildString {
+            append("你是一位专业的英汉翻译。请将用户提供的英文段落翻译为流畅自然的中文。只返回中文译文，不要添加任何解释、注释或原文。\n\n")
+            append(paragraphText)
+        }
 
         val client = clientProvider.getClient(provider)
         return client.sendMessage(
             url = baseUrl,
             apiKey = apiKey,
             model = model,
-            systemPrompt = systemPrompt,
-            messages = listOf(
-                ChatMessage(role = "user", content = paragraphText)
-            ),
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = userMessage)),
             maxTokens = 1024
         ).trim()
     }
@@ -202,7 +207,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
             "\nContext sentence: $contextSentence"
         } else ""
 
-        val systemPrompt = """
+        val userMessage = """
             You are an English vocabulary analysis assistant for Chinese learners preparing for the graduate school entrance exam (考研).
             Analyze the given word and return strict JSON only:
             {
@@ -215,16 +220,16 @@ class ArticleAiRepositoryImpl @Inject constructor(
             - commonMeanings: up to 3 most common Chinese meanings
             - examImportance: rate importance for 考研 English
         """.trimIndent()
+            .plus("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            .plus("\n\nWord: $word$contextPart")
 
         val client = clientProvider.getClient(provider)
         val responseText = client.sendMessage(
             url = baseUrl,
             apiKey = apiKey,
             model = model,
-            systemPrompt = systemPrompt,
-            messages = listOf(
-                ChatMessage(role = "user", content = "Word: $word$contextPart")
-            ),
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = userMessage)),
             maxTokens = 512
         )
 

@@ -69,6 +69,9 @@ data class QuestionItemJson(
     val difficultyScore: Float? = null,
     val wrongCount: Int = 0,
     val extraData: String? = null,
+    val sampleSourceTitle: String? = null,
+    val sampleSourceUrl: String? = null,
+    val sampleSourceInfo: String? = null,
     val practiceRecords: List<PracticeRecordJson> = emptyList()
 )
 

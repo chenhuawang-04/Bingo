@@ -25,6 +25,7 @@ import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
+import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.TtsState
@@ -34,6 +35,7 @@ import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.TranslationScore
 import com.xty.englishhelper.domain.repository.TranslationScoreInput
+import com.xty.englishhelper.domain.repository.WritingScore
 import com.xty.englishhelper.domain.usecase.article.AnalyzeParagraphUseCase
 import com.xty.englishhelper.domain.usecase.article.QuickAnalyzeWordUseCase
 import com.xty.englishhelper.domain.usecase.article.ScanWordLinksUseCase
@@ -88,11 +90,20 @@ data class ReaderUiState(
     // Translation scoring
     val translationScores: Map<Long, TranslationScore> = emptyMap(),
     val isScoringTranslation: Boolean = false,
+    // Writing scoring
+    val writingScores: Map<Long, WritingScore> = emptyMap(),
+    val isScoringWriting: Boolean = false,
+    val isOcrWriting: Boolean = false,
+    val isSearchingWritingSample: Boolean = false,
+    val isSearchingWritingSource: Boolean = false,
+    val pendingWritingAutoSubmit: Boolean = false,
+    val writingSampleError: String? = null,
     // Source
     val linkedArticleId: Long? = null,
     val isVerifying: Boolean = false,
     val isScanningAnswers: Boolean = false,
     val isCompressingAnswers: Boolean = false,
+    val isCompressingWriting: Boolean = false,
     // General
     val isLoading: Boolean = true,
     val error: String? = null
@@ -206,10 +217,15 @@ class QuestionBankReaderViewModel @Inject constructor(
         viewModelScope.launch {
             var lastAnswerStatus: BackgroundTaskStatus? = null
             var lastVerifyStatus: BackgroundTaskStatus? = null
+            var lastSampleStatus: BackgroundTaskStatus? = null
             taskRepository.observeAllTasks().collect { tasks ->
                 val answerTask = tasks
                     .filter { it.type == BackgroundTaskType.QUESTION_ANSWER_GENERATE }
                     .filter { (it.payload as? QuestionAnswerGeneratePayload)?.groupId == groupId }
+                    .maxByOrNull { it.updatedAt }
+                val sampleTask = tasks
+                    .filter { it.type == BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH }
+                    .filter { (it.payload as? QuestionWritingSamplePayload)?.groupId == groupId }
                     .maxByOrNull { it.updatedAt }
                 val verifyTask = tasks
                     .filter { it.type == BackgroundTaskType.QUESTION_SOURCE_VERIFY }
@@ -222,9 +238,24 @@ class QuestionBankReaderViewModel @Inject constructor(
                     _uiState.update { it.copy(isVerifying = verifying) }
                 }
 
+                val searchingSample = sampleTask?.status == BackgroundTaskStatus.PENDING ||
+                    sampleTask?.status == BackgroundTaskStatus.RUNNING
+                if (_uiState.value.isSearchingWritingSample != searchingSample) {
+                    _uiState.update { it.copy(isSearchingWritingSample = searchingSample) }
+                }
+
                 if (answerTask != null && answerTask.status != lastAnswerStatus) {
                     if (answerTask.status == BackgroundTaskStatus.SUCCESS) {
                         refreshItemsAndResults()
+                    }
+                }
+                if (sampleTask != null && sampleTask.status != lastSampleStatus) {
+                    if (sampleTask.status == BackgroundTaskStatus.SUCCESS) {
+                        refreshItemsAndResults()
+                        _uiState.update { it.copy(writingSampleError = null) }
+                    } else if (sampleTask.status == BackgroundTaskStatus.FAILED) {
+                        val msg = sampleTask.errorMessage ?: "范文检索失败"
+                        _uiState.update { it.copy(error = msg, writingSampleError = msg) }
                     }
                 }
                 if (verifyTask != null && verifyTask.status != lastVerifyStatus) {
@@ -243,6 +274,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                 }
                 lastAnswerStatus = answerTask?.status
                 lastVerifyStatus = verifyTask?.status
+                lastSampleStatus = sampleTask?.status
             }
         }
     }
@@ -513,7 +545,28 @@ class QuestionBankReaderViewModel @Inject constructor(
             val records = mutableListOf<PracticeRecord>()
             val now = System.currentTimeMillis()
 
+            val isWriting = state.group?.questionType == QuestionType.WRITING
             val isTranslation = state.group?.questionType == QuestionType.TRANSLATION
+            if (isWriting) {
+                val item = state.items.firstOrNull()
+                val essayText = item?.let { state.selectedAnswers[it.id]?.trim() }.orEmpty()
+                if (item == null || essayText.isBlank()) {
+                    _uiState.update { it.copy(error = "请先输入作文内容") }
+                    return@launch
+                }
+                records.add(
+                    PracticeRecord(
+                        questionItemId = item.id,
+                        userAnswer = essayText,
+                        isCorrect = true,
+                        practicedAt = now
+                    )
+                )
+                repository.insertPracticeRecords(records)
+                _uiState.update { it.copy(isSubmitted = true, isScoringWriting = true) }
+                scoreWritingAnswers()
+                return@launch
+            }
             if (isTranslation) {
                 for (item in state.items) {
                     val userAnswer = state.selectedAnswers[item.id] ?: continue
@@ -631,6 +684,41 @@ class QuestionBankReaderViewModel @Inject constructor(
         }
     }
 
+    private fun scoreWritingAnswers() {
+        viewModelScope.launch {
+            try {
+                val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
+                if (config.apiKey.isBlank()) {
+                    _uiState.update { it.copy(isScoringWriting = false, error = "请先配置主模型") }
+                    return@launch
+                }
+                val state = _uiState.value
+                val item = state.items.firstOrNull()
+                val essayText = item?.let { state.selectedAnswers[it.id] } ?: ""
+                if (item == null || essayText.isBlank()) {
+                    _uiState.update { it.copy(isScoringWriting = false, error = "请先输入作文内容") }
+                    return@launch
+                }
+                val score = aiRepository.scoreWriting(
+                    item.questionText,
+                    essayText,
+                    config.apiKey,
+                    config.model,
+                    config.baseUrl,
+                    config.provider
+                )
+                _uiState.update {
+                    it.copy(
+                        writingScores = mapOf(item.id to score),
+                        isScoringWriting = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isScoringWriting = false, error = "作文批阅失败：${e.message}") }
+            }
+        }
+    }
+
     fun showAnswers() {
         _uiState.update { it.copy(showingAnswers = true) }
     }
@@ -643,7 +731,9 @@ class QuestionBankReaderViewModel @Inject constructor(
                 showingAnswers = false,
                 practiceResults = emptyMap(),
                 translationScores = emptyMap(),
-                isScoringTranslation = false
+                isScoringTranslation = false,
+                writingScores = emptyMap(),
+                isScoringWriting = false
             )
         }
     }
@@ -737,6 +827,128 @@ class QuestionBankReaderViewModel @Inject constructor(
                 _uiState.update { it.copy(isScanningAnswers = false, error = "扫描答案失败：${e.message}") }
             }
         }
+    }
+
+    fun searchWritingSample(force: Boolean = true) {
+        val group = _uiState.value.group ?: return
+        if (group.questionType != QuestionType.WRITING) return
+        val snippet = _uiState.value.items.firstOrNull()?.questionText?.take(300).orEmpty()
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(writingSampleError = null) }
+                backgroundTaskManager.enqueueQuestionWritingSampleSearch(
+                    groupId = group.id,
+                    paperTitle = _uiState.value.paperTitle,
+                    questionSnippet = snippet,
+                    force = force
+                )
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "范文检索任务创建失败：${e.message}") }
+            }
+        }
+    }
+
+    fun searchWritingPromptSource() {
+        val group = _uiState.value.group ?: return
+        if (group.questionType != QuestionType.WRITING) return
+        val questionText = _uiState.value.items.firstOrNull()?.questionText.orEmpty()
+        viewModelScope.launch {
+            try {
+                val config = settingsDataStore.getAiConfig(AiSettingsScope.SEARCH)
+                if (config.apiKey.isBlank()) {
+                    _uiState.update { it.copy(error = "请先配置搜索模型") }
+                    return@launch
+                }
+                _uiState.update { it.copy(isSearchingWritingSource = true) }
+                val result = aiRepository.searchWritingPromptSource(
+                    _uiState.value.paperTitle,
+                    questionText,
+                    config.apiKey,
+                    config.model,
+                    config.baseUrl,
+                    config.provider
+                )
+                if (!result.matched || result.sourceUrl.isNullOrBlank()) {
+                    _uiState.update {
+                        it.copy(
+                            isSearchingWritingSource = false,
+                            error = result.errorMessage ?: "未找到题干来源"
+                        )
+                    }
+                    return@launch
+                }
+                repository.updateSourceMeta(group.id, result.sourceUrl, result.sourceInfo)
+                refreshSourceInfo()
+                _uiState.update { it.copy(isSearchingWritingSource = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSearchingWritingSource = false, error = "检索来源失败：${e.message}") }
+            }
+        }
+    }
+
+    fun scanWritingImages(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        _uiState.update { it.copy(isOcrWriting = true, isCompressingWriting = false) }
+        viewModelScope.launch {
+            try {
+                val config = settingsDataStore.getAiConfig(AiSettingsScope.OCR)
+                if (config.apiKey.isBlank()) {
+                    _uiState.update { it.copy(isOcrWriting = false, error = "请先配置 OCR 模型") }
+                    return@launch
+                }
+
+                val compressionConfig = settingsDataStore.getImageCompressionConfig()
+                val imageBytes = withContext(Dispatchers.IO) {
+                    uris.mapNotNull { uri ->
+                        appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    }
+                }
+                if (compressionConfig.enabled) {
+                    _uiState.update { it.copy(isCompressingWriting = true) }
+                }
+                val compressed = try {
+                    imageCompressionManager.compressAll(imageBytes, compressionConfig)
+                } finally {
+                    if (compressionConfig.enabled) {
+                        _uiState.update { it.copy(isCompressingWriting = false) }
+                    }
+                }
+
+                val essayText = aiRepository.extractWritingFromImages(
+                    compressed, config.apiKey, config.model, config.baseUrl, config.provider
+                ).trim()
+                if (essayText.isBlank()) {
+                    _uiState.update { it.copy(isOcrWriting = false, pendingWritingAutoSubmit = false, error = "未识别到作文内容") }
+                    return@launch
+                }
+                val item = _uiState.value.items.firstOrNull()
+                if (item != null) {
+                    val shouldAutoSubmit = _uiState.value.pendingWritingAutoSubmit
+                    _uiState.update {
+                        it.copy(
+                            selectedAnswers = it.selectedAnswers + (item.id to essayText),
+                            isOcrWriting = false,
+                            pendingWritingAutoSubmit = false
+                        )
+                    }
+                    if (shouldAutoSubmit) {
+                        submitAnswers()
+                    }
+                } else {
+                    _uiState.update { it.copy(isOcrWriting = false, pendingWritingAutoSubmit = false, error = "作文题不存在") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isOcrWriting = false, pendingWritingAutoSubmit = false, error = "OCR 失败：${e.message}") }
+            }
+        }
+    }
+
+    fun prepareWritingOcrSubmit() {
+        _uiState.update { it.copy(pendingWritingAutoSubmit = true) }
+    }
+
+    fun cancelWritingOcrSubmit() {
+        _uiState.update { it.copy(pendingWritingAutoSubmit = false) }
     }
 
     // ── Utility ──

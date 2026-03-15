@@ -75,7 +75,7 @@ import java.util.UUID
         BackgroundTaskEntity::class,
         ArticleCategoryEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -611,6 +611,9 @@ abstract class AppDatabase : RoomDatabase() {
                         `difficulty_score` REAL,
                         `wrong_count` INTEGER NOT NULL DEFAULT 0,
                         `extra_data` TEXT,
+                        `sample_source_title` TEXT,
+                        `sample_source_url` TEXT,
+                        `sample_source_info` TEXT,
                         FOREIGN KEY(`question_group_id`) REFERENCES `question_groups`(`id`) ON DELETE CASCADE
                     )
                 """.trimIndent())
@@ -739,6 +742,14 @@ abstract class AppDatabase : RoomDatabase() {
                     WHERE id IN (SELECT linked_article_id FROM question_source_articles)
                     """.trimIndent()
                 )
+            }
+        }
+
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE question_items ADD COLUMN sample_source_title TEXT")
+                db.execSQL("ALTER TABLE question_items ADD COLUMN sample_source_url TEXT")
+                db.execSQL("ALTER TABLE question_items ADD COLUMN sample_source_info TEXT")
             }
         }
     }

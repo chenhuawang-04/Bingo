@@ -31,3 +31,10 @@ data class QuestionSourceVerifyPayload(
     val sectionLabel: String = "",
     val sourceUrlOverride: String? = null
 ) : BackgroundTaskPayload
+
+@Serializable
+data class QuestionWritingSamplePayload(
+    val groupId: Long,
+    val paperTitle: String = "",
+    val questionSnippet: String = ""
+) : BackgroundTaskPayload

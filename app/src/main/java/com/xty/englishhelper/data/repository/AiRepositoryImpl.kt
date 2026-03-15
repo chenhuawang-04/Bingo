@@ -30,9 +30,16 @@ class AiRepositoryImpl @Inject constructor(
             url = baseUrl,
             apiKey = apiKey,
             model = model,
-            systemPrompt = Constants.AI_SYSTEM_PROMPT,
+            systemPrompt = null,
             messages = listOf(
-                ChatMessage(role = "user", content = Constants.AI_USER_PROMPT_TEMPLATE.format(word))
+                ChatMessage(
+                    role = "user",
+                    content = buildString {
+                        appendLine(Constants.AI_SYSTEM_PROMPT)
+                        appendLine()
+                        append(Constants.AI_USER_PROMPT_TEMPLATE.format(word))
+                    }
+                )
             ),
             maxTokens = 2048
         )

@@ -19,7 +19,8 @@ enum class BackgroundTaskType {
     WORD_ORGANIZE,
     WORD_POOL_REBUILD,
     QUESTION_ANSWER_GENERATE,
-    QUESTION_SOURCE_VERIFY
+    QUESTION_SOURCE_VERIFY,
+    QUESTION_WRITING_SAMPLE_SEARCH
 }
 
 enum class BackgroundTaskStatus {

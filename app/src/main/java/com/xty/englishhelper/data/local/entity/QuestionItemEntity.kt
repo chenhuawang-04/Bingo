@@ -53,5 +53,11 @@ data class QuestionItemEntity(
     @ColumnInfo(name = "wrong_count", defaultValue = "0")
     val wrongCount: Int = 0,
     @ColumnInfo(name = "extra_data")
-    val extraData: String? = null
+    val extraData: String? = null,
+    @ColumnInfo(name = "sample_source_title")
+    val sampleSourceTitle: String? = null,
+    @ColumnInfo(name = "sample_source_url")
+    val sampleSourceUrl: String? = null,
+    @ColumnInfo(name = "sample_source_info")
+    val sampleSourceInfo: String? = null
 )

@@ -23,6 +23,7 @@ interface QuestionBankRepository {
     suspend fun deleteQuestionGroup(groupId: Long)
     suspend fun updateSourceVerification(groupId: Long, status: Int, error: String?)
     suspend fun updateSourceUrl(groupId: Long, url: String)
+    suspend fun updateSourceMeta(groupId: Long, url: String?, info: String?)
     suspend fun markHasAiAnswer(groupId: Long)
     suspend fun markHasScannedAnswer(groupId: Long)
 
@@ -34,6 +35,14 @@ interface QuestionBankRepository {
     suspend fun getItemsByGroup(groupId: Long): List<QuestionItem>
     suspend fun insertQuestionItems(items: List<QuestionItem>)
     suspend fun updateAnswer(itemId: Long, answer: String, source: String, explanation: String?, difficultyLevel: String?, difficultyScore: Float?)
+    suspend fun updateWritingSample(
+        itemId: Long,
+        sampleText: String,
+        source: String,
+        sampleTitle: String?,
+        sampleUrl: String?,
+        sampleInfo: String?
+    )
     suspend fun incrementWrongCount(itemId: Long)
     suspend fun getWrongItemIds(groupId: Long): List<Long>
 

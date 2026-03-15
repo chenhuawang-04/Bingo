@@ -17,5 +17,8 @@ data class QuestionItem(
     val difficultyLevel: DifficultyLevel? = null,
     val difficultyScore: Float? = null,
     val wrongCount: Int = 0,
-    val extraData: String? = null
+    val extraData: String? = null,
+    val sampleSourceTitle: String? = null,
+    val sampleSourceUrl: String? = null,
+    val sampleSourceInfo: String? = null
 )

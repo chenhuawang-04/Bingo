@@ -305,6 +305,7 @@ private fun taskTitle(task: BackgroundTask): String {
         BackgroundTaskType.WORD_POOL_REBUILD -> "词池重建"
         BackgroundTaskType.QUESTION_ANSWER_GENERATE -> "题库答案生成"
         BackgroundTaskType.QUESTION_SOURCE_VERIFY -> "题库来源验证"
+        BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> "作文范文检索"
         BackgroundTaskType.UNKNOWN -> "未知任务"
     }
 }

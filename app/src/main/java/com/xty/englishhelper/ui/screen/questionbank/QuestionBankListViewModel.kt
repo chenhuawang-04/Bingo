@@ -6,6 +6,7 @@ import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
+import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -43,10 +44,17 @@ class QuestionBankListViewModel @Inject constructor(
             taskRepository.observeAllTasks().collect { tasks ->
                 val generating = tasks.asSequence()
                     .filter {
-                        it.type == BackgroundTaskType.QUESTION_ANSWER_GENERATE &&
+                        (it.type == BackgroundTaskType.QUESTION_ANSWER_GENERATE ||
+                            it.type == BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH) &&
                             (it.status == BackgroundTaskStatus.PENDING || it.status == BackgroundTaskStatus.RUNNING)
                     }
-                    .mapNotNull { (it.payload as? QuestionAnswerGeneratePayload)?.groupId }
+                    .mapNotNull {
+                        when (val payload = it.payload) {
+                            is QuestionAnswerGeneratePayload -> payload.groupId
+                            is QuestionWritingSamplePayload -> payload.groupId
+                            else -> null
+                        }
+                    }
                     .toSet()
                 _uiState.update { it.copy(generatingGroupIds = generating) }
             }
