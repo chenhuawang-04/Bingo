@@ -45,6 +45,7 @@ interface QuestionBankRepository {
     )
     suspend fun incrementWrongCount(itemId: Long)
     suspend fun getWrongItemIds(groupId: Long): List<Long>
+    suspend fun updateItemsExtraDataByGroup(groupId: Long, extraData: String?)
 
     // ── PracticeRecord ──
     suspend fun insertPracticeRecords(records: List<PracticeRecord>)

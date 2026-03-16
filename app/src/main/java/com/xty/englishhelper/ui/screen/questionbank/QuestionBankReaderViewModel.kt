@@ -87,6 +87,9 @@ data class ReaderUiState(
     val showingAnswers: Boolean = false,
     val wrongItemIds: Set<Long> = emptySet(),
     val practiceResults: Map<Long, Boolean> = emptyMap(),
+    val sentenceInsertionOptions: List<String> = emptyList(),
+    val showSentenceOptionsEditor: Boolean = false,
+    val sentenceOptionsDraft: String = "",
     // Translation scoring
     val translationScores: Map<Long, TranslationScore> = emptyMap(),
     val isScoringTranslation: Boolean = false,
@@ -161,6 +164,11 @@ class QuestionBankReaderViewModel @Inject constructor(
                 val wrongIds = repository.getWrongItemIds(groupId).toSet()
                 val linkedId = repository.getLinkedArticleId(groupId)
                 val paper = repository.getExamPaperById(group.examPaperId)
+                val sentenceOptions = if (group.questionType == QuestionType.SENTENCE_INSERTION) {
+                    parseSentenceInsertionOptions(items)
+                } else {
+                    emptyList()
+                }
 
                 // Scan word links
                 val links = if (paragraphs.isNotEmpty()) {
@@ -179,6 +187,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                         wordLinks = links,
                         wordLinkMap = linkMap,
                         wrongItemIds = wrongIds,
+                        sentenceInsertionOptions = sentenceOptions,
                         linkedArticleId = linkedId,
                         isLoading = false
                     )
@@ -951,7 +960,92 @@ class QuestionBankReaderViewModel @Inject constructor(
         _uiState.update { it.copy(pendingWritingAutoSubmit = false) }
     }
 
+    // ── Sentence insertion options ──
+
+    fun openSentenceOptionsEditor() {
+        val draft = _uiState.value.sentenceInsertionOptions.joinToString("\n")
+        _uiState.update { it.copy(showSentenceOptionsEditor = true, sentenceOptionsDraft = draft) }
+    }
+
+    fun dismissSentenceOptionsEditor() {
+        _uiState.update { it.copy(showSentenceOptionsEditor = false) }
+    }
+
+    fun updateSentenceOptionsDraft(text: String) {
+        _uiState.update { it.copy(sentenceOptionsDraft = text) }
+    }
+
+    fun saveSentenceOptions() {
+        val group = _uiState.value.group ?: return
+        val options = parseSentenceOptionsInput(_uiState.value.sentenceOptionsDraft)
+        if (options.size != 7) {
+            _uiState.update { it.copy(error = "句子插入需要 7 个选项") }
+            return
+        }
+        val extraData = buildSentenceInsertionExtraData(options)
+        viewModelScope.launch {
+            try {
+                repository.updateItemsExtraDataByGroup(group.id, extraData)
+                _uiState.update {
+                    it.copy(
+                        sentenceInsertionOptions = options,
+                        showSentenceOptionsEditor = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "保存选项失败：${e.message}") }
+            }
+        }
+    }
+
     // ── Utility ──
+
+    private fun parseSentenceInsertionOptions(items: List<QuestionItem>): List<String> {
+        val raw = items.firstOrNull()?.extraData ?: return emptyList()
+        return runCatching {
+            val obj = org.json.JSONObject(raw)
+            val arr = obj.optJSONArray("options") ?: return@runCatching emptyList()
+            val result = mutableListOf<String>()
+            for (i in 0 until arr.length()) {
+                val value = arr.optString(i)
+                if (!value.isNullOrBlank()) result.add(value)
+            }
+            result
+        }.getOrDefault(emptyList())
+    }
+
+    private fun parseSentenceOptionsInput(input: String): List<String> {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        val inlineMatches = parseInlineSentenceOptions(trimmed)
+        if (inlineMatches.size >= 2) return inlineMatches
+        val lines = trimmed.lines().map { it.trim() }.filter { it.isNotBlank() }
+        if (lines.isEmpty()) return emptyList()
+        val labeledLines = lines.filter { it.matches(Regex("^[A-G][\\.、\\)]\\s*.+")) }
+        if (labeledLines.isNotEmpty()) return labeledLines
+        return lines.mapIndexed { index, line ->
+            "${('A'.code + index).toChar()}. $line"
+        }
+    }
+
+    private fun parseInlineSentenceOptions(input: String): List<String> {
+        val pattern = Regex("([A-G])[\\.、\\)]\\s*(.+?)(?=\\s*[A-G][\\.、\\)]\\s*|$)", RegexOption.DOT_MATCHES_ALL)
+        val matches = pattern.findAll(input).toList()
+        if (matches.isEmpty()) return emptyList()
+        return matches.map { match ->
+            val label = match.groupValues[1]
+            val content = match.groupValues[2].trim()
+            "$label. $content"
+        }
+    }
+
+    private fun buildSentenceInsertionExtraData(options: List<String>): String {
+        val arr = org.json.JSONArray()
+        options.filter { it.isNotBlank() }.forEach { arr.put(it) }
+        val obj = org.json.JSONObject()
+        obj.put("options", arr)
+        return obj.toString()
+    }
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }

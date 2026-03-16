@@ -45,6 +45,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
       "sectionLabel": "Text 1",
       "directions": "directions text or null",
       "passageParagraphs": ["paragraph 1", "paragraph 2"],
+      "sentenceOptions": ["A. ...", "B. ..."],
       "sourceInfo": "source description or null",
       "sourceUrl": "URL you found via search, or null",
       "questions": [
@@ -69,11 +70,13 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
 """.trimIndent())
             append("\nRules:\n")
-            append("- questionType: \"READING_COMPREHENSION\" for standard reading comprehension, \"CLOZE\" for cloze/fill-in-the-blank (e.g. Section I / Use of English), \"TRANSLATION\" for translation sections, \"WRITING\" for essay writing tasks.\n")
+            append("- questionType: \"READING_COMPREHENSION\" for standard reading comprehension, \"CLOZE\" for cloze/fill-in-the-blank (e.g. Section I / Use of English), \"TRANSLATION\" for translation sections, \"WRITING\" for essay writing tasks, \"PARAGRAPH_ORDER\" for paragraph ordering (Part B: reorder paragraphs A-H into correct order), \"SENTENCE_INSERTION\" for sentence insertion.\n")
             append("- CLOZE rules: Mark blanks in passageParagraphs as __N__ where N is the exact questionNumber of the corresponding question (e.g. if questions are numbered 1-20, blanks are __1__ to __20__; if 21-40, blanks are __21__ to __40__). questionText should be empty for CLOZE questions. Options are the candidate words.\n")
             append("- TRANSLATION rules (英语一 / multiple underlined sentences): In passageParagraphs, wrap each underlined sentence with ((N))sentence text((/N)) where N = questionNumber. Each marked sentence becomes one question with questionText = the English sentence to translate. optionA/B/C/D must all be null.\n")
             append("- TRANSLATION rules (英语二 / single paragraph translation): passageParagraphs contain the full paragraph. Only 1 question, questionText = the full English text to translate. optionA/B/C/D must all be null.\n")
             append("- WRITING rules: questionText = full writing prompt/instructions. optionA/B/C/D must all be null. passageParagraphs may be empty or contain background material if provided in the paper.\n")
+            append("- PARAGRAPH_ORDER rules: passageParagraphs must list paragraphs A-H in their labeled order, and each paragraph text must start with its label like \"A. ...\", \"B. ...\". directions should include the slot pattern (e.g. \"41 __ 42 __ C 43 __ H 44 __ A 45 __\") if present. Each blank is one question with questionText like \"Blank 41\". optionA/B/C/D should be empty or null.\n")
+            append("- SENTENCE_INSERTION rules: passageParagraphs contain the full passage with blanks marked as __N__ where N is the blank/question number. sentenceOptions must list candidate sentences labeled A-G like \"A. ...\", \"B. ...\". Each blank is one question with questionText like \"Blank 41\". optionA/B/C/D should be empty or null.\n")
             append("- Transcribe passage text EXACTLY as printed, preserving all paragraphs.\n")
             append("- sourceUrl: Do NOT extract URLs from the exam paper image (exam papers never print source URLs). ")
             append("Instead, use web content to identify and confirm the original source article for each reading passage. ")
@@ -153,12 +156,23 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         @Suppress("UNUSED_PARAMETER") val _providerName = providerName
         val isCloze = questionType == "CLOZE"
         val isTranslation = questionType == "TRANSLATION"
+        val isParagraphOrder = questionType == "PARAGRAPH_ORDER"
+        val isSentenceInsertion = questionType == "SENTENCE_INSERTION"
         val instruction = when {
             isCloze -> "You are an expert English cloze test solver. " +
                 "Read the passage with numbered blanks (__1__, __2__, etc.) and choose the best word for each blank based on context, grammar, collocations and meaning."
             isTranslation -> "You are an expert English-to-Chinese translator for 考研英语 (postgraduate entrance exam). " +
                 "Provide accurate, natural Chinese translations and key translation notes."
+            isParagraphOrder -> "You are an expert at paragraph ordering questions. " +
+                "The passage contains paragraphs labeled A-H. Choose the correct paragraph letter for each blank position so the text is coherent."
+            isSentenceInsertion -> "You are an expert at sentence insertion questions. " +
+                "Choose the correct sentence letter (A-G) for each blank so the passage reads naturally and logically."
             else -> "You are an expert English exam answer generator. Read the passage and answer each multiple-choice question."
+        }
+        val sentenceOptions = if (isSentenceInsertion) {
+            parseSentenceInsertionOptions(questions.firstOrNull()?.extraData)
+        } else {
+            emptyList()
         }
         val userMessage = buildString {
             append(instruction).append("\n\n")
@@ -181,6 +195,57 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
   }
 ]
 """.trimIndent())
+            } else if (isParagraphOrder) {
+                append("Passage:\n$passageText\n\n")
+                append("Blanks to fill (choose paragraph letter A-H for each):\n")
+                questions.forEach { q ->
+                    val label = if (q.questionText.isNotBlank()) q.questionText else "Blank ${q.questionNumber}"
+                    append("${q.questionNumber}. $label\n")
+                }
+                append("\nReturn strict JSON array:\n")
+                val exampleNum = questions.firstOrNull()?.questionNumber ?: 1
+                append(
+                    """
+[
+  {
+    "questionNumber": $exampleNum,
+    "answer": "A",
+    "explanation": "brief explanation",
+    "difficultyLevel": "MEDIUM",
+    "difficultyScore": 0.6
+  }
+]
+                    """.trimIndent()
+                )
+            } else if (isSentenceInsertion) {
+                append("Passage:\n$passageText\n\n")
+                if (sentenceOptions.isNotEmpty()) {
+                    append("Sentence options:\n")
+                    sentenceOptions.forEach { option ->
+                        append(option).append("\n")
+                    }
+                    append("\n")
+                }
+                append("Blanks to fill (choose sentence letter A-G for each):\n")
+                questions.forEach { q ->
+                    val label = if (q.questionText.isNotBlank()) q.questionText else "Blank ${q.questionNumber}"
+                    append("${q.questionNumber}. $label\n")
+                }
+                append("\nReturn strict JSON array:\n")
+                val exampleNum = questions.firstOrNull()?.questionNumber ?: 1
+                append(
+                    """
+[
+  {
+    "questionNumber": $exampleNum,
+    "answer": "A",
+    "explanation": "brief explanation",
+    "difficultyLevel": "MEDIUM",
+    "difficultyScore": 0.6
+  }
+]
+                    """.trimIndent()
+                )
             } else {
                 append("Passage:\n$passageText\n\nQuestions:\n")
                 questions.forEach { q ->
@@ -518,6 +583,14 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         } ?: emptyList()
     }
 
+    private fun parseSentenceInsertionOptions(extraData: String?): List<String> {
+        if (extraData.isNullOrBlank()) return emptyList()
+        val adapter = moshi.adapter(SentenceInsertionExtraJson::class.java).lenient()
+        val parsed = runCatching { adapter.fromJson(extraData) }.getOrNull()
+            ?: runCatching { adapter.fromJson(removeTrailingCommas(extraData)) }.getOrNull()
+        return parsed?.options?.filter { it.isNotBlank() } ?: emptyList()
+    }
+
     private fun parseTranslationScores(responseText: String): List<TranslationScore> {
         val cleaned = stripCodeFence(responseText)
         val json = extractFirstJsonArray(cleaned) ?: cleaned.trim()
@@ -677,6 +750,7 @@ private data class ScannedQuestionGroupJson(
     val sectionLabel: String? = null,
     val directions: String? = null,
     val passageParagraphs: List<String>? = null,
+    val sentenceOptions: List<String>? = null,
     val sourceInfo: String? = null,
     val sourceUrl: String? = null,
     val questions: List<ScannedQuestionJson>? = null,
@@ -689,6 +763,7 @@ private data class ScannedQuestionGroupJson(
         sectionLabel = sectionLabel,
         directions = directions,
         passageParagraphs = passageParagraphs ?: emptyList(),
+        sentenceOptions = sentenceOptions ?: emptyList(),
         sourceInfo = sourceInfo,
         sourceUrl = sourceUrl,
         questions = questions?.map { it.toDomain() } ?: emptyList(),
@@ -739,6 +814,10 @@ private data class AnswerResultJson(
     val explanation: String? = null,
     val difficultyLevel: String? = null,
     val difficultyScore: Float? = null
+)
+
+private data class SentenceInsertionExtraJson(
+    val options: List<String>? = null
 )
 
 private data class TranslationScoreJson(

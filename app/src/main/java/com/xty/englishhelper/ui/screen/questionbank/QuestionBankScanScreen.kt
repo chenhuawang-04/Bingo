@@ -269,6 +269,18 @@ private fun PreviewPhaseContent(
                         )
                     }
 
+                    if (group.sentenceOptions.isNotEmpty()) {
+                        Text("可选句子", style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            group.sentenceOptions.joinToString("\n").take(300) +
+                                if (group.sentenceOptions.joinToString("\n").length > 300) "…" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 6,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
                     HorizontalDivider()
 
                     // Questions
@@ -309,7 +321,12 @@ private fun PreviewPhaseContent(
                                 }
 
                                 // Validation: empty question text (skip for CLOZE where it's intentionally empty)
-                                if (question.questionText.isBlank() && group.questionType != "CLOZE" && group.questionType != "TRANSLATION") {
+                                if (question.questionText.isBlank() &&
+                                    group.questionType != "CLOZE" &&
+                                    group.questionType != "TRANSLATION" &&
+                                    group.questionType != "PARAGRAPH_ORDER" &&
+                                    group.questionType != "SENTENCE_INSERTION"
+                                ) {
                                     Text(
                                         "此字段不能为空",
                                         style = MaterialTheme.typography.labelSmall,

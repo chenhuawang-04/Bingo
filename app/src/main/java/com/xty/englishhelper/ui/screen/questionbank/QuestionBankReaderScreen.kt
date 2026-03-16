@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +48,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -85,15 +87,18 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
@@ -101,6 +106,8 @@ import com.xty.englishhelper.domain.repository.TranslationScore
 import com.xty.englishhelper.domain.repository.WritingScore
 import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
+import com.xty.englishhelper.ui.components.reading.extractContextSentence
+import com.xty.englishhelper.ui.components.reading.extractWordAtOffset
 import com.xty.englishhelper.ui.screen.article.CollectionNotebookSheet
 import kotlinx.coroutines.launch
 
@@ -245,6 +252,8 @@ fun QuestionBankReaderScreen(
             }
         } else {
             val isCloze = state.group?.questionType == QuestionType.CLOZE
+            val isParagraphOrder = state.group?.questionType == QuestionType.PARAGRAPH_ORDER
+            val isSentenceInsertion = state.group?.questionType == QuestionType.SENTENCE_INSERTION
             val isTranslation = state.group?.questionType == QuestionType.TRANSLATION
             val isWriting = state.group?.questionType == QuestionType.WRITING
             when {
@@ -255,6 +264,35 @@ fun QuestionBankReaderScreen(
                     onShowAnswers = { viewModel.showAnswers() },
                     onRetryPractice = { viewModel.retryPractice() },
                     onScanAnswers = { answerImageLauncher.launch("image/*") },
+                    modifier = Modifier.fillMaxSize().padding(padding)
+                )
+                isParagraphOrder -> ParagraphOrderReaderContent(
+                    state = state,
+                    onAnalyzeParagraph = viewModel::analyzeParagraph,
+                    onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
+                    onToggleAnalysisExpanded = viewModel::toggleParagraphAnalysisExpanded,
+                    onWordClick = onWordClick,
+                    onCollectWord = viewModel::collectWord,
+                    onSelectAnswer = viewModel::selectAnswer,
+                    onSubmitAnswers = { viewModel.submitAnswers() },
+                    onShowAnswers = { viewModel.showAnswers() },
+                    onRetryPractice = { viewModel.retryPractice() },
+                    onScanAnswers = { answerImageLauncher.launch("image/*") },
+                    modifier = Modifier.fillMaxSize().padding(padding)
+                )
+                isSentenceInsertion -> SentenceInsertionReaderContent(
+                    state = state,
+                    onAnalyzeParagraph = viewModel::analyzeParagraph,
+                    onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
+                    onToggleAnalysisExpanded = viewModel::toggleParagraphAnalysisExpanded,
+                    onWordClick = onWordClick,
+                    onCollectWord = viewModel::collectWord,
+                    onSelectAnswer = viewModel::selectAnswer,
+                    onSubmitAnswers = { viewModel.submitAnswers() },
+                    onShowAnswers = { viewModel.showAnswers() },
+                    onRetryPractice = { viewModel.retryPractice() },
+                    onScanAnswers = { answerImageLauncher.launch("image/*") },
+                    onEditSentenceOptions = { viewModel.openSentenceOptionsEditor() },
                     modifier = Modifier.fillMaxSize().padding(padding)
                 )
                 isTranslation -> TranslationReaderContent(
@@ -318,6 +356,35 @@ fun QuestionBankReaderScreen(
             onRemoveWord = viewModel::removeCollectedWord,
             onAddToDictionary = viewModel::addToDictionary,
             onDismiss = { viewModel.dismissNotebook() }
+        )
+    }
+
+    if (state.showSentenceOptionsEditor) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissSentenceOptionsEditor() },
+            title = { Text("补录选项句子") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "支持两种格式：每行一个选项，或一行粘贴 A. B. C. 格式（共 7 个）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = state.sentenceOptionsDraft,
+                        onValueChange = { viewModel.updateSentenceOptionsDraft(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 6,
+                        maxLines = 10
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.saveSentenceOptions() }) { Text("保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissSentenceOptionsEditor() }) { Text("取消") }
+            }
         )
     }
 }
@@ -802,6 +869,7 @@ private fun PracticeActionBar(
 // ══════════════════════════════════════════════════════════════
 
 private val BlankRegex = Regex("__(\\d+)__")
+private val WordSplitRegex = Regex("(?<=\\s)|(?=\\s)|(?<=[,.:;!?\"'()\\[\\]{}])|(?=[,.:;!?\"'()\\[\\]{}])")
 
 @Composable
 private fun ClozeReaderContent(
@@ -825,7 +893,7 @@ private fun ClozeReaderContent(
         focusedQuestionNumber = questionNumber
         val index = state.items.indexOfFirst { it.questionNumber == questionNumber }
         if (index >= 0) {
-            scope.launch { optionsListState.animateScrollToItem(index) }
+            scope.launch { optionsListState.animateScrollToItem(index + 1) }
         }
     }
 
@@ -1141,6 +1209,534 @@ private fun ClozeOptionRow(
 }
 
 // ══════════════════════════════════════════════════════════════
+
+// ?????????????????????????????????????????????????????????????
+// SENTENCE INSERTION Reader
+// ?????????????????????????????????????????????????????????????
+
+@Composable
+private fun SentenceInsertionReaderContent(
+    state: ReaderUiState,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
+    onSelectAnswer: (Long, String) -> Unit,
+    onSubmitAnswers: () -> Unit,
+    onShowAnswers: () -> Unit,
+    onRetryPractice: () -> Unit,
+    onScanAnswers: () -> Unit,
+    onEditSentenceOptions: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val optionsListState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var focusedQuestionNumber by remember { mutableStateOf(-1) }
+
+    val onBlankClick: (Int) -> Unit = { questionNumber ->
+        focusedQuestionNumber = questionNumber
+        val index = state.items.indexOfFirst { it.questionNumber == questionNumber }
+        if (index >= 0) {
+            scope.launch { optionsListState.animateScrollToItem(index) }
+        }
+    }
+
+    val spokenParagraphId = run {
+        val ttsState = state.ttsState
+        if (!ttsState.isSpeaking) return@run 0L
+        val speakable = state.paragraphs.filter { it.text.isNotBlank() }
+        val idx = ttsState.currentIndex
+        if (idx in speakable.indices) speakable[idx].id else 0L
+    }
+
+    if (isLandscape) {
+        Row(modifier = modifier.height(IntrinsicSize.Min)) {
+            SentenceInsertionPassagePanel(
+                state = state,
+                spokenParagraphId = spokenParagraphId,
+                onAnalyzeParagraph = onAnalyzeParagraph,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onToggleAnalysisExpanded = onToggleAnalysisExpanded,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
+                onBlankClick = onBlankClick,
+                modifier = Modifier.weight(0.6f).fillMaxHeight()
+            )
+            VerticalDivider()
+            SentenceInsertionAnswerPanel(
+                state = state,
+                listState = optionsListState,
+                focusedQuestionNumber = focusedQuestionNumber,
+                onSelectAnswer = onSelectAnswer,
+                onSubmitAnswers = onSubmitAnswers,
+                onShowAnswers = onShowAnswers,
+                onRetryPractice = onRetryPractice,
+                onScanAnswers = onScanAnswers,
+                onEditSentenceOptions = onEditSentenceOptions,
+                modifier = Modifier.weight(0.4f).fillMaxHeight()
+            )
+        }
+    } else {
+        Column(modifier = modifier) {
+            SentenceInsertionPassagePanel(
+                state = state,
+                spokenParagraphId = spokenParagraphId,
+                onAnalyzeParagraph = onAnalyzeParagraph,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onToggleAnalysisExpanded = onToggleAnalysisExpanded,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
+                onBlankClick = onBlankClick,
+                modifier = Modifier.weight(0.55f)
+            )
+            HorizontalDivider()
+            SentenceInsertionAnswerPanel(
+                state = state,
+                listState = optionsListState,
+                focusedQuestionNumber = focusedQuestionNumber,
+                onSelectAnswer = onSelectAnswer,
+                onSubmitAnswers = onSubmitAnswers,
+                onShowAnswers = onShowAnswers,
+                onRetryPractice = onRetryPractice,
+                onScanAnswers = onScanAnswers,
+                onEditSentenceOptions = onEditSentenceOptions,
+                modifier = Modifier.weight(0.45f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SentenceInsertionPassagePanel(
+    state: ReaderUiState,
+    spokenParagraphId: Long,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
+    onBlankClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val group = state.group ?: return
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "sentence_insert_header") {
+            Column {
+                if (state.paperTitle.isNotBlank()) {
+                    Text(
+                        state.paperTitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    group.sectionLabel ?: group.questionType.displayName,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (!group.directions.isNullOrBlank()) {
+                    Text(
+                        group.directions!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider()
+                Text(
+                    "段落工具在每段末尾，可用于翻译或整理",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+
+        items(state.paragraphs, key = { "sentence_insert_p_${it.id}" }) { paragraph ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SentenceInsertionPassageText(
+                    text = paragraph.text,
+                    items = state.items,
+                    wordLinkMap = state.wordLinkMap,
+                    selectedAnswers = state.selectedAnswers,
+                    isSubmitted = state.isSubmitted,
+                    showingAnswers = state.showingAnswers,
+                    practiceResults = state.practiceResults,
+                    onBlankClick = onBlankClick,
+                    onWordClick = onWordClick,
+                    onCollectWord = onCollectWord
+                )
+                ParagraphBlock(
+                    paragraph = paragraph,
+                    wordLinkMap = state.wordLinkMap,
+                    analysis = state.paragraphAnalysis[paragraph.id],
+                    isAnalyzing = state.analyzingParagraphId == paragraph.id,
+                    isSpeaking = spokenParagraphId == paragraph.id,
+                    translationEnabled = state.translationEnabled,
+                    translation = state.paragraphTranslations[paragraph.id],
+                    isTranslating = paragraph.id in state.translatingParagraphIds,
+                    translationFailed = paragraph.id in state.translationFailedParagraphIds,
+                    analysisExpanded = paragraph.id in state.expandedParagraphIds,
+                    onAnalyze = { onAnalyzeParagraph(paragraph.id, paragraph.text) },
+                    onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) },
+                    onToggleAnalysisExpanded = { onToggleAnalysisExpanded(paragraph.id) },
+                    onWordClick = onWordClick,
+                    onCollectWord = onCollectWord,
+                    showContent = false
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SentenceInsertionPassageText(
+    text: String,
+    items: List<QuestionItem>,
+    wordLinkMap: Map<String, List<ArticleWordLink>>,
+    selectedAnswers: Map<Long, String>,
+    isSubmitted: Boolean,
+    showingAnswers: Boolean,
+    practiceResults: Map<Long, Boolean>,
+    onBlankClick: (Int) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onPrimary = MaterialTheme.colorScheme.onPrimary
+    val errorColor = MaterialTheme.colorScheme.error
+    val greenColor = Color(0xFF4CAF50)
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val bodyStyle = MaterialTheme.typography.bodyMedium
+    val underlineStyle = SpanStyle(
+        textDecoration = TextDecoration.Underline,
+        color = primary
+    )
+
+    val annotated = remember(text, wordLinkMap, selectedAnswers, isSubmitted, showingAnswers, practiceResults) {
+        buildAnnotatedString {
+            fun appendSegment(segment: String) {
+                if (segment.isEmpty()) return
+                val words = segment.split(WordSplitRegex)
+                for (word in words) {
+                    val cleaned = word.trim().lowercase()
+                        .trimEnd(',', '.', ':', ';', '!', '?', '"', '\'', ')', ']', '}')
+                        .trimStart('"', '\'', '(', '[', '{')
+                    val links = wordLinkMap[cleaned]
+                    if (links != null && links.isNotEmpty() && cleaned.isNotEmpty()) {
+                        pushStringAnnotation(tag = "word", annotation = "${links.first().wordId}:${links.first().dictionaryId}")
+                        withStyle(underlineStyle) {
+                            append(word)
+                        }
+                        pop()
+                    } else {
+                        append(word)
+                    }
+                }
+            }
+
+            var lastEnd = 0
+            val matches = BlankRegex.findAll(text).toList()
+            for (match in matches) {
+                appendSegment(text.substring(lastEnd, match.range.first))
+                val number = match.groupValues[1].toIntOrNull() ?: 0
+                val item = items.find { it.questionNumber == number }
+                val itemId = item?.id ?: 0L
+                val selected = selectedAnswers[itemId]
+                val result = practiceResults[itemId]
+                val correctAnswer = item?.correctAnswer
+
+                val blankText = when {
+                    (isSubmitted || showingAnswers) && correctAnswer != null -> " $correctAnswer "
+                    selected != null -> " $selected "
+                    else -> " $number "
+                }
+                val (bg, fg) = when {
+                    (isSubmitted || showingAnswers) && result == true -> greenColor to onPrimary
+                    (isSubmitted || showingAnswers) && result == false -> errorColor to onPrimary
+                    (isSubmitted || showingAnswers) && correctAnswer != null -> greenColor to onPrimary
+                    selected != null -> primary to onPrimary
+                    else -> surfaceVariant to primary
+                }
+
+                pushStringAnnotation(tag = "blank", annotation = number.toString())
+                withStyle(
+                    SpanStyle(
+                        color = fg,
+                        background = bg,
+                        fontWeight = FontWeight.Bold
+                    )
+                ) {
+                    append(blankText)
+                }
+                pop()
+                lastEnd = match.range.last + 1
+            }
+            if (lastEnd < text.length) {
+                appendSegment(text.substring(lastEnd))
+            }
+        }
+    }
+
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    Text(
+        annotated,
+        style = bodyStyle.copy(color = MaterialTheme.colorScheme.onSurface),
+        onTextLayout = { textLayoutResult = it },
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(wordLinkMap, annotated) {
+                detectTapGestures(
+                    onTap = { tapOffset ->
+                        textLayoutResult?.let { layout ->
+                            val charOffset = layout.getOffsetForPosition(tapOffset)
+                            val blankAnnotations = annotated.getStringAnnotations("blank", charOffset, charOffset)
+                            if (blankAnnotations.isNotEmpty()) {
+                                blankAnnotations.first().item.toIntOrNull()?.let { onBlankClick(it) }
+                                return@detectTapGestures
+                            }
+                            val annotations = annotated.getStringAnnotations("word", charOffset, charOffset)
+                            if (annotations.isNotEmpty()) {
+                                val (wId, dId) = annotations.first().item.split(":")
+                                onWordClick(wId.toLong(), dId.toLong())
+                            } else {
+                                val visibleText = annotated.text
+                                val tappedWord = extractWordAtOffset(visibleText, charOffset)
+                                if (tappedWord != null) {
+                                    val context = extractContextSentence(visibleText, charOffset)
+                                    onCollectWord(tappedWord, context)
+                                }
+                            }
+                        }
+                    }
+                )
+            }
+    )
+}
+
+@Composable
+private fun SentenceInsertionAnswerPanel(
+    state: ReaderUiState,
+    listState: LazyListState,
+    focusedQuestionNumber: Int,
+    onSelectAnswer: (Long, String) -> Unit,
+    onSubmitAnswers: () -> Unit,
+    onShowAnswers: () -> Unit,
+    onRetryPractice: () -> Unit,
+    onScanAnswers: () -> Unit,
+    onEditSentenceOptions: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val options = state.sentenceInsertionOptions
+    val optionCount = 7
+    val optionLetters = remember(optionCount) {
+        (0 until optionCount).map { index -> ('A'.code + index).toChar().toString() }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "sentence_insert_options") {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("可选句子", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onEditSentenceOptions) { Text("补录/编辑") }
+                    }
+                    if (options.isEmpty()) {
+                        Text(
+                            "未识别到选项句子",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            "可先选择字母作答，之后再补录选项句子",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        options.forEach { option ->
+                            Text(option, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
+
+        items(state.items, key = { "sentence_insert_q_${it.id}" }) { item ->
+            SentenceInsertionQuestionCard(
+                item = item,
+                optionLetters = optionLetters,
+                selectedAnswer = state.selectedAnswers[item.id],
+                isSubmitted = state.isSubmitted,
+                showingAnswers = state.showingAnswers,
+                isCorrect = state.practiceResults[item.id],
+                isFocused = item.questionNumber == focusedQuestionNumber,
+                onSelectAnswer = { answer -> onSelectAnswer(item.id, answer) }
+            )
+        }
+
+        item(key = "sentence_insert_actions") {
+            PracticeActionBar(
+                state = state,
+                onSubmit = onSubmitAnswers,
+                onShowAnswers = onShowAnswers,
+                onRetry = onRetryPractice,
+                onScanAnswers = onScanAnswers
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SentenceInsertionQuestionCard(
+    item: QuestionItem,
+    optionLetters: List<String>,
+    selectedAnswer: String?,
+    isSubmitted: Boolean,
+    showingAnswers: Boolean,
+    isCorrect: Boolean?,
+    isFocused: Boolean,
+    onSelectAnswer: (String) -> Unit
+) {
+    val wrongCount = item.wrongCount
+    val borderColor = when {
+        wrongCount >= 2 -> MaterialTheme.colorScheme.error
+        wrongCount == 1 -> Color(0xFFFF9800)
+        else -> Color.Transparent
+    }
+    val focusColor = if (isFocused) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+    else MaterialTheme.colorScheme.surface
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = if (wrongCount > 0) BorderStroke(2.dp, borderColor) else null,
+        colors = CardDefaults.cardColors(containerColor = focusColor)
+    ) {
+        Box {
+            if (wrongCount > 0) {
+                Badge(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                    containerColor = borderColor
+                ) {
+                    Text("x$wrongCount")
+                }
+            }
+
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${item.questionNumber}.",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(end = 6.dp)
+                    )
+                    Text(
+                        item.questionText.ifBlank { "填空" },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    optionLetters.forEach { letter ->
+                        val isSelected = selectedAnswer == letter
+                        val correctAnswer = item.correctAnswer
+                        val optionColor = when {
+                            !isSubmitted && !showingAnswers && isSelected -> MaterialTheme.colorScheme.primaryContainer
+                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
+                                Color(0xFF4CAF50).copy(alpha = 0.2f)
+                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
+                                MaterialTheme.colorScheme.errorContainer
+                            else -> Color.Transparent
+                        }
+                        val textColor = when {
+                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
+                                Color(0xFF2E7D32)
+                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
+                                MaterialTheme.colorScheme.error
+                            isSelected -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = optionColor),
+                            modifier = Modifier
+                                .selectable(
+                                    selected = isSelected,
+                                    onClick = { if (!isSubmitted) onSelectAnswer(letter) },
+                                    role = Role.RadioButton
+                                )
+                        ) {
+                            Text(
+                                letter,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = textColor,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isSubmitted || showingAnswers) {
+                    val answer = item.correctAnswer
+                    if (answer != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isCorrect == true) {
+                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("正确", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
+                            } else if (isCorrect == false) {
+                                Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "错误，正确答案：$answer",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            } else {
+                                Text("答案：$answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                    if (!item.explanation.isNullOrBlank()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                item.explanation!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ── TRANSLATION Reader ──
 // ══════════════════════════════════════════════════════════════
 
@@ -1555,6 +2151,336 @@ private fun TranslationActionBar(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// PARAGRAPH ORDER Reader
+// ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun ParagraphOrderReaderContent(
+    state: ReaderUiState,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
+    onSelectAnswer: (Long, String) -> Unit,
+    onSubmitAnswers: () -> Unit,
+    onShowAnswers: () -> Unit,
+    onRetryPractice: () -> Unit,
+    onScanAnswers: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val spokenParagraphId = run {
+        val ttsState = state.ttsState
+        if (!ttsState.isSpeaking) return@run 0L
+        val speakable = state.paragraphs.filter { it.text.isNotBlank() }
+        val idx = ttsState.currentIndex
+        if (idx in speakable.indices) speakable[idx].id else 0L
+    }
+
+    if (isLandscape) {
+        Row(modifier = modifier.height(IntrinsicSize.Min)) {
+            ParagraphOrderPassagePanel(
+                state = state,
+                spokenParagraphId = spokenParagraphId,
+                onAnalyzeParagraph = onAnalyzeParagraph,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onToggleAnalysisExpanded = onToggleAnalysisExpanded,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
+                modifier = Modifier.weight(0.6f).fillMaxHeight()
+            )
+            VerticalDivider()
+            ParagraphOrderAnswerPanel(
+                state = state,
+                onSelectAnswer = onSelectAnswer,
+                onSubmitAnswers = onSubmitAnswers,
+                onShowAnswers = onShowAnswers,
+                onRetryPractice = onRetryPractice,
+                onScanAnswers = onScanAnswers,
+                modifier = Modifier.weight(0.4f).fillMaxHeight()
+            )
+        }
+    } else {
+        Column(modifier = modifier) {
+            ParagraphOrderPassagePanel(
+                state = state,
+                spokenParagraphId = spokenParagraphId,
+                onAnalyzeParagraph = onAnalyzeParagraph,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onToggleAnalysisExpanded = onToggleAnalysisExpanded,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
+                modifier = Modifier.weight(0.55f)
+            )
+            HorizontalDivider()
+            ParagraphOrderAnswerPanel(
+                state = state,
+                onSelectAnswer = onSelectAnswer,
+                onSubmitAnswers = onSubmitAnswers,
+                onShowAnswers = onShowAnswers,
+                onRetryPractice = onRetryPractice,
+                onScanAnswers = onScanAnswers,
+                modifier = Modifier.weight(0.45f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ParagraphOrderPassagePanel(
+    state: ReaderUiState,
+    spokenParagraphId: Long,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val group = state.group ?: return
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "para_order_header") {
+            Column {
+                if (state.paperTitle.isNotBlank()) {
+                    Text(
+                        state.paperTitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    group.sectionLabel ?: group.questionType.displayName,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (!group.directions.isNullOrBlank()) {
+                    Text(
+                        group.directions!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider()
+            }
+        }
+
+        items(state.paragraphs, key = { "para_order_p_${it.id}" }) { paragraph ->
+            ParagraphBlock(
+                paragraph = paragraph,
+                wordLinkMap = state.wordLinkMap,
+                analysis = state.paragraphAnalysis[paragraph.id],
+                isAnalyzing = state.analyzingParagraphId == paragraph.id,
+                isSpeaking = spokenParagraphId == paragraph.id,
+                translationEnabled = state.translationEnabled,
+                translation = state.paragraphTranslations[paragraph.id],
+                isTranslating = paragraph.id in state.translatingParagraphIds,
+                translationFailed = paragraph.id in state.translationFailedParagraphIds,
+                analysisExpanded = paragraph.id in state.expandedParagraphIds,
+                onAnalyze = { onAnalyzeParagraph(paragraph.id, paragraph.text) },
+                onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) },
+                onToggleAnalysisExpanded = { onToggleAnalysisExpanded(paragraph.id) },
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord
+            )
+        }
+    }
+}
+
+@Composable
+private fun ParagraphOrderAnswerPanel(
+    state: ReaderUiState,
+    onSelectAnswer: (Long, String) -> Unit,
+    onSubmitAnswers: () -> Unit,
+    onShowAnswers: () -> Unit,
+    onRetryPractice: () -> Unit,
+    onScanAnswers: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val optionLetters = remember(state.paragraphs) {
+        state.paragraphs.mapIndexed { index, _ ->
+            (('A'.code + index).toChar()).toString()
+        }
+    }
+
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "para_order_answer_header") {
+            Text("作答", style = MaterialTheme.typography.titleSmall)
+            if (optionLetters.isEmpty()) {
+                Text(
+                    "未识别到段落选项，无法作答",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+
+        items(state.items, key = { "para_order_q_${it.id}" }) { item ->
+            ParagraphOrderQuestionCard(
+                item = item,
+                optionLetters = optionLetters,
+                selectedAnswer = state.selectedAnswers[item.id],
+                isSubmitted = state.isSubmitted,
+                showingAnswers = state.showingAnswers,
+                isCorrect = state.practiceResults[item.id],
+                onSelectAnswer = { answer -> onSelectAnswer(item.id, answer) }
+            )
+        }
+
+        item(key = "para_order_actions") {
+            Spacer(Modifier.height(4.dp))
+            PracticeActionBar(
+                state = state,
+                onSubmit = onSubmitAnswers,
+                onShowAnswers = onShowAnswers,
+                onRetry = onRetryPractice,
+                onScanAnswers = onScanAnswers
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ParagraphOrderQuestionCard(
+    item: QuestionItem,
+    optionLetters: List<String>,
+    selectedAnswer: String?,
+    isSubmitted: Boolean,
+    showingAnswers: Boolean,
+    isCorrect: Boolean?,
+    onSelectAnswer: (String) -> Unit
+) {
+    val wrongCount = item.wrongCount
+    val borderColor = when {
+        wrongCount >= 2 -> MaterialTheme.colorScheme.error
+        wrongCount == 1 -> Color(0xFFFF9800)
+        else -> Color.Transparent
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = if (wrongCount > 0) BorderStroke(2.dp, borderColor) else null
+    ) {
+        Box {
+            if (wrongCount > 0) {
+                Badge(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                    containerColor = borderColor
+                ) {
+                    Text("x$wrongCount")
+                }
+            }
+
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${item.questionNumber}.",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(end = 6.dp)
+                    )
+                    Text(
+                        item.questionText.ifBlank { "填空" },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    optionLetters.forEach { letter ->
+                        val isSelected = selectedAnswer == letter
+                        val correctAnswer = item.correctAnswer
+                        val optionColor = when {
+                            !isSubmitted && !showingAnswers && isSelected -> MaterialTheme.colorScheme.primaryContainer
+                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
+                                Color(0xFF4CAF50).copy(alpha = 0.2f)
+                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
+                                MaterialTheme.colorScheme.errorContainer
+                            else -> Color.Transparent
+                        }
+                        val textColor = when {
+                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
+                                Color(0xFF2E7D32)
+                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
+                                MaterialTheme.colorScheme.error
+                            isSelected -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = optionColor),
+                            modifier = Modifier
+                                .selectable(
+                                    selected = isSelected,
+                                    onClick = { if (!isSubmitted) onSelectAnswer(letter) },
+                                    role = Role.RadioButton
+                                )
+                        ) {
+                            Text(
+                                letter,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = textColor,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isSubmitted || showingAnswers) {
+                    val answer = item.correctAnswer
+                    if (answer != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isCorrect == true) {
+                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("正确", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
+                            } else if (isCorrect == false) {
+                                Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "错误，正确答案：$answer",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            } else {
+                                Text("答案：$answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                    if (!item.explanation.isNullOrBlank()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                item.explanation!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

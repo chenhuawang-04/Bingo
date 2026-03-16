@@ -173,6 +173,9 @@ interface QuestionBankDao {
     @Query("SELECT id FROM question_items WHERE question_group_id = :groupId AND wrong_count > 0")
     suspend fun getWrongItemIds(groupId: Long): List<Long>
 
+    @Query("UPDATE question_items SET extra_data = :extraData WHERE question_group_id = :groupId")
+    suspend fun updateItemsExtraDataByGroup(groupId: Long, extraData: String?)
+
     @Query("SELECT COUNT(*) FROM question_items WHERE question_group_id = :groupId")
     suspend fun getItemCount(groupId: Long): Int
 

@@ -148,6 +148,10 @@ class QuestionBankRepositoryImpl @Inject constructor(
 
     override suspend fun getWrongItemIds(groupId: Long): List<Long> = dao.getWrongItemIds(groupId)
 
+    override suspend fun updateItemsExtraDataByGroup(groupId: Long, extraData: String?) {
+        dao.updateItemsExtraDataByGroup(groupId, extraData)
+    }
+
     // ── PracticeRecord ──
 
     override suspend fun insertPracticeRecords(records: List<PracticeRecord>) {

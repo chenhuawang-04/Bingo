@@ -69,7 +69,8 @@ fun ParagraphBlock(
     onRetryTranslate: () -> Unit,
     onToggleAnalysisExpanded: () -> Unit,
     onWordClick: (Long, Long) -> Unit,
-    onCollectWord: (word: String, contextSentence: String) -> Unit
+    onCollectWord: (word: String, contextSentence: String) -> Unit,
+    showContent: Boolean = true
 ) {
     val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
     val containerModifier = if (isSpeaking) {
@@ -85,61 +86,71 @@ fun ParagraphBlock(
         modifier = containerModifier,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        when (paragraph.paragraphType) {
-            ParagraphType.HEADING -> {
-                Text(
-                    paragraph.text,
-                    style = ArticleTypography.ReaderHeading,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            ParagraphType.QUOTE -> {
-                val quoteColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .drawBehind {
-                            drawLine(
-                                color = quoteColor,
-                                start = Offset(0f, 0f),
-                                end = Offset(0f, size.height),
-                                strokeWidth = 3.dp.toPx()
-                            )
-                        }
-                        .padding(start = 12.dp)
-                ) {
-                    HighlightedParagraphText(
-                        text = paragraph.text,
-                        wordLinkMap = wordLinkMap,
-                        onWordClick = onWordClick,
-                        onCollectWord = onCollectWord,
-                        style = ArticleTypography.ReaderQuote
-                    )
-                }
-            }
-            ParagraphType.IMAGE -> {
-                val imageUri = paragraph.imageUri ?: paragraph.imageUrl
-                if (imageUri != null) {
-                    AsyncImage(
-                        model = imageUri,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.FillWidth
-                    )
-                }
-                if (paragraph.text.isNotBlank()) {
+        if (showContent) {
+            when (paragraph.paragraphType) {
+                ParagraphType.HEADING -> {
                     Text(
                         paragraph.text,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = ArticleTypography.ReaderHeading,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-            }
-            ParagraphType.LIST -> {
-                Row {
-                    Text("•  ", style = ArticleTypography.ReaderBody)
+                ParagraphType.QUOTE -> {
+                    val quoteColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .drawBehind {
+                                drawLine(
+                                    color = quoteColor,
+                                    start = Offset(0f, 0f),
+                                    end = Offset(0f, size.height),
+                                    strokeWidth = 3.dp.toPx()
+                                )
+                            }
+                            .padding(start = 12.dp)
+                    ) {
+                        HighlightedParagraphText(
+                            text = paragraph.text,
+                            wordLinkMap = wordLinkMap,
+                            onWordClick = onWordClick,
+                            onCollectWord = onCollectWord,
+                            style = ArticleTypography.ReaderQuote
+                        )
+                    }
+                }
+                ParagraphType.IMAGE -> {
+                    val imageUri = paragraph.imageUri ?: paragraph.imageUrl
+                    if (imageUri != null) {
+                        AsyncImage(
+                            model = imageUri,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.FillWidth
+                        )
+                    }
+                    if (paragraph.text.isNotBlank()) {
+                        Text(
+                            paragraph.text,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                ParagraphType.LIST -> {
+                    Row {
+                        Text("•  ", style = ArticleTypography.ReaderBody)
+                        HighlightedParagraphText(
+                            text = paragraph.text,
+                            wordLinkMap = wordLinkMap,
+                            onWordClick = onWordClick,
+                            onCollectWord = onCollectWord
+                        )
+                    }
+                }
+                else -> {
                     HighlightedParagraphText(
                         text = paragraph.text,
                         wordLinkMap = wordLinkMap,
@@ -147,14 +158,6 @@ fun ParagraphBlock(
                         onCollectWord = onCollectWord
                     )
                 }
-            }
-            else -> {
-                HighlightedParagraphText(
-                    text = paragraph.text,
-                    wordLinkMap = wordLinkMap,
-                    onWordClick = onWordClick,
-                    onCollectWord = onCollectWord
-                )
             }
         }
 
@@ -188,16 +191,18 @@ fun ParagraphBlock(
             }
         }
 
-        val paraImage = paragraph.imageUri ?: paragraph.imageUrl
-        if (paraImage != null && paragraph.paragraphType != ParagraphType.IMAGE) {
-            AsyncImage(
-                model = paraImage,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.FillWidth
-            )
+        if (showContent) {
+            val paraImage = paragraph.imageUri ?: paragraph.imageUrl
+            if (paraImage != null && paragraph.paragraphType != ParagraphType.IMAGE) {
+                AsyncImage(
+                    model = paraImage,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.FillWidth
+                )
+            }
         }
 
         Row(

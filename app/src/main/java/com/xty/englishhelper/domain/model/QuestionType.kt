@@ -1,9 +1,11 @@
-package com.xty.englishhelper.domain.model
+﻿package com.xty.englishhelper.domain.model
 
 enum class QuestionType(val displayName: String) {
     READING_COMPREHENSION("阅读理解"),
     CLOZE("完形填空"),
     TRANSLATION("翻译"),
+    PARAGRAPH_ORDER("段落排序"),
+    SENTENCE_INSERTION("句子插入"),
     NEW_TYPE("新题型"),
     WRITING("写作");
 }

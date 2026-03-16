@@ -57,6 +57,7 @@ data class EditableQuestionGroup(
     val sourceInfo: String = "",
     val sourceUrl: String = "",
     val passageParagraphs: List<String> = emptyList(),
+    val sentenceOptions: List<String> = emptyList(),
     val questions: List<EditableQuestion> = emptyList(),
     val wordCount: Int = 0,
     val difficultyLevel: String? = null,
@@ -172,10 +173,19 @@ class QuestionBankScanViewModel @Inject constructor(
                     sourceInfo = group.sourceInfo ?: "",
                     sourceUrl = group.sourceUrl ?: "",
                     passageParagraphs = group.passageParagraphs,
+                    sentenceOptions = group.sentenceOptions,
                     questions = group.questions.map { q ->
+                        val normalizedQuestionText = if (
+                            (group.questionType == "PARAGRAPH_ORDER" || group.questionType == "SENTENCE_INSERTION") &&
+                            q.questionText.isBlank()
+                        ) {
+                            "Blank ${q.questionNumber}"
+                        } else {
+                            q.questionText
+                        }
                         EditableQuestion(
                             questionNumber = q.questionNumber,
-                            questionText = q.questionText,
+                            questionText = normalizedQuestionText,
                             optionA = q.optionA,
                             optionB = q.optionB,
                             optionC = q.optionC,
@@ -261,6 +271,13 @@ class QuestionBankScanViewModel @Inject constructor(
                 )
 
                 val groups = state.editableGroups.mapIndexed { i, eg ->
+                    val sentenceOptionsJson = if (
+                        eg.questionType == "SENTENCE_INSERTION" && eg.sentenceOptions.isNotEmpty()
+                    ) {
+                        buildSentenceInsertionExtraData(eg.sentenceOptions)
+                    } else {
+                        null
+                    }
                     QuestionGroup(
                         uid = eg.uid,
                         examPaperId = 0,
@@ -295,7 +312,8 @@ class QuestionBankScanViewModel @Inject constructor(
                                 difficultyLevel = q.difficultyLevel?.let {
                                     com.xty.englishhelper.domain.model.DifficultyLevel.entries.find { d -> d.name == it }
                                 },
-                                difficultyScore = q.difficultyScore
+                                difficultyScore = q.difficultyScore,
+                                extraData = sentenceOptionsJson
                             )
                         }
                     )
@@ -352,5 +370,13 @@ class QuestionBankScanViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    private fun buildSentenceInsertionExtraData(options: List<String>): String {
+        val arr = org.json.JSONArray()
+        options.filter { it.isNotBlank() }.forEach { arr.put(it) }
+        val obj = org.json.JSONObject()
+        obj.put("options", arr)
+        return obj.toString()
     }
 }

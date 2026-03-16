@@ -130,6 +130,7 @@ data class ScannedQuestionGroup(
     val sectionLabel: String? = null,
     val directions: String? = null,
     val passageParagraphs: List<String> = emptyList(),
+    val sentenceOptions: List<String> = emptyList(),
     val sourceInfo: String? = null,
     val sourceUrl: String? = null,
     val questions: List<ScannedQuestion> = emptyList(),

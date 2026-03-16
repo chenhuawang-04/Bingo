@@ -12,6 +12,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
+import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
@@ -309,8 +310,19 @@ class BackgroundTaskManager @Inject constructor(
             throw IllegalStateException("快速模型未配置")
         }
         repository.updateProgress(task.id, 0, items.size)
+        val passageForAnswer = if (group.questionType == QuestionType.PARAGRAPH_ORDER) {
+            buildString {
+                if (!group.directions.isNullOrBlank()) {
+                    append("Directions:\n").append(group.directions).append("\n\n")
+                }
+                append("Paragraphs:\n").append(group.passageText)
+            }
+        } else {
+            group.passageText
+        }
+
         val results = questionBankAiRepository.generateAnswers(
-            group.passageText,
+            passageForAnswer,
             items,
             group.questionType.name,
             config.apiKey,
