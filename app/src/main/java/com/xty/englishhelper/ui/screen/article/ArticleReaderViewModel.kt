@@ -131,6 +131,9 @@ class ArticleReaderViewModel @Inject constructor(
     private var dataLoaded = false
     // Cache for online article word link scanning
     private var cachedOnlineWordLinks: List<ArticleWordLink>? = null
+    private var cachedFallbackWordLinks: List<ArticleWordLink>? = null
+    private var parseRecoveryTriggered = false
+    private val staleParseTimeoutMs = java.util.concurrent.TimeUnit.MINUTES.toMillis(3)
 
     init {
         observeTtsState()
@@ -213,7 +216,17 @@ class ArticleReaderViewModel @Inject constructor(
 
         val wordLinks = if (article?.isSaved == true) {
             // Local/saved article: read persisted word links from DB
-            repository.getWordLinks(articleId)
+            val persisted = repository.getWordLinks(articleId)
+            if (persisted.isNotEmpty()) {
+                cachedFallbackWordLinks = null
+                persisted
+            } else if (article.parseStatus != ArticleParseStatus.DONE) {
+                cachedFallbackWordLinks ?: scanWordLinks(paragraphs).also {
+                    cachedFallbackWordLinks = it
+                }
+            } else {
+                persisted
+            }
         } else {
             // Online article: use cached scan result or scan fresh
             cachedOnlineWordLinks ?: scanWordLinks(paragraphs).also {
@@ -225,6 +238,8 @@ class ArticleReaderViewModel @Inject constructor(
         val sentencesByParagraph = sentences.groupBy { it.paragraphId }
 
         val wordLinkMap = wordLinks.groupBy { it.matchedToken.lowercase() }
+
+        maybeRecoverStaleParsing(article, sentences, wordLinks)
 
         _uiState.update {
             it.copy(
@@ -250,6 +265,29 @@ class ArticleReaderViewModel @Inject constructor(
             computeInMemoryStatistics(paragraphs, article)
         } else if (article?.isSaved == true) {
             loadStatistics()
+        }
+    }
+
+    private fun maybeRecoverStaleParsing(
+        article: Article?,
+        sentences: List<ArticleSentence>,
+        wordLinks: List<ArticleWordLink>
+    ) {
+        if (article == null || !article.isSaved) return
+        if (article.parseStatus != ArticleParseStatus.PROCESSING) return
+        if (parseRecoveryTriggered) return
+        if (sentences.isNotEmpty() || wordLinks.isNotEmpty()) return
+
+        val age = System.currentTimeMillis() - article.updatedAt
+        if (age < staleParseTimeoutMs) return
+
+        parseRecoveryTriggered = true
+        viewModelScope.launch {
+            try {
+                parseArticle(articleId)
+            } catch (e: Exception) {
+                Log.w("ArticleReaderVM", "Parse recovery failed for articleId=$articleId", e)
+            }
         }
     }
 
@@ -759,9 +797,17 @@ class ArticleReaderViewModel @Inject constructor(
                 val firstGroup = groupList.firstOrNull()
 
                 if (firstGroup != null) {
-                    val originalCategoryId = article.categoryId
+                    if (!article.isSaved) {
+                        repository.markArticleSaved(article.id)
+                        viewModelScope.launch {
+                            try {
+                                parseArticle(article.id)
+                            } catch (e: Exception) {
+                                Log.w("ArticleReaderVM", "Parse failed for articleId=${article.id}", e)
+                            }
+                        }
+                    }
                     questionBankRepository.linkSourceArticle(firstGroup.id, article.id)
-                    repository.updateArticleCategory(article.id, originalCategoryId)
 
                     enqueueGeneratedTasks(firstGroup, finalTitle)
                     _generatedGroupId.emit(firstGroup.id)
