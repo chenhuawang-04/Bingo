@@ -49,5 +49,13 @@ data class ArticleEntity(
     @ColumnInfo(name = "category_id")
     val categoryId: Long = 1,
     @ColumnInfo(name = "source_type_v2")
-    val sourceTypeV2: String = "LOCAL"
+    val sourceTypeV2: String = "LOCAL",
+    @ColumnInfo(name = "suitability_score")
+    val suitabilityScore: Int? = null,
+    @ColumnInfo(name = "suitability_reason")
+    val suitabilityReason: String? = null,
+    @ColumnInfo(name = "suitability_updated_at")
+    val suitabilityUpdatedAt: Long? = null,
+    @ColumnInfo(name = "suitability_model")
+    val suitabilityModel: String? = null
 )

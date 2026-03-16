@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -100,6 +101,14 @@ fun GuardianBrowseScreen(
                 onSectionSelected = { viewModel.loadSection(it) }
             )
 
+            SortAndStatusBar(
+                sortByScore = uiState.sortByScore,
+                isEvaluating = uiState.isEvaluating,
+                evaluatingCount = uiState.evaluatingCount,
+                totalCount = uiState.articles.size,
+                onToggleSort = viewModel::toggleSortByScore
+            )
+
             HorizontalDivider()
 
             // Content area
@@ -142,9 +151,11 @@ fun GuardianBrowseScreen(
                         ArticleList(
                             articles = uiState.articles,
                             isLoadingArticle = uiState.isLoadingArticle,
+                            sortByScore = uiState.sortByScore,
                             onArticleClick = { url ->
                                 viewModel.openArticle(url, onArticleClick)
-                            }
+                            },
+                            onReevaluate = viewModel::reEvaluate
                         )
                     }
                 }
@@ -235,20 +246,33 @@ private fun SectionChips(
 private fun ArticleList(
     articles: List<GuardianBrowseItem>,
     isLoadingArticle: Boolean,
-    onArticleClick: (url: String) -> Unit
+    sortByScore: Boolean,
+    onArticleClick: (url: String) -> Unit,
+    onReevaluate: (url: String) -> Unit
 ) {
+    val sorted = remember(articles, sortByScore) {
+        if (!sortByScore) {
+            articles
+        } else {
+            articles.sortedWith(
+                compareByDescending<GuardianBrowseItem> { it.suitabilityScore ?: -1 }
+                    .thenBy { it.title }
+            )
+        }
+    }
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(articles, key = { it.url }) { article ->
+        items(sorted, key = { it.url }) { article ->
             ArticlePreviewCard(
                 article = article,
                 onClick = {
                     if (!isLoadingArticle) {
                         onArticleClick(article.url)
                     }
-                }
+                },
+                onReevaluate = { onReevaluate(article.url) }
             )
         }
 
@@ -261,7 +285,8 @@ private fun ArticleList(
 @Composable
 private fun ArticlePreviewCard(
     article: GuardianBrowseItem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onReevaluate: () -> Unit
 ) {
     val imageUrl = article.coverImageUrl ?: article.thumbnailUrl
     val context = LocalContext.current
@@ -362,7 +387,69 @@ private fun ArticlePreviewCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = metaColor
                 )
+
+                val scoreText = when {
+                    article.isEvaluating -> "评估中…"
+                    article.suitabilityScore != null -> "评分：${article.suitabilityScore}"
+                    else -> "未评估"
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        scoreText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (article.suitabilityScore != null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                    TextButton(onClick = onReevaluate, enabled = !article.isEvaluating) {
+                        Text("重新评估")
+                    }
+                }
+                if (!article.suitabilityReason.isNullOrBlank()) {
+                    Text(
+                        article.suitabilityReason,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun SortAndStatusBar(
+    sortByScore: Boolean,
+    isEvaluating: Boolean,
+    evaluatingCount: Int,
+    totalCount: Int,
+    onToggleSort: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FilterChip(
+            selected = sortByScore,
+            onClick = onToggleSort,
+            label = { Text("按评分排序") }
+        )
+        if (isEvaluating) {
+            Text(
+                "评估中 ${evaluatingCount}/${totalCount}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

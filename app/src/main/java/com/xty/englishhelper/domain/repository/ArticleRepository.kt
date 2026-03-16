@@ -108,4 +108,20 @@ interface ArticleRepository {
     suspend fun markArticleSaved(articleId: Long)
     suspend fun deleteUnsavedArticlesBefore(cutoff: Long)
     fun getSavedArticles(): Flow<List<Article>>
+
+    suspend fun updateSuitabilityById(
+        articleId: Long,
+        score: Int?,
+        reason: String?,
+        evaluatedAt: Long?,
+        modelKey: String?
+    )
+
+    suspend fun updateSuitabilityBySourceUrl(
+        sourceUrl: String,
+        score: Int?,
+        reason: String?,
+        evaluatedAt: Long?,
+        modelKey: String?
+    ): Int
 }

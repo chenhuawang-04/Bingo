@@ -204,7 +204,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             articleJsons.add(exportArticleJson(article))
         }
         val articlesExport = ArticlesExportModel(
-            schemaVersion = 2,
+            schemaVersion = 3,
             articles = articleJsons
         )
         uploadJson("articles.json", articlesExport, articlesAdapter)
@@ -259,7 +259,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             articleJsons.add(exportArticleJson(article))
         }
         val articlesExport = ArticlesExportModel(
-            schemaVersion = 2,
+            schemaVersion = 3,
             articles = articleJsons
         )
         uploadJson("articles.json", articlesExport, articlesAdapter)
@@ -695,6 +695,19 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val coverImageUri = articleJson.coverImageUri?.takeIf { it.isNotBlank() }
             ?: existing?.coverImageUri
 
+        val suitabilityScore = articleJson.suitabilityScore ?: existing?.suitabilityScore
+        val suitabilityReason = if (articleJson.suitabilityReason.isNotBlank()) {
+            articleJson.suitabilityReason
+        } else {
+            existing?.suitabilityReason.orEmpty()
+        }
+        val suitabilityUpdatedAt = articleJson.suitabilityUpdatedAt ?: existing?.suitabilityUpdatedAt
+        val suitabilityModel = if (articleJson.suitabilityModel.isNotBlank()) {
+            articleJson.suitabilityModel
+        } else {
+            existing?.suitabilityModel.orEmpty()
+        }
+
         val hasStructuredContent = supportsStructuredContent &&
             (articleJson.paragraphs.isNotEmpty() || articleJson.images.isNotEmpty())
         val parseStatus = when {
@@ -725,7 +738,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             coverImageUrl = articleJson.coverImageUrl,
             wordCount = articleJson.wordCount,
             isSaved = articleJson.isSaved,
-            categoryId = articleJson.categoryId
+            categoryId = articleJson.categoryId,
+            suitabilityScore = suitabilityScore,
+            suitabilityReason = suitabilityReason,
+            suitabilityUpdatedAt = suitabilityUpdatedAt,
+            suitabilityModel = suitabilityModel
         )
         val articleId = articleRepository.upsertArticle(article)
 
@@ -873,6 +890,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         difficultyFinal = difficultyFinal,
         sourceTypeV2 = sourceTypeV2.name,
         isSaved = isSaved,
+        suitabilityScore = suitabilityScore,
+        suitabilityReason = suitabilityReason,
+        suitabilityUpdatedAt = suitabilityUpdatedAt,
+        suitabilityModel = suitabilityModel,
         paragraphs = paragraphs,
         images = images
     )

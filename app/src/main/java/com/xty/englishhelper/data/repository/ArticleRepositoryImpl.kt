@@ -351,6 +351,26 @@ class ArticleRepositoryImpl @Inject constructor(
         return articleDao.getSavedArticles().map { list -> list.map { it.toDomain() } }
     }
 
+    override suspend fun updateSuitabilityById(
+        articleId: Long,
+        score: Int?,
+        reason: String?,
+        evaluatedAt: Long?,
+        modelKey: String?
+    ) {
+        articleDao.updateSuitabilityById(articleId, score, reason, evaluatedAt, modelKey)
+    }
+
+    override suspend fun updateSuitabilityBySourceUrl(
+        sourceUrl: String,
+        score: Int?,
+        reason: String?,
+        evaluatedAt: Long?,
+        modelKey: String?
+    ): Int {
+        return articleDao.updateSuitabilityBySourceUrl(sourceUrl, score, reason, evaluatedAt, modelKey)
+    }
+
     // Entity <-> Domain mapping
     private fun ArticleEntity.toDomain() = Article(
         id = id,
@@ -373,7 +393,11 @@ class ArticleRepositoryImpl @Inject constructor(
         wordCount = wordCount,
         isSaved = isSaved == 1,
         categoryId = categoryId,
-        sourceTypeV2 = runCatching { ArticleSourceTypeV2.valueOf(sourceTypeV2) }.getOrDefault(ArticleSourceTypeV2.LOCAL)
+        sourceTypeV2 = runCatching { ArticleSourceTypeV2.valueOf(sourceTypeV2) }.getOrDefault(ArticleSourceTypeV2.LOCAL),
+        suitabilityScore = suitabilityScore,
+        suitabilityReason = suitabilityReason.orEmpty(),
+        suitabilityUpdatedAt = suitabilityUpdatedAt,
+        suitabilityModel = suitabilityModel.orEmpty()
     )
 
     private fun Article.toEntity() = ArticleEntity(
@@ -397,7 +421,11 @@ class ArticleRepositoryImpl @Inject constructor(
         wordCount = wordCount,
         isSaved = if (isSaved) 1 else 0,
         categoryId = categoryId,
-        sourceTypeV2 = sourceTypeV2.name
+        sourceTypeV2 = sourceTypeV2.name,
+        suitabilityScore = suitabilityScore,
+        suitabilityReason = suitabilityReason.ifBlank { null },
+        suitabilityUpdatedAt = suitabilityUpdatedAt,
+        suitabilityModel = suitabilityModel.ifBlank { null }
     )
 
     private fun ArticleCategoryEntity.toDomain() = ArticleCategory(

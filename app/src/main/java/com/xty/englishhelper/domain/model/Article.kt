@@ -33,5 +33,9 @@ data class Article(
     val wordCount: Int = 0,
     val isSaved: Boolean = true,
     val categoryId: Long = ArticleCategoryDefaults.DEFAULT_ID,
-    val sourceTypeV2: ArticleSourceTypeV2 = ArticleSourceTypeV2.LOCAL
+    val sourceTypeV2: ArticleSourceTypeV2 = ArticleSourceTypeV2.LOCAL,
+    val suitabilityScore: Int? = null,
+    val suitabilityReason: String = "",
+    val suitabilityUpdatedAt: Long? = null,
+    val suitabilityModel: String = ""
 )

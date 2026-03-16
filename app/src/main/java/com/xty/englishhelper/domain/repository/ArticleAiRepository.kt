@@ -6,6 +6,11 @@ import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
 
+data class ArticleSuitabilityResult(
+    val score: Int = 0,
+    val reason: String = ""
+)
+
 interface ArticleAiRepository {
     suspend fun extractArticleFromImages(
         imageBytes: List<ByteArray>,
@@ -57,4 +62,18 @@ interface ArticleAiRepository {
         baseUrl: String,
         provider: AiProvider
     ): QuickWordAnalysis
+
+    suspend fun evaluateArticleSuitability(
+        title: String,
+        excerpt: String,
+        trailText: String?,
+        source: String?,
+        section: String?,
+        wordCount: Int?,
+        url: String?,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): ArticleSuitabilityResult
 }

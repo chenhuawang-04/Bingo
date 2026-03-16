@@ -75,7 +75,7 @@ import java.util.UUID
         BackgroundTaskEntity::class,
         ArticleCategoryEntity::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -750,6 +750,15 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE question_items ADD COLUMN sample_source_title TEXT")
                 db.execSQL("ALTER TABLE question_items ADD COLUMN sample_source_url TEXT")
                 db.execSQL("ALTER TABLE question_items ADD COLUMN sample_source_info TEXT")
+            }
+        }
+
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE articles ADD COLUMN suitability_score INTEGER")
+                db.execSQL("ALTER TABLE articles ADD COLUMN suitability_reason TEXT")
+                db.execSQL("ALTER TABLE articles ADD COLUMN suitability_updated_at INTEGER")
+                db.execSQL("ALTER TABLE articles ADD COLUMN suitability_model TEXT")
             }
         }
     }

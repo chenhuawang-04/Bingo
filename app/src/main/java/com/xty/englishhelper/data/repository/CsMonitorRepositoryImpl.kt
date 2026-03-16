@@ -36,6 +36,29 @@ class CsMonitorRepositoryImpl @Inject constructor(
     override suspend fun createTemporaryArticle(detail: CsMonitorArticleDetail): Long {
         val existing = articleRepository.getArticleBySourceUrl(detail.sourceUrl)
         if (existing != null) {
+            val needsUpdate = existing.content.isBlank() || existing.title != detail.title
+            if (needsUpdate) {
+                val updated = existing.copy(
+                    title = detail.title,
+                    content = detail.paragraphs.joinToString("\n\n") { it.text },
+                    sourceType = ArticleSourceType.MANUAL,
+                    sourceTypeV2 = ArticleSourceTypeV2.ONLINE,
+                    parseStatus = ArticleParseStatus.DONE,
+                    summary = detail.summary,
+                    author = detail.author,
+                    source = detail.source,
+                    coverImageUrl = detail.coverImageUrl,
+                    domain = detail.sourceUrl,
+                    wordCount = existing.wordCount
+                )
+                val articleId = articleRepository.upsertArticle(updated)
+                articleRepository.deleteParagraphsByArticle(articleId)
+                val paragraphsWithId = detail.paragraphs.mapIndexed { index, p ->
+                    p.copy(articleId = articleId, paragraphIndex = index)
+                }
+                articleRepository.insertParagraphs(paragraphsWithId)
+                return articleId
+            }
             return existing.id
         }
 

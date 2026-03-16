@@ -3,13 +3,16 @@ package com.xty.englishhelper.ui.screen.article
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.usecase.article.DeleteArticleUseCase
 import com.xty.englishhelper.domain.usecase.article.GetArticleListUseCase
+import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +20,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class ArticleListUiState(
@@ -25,14 +29,18 @@ data class ArticleListUiState(
     val selectedCategoryId: Long? = null,
     val searchQuery: String = "",
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val evaluatingIds: Set<Long> = emptySet(),
+    val sortByScore: Boolean = false
 )
 
 @HiltViewModel
 class ArticleListViewModel @Inject constructor(
     private val getArticleList: GetArticleListUseCase,
     private val deleteArticleUseCase: DeleteArticleUseCase,
-    private val articleRepository: ArticleRepository
+    private val articleRepository: ArticleRepository,
+    private val articleAiRepository: ArticleAiRepository,
+    private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ArticleListUiState())
@@ -91,8 +99,19 @@ class ArticleListViewModel @Inject constructor(
                     }
                 }
                 .collectLatest { articles ->
-                    _uiState.update { it.copy(articles = articles) }
+                    _uiState.update { state ->
+                        state.copy(articles = sortArticles(articles, state.sortByScore))
+                    }
                 }
+        }
+    }
+
+    fun toggleSortByScore() {
+        _uiState.update { state ->
+            state.copy(
+                sortByScore = !state.sortByScore,
+                articles = sortArticles(state.articles, !state.sortByScore)
+            )
         }
     }
 
@@ -140,7 +159,71 @@ class ArticleListViewModel @Inject constructor(
         }
     }
 
+    fun reEvaluateArticle(articleId: Long) {
+        viewModelScope.launch {
+            if (_uiState.value.evaluatingIds.contains(articleId)) return@launch
+            _uiState.update { it.copy(evaluatingIds = it.evaluatingIds + articleId) }
+            try {
+                val article = articleRepository.getArticleByIdOnce(articleId) ?: return@launch
+                val config = settingsDataStore.getFastAiConfig()
+                if (config.apiKey.isBlank() || config.model.isBlank()) {
+                    _uiState.update { it.copy(error = "快速模型未配置，无法评估") }
+                    return@launch
+                }
+                val excerpt = buildExcerpt(article.content)
+                val result = withContext(Dispatchers.IO) {
+                    articleAiRepository.evaluateArticleSuitability(
+                        title = article.title,
+                        excerpt = excerpt,
+                        trailText = article.summary.takeIf { it.isNotBlank() },
+                        source = article.source.takeIf { it.isNotBlank() },
+                        section = null,
+                        wordCount = article.wordCount.takeIf { it > 0 },
+                        url = article.domain.takeIf { it.isNotBlank() },
+                        apiKey = config.apiKey,
+                        model = config.model,
+                        baseUrl = config.baseUrl,
+                        provider = config.provider
+                    )
+                }
+                val now = System.currentTimeMillis()
+                val modelKey = "${config.providerName}|${config.baseUrl.trimEnd('/')}|${config.model}"
+                articleRepository.updateSuitabilityById(
+                    articleId = articleId,
+                    score = result.score,
+                    reason = result.reason,
+                    evaluatedAt = now,
+                    modelKey = modelKey
+                )
+            } catch (e: Exception) {
+                val msg = e.message ?: "unknown"
+                _uiState.update { it.copy(error = "评估失败：$msg") }
+            } finally {
+                _uiState.update { it.copy(evaluatingIds = it.evaluatingIds - articleId) }
+            }
+        }
+    }
+
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    private fun buildExcerpt(content: String): String {
+        if (content.isBlank()) return ""
+        val paragraphs = content.split(Regex("\\n\\s*\\n"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        val selected = if (paragraphs.size <= 3) paragraphs else paragraphs.take(3)
+        val joined = selected.joinToString("\n\n")
+        return if (joined.length > 2200) joined.take(2200) else joined
+    }
+
+    private fun sortArticles(items: List<Article>, sortByScore: Boolean): List<Article> {
+        if (!sortByScore) return items
+        return items.sortedWith(
+            compareByDescending<Article> { it.suitabilityScore ?: -1 }
+                .thenByDescending { it.updatedAt }
+                .thenBy { it.title }
+        )
     }
 }

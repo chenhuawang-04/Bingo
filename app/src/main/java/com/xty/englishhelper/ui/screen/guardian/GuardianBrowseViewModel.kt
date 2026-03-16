@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.repository.ArticleAiRepository
+import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.AtlanticRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
@@ -35,7 +37,12 @@ data class GuardianBrowseItem(
     val wordCount: Int? = null,
     val isAuthorLoading: Boolean = false,
     val isWordCountLoading: Boolean = false,
-    val detailError: String? = null
+    val detailError: String? = null,
+    val suitabilityScore: Int? = null,
+    val suitabilityReason: String? = null,
+    val suitabilityEvaluatedAt: Long? = null,
+    val isEvaluating: Boolean = false,
+    val evaluationExcerpt: String? = null
 )
 
 val guardianSections = listOf(
@@ -118,7 +125,10 @@ data class GuardianBrowseUiState(
     val articles: List<GuardianBrowseItem> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingArticle: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val isEvaluating: Boolean = false,
+    val evaluatingCount: Int = 0,
+    val sortByScore: Boolean = false
 )
 
 @HiltViewModel
@@ -126,7 +136,9 @@ class GuardianBrowseViewModel @Inject constructor(
     private val guardianRepository: GuardianRepository,
     private val csMonitorRepository: CsMonitorRepository,
     private val atlanticRepository: AtlanticRepository,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val articleRepository: ArticleRepository,
+    private val articleAiRepository: ArticleAiRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GuardianBrowseUiState())
@@ -134,6 +146,7 @@ class GuardianBrowseViewModel @Inject constructor(
 
     private var detailJob: Job? = null
     private var sourceInitialized = false
+    private val evaluationSemaphore = Semaphore(2)
     private val lastSectionBySource = mutableMapOf(
         OnlineReadingSource.GUARDIAN to "international",
         OnlineReadingSource.CSMONITOR to "",
@@ -202,9 +215,10 @@ class GuardianBrowseViewModel @Inject constructor(
                         }
                     }
                 }
-                _uiState.update { it.copy(articles = items, isLoading = false) }
+                val hydrated = hydrateSuitability(items)
+                _uiState.update { it.copy(articles = hydrated, isLoading = false) }
                 detailJob = viewModelScope.launch {
-                    loadArticleDetails(items, source)
+                    loadArticleDetails(hydrated, source)
                 }
             } catch (e: Exception) {
                 Log.e("GuardianBrowseVM", "Failed to load section: $section", e)
@@ -229,6 +243,7 @@ class GuardianBrowseViewModel @Inject constructor(
                                 .joinToString(" ") { it.text }
                                 .split(Regex("\\s+"))
                                 .count { it.isNotBlank() }
+                            val excerpt = buildExcerpt(detail.paragraphs)
                             _uiState.update { state ->
                                 val idx = urlToIndex[item.url]
                                 if (idx != null && idx < state.articles.size && state.articles[idx].url == item.url) {
@@ -239,13 +254,15 @@ class GuardianBrowseViewModel @Inject constructor(
                                         wordCount = wordCount,
                                         isAuthorLoading = false,
                                         isWordCountLoading = false,
-                                        detailError = null
+                                        detailError = null,
+                                        evaluationExcerpt = excerpt
                                     )
                                     state.copy(articles = updated)
                                 } else {
                                     state
                                 }
                             }
+                            maybeEvaluateSuitability(item.url, source, sectionKey = _uiState.value.selectedSection)
                         } catch (e: Exception) {
                             Log.w("GuardianBrowseVM", "Detail load failed: ${item.url}", e)
                             _uiState.update { state ->
@@ -262,11 +279,36 @@ class GuardianBrowseViewModel @Inject constructor(
                                     state
                                 }
                             }
+                            maybeEvaluateSuitability(item.url, source, sectionKey = _uiState.value.selectedSection)
                         }
                     }
                 }
             }
         }
+    }
+
+    private suspend fun hydrateSuitability(items: List<GuardianBrowseItem>): List<GuardianBrowseItem> {
+        val hydrated = mutableListOf<GuardianBrowseItem>()
+        for (item in items) {
+            val existing = articleRepository.getArticleBySourceUrl(item.url)
+            if (existing == null) {
+                hydrated.add(item)
+            } else {
+                hydrated.add(
+                    item.copy(
+                        author = item.author ?: existing.author.takeIf { it.isNotBlank() },
+                        coverImageUrl = item.coverImageUrl ?: existing.coverImageUrl,
+                        wordCount = item.wordCount ?: existing.wordCount.takeIf { it > 0 },
+                        isAuthorLoading = item.isAuthorLoading && existing.author.isBlank(),
+                        isWordCountLoading = item.isWordCountLoading && existing.wordCount <= 0,
+                        suitabilityScore = existing.suitabilityScore,
+                        suitabilityReason = existing.suitabilityReason.takeIf { it.isNotBlank() },
+                        suitabilityEvaluatedAt = existing.suitabilityUpdatedAt
+                    )
+                )
+            }
+        }
+        return hydrated
     }
 
     fun refresh() {
@@ -277,6 +319,16 @@ class GuardianBrowseViewModel @Inject constructor(
         if (source == _uiState.value.selectedSource) return
         viewModelScope.launch { settingsDataStore.setOnlineReadingSource(source.key) }
         applySource(source, forceReload = true)
+    }
+
+    fun toggleSortByScore() {
+        _uiState.update { it.copy(sortByScore = !it.sortByScore) }
+    }
+
+    fun reEvaluate(url: String) {
+        viewModelScope.launch {
+            maybeEvaluateSuitability(url, _uiState.value.selectedSource, sectionKey = _uiState.value.selectedSection, force = true)
+        }
     }
 
     fun openArticle(
@@ -339,6 +391,133 @@ class GuardianBrowseViewModel @Inject constructor(
             )
         }
         loadSection(preferred)
+    }
+
+    private suspend fun maybeEvaluateSuitability(
+        url: String,
+        source: OnlineReadingSource,
+        sectionKey: String,
+        force: Boolean = false
+    ) {
+        val item = _uiState.value.articles.firstOrNull { it.url == url } ?: return
+        if (!force && item.suitabilityScore != null) return
+        if (item.isEvaluating) return
+
+        val config = settingsDataStore.getFastAiConfig()
+        if (config.apiKey.isBlank() || config.model.isBlank()) {
+            if (force) {
+                _uiState.update { it.copy(error = "快速模型未配置，无法评估") }
+            }
+            return
+        }
+
+        updateItemEvaluating(url, true)
+        evaluationSemaphore.withPermit {
+            try {
+                val excerpt = item.evaluationExcerpt?.takeIf { it.isNotBlank() }
+                    ?: item.trailText.orEmpty()
+                val result = articleAiRepository.evaluateArticleSuitability(
+                    title = item.title,
+                    excerpt = excerpt,
+                    trailText = item.trailText,
+                    source = source.label,
+                    section = resolveSectionLabel(source, sectionKey),
+                    wordCount = item.wordCount,
+                    url = item.url,
+                    apiKey = config.apiKey,
+                    model = config.model,
+                    baseUrl = config.baseUrl,
+                    provider = config.provider
+                )
+                val now = System.currentTimeMillis()
+                val modelKey = "${config.providerName}|${config.baseUrl.trimEnd('/')}|${config.model}"
+
+                val updated = articleRepository.updateSuitabilityBySourceUrl(
+                    sourceUrl = item.url,
+                    score = result.score,
+                    reason = result.reason,
+                    evaluatedAt = now,
+                    modelKey = modelKey
+                )
+
+                if (updated == 0) {
+                    val article = com.xty.englishhelper.domain.model.Article(
+                        title = item.title,
+                        content = "",
+                        articleUid = java.util.UUID.randomUUID().toString(),
+                        sourceType = com.xty.englishhelper.domain.model.ArticleSourceType.MANUAL,
+                        sourceTypeV2 = com.xty.englishhelper.domain.model.ArticleSourceTypeV2.ONLINE,
+                        parseStatus = com.xty.englishhelper.domain.model.ArticleParseStatus.DONE,
+                        summary = item.trailText.orEmpty(),
+                        author = item.author.orEmpty(),
+                        source = source.label,
+                        coverImageUrl = item.coverImageUrl,
+                        domain = item.url,
+                        isSaved = false,
+                        wordCount = item.wordCount ?: 0,
+                        suitabilityScore = result.score,
+                        suitabilityReason = result.reason,
+                        suitabilityUpdatedAt = now,
+                        suitabilityModel = modelKey
+                    )
+                    articleRepository.upsertArticle(article)
+                }
+
+                updateItemScore(url, result.score, result.reason, now)
+            } catch (e: Exception) {
+                Log.w("GuardianBrowseVM", "Suitability evaluation failed: $url", e)
+                if (force) {
+                    _uiState.update { it.copy(error = "评估失败：${e.message}") }
+                }
+            } finally {
+                updateItemEvaluating(url, false)
+            }
+        }
+    }
+
+    private fun updateItemEvaluating(url: String, evaluating: Boolean) {
+        _uiState.update { state ->
+            val idx = state.articles.indexOfFirst { it.url == url }
+            if (idx < 0) return@update state
+            val updated = state.articles.toMutableList()
+            updated[idx] = updated[idx].copy(isEvaluating = evaluating)
+            val newCount = if (evaluating) state.evaluatingCount + 1 else (state.evaluatingCount - 1).coerceAtLeast(0)
+            state.copy(
+                articles = updated,
+                evaluatingCount = newCount,
+                isEvaluating = newCount > 0
+            )
+        }
+    }
+
+    private fun updateItemScore(url: String, score: Int, reason: String, evaluatedAt: Long) {
+        _uiState.update { state ->
+            val idx = state.articles.indexOfFirst { it.url == url }
+            if (idx < 0) return@update state
+            val updated = state.articles.toMutableList()
+            updated[idx] = updated[idx].copy(
+                suitabilityScore = score,
+                suitabilityReason = reason,
+                suitabilityEvaluatedAt = evaluatedAt
+            )
+            state.copy(articles = updated)
+        }
+    }
+
+    private fun buildExcerpt(paragraphs: List<ArticleParagraph>): String {
+        if (paragraphs.isEmpty()) return ""
+        val selected = if (paragraphs.size <= 3) paragraphs else paragraphs.take(3)
+        val joined = selected.joinToString("\n\n") { it.text.trim() }.trim()
+        return if (joined.length > 2200) joined.take(2200) else joined
+    }
+
+    private fun resolveSectionLabel(source: OnlineReadingSource, sectionKey: String): String? {
+        val sections = when (source) {
+            OnlineReadingSource.GUARDIAN -> guardianSections
+            OnlineReadingSource.CSMONITOR -> csMonitorSections
+            OnlineReadingSource.ATLANTIC -> atlanticSections
+        }
+        return sections.firstOrNull { it.key == sectionKey }?.label
     }
 
     private data class OnlineDetail(

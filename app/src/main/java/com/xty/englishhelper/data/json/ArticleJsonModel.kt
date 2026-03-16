@@ -29,6 +29,10 @@ data class ArticleJsonModel(
     val difficultyFinal: Float = 0f,
     val sourceTypeV2: String = "LOCAL",
     val isSaved: Boolean = true,
+    val suitabilityScore: Int? = null,
+    val suitabilityReason: String = "",
+    val suitabilityUpdatedAt: Long? = null,
+    val suitabilityModel: String = "",
     val paragraphs: List<ArticleParagraphJsonModel> = emptyList(),
     val images: List<ArticleImageJsonModel> = emptyList()
 )

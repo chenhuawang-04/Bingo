@@ -122,6 +122,10 @@ fun ArticleListScreen(
                         onSelect = viewModel::selectCategory,
                         onCreate = { showCreateCategoryDialog = true }
                     )
+                    SortBar(
+                        sortByScore = uiState.sortByScore,
+                        onToggleSort = viewModel::toggleSortByScore
+                    )
                 }
                 Text("暂无文章，点击 + 创建新文章", style = MaterialTheme.typography.bodyLarge)
             }
@@ -140,6 +144,10 @@ fun ArticleListScreen(
                         onSelect = viewModel::selectCategory,
                         onCreate = { showCreateCategoryDialog = true }
                     )
+                    SortBar(
+                        sortByScore = uiState.sortByScore,
+                        onToggleSort = viewModel::toggleSortByScore
+                    )
                 }
                 items(articles, key = { it.id }) { article ->
                     ArticleCard(
@@ -148,6 +156,8 @@ fun ArticleListScreen(
                         categories = uiState.categories,
                         onRead = { onReadArticle(article.id) },
                         onDelete = { viewModel.deleteArticle(article.id) },
+                        onReevaluate = { viewModel.reEvaluateArticle(article.id) },
+                        isEvaluating = uiState.evaluatingIds.contains(article.id),
                         onMoveCategory = { categoryId ->
                             viewModel.moveArticleToCategory(article.id, categoryId)
                         }
@@ -194,6 +204,26 @@ fun ArticleListScreen(
     }
 }
 
+@Composable
+private fun SortBar(
+    sortByScore: Boolean,
+    onToggleSort: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FilterChip(
+            selected = sortByScore,
+            onClick = onToggleSort,
+            label = { Text("按评分排序") }
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ArticleCard(
@@ -202,6 +232,8 @@ private fun ArticleCard(
     categories: List<ArticleCategory>,
     onRead: () -> Unit,
     onDelete: () -> Unit,
+    onReevaluate: () -> Unit,
+    isEvaluating: Boolean,
     onMoveCategory: (Long) -> Unit
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -210,6 +242,11 @@ private fun ArticleCard(
     var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
 
     val hasCover = article.coverImageUri != null || article.coverImageUrl != null
+    val scoreText = when {
+        isEvaluating -> "评估中…"
+        article.suitabilityScore != null -> "评分：${article.suitabilityScore}"
+        else -> "未评估"
+    }
 
     Card(
         onClick = onRead,
@@ -276,6 +313,15 @@ private fun ArticleCard(
                                 color = MaterialTheme.colorScheme.tertiary
                             )
                         }
+                        Text(
+                            scoreText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (article.suitabilityScore != null) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
                         val statusText = parseStatusText(article.parseStatus)
                         if (statusText != null) {
                             Text(
@@ -292,6 +338,13 @@ private fun ArticleCard(
                         Text("···", style = MaterialTheme.typography.bodyMedium)
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("重新评估") },
+                            onClick = {
+                                showMenu = false
+                                onReevaluate()
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text("移动到分类") },
                             onClick = {
@@ -364,6 +417,15 @@ private fun ArticleCard(
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                                 )
                             }
+                            Text(
+                                scoreText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (article.suitabilityScore != null) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                }
+                            )
                             val statusText = parseStatusText(article.parseStatus)
                             if (statusText != null) {
                                 Text(
@@ -379,6 +441,13 @@ private fun ArticleCard(
                                 Text("···", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("重新评估") },
+                                    onClick = {
+                                        showMenu = false
+                                        onReevaluate()
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text("移动到分类") },
                                     onClick = {

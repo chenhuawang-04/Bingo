@@ -9,8 +9,10 @@ import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
+import com.xty.englishhelper.domain.repository.ArticleSuitabilityResult
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToInt
 
 @Singleton
 class ArticleAiRepositoryImpl @Inject constructor(
@@ -236,6 +238,64 @@ class ArticleAiRepositoryImpl @Inject constructor(
         return parseQuickWordAnalysis(responseText)
     }
 
+    override suspend fun evaluateArticleSuitability(
+        title: String,
+        excerpt: String,
+        trailText: String?,
+        source: String?,
+        section: String?,
+        wordCount: Int?,
+        url: String?,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): ArticleSuitabilityResult {
+        val safeExcerpt = excerpt.trim().take(2200)
+        val userMessage = buildString {
+            append("你是考研英语选文评估员，请判断文章是否适合用作考研英语阅读/完形/翻译材料，并给出0-100整数评分与简短理由。\n")
+            append("评估标准（摘要）：\n")
+            append("- 主题倾向公共议题/社科/科技/教育/经济/环境/文化现象；避免政治、宗教、军事、暴力、种族、色情等敏感或强争议话题。\n")
+            append("- 体裁偏议论文/说明文；文学/诗歌/戏剧/纯新闻快讯/广告/操作指南/过度娱乐化内容不适合。\n")
+            append("- 可读性与公平：语言规范、背景依赖低，避免高度专业论文或术语密集。\n")
+            append("- 命题性：逻辑结构清晰，有转折/因果/对比/例证等，便于出题。\n")
+            append("- 长度适中（约400-600词更合适），过短/过长可扣分。\n\n")
+            append("文章信息：\n")
+            append("Title: ").append(title).append('\n')
+            if (!trailText.isNullOrBlank()) append("Summary: ").append(trailText.trim()).append('\n')
+            if (!source.isNullOrBlank()) append("Source: ").append(source.trim()).append('\n')
+            if (!section.isNullOrBlank()) append("Section: ").append(section.trim()).append('\n')
+            if (wordCount != null && wordCount > 0) append("WordCount: ").append(wordCount).append('\n')
+            if (!url.isNullOrBlank()) append("URL: ").append(url.trim()).append('\n')
+            if (safeExcerpt.isNotBlank()) {
+                append("Excerpt:\n")
+                append(safeExcerpt).append('\n')
+            }
+            append(
+                """
+                请仅返回如下JSON：
+                {
+                  "score": 85,
+                  "reason": "简短理由，不超过两句话"
+                }
+                """.trimIndent()
+            )
+            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+        }
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = userMessage)),
+            maxTokens = 512
+        )
+
+        return parseSuitability(responseText)
+    }
+
     private fun <T> parseJsonPayload(responseText: String, clazz: Class<T>): T? {
         val cleaned = stripCodeFence(responseText)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
@@ -313,6 +373,18 @@ class ArticleAiRepositoryImpl @Inject constructor(
             QuickWordAnalysis()
         }
     }
+
+    private fun parseSuitability(text: String): ArticleSuitabilityResult {
+        val cleaned = stripCodeFence(text)
+        val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+        val adapter = moshi.adapter(SuitabilityJson::class.java).lenient()
+        val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
+            ?: runCatching { adapter.fromJson(removeTrailingCommas(json)) }.getOrNull()
+
+        val score = parsed?.score?.roundToInt()?.coerceIn(0, 100) ?: 0
+        val reason = parsed?.reason?.trim().orEmpty()
+        return ArticleSuitabilityResult(score = score, reason = reason)
+    }
 }
 
 // Internal JSON model for Moshi parsing
@@ -322,4 +394,9 @@ private data class QuickWordAnalysisJson(
     val contextMeaning: String? = null,
     val commonMeanings: List<String>? = null,
     val examImportance: String? = null
+)
+
+private data class SuitabilityJson(
+    val score: Double? = null,
+    val reason: String? = null
 )
