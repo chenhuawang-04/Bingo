@@ -10,6 +10,8 @@ interface BackgroundTaskRepository {
 
     fun observeAllTasks(): Flow<List<BackgroundTask>>
 
+    fun observeTasksByTypes(types: List<BackgroundTaskType>): Flow<List<BackgroundTask>>
+
     suspend fun getTaskById(id: Long): BackgroundTask?
 
     suspend fun getTaskByDedupeKey(dedupeKey: String): BackgroundTask?

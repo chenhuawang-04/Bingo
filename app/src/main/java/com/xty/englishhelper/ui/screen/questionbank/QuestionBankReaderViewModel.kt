@@ -159,11 +159,12 @@ class QuestionBankReaderViewModel @Inject constructor(
                     return@launch
                 }
 
-                val paragraphs = repository.getParagraphs(groupId)
-                val items = repository.getItemsByGroup(groupId)
+                val paragraphs = group.paragraphs
+                val items = group.items
                 val wrongIds = repository.getWrongItemIds(groupId).toSet()
-                val linkedId = repository.getLinkedArticleId(groupId)
-                val paper = repository.getExamPaperById(group.examPaperId)
+                val linkedId = group.linkedArticleId
+                val paperTitle = group.examPaperTitle
+                    ?: repository.getExamPaperById(group.examPaperId)?.title.orEmpty()
                 val sentenceOptions = if (
                     group.questionType == QuestionType.SENTENCE_INSERTION ||
                     group.questionType == QuestionType.COMMENT_OPINION_MATCH ||
@@ -186,7 +187,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         group = group,
-                        paperTitle = paper?.title ?: "",
+                        paperTitle = paperTitle,
                         paragraphs = paragraphs,
                         items = items,
                         wordLinks = links,
@@ -232,7 +233,12 @@ class QuestionBankReaderViewModel @Inject constructor(
             var lastAnswerStatus: BackgroundTaskStatus? = null
             var lastVerifyStatus: BackgroundTaskStatus? = null
             var lastSampleStatus: BackgroundTaskStatus? = null
-            taskRepository.observeAllTasks().collect { tasks ->
+            val taskTypes = listOf(
+                BackgroundTaskType.QUESTION_ANSWER_GENERATE,
+                BackgroundTaskType.QUESTION_SOURCE_VERIFY,
+                BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH
+            )
+            taskRepository.observeTasksByTypes(taskTypes).collect { tasks ->
                 val answerTask = tasks
                     .filter { it.type == BackgroundTaskType.QUESTION_ANSWER_GENERATE }
                     .filter { (it.payload as? QuestionAnswerGeneratePayload)?.groupId == groupId }
@@ -301,8 +307,7 @@ class QuestionBankReaderViewModel @Inject constructor(
 
     private suspend fun refreshSourceInfo() {
         val updatedGroup = repository.getGroupById(groupId)
-        val linkedId = repository.getLinkedArticleId(groupId)
-        _uiState.update { it.copy(group = updatedGroup, linkedArticleId = linkedId) }
+        _uiState.update { it.copy(group = updatedGroup, linkedArticleId = updatedGroup?.linkedArticleId) }
     }
 
     // ── Translation ──

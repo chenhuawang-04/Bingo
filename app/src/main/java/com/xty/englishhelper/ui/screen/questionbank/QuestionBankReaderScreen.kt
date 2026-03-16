@@ -934,6 +934,34 @@ private fun PracticeActionBar(
 private val BlankRegex = Regex("__(\\d+)__")
 private val WordSplitRegex = Regex("(?<=\\s)|(?=\\s)|(?<=[,.:;!?\"'()\\[\\]{}])|(?=[,.:;!?\"'()\\[\\]{}])")
 private val CommentNumberRegex = Regex("^\\s*[\\(（]?\\s*(\\d{1,3})\\s*[\\)）]?\\s*[\\.、]?\\s*")
+private val InfoMatchOptionPrefixRegex = Regex("^\\s*[A-Ga-g][\\).、.]\\s+")
+private val InfoMatchNoisePrefixRegex = Regex("^(Directions|Read the following|Part\\s+|Questions\\s+\\d+)", RegexOption.IGNORE_CASE)
+private val PageNumberRegex = Regex("^\\s*\\d+\\s*$")
+
+private fun filterInfoMatchParagraphs(paragraphs: List<com.xty.englishhelper.domain.model.ArticleParagraph>): List<com.xty.englishhelper.domain.model.ArticleParagraph> {
+    return paragraphs.filter { paragraph ->
+        val trimmed = paragraph.text.trim()
+        if (trimmed.isBlank()) return@filter false
+        if (InfoMatchNoisePrefixRegex.containsMatchIn(trimmed)) return@filter false
+        if (PageNumberRegex.matches(trimmed)) return@filter false
+        val hasOptionPrefix = InfoMatchOptionPrefixRegex.containsMatchIn(trimmed)
+        val alphaNumericCount = trimmed.count { it.isLetterOrDigit() }
+        if (alphaNumericCount < 3) return@filter false
+        if (trimmed.length < 8 && !hasOptionPrefix) return@filter false
+        true
+    }
+}
+
+private fun buildOptionLetters(count: Int): List<String> {
+    if (count <= 0) return emptyList()
+    return (0 until count).map { index ->
+        if (index < 26) {
+            ('A'.code + index).toChar().toString()
+        } else {
+            (index + 1).toString()
+        }
+    }
+}
 
 @Composable
 private fun ClozeReaderContent(
@@ -1015,6 +1043,7 @@ private fun ClozePassagePanel(
     modifier: Modifier = Modifier
 ) {
     val group = state.group ?: return
+    val itemByNumber = remember(state.items) { state.items.associateBy { it.questionNumber } }
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(12.dp),
@@ -1051,7 +1080,7 @@ private fun ClozePassagePanel(
         items(state.paragraphs, key = { "cloze_p_${it.id}" }) { paragraph ->
             ClozePassageText(
                 text = paragraph.text,
-                items = state.items,
+                itemByNumber = itemByNumber,
                 selectedAnswers = state.selectedAnswers,
                 isSubmitted = state.isSubmitted,
                 showingAnswers = state.showingAnswers,
@@ -1113,7 +1142,7 @@ private fun ClozeOptionsPanel(
 @Composable
 private fun ClozePassageText(
     text: String,
-    items: List<QuestionItem>,
+    itemByNumber: Map<Int, QuestionItem>,
     selectedAnswers: Map<Long, String>,
     isSubmitted: Boolean,
     showingAnswers: Boolean,
@@ -1127,7 +1156,7 @@ private fun ClozePassageText(
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val bodyStyle = MaterialTheme.typography.bodyMedium
 
-    val annotated = remember(text, selectedAnswers, isSubmitted, showingAnswers, practiceResults) {
+    val annotated = remember(text, itemByNumber, selectedAnswers, isSubmitted, showingAnswers, practiceResults) {
         buildAnnotatedString {
             var lastEnd = 0
             val matches = BlankRegex.findAll(text).toList()
@@ -1135,7 +1164,7 @@ private fun ClozePassageText(
                 // Text before the blank
                 append(text.substring(lastEnd, match.range.first))
                 val number = match.groupValues[1].toIntOrNull() ?: 0
-                val item = items.find { it.questionNumber == number }
+                val item = itemByNumber[number]
                 val itemId = item?.id ?: 0L
                 val selected = selectedAnswers[itemId]
                 val result = practiceResults[itemId]
@@ -1386,6 +1415,7 @@ private fun SentenceInsertionPassagePanel(
     modifier: Modifier = Modifier
 ) {
     val group = state.group ?: return
+    val itemByNumber = remember(state.items) { state.items.associateBy { it.questionNumber } }
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(12.dp),
@@ -1427,7 +1457,7 @@ private fun SentenceInsertionPassagePanel(
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SentenceInsertionPassageText(
                     text = paragraph.text,
-                    items = state.items,
+                    itemByNumber = itemByNumber,
                     wordLinkMap = state.wordLinkMap,
                     selectedAnswers = state.selectedAnswers,
                     isSubmitted = state.isSubmitted,
@@ -1463,7 +1493,7 @@ private fun SentenceInsertionPassagePanel(
 @Composable
 private fun SentenceInsertionPassageText(
     text: String,
-    items: List<QuestionItem>,
+    itemByNumber: Map<Int, QuestionItem>,
     wordLinkMap: Map<String, List<ArticleWordLink>>,
     selectedAnswers: Map<Long, String>,
     isSubmitted: Boolean,
@@ -1485,7 +1515,7 @@ private fun SentenceInsertionPassageText(
         color = primary
     )
 
-    val annotated = remember(text, wordLinkMap, selectedAnswers, isSubmitted, showingAnswers, practiceResults) {
+    val annotated = remember(text, itemByNumber, wordLinkMap, selectedAnswers, isSubmitted, showingAnswers, practiceResults) {
         buildAnnotatedString {
             fun appendSegment(segment: String) {
                 if (segment.isEmpty()) return
@@ -1512,7 +1542,7 @@ private fun SentenceInsertionPassageText(
             for (match in matches) {
                 appendSegment(text.substring(lastEnd, match.range.first))
                 val number = match.groupValues[1].toIntOrNull() ?: 0
-                val item = items.find { it.questionNumber == number }
+                val item = itemByNumber[number]
                 val itemId = item?.id ?: 0L
                 val selected = selectedAnswers[itemId]
                 val result = practiceResults[itemId]
@@ -2176,9 +2206,14 @@ private fun InformationMatchContent(
         val idx = ttsState.currentIndex
         if (idx in speakable.indices) speakable[idx].id else 0L
     }
-    val optionLetters = remember {
-        (0 until 7).map { index -> ('A'.code + index).toChar().toString() }
+    val optionParagraphs = remember(state.paragraphs) { filterInfoMatchParagraphs(state.paragraphs) }
+    val fallbackOptions = state.sentenceInsertionOptions
+    val optionCount = when {
+        optionParagraphs.isNotEmpty() -> optionParagraphs.size
+        fallbackOptions.isNotEmpty() -> fallbackOptions.size
+        else -> 0
     }
+    val optionLetters = remember(optionCount) { buildOptionLetters(optionCount) }
 
     LazyColumn(
         state = listState,
@@ -2222,9 +2257,9 @@ private fun InformationMatchContent(
             }
         }
 
-        if (state.paragraphs.isNotEmpty()) {
-            itemsIndexed(state.paragraphs, key = { index, paragraph -> "info_match_opt_${paragraph.id}" }) { index, paragraph ->
-                val label = optionLetters.getOrNull(index) ?: "?"
+        if (optionParagraphs.isNotEmpty()) {
+            itemsIndexed(optionParagraphs, key = { _, paragraph -> "info_match_opt_${paragraph.id}" }) { index, paragraph ->
+                val label = optionLetters.getOrNull(index) ?: (index + 1).toString()
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -2252,7 +2287,7 @@ private fun InformationMatchContent(
             item(key = "info_match_options_fallback") {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        val options = state.sentenceInsertionOptions
+                        val options = fallbackOptions
                         if (options.isEmpty()) {
                             Text(
                                 "未识别到信息选项",
@@ -2260,8 +2295,9 @@ private fun InformationMatchContent(
                                 color = MaterialTheme.colorScheme.error
                             )
                         } else {
-                            options.take(7).forEach { option ->
-                                Text(option, style = MaterialTheme.typography.bodySmall)
+                            options.forEachIndexed { index, option ->
+                                val label = optionLetters.getOrNull(index) ?: (index + 1).toString()
+                                Text("$label. $option", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }

@@ -31,6 +31,11 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
         return dao.observeAll().map { list -> list.mapNotNull { it.toDomain() } }
     }
 
+    override fun observeTasksByTypes(types: List<BackgroundTaskType>): Flow<List<BackgroundTask>> {
+        val typeNames = types.map { it.name }
+        return dao.observeByTypes(typeNames).map { list -> list.mapNotNull { it.toDomain() } }
+    }
+
     override suspend fun getTaskById(id: Long): BackgroundTask? {
         return dao.getById(id)?.toDomain()
     }

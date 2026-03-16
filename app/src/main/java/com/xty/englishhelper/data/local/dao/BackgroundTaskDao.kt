@@ -19,6 +19,9 @@ interface BackgroundTaskDao {
     @Query("SELECT * FROM background_tasks ORDER BY created_at DESC")
     fun observeAll(): Flow<List<BackgroundTaskEntity>>
 
+    @Query("SELECT * FROM background_tasks WHERE type IN (:types) ORDER BY created_at DESC")
+    fun observeByTypes(types: List<String>): Flow<List<BackgroundTaskEntity>>
+
     @Query("SELECT * FROM background_tasks WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): BackgroundTaskEntity?
 
