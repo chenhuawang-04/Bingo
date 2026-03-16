@@ -808,11 +808,11 @@ class ArticleReaderViewModel @Inject constructor(
                         }
                     }
                     questionBankRepository.linkSourceArticle(firstGroup.id, article.id)
-                    questionBankRepository.updateSourceVerification(firstGroup.id, 1, null)
                     val sourceUrl = article.domain.takeIf { it.startsWith("http://") || it.startsWith("https://") }
                     if (!sourceUrl.isNullOrBlank()) {
                         questionBankRepository.updateSourceUrl(firstGroup.id, sourceUrl)
                     }
+                    questionBankRepository.updateSourceVerification(firstGroup.id, 1, null)
 
                     enqueueGeneratedTasks(firstGroup, finalTitle)
                     _generatedGroupId.emit(firstGroup.id)
