@@ -21,7 +21,30 @@ data class ArticleJsonModel(
     val summary: String = "",
     val author: String = "",
     val source: String = "",
+    val coverImageUri: String? = null,
     val coverImageUrl: String? = null,
     val wordCount: Int = 0,
-    val categoryId: Long = com.xty.englishhelper.domain.model.ArticleCategoryDefaults.DEFAULT_ID
+    val categoryId: Long = com.xty.englishhelper.domain.model.ArticleCategoryDefaults.DEFAULT_ID,
+    val difficultyLocal: Float = 0f,
+    val difficultyFinal: Float = 0f,
+    val sourceTypeV2: String = "LOCAL",
+    val isSaved: Boolean = true,
+    val paragraphs: List<ArticleParagraphJsonModel> = emptyList(),
+    val images: List<ArticleImageJsonModel> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class ArticleParagraphJsonModel(
+    val paragraphIndex: Int = 0,
+    val text: String = "",
+    val paragraphType: String = "TEXT",
+    val imageUri: String? = null,
+    val imageUrl: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ArticleImageJsonModel(
+    val localUri: String = "",
+    val orderIndex: Int = 0,
+    val imageUrl: String? = null
 )

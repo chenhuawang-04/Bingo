@@ -27,6 +27,9 @@ interface WordPoolDao {
     @Query("SELECT * FROM word_pools WHERE id IN (:poolIds)")
     suspend fun getPoolsByIds(poolIds: List<Long>): List<WordPoolEntity>
 
+    @Query("SELECT * FROM word_pools WHERE dictionary_id = :dictionaryId")
+    suspend fun getPoolsByDictionary(dictionaryId: Long): List<WordPoolEntity>
+
     @Query("SELECT pool_id FROM word_pool_members WHERE word_id = :wordId")
     suspend fun getPoolIdsForWord(wordId: Long): List<Long>
 

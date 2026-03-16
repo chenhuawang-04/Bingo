@@ -49,6 +49,12 @@ interface ArticleDao {
     @Query("SELECT * FROM article_sentences WHERE article_id = :articleId ORDER BY sentence_index ASC")
     suspend fun getSentences(articleId: Long): List<ArticleSentenceEntity>
 
+    @Query("SELECT sentence_index FROM article_sentences WHERE id = :id")
+    suspend fun getSentenceIndexById(id: Long): Int?
+
+    @Query("SELECT id FROM article_sentences WHERE article_id = :articleId AND sentence_index = :sentenceIndex LIMIT 1")
+    suspend fun getSentenceIdByIndex(articleId: Long, sentenceIndex: Int): Long?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSentences(sentences: List<ArticleSentenceEntity>)
 
@@ -136,6 +142,9 @@ interface ArticleDao {
     // Word examples
     @Query("SELECT * FROM word_examples WHERE word_id = :wordId ORDER BY created_at DESC")
     suspend fun getExamplesForWord(wordId: Long): List<WordExampleEntity>
+
+    @Query("SELECT * FROM word_examples")
+    suspend fun getAllExamples(): List<WordExampleEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertExamples(examples: List<WordExampleEntity>)

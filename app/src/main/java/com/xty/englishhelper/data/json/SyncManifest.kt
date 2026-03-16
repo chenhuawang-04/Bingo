@@ -10,5 +10,6 @@ data class SyncManifest(
     val deviceName: String = "",
     val dictionaries: List<String> = emptyList(),
     val hasArticles: Boolean = false,
-    val hasQuestionBank: Boolean = false
+    val hasQuestionBank: Boolean = false,
+    val hasWordExamples: Boolean = false
 )

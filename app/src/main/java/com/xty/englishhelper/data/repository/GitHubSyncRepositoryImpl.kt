@@ -6,7 +6,9 @@ import com.squareup.moshi.Moshi
 import com.xty.englishhelper.BuildConfig
 import com.xty.englishhelper.data.json.ArticleCategoriesExportModel
 import com.xty.englishhelper.data.json.ArticleCategoryJsonModel
+import com.xty.englishhelper.data.json.ArticleImageJsonModel
 import com.xty.englishhelper.data.json.ArticleJsonModel
+import com.xty.englishhelper.data.json.ArticleParagraphJsonModel
 import com.xty.englishhelper.data.json.ArticlesExportModel
 import com.xty.englishhelper.data.json.DictionaryJsonModel
 import com.xty.englishhelper.data.json.ExamPaperJson
@@ -19,7 +21,10 @@ import com.xty.englishhelper.data.json.QuestionItemJson
 import com.xty.englishhelper.data.json.StudyStateJsonModel
 import com.xty.englishhelper.data.json.SyncManifest
 import com.xty.englishhelper.data.json.UnitJsonModel
+import com.xty.englishhelper.data.json.WordExampleJsonModel
+import com.xty.englishhelper.data.json.WordExamplesExportModel
 import com.xty.englishhelper.data.json.WordPoolJsonModel
+import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
@@ -38,10 +43,12 @@ import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSourceType
+import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.repository.WordExample
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
 import com.xty.englishhelper.domain.repository.DictionaryImportExporter
 import com.xty.englishhelper.domain.repository.DictionaryRepository
@@ -52,7 +59,6 @@ import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.usecase.importexport.ExportDictionaryUseCase
-import com.xty.englishhelper.domain.usecase.importexport.ImportDictionaryUseCase
 import kotlinx.coroutines.flow.first
 import java.security.MessageDigest
 import java.util.UUID
@@ -68,6 +74,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val unitRepository: UnitRepository,
     private val studyRepository: StudyRepository,
     private val articleRepository: ArticleRepository,
+    private val articleDao: ArticleDao,
     private val wordPoolRepository: WordPoolRepository,
     private val wordPoolDao: WordPoolDao,
     private val questionBankDao: QuestionBankDao,
@@ -82,6 +89,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val manifestAdapter = moshi.adapter(SyncManifest::class.java).indent("  ")
     private val questionBankAdapter = moshi.adapter(QuestionBankExportModel::class.java).indent("  ")
     private val articleCategoriesAdapter = moshi.adapter(ArticleCategoriesExportModel::class.java).indent("  ")
+    private val wordExamplesAdapter = moshi.adapter(WordExamplesExportModel::class.java).indent("  ")
 
     private fun authHeader(): String {
         val pat = settingsDataStore.getGitHubPat()
@@ -130,6 +138,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
+        val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
 
         // 2. Read local data
         onProgress(SyncProgress("读取中", "正在读取本地数据...", 1, 4))
@@ -169,6 +178,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
         val articleUidToId = buildArticleUidToIdMap()
         mergeQuestionBank(cloudQuestionBank, articleUidToId)
+        val wordUidToId = buildWordUidToIdMap()
+        importWordExamples(cloudWordExamples, wordUidToId, articleUidToId)
 
         // Re-export local dicts that were merged (to pick up cloud-only words)
         val finalDictJsons = mutableListOf<DictionaryJsonModel>()
@@ -188,9 +199,13 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         // Upload articles
         val allArticles = articleRepository.getAllArticles().first()
+        val articleJsons = mutableListOf<ArticleJsonModel>()
+        for (article in allArticles) {
+            articleJsons.add(exportArticleJson(article))
+        }
         val articlesExport = ArticlesExportModel(
-            schemaVersion = 1,
-            articles = allArticles.map { it.toArticleJson() }
+            schemaVersion = 2,
+            articles = articleJsons
         )
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
@@ -202,6 +217,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val questionBankExport = exportQuestionBank()
         uploadJson("questionbank.json", questionBankExport, questionBankAdapter)
 
+        // Upload word examples
+        val wordExamplesExport = exportWordExamples()
+        uploadJson("word_examples.json", wordExamplesExport, wordExamplesAdapter)
+
         // Upload manifest
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
@@ -210,7 +229,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
             dictionaries = fileNames,
             hasArticles = allArticles.isNotEmpty(),
-            hasQuestionBank = questionBankExport.papers.isNotEmpty()
+            hasQuestionBank = questionBankExport.papers.isNotEmpty(),
+            hasWordExamples = wordExamplesExport.examples.isNotEmpty()
         )
         uploadJson("manifest.json", manifest, manifestAdapter)
 
@@ -234,9 +254,13 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         // Upload articles
         val allArticles = articleRepository.getAllArticles().first()
+        val articleJsons = mutableListOf<ArticleJsonModel>()
+        for (article in allArticles) {
+            articleJsons.add(exportArticleJson(article))
+        }
         val articlesExport = ArticlesExportModel(
-            schemaVersion = 1,
-            articles = allArticles.map { it.toArticleJson() }
+            schemaVersion = 2,
+            articles = articleJsons
         )
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
@@ -248,6 +272,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val questionBankExport = exportQuestionBank()
         uploadJson("questionbank.json", questionBankExport, questionBankAdapter)
 
+        // Upload word examples
+        val wordExamplesExport = exportWordExamples()
+        uploadJson("word_examples.json", wordExamplesExport, wordExamplesAdapter)
+
         // Upload manifest
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
@@ -256,7 +284,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
             dictionaries = fileNames,
             hasArticles = allArticles.isNotEmpty(),
-            hasQuestionBank = questionBankExport.papers.isNotEmpty()
+            hasQuestionBank = questionBankExport.papers.isNotEmpty(),
+            hasWordExamples = wordExamplesExport.examples.isNotEmpty()
         )
         uploadJson("manifest.json", manifest, manifestAdapter)
 
@@ -281,6 +310,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
         val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
+        val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
 
         // Clear local data
         onProgress(SyncProgress("导入中", "正在清空本地数据...", 1, 3))
@@ -309,24 +339,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         // Import articles
         if (cloudArticles != null) {
             for (articleJson in cloudArticles.articles) {
-                val article = Article(
-                    articleUid = articleJson.articleUid.ifBlank { UUID.randomUUID().toString() },
-                    title = articleJson.title,
-                    content = articleJson.content,
-                    domain = articleJson.domain,
-                    difficultyAi = articleJson.difficultyAi,
-                    sourceType = try { ArticleSourceType.valueOf(articleJson.sourceType) } catch (_: Exception) { ArticleSourceType.MANUAL },
-                    parseStatus = ArticleParseStatus.PENDING,
-                    createdAt = articleJson.createdAt,
-                    updatedAt = articleJson.updatedAt,
-                    summary = articleJson.summary,
-                    author = articleJson.author,
-                    source = articleJson.source,
-                    coverImageUrl = articleJson.coverImageUrl,
-                    wordCount = articleJson.wordCount,
-                    categoryId = articleJson.categoryId
-                )
-                articleRepository.upsertArticle(article)
+                importArticleFromJson(articleJson, null, supportsStructuredContent = (cloudArticles?.schemaVersion ?: 1) >= 2)
             }
         }
         normalizeArticleCategories()
@@ -336,6 +349,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             val articleUidToId = buildArticleUidToIdMap()
             importQuestionBank(cloudQuestionBank, articleUidToId)
         }
+
+        val wordUidToId = buildWordUidToIdMap()
+        val articleUidToId = buildArticleUidToIdMap()
+        importWordExamples(cloudWordExamples, wordUidToId, articleUidToId)
 
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
         onProgress(SyncProgress("完成", "下载完成", 3, 3))
@@ -503,42 +520,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
             if (local == null && cloud != null) {
                 // Cloud-only → import
-                val article = Article(
-                    articleUid = cloud.articleUid,
-                    title = cloud.title,
-                    content = cloud.content,
-                    domain = cloud.domain,
-                    difficultyAi = cloud.difficultyAi,
-                    sourceType = try { ArticleSourceType.valueOf(cloud.sourceType) } catch (_: Exception) { ArticleSourceType.MANUAL },
-                    parseStatus = ArticleParseStatus.PENDING,
-                    createdAt = cloud.createdAt,
-                    updatedAt = cloud.updatedAt,
-                    summary = cloud.summary,
-                    author = cloud.author,
-                    source = cloud.source,
-                    coverImageUrl = cloud.coverImageUrl,
-                    wordCount = cloud.wordCount,
-                    categoryId = cloud.categoryId
-                )
-                articleRepository.upsertArticle(article)
+                importArticleFromJson(cloud, null, supportsStructuredContent = (cloudArticlesModel.schemaVersion >= 2))
             } else if (local != null && cloud != null) {
                 // Both exist → keep newer
                 if (cloud.updatedAt > local.updatedAt) {
-                    val updated = local.copy(
-                        title = cloud.title,
-                        content = cloud.content,
-                        domain = cloud.domain,
-                        difficultyAi = cloud.difficultyAi,
-                        updatedAt = cloud.updatedAt,
-                        parseStatus = ArticleParseStatus.PENDING,
-                        summary = cloud.summary,
-                        author = cloud.author,
-                        source = cloud.source,
-                        coverImageUrl = cloud.coverImageUrl,
-                        wordCount = cloud.wordCount,
-                        categoryId = cloud.categoryId
-                    )
-                    articleRepository.upsertArticle(updated)
+                    importArticleFromJson(cloud, local, supportsStructuredContent = (cloudArticlesModel.schemaVersion >= 2))
                 }
             }
             // local-only → no action needed, will be uploaded
@@ -631,32 +617,21 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val wordIdToUid = words.associate { it.id to it.wordUid }
 
         val poolToMembers = wordPoolRepository.getPoolToMembersMap(dict.id)
-        val poolVersions = wordPoolRepository.getPoolVersionInfo(dict.id)
+        val poolEntities = wordPoolDao.getPoolsByDictionary(dict.id).associateBy { it.id }
 
-        // We need focus word info - get pools for each word
-        val wordToPoolsMap = wordPoolRepository.getWordToPoolsMap(dict.id)
-        val poolFocusWords = mutableMapOf<Long, Long?>()
-        for (word in words) {
-            val poolIds = wordToPoolsMap[word.id] ?: continue
-            for (poolId in poolIds) {
-                // Pool's focus word is determined by the pool entity
-                // We'll use the pools data to build this
-            }
-        }
-
-        // Get pool entities via DAO - need to access through the repository
-        // Since WordPoolRepository doesn't expose raw pool entities, we build pools from available data
         val wordPools = mutableListOf<WordPoolJsonModel>()
         for ((poolId, memberIds) in poolToMembers) {
             val memberUids = memberIds.mapNotNull { wordIdToUid[it] }
-            // Find version info (all pools in same dict share strategy)
-            val versionInfo = poolVersions.firstOrNull()
+            val poolEntity = poolEntities[poolId]
+            val strategy = poolEntity?.strategy ?: "BALANCED"
+            val algorithmVersion = poolEntity?.algorithmVersion ?: "${strategy}_v1"
+            val focusUid = poolEntity?.focusWordId?.let { wordIdToUid[it] }
             wordPools.add(
                 WordPoolJsonModel(
-                    focusWordUid = null, // Pool focus is optional
+                    focusWordUid = focusUid,
                     memberWordUids = memberUids,
-                    strategy = versionInfo?.first ?: "BALANCED",
-                    algorithmVersion = versionInfo?.second ?: "BALANCED_v1"
+                    strategy = strategy,
+                    algorithmVersion = algorithmVersion
                 )
             )
         }
@@ -674,7 +649,211 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
     }
 
-    private fun Article.toArticleJson() = ArticleJsonModel(
+    private suspend fun exportArticleJson(article: Article): ArticleJsonModel {
+        val paragraphs = articleRepository.getParagraphs(article.id)
+        val paragraphJsons = paragraphs.map { p ->
+            ArticleParagraphJsonModel(
+                paragraphIndex = p.paragraphIndex,
+                text = p.text,
+                paragraphType = p.paragraphType.name,
+                imageUri = p.imageUri,
+                imageUrl = p.imageUrl
+            )
+        }
+        val images = articleRepository.getImages(article.id)
+        val imageJsons = images.mapIndexed { index, uri ->
+            ArticleImageJsonModel(
+                localUri = uri,
+                orderIndex = index,
+                imageUrl = guessImageUrl(uri)
+            )
+        }
+        return article.toArticleJson(paragraphJsons, imageJsons)
+    }
+
+    private suspend fun importArticleFromJson(
+        articleJson: ArticleJsonModel,
+        existing: Article?,
+        supportsStructuredContent: Boolean
+    ): Long {
+        val sourceType = runCatching { ArticleSourceType.valueOf(articleJson.sourceType) }
+            .getOrDefault(existing?.sourceType ?: ArticleSourceType.MANUAL)
+        val sourceTypeV2 = runCatching { ArticleSourceTypeV2.valueOf(articleJson.sourceTypeV2) }
+            .getOrDefault(existing?.sourceTypeV2 ?: ArticleSourceTypeV2.LOCAL)
+
+        val difficultyLocal = if (articleJson.difficultyLocal != 0f) {
+            articleJson.difficultyLocal
+        } else {
+            existing?.difficultyLocal ?: 0f
+        }
+        val difficultyFinal = if (articleJson.difficultyFinal != 0f) {
+            articleJson.difficultyFinal
+        } else {
+            existing?.difficultyFinal ?: 0f
+        }
+
+        val coverImageUri = articleJson.coverImageUri?.takeIf { it.isNotBlank() }
+            ?: existing?.coverImageUri
+
+        val hasStructuredContent = supportsStructuredContent &&
+            (articleJson.paragraphs.isNotEmpty() || articleJson.images.isNotEmpty())
+        val parseStatus = when {
+            supportsStructuredContent -> {
+                if (hasStructuredContent) ArticleParseStatus.DONE else ArticleParseStatus.PENDING
+            }
+            else -> existing?.parseStatus ?: ArticleParseStatus.PENDING
+        }
+
+        val article = Article(
+            id = existing?.id ?: 0,
+            articleUid = articleJson.articleUid.ifBlank { existing?.articleUid ?: UUID.randomUUID().toString() },
+            title = articleJson.title,
+            content = articleJson.content,
+            domain = articleJson.domain,
+            difficultyAi = articleJson.difficultyAi,
+            difficultyLocal = difficultyLocal,
+            difficultyFinal = difficultyFinal,
+            sourceType = sourceType,
+            sourceTypeV2 = sourceTypeV2,
+            parseStatus = parseStatus,
+            createdAt = if (articleJson.createdAt > 0) articleJson.createdAt else (existing?.createdAt ?: System.currentTimeMillis()),
+            updatedAt = articleJson.updatedAt,
+            summary = articleJson.summary,
+            author = articleJson.author,
+            source = articleJson.source,
+            coverImageUri = coverImageUri,
+            coverImageUrl = articleJson.coverImageUrl,
+            wordCount = articleJson.wordCount,
+            isSaved = articleJson.isSaved,
+            categoryId = articleJson.categoryId
+        )
+        val articleId = articleRepository.upsertArticle(article)
+
+        if (supportsStructuredContent || articleJson.paragraphs.isNotEmpty()) {
+            articleRepository.deleteParagraphsByArticle(articleId)
+            if (articleJson.paragraphs.isNotEmpty()) {
+                val paragraphs = articleJson.paragraphs
+                    .sortedBy { it.paragraphIndex }
+                    .map { p ->
+                        com.xty.englishhelper.domain.model.ArticleParagraph(
+                            articleId = articleId,
+                            paragraphIndex = p.paragraphIndex,
+                            text = p.text,
+                            imageUri = p.imageUri,
+                            imageUrl = p.imageUrl,
+                            paragraphType = runCatching { com.xty.englishhelper.domain.model.ParagraphType.valueOf(p.paragraphType) }
+                                .getOrDefault(com.xty.englishhelper.domain.model.ParagraphType.TEXT)
+                        )
+                    }
+                articleRepository.insertParagraphs(paragraphs)
+            }
+        }
+
+        if (supportsStructuredContent || articleJson.images.isNotEmpty()) {
+            articleRepository.deleteImagesByArticle(articleId)
+            val ordered = articleJson.images.sortedBy { it.orderIndex }
+                .mapNotNull { image ->
+                    when {
+                        image.localUri.isNotBlank() -> image.localUri
+                        !image.imageUrl.isNullOrBlank() -> image.imageUrl
+                        else -> null
+                    }
+                }
+            if (ordered.isNotEmpty()) {
+                articleRepository.insertImages(articleId, ordered)
+            }
+        }
+
+        return articleId
+    }
+
+    private suspend fun exportWordExamples(): WordExamplesExportModel {
+        val wordUidToId = buildWordUidToIdMap()
+        val wordIdToUid = wordUidToId.entries.associate { it.value to it.key }
+        val articles = articleRepository.getAllArticles().first()
+        val articleIdToUid = articles.associate { it.id to it.articleUid }
+
+        val examples = articleDao.getAllExamples().mapNotNull { example ->
+            val wordUid = wordIdToUid[example.wordId] ?: return@mapNotNull null
+            val articleUid = example.sourceArticleId?.let { articleIdToUid[it] }
+            val sentenceIndex = example.sourceSentenceId?.let { articleDao.getSentenceIndexById(it) }
+            WordExampleJsonModel(
+                wordUid = wordUid,
+                sentence = example.sentence,
+                sourceType = example.sourceType,
+                sourceArticleUid = articleUid,
+                sourceSentenceIndex = sentenceIndex,
+                sourceLabel = example.sourceLabel,
+                createdAt = example.createdAt
+            )
+        }
+        return WordExamplesExportModel(schemaVersion = 1, examples = examples)
+    }
+
+    private suspend fun importWordExamples(
+        model: WordExamplesExportModel?,
+        wordUidToId: Map<String, Long>,
+        articleUidToId: Map<String, Long>
+    ) {
+        if (model == null || model.examples.isEmpty()) return
+
+        val existing = articleDao.getAllExamples()
+        val existingKeys = existing.map { ex ->
+            val articleId = ex.sourceArticleId ?: -1L
+            val label = ex.sourceLabel ?: ""
+            "${ex.wordId}|${ex.sourceType}|${articleId}|${ex.sentence}|$label"
+        }.toHashSet()
+
+        val toInsert = mutableListOf<WordExample>()
+        for (example in model.examples) {
+            val wordId = wordUidToId[example.wordUid] ?: continue
+            val articleId = example.sourceArticleUid?.let { articleUidToId[it] } ?: -1L
+            val label = example.sourceLabel ?: ""
+            val key = "${wordId}|${example.sourceType}|${articleId}|${example.sentence}|$label"
+            if (!existingKeys.add(key)) continue
+
+            val sentenceId = if (articleId > 0 && example.sourceSentenceIndex != null) {
+                articleDao.getSentenceIdByIndex(articleId, example.sourceSentenceIndex)
+            } else {
+                null
+            }
+
+            toInsert.add(
+                WordExample(
+                    wordId = wordId,
+                    sentence = example.sentence,
+                    sourceType = com.xty.englishhelper.domain.model.WordExampleSourceType.fromValue(example.sourceType),
+                    sourceArticleId = if (articleId > 0) articleId else null,
+                    sourceSentenceId = sentenceId,
+                    sourceLabel = example.sourceLabel,
+                    createdAt = example.createdAt
+                )
+            )
+        }
+
+        if (toInsert.isNotEmpty()) {
+            articleRepository.insertExamples(toInsert)
+        }
+    }
+
+    private suspend fun buildWordUidToIdMap(): Map<String, Long> {
+        val dicts = dictionaryRepository.getAllDictionaries().first()
+        val map = mutableMapOf<String, Long>()
+        for (dict in dicts) {
+            val words = wordRepository.getWordsByDictionary(dict.id).first()
+            for (word in words) {
+                if (word.wordUid.isNotBlank()) {
+                    map[word.wordUid] = word.id
+                }
+            }
+        }
+        return map
+    }
+
+    private fun Article.toArticleJson(
+        paragraphs: List<ArticleParagraphJsonModel>,
+        images: List<ArticleImageJsonModel>
+    ) = ArticleJsonModel(
         articleUid = articleUid.ifBlank { UUID.randomUUID().toString() },
         title = title,
         content = content,
@@ -686,10 +865,21 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         summary = summary,
         author = author,
         source = source,
+        coverImageUri = coverImageUri,
         coverImageUrl = coverImageUrl,
         wordCount = wordCount,
-        categoryId = categoryId
+        categoryId = categoryId,
+        difficultyLocal = difficultyLocal,
+        difficultyFinal = difficultyFinal,
+        sourceTypeV2 = sourceTypeV2.name,
+        isSaved = isSaved,
+        paragraphs = paragraphs,
+        images = images
     )
+
+    private fun guessImageUrl(uri: String): String? {
+        return if (uri.startsWith("http://") || uri.startsWith("https://")) uri else null
+    }
 
     private fun ArticleCategory.toCategoryJson(now: Long) = ArticleCategoryJsonModel(
         id = id,
