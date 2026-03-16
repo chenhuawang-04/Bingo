@@ -1,6 +1,7 @@
 package com.xty.englishhelper.data.repository
 
 import com.squareup.moshi.Moshi
+import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.AiApiClientProvider
 import com.xty.englishhelper.data.remote.ChatMessage
 import com.xty.englishhelper.domain.model.AiProvider
@@ -10,6 +11,8 @@ import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleSuitabilityResult
+import com.xty.englishhelper.util.AiResponseUnwrapper
+import com.xty.englishhelper.util.Constants
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
@@ -17,7 +20,8 @@ import kotlin.math.roundToInt
 @Singleton
 class ArticleAiRepositoryImpl @Inject constructor(
     private val clientProvider: AiApiClientProvider,
-    private val moshi: Moshi
+    private val moshi: Moshi,
+    private val settingsDataStore: SettingsDataStore
 ) : ArticleAiRepository {
 
     override suspend fun extractArticleFromImages(
@@ -42,7 +46,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
                 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
             if (!hint.isNullOrBlank()) {
                 append("\nHint: ")
                 append(hint)
@@ -59,7 +64,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
             maxTokens = 2048
         )
 
-        return parseJsonPayload(responseText, ArticleOcrResult::class.java)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseJsonPayload(responseText, ArticleOcrResult::class.java, unwrapEnabled)
             ?: ArticleOcrResult(confidence = 0f)
     }
 
@@ -84,7 +90,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
               ]
             }
             """.trimIndent()
-                .plus("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+                .plus("\n")
+                .plus(Constants.JSON_STRICT_RULES)
                 .plus("\n\nAnalyze this sentence: $sentence")
 
         val client = clientProvider.getClient(provider)
@@ -97,7 +104,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
             maxTokens = 1024
         )
 
-        return parseJsonPayload(responseText, SentenceAnalysisResult::class.java)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseJsonPayload(responseText, SentenceAnalysisResult::class.java, unwrapEnabled)
             ?: SentenceAnalysisResult()
     }
 
@@ -112,7 +120,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         val conditionClause = if (conditions.isBlank()) "" else "${conditions}的"
         val prompt = buildString {
             append("请扫描图片，提取出所有${conditionClause}英语单词，以JSON数组格式返回，如 [\"word1\", \"word2\"]。只返回JSON数组，不要其他文字。")
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -125,7 +134,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
             maxTokens = 2048
         )
 
-        return parseStringArray(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseStringArray(responseText, unwrapEnabled)
     }
 
     override suspend fun analyzeParagraph(
@@ -157,7 +167,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
               ]
             }
             """.trimIndent()
-                .plus("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+                .plus("\n")
+                .plus(Constants.JSON_STRICT_RULES)
                 .plus("\n\nAnalyze this paragraph:\n\n$paragraphText")
 
         val client = clientProvider.getClient(provider)
@@ -170,7 +181,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
             maxTokens = 2048
         )
 
-        return parseJsonPayload(responseText, ParagraphAnalysisResult::class.java)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseJsonPayload(responseText, ParagraphAnalysisResult::class.java, unwrapEnabled)
             ?: ParagraphAnalysisResult()
     }
 
@@ -222,7 +234,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
             - commonMeanings: up to 3 most common Chinese meanings
             - examImportance: rate importance for 考研 English
         """.trimIndent()
-            .plus("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            .plus("\n")
+            .plus(Constants.JSON_STRICT_RULES)
             .plus("\n\nWord: $word$contextPart")
 
         val client = clientProvider.getClient(provider)
@@ -235,7 +248,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
             maxTokens = 512
         )
 
-        return parseQuickWordAnalysis(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseQuickWordAnalysis(responseText, unwrapEnabled)
     }
 
     override suspend fun evaluateArticleSuitability(
@@ -280,7 +294,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
                 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -293,11 +308,12 @@ class ArticleAiRepositoryImpl @Inject constructor(
             maxTokens = 512
         )
 
-        return parseSuitability(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseSuitability(responseText, unwrapEnabled)
     }
 
-    private fun <T> parseJsonPayload(responseText: String, clazz: Class<T>): T? {
-        val cleaned = stripCodeFence(responseText)
+    private fun <T> parseJsonPayload(responseText: String, clazz: Class<T>, unwrapEnabled: Boolean): T? {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(clazz).lenient()
         return runCatching { adapter.fromJson(json) }.getOrNull()
@@ -311,6 +327,14 @@ class ArticleAiRepositoryImpl @Inject constructor(
             .replace("'''json", "", ignoreCase = true)
             .replace("'''", "")
             .trim()
+    }
+
+    private fun normalizeResponse(text: String, unwrapEnabled: Boolean): String {
+        val cleaned = stripCodeFence(text)
+        if (!unwrapEnabled) return cleaned
+        val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+        val unwrapped = AiResponseUnwrapper.unwrapJsonEnvelope(candidate)
+        return stripCodeFence(unwrapped ?: cleaned)
     }
 
     private fun extractFirstJsonObject(text: String): String? {
@@ -344,8 +368,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         return json.replace(Regex(",\\s*([}\\]])"), "$1")
     }
 
-    private fun parseStringArray(text: String): List<String> {
-        val cleaned = stripCodeFence(text)
+    private fun parseStringArray(text: String, unwrapEnabled: Boolean): List<String> {
+        val cleaned = normalizeResponse(text, unwrapEnabled)
         val arrayMatch = Regex("\\[\\s*(\"[^\"]*\"(?:\\s*,\\s*\"[^\"]*\")*)\\s*\\]").find(cleaned)
             ?: return emptyList()
         return Regex("\"([^\"]+)\"").findAll(arrayMatch.value)
@@ -354,8 +378,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
             .toList()
     }
 
-    private fun parseQuickWordAnalysis(text: String): QuickWordAnalysis {
-        val cleaned = stripCodeFence(text)
+    private fun parseQuickWordAnalysis(text: String, unwrapEnabled: Boolean): QuickWordAnalysis {
+        val cleaned = normalizeResponse(text, unwrapEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
 
         // Parse using Moshi
@@ -376,8 +400,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun parseSuitability(text: String): ArticleSuitabilityResult {
-        val cleaned = stripCodeFence(text)
+    private fun parseSuitability(text: String, unwrapEnabled: Boolean): ArticleSuitabilityResult {
+        val cleaned = normalizeResponse(text, unwrapEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(SuitabilityJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()

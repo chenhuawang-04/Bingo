@@ -107,6 +107,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.aiResponseUnwrapEnabled.collect { value ->
+                _uiState.update { it.copy(aiResponseUnwrapEnabled = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.imageCompressionEnabled.collect { value ->
                 _uiState.update { it.copy(imageCompressionEnabled = value) }
             }
@@ -395,6 +400,11 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(aiDebugMode = value) }
         aiDebugManager.setEnabled(value)
         viewModelScope.launch { settingsDataStore.setAiDebugMode(value) }
+    }
+
+    fun onAiResponseUnwrapEnabledChange(value: Boolean) {
+        _uiState.update { it.copy(aiResponseUnwrapEnabled = value) }
+        viewModelScope.launch { settingsDataStore.setAiResponseUnwrapEnabled(value) }
     }
 
     fun onImageCompressionEnabledChange(value: Boolean) {

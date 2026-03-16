@@ -4,6 +4,7 @@ import com.squareup.moshi.Moshi
 import com.xty.englishhelper.data.remote.AiApiClientProvider
 import com.xty.englishhelper.data.remote.ChatMessage
 import com.xty.englishhelper.data.remote.dto.AiWordAnalysis
+import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.AiOrganizeResult
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.CognateInfo
@@ -15,13 +16,15 @@ import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.repository.AiRepository
 import com.xty.englishhelper.util.Constants
+import com.xty.englishhelper.util.AiResponseUnwrapper
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class AiRepositoryImpl @Inject constructor(
     private val clientProvider: AiApiClientProvider,
-    private val moshi: Moshi
+    private val moshi: Moshi,
+    private val settingsDataStore: SettingsDataStore
 ) : AiRepository {
 
     override suspend fun organizeWord(word: String, apiKey: String, model: String, baseUrl: String, provider: AiProvider): AiOrganizeResult {
@@ -35,7 +38,7 @@ class AiRepositoryImpl @Inject constructor(
                 ChatMessage(
                     role = "user",
                     content = buildString {
-                        appendLine(Constants.AI_SYSTEM_PROMPT)
+                        appendLine(Constants.AI_WORD_PROMPT_RULES)
                         appendLine()
                         append(Constants.AI_USER_PROMPT_TEMPLATE.format(word))
                     }
@@ -43,7 +46,8 @@ class AiRepositoryImpl @Inject constructor(
             ),
             maxTokens = 2048
         )
-        return parseAiResponse(text)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseAiResponse(text, unwrapEnabled)
     }
 
     override suspend fun testConnection(apiKey: String, model: String, baseUrl: String, provider: AiProvider): Boolean {
@@ -59,8 +63,8 @@ class AiRepositoryImpl @Inject constructor(
         return text.isNotBlank()
     }
 
-    private fun parseAiResponse(text: String): AiOrganizeResult {
-        val cleaned = stripCodeFence(text)
+    private fun parseAiResponse(text: String, unwrapEnabled: Boolean): AiOrganizeResult {
+        val cleaned = normalizeResponse(text, unwrapEnabled)
         val jsonText = extractFirstJsonObject(cleaned) ?: cleaned.trim()
 
         val adapter = moshi.adapter(AiWordAnalysis::class.java).lenient()
@@ -98,6 +102,14 @@ class AiRepositoryImpl @Inject constructor(
             .replace("'''json", "", ignoreCase = true)
             .replace("'''", "")
             .trim()
+    }
+
+    private fun normalizeResponse(text: String, unwrapEnabled: Boolean): String {
+        val cleaned = stripCodeFence(text)
+        if (!unwrapEnabled) return cleaned
+        val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+        val unwrapped = AiResponseUnwrapper.unwrapJsonEnvelope(candidate)
+        return stripCodeFence(unwrapped ?: cleaned)
     }
 
     private fun extractFirstJsonObject(text: String): String? {

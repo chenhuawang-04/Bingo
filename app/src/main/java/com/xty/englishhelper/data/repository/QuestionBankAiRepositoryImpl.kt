@@ -2,6 +2,7 @@ package com.xty.englishhelper.data.repository
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.AiApiClientProvider
 import com.xty.englishhelper.data.remote.ChatMessage
 import com.xty.englishhelper.domain.model.AiProvider
@@ -19,13 +20,16 @@ import com.xty.englishhelper.domain.repository.WritingPromptSourceResult
 import com.xty.englishhelper.domain.repository.WritingSampleResult
 import com.xty.englishhelper.domain.repository.WritingScore
 import com.xty.englishhelper.domain.repository.WritingSubScores
+import com.xty.englishhelper.util.AiResponseUnwrapper
+import com.xty.englishhelper.util.Constants
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class QuestionBankAiRepositoryImpl @Inject constructor(
     private val clientProvider: AiApiClientProvider,
-    private val moshi: Moshi
+    private val moshi: Moshi,
+    private val settingsDataStore: SettingsDataStore
 ) : QuestionBankAiRepository {
 
     override suspend fun scanQuestions(
@@ -88,7 +92,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             append("- wordCount = word count of passage + all questions in the group.\n")
             append("- difficultyLevel: EASY/MEDIUM/HARD based on vocabulary and sentence complexity.\n")
             append("- confidence: your overall OCR confidence (0-1).\n")
-            append("- Return JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -97,7 +101,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             imageBytes = images, prompt = prompt, maxTokens = 8192
         )
 
-        return parseScanResult(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseScanResult(responseText, unwrapEnabled)
     }
 
     override suspend fun generateQuestionsFromArticle(
@@ -127,7 +132,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             maxTokens = 8192
         )
 
-        return parseScanResult(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseScanResult(responseText, unwrapEnabled)
     }
 
     override suspend fun verifySource(
@@ -167,7 +173,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
 """.trimIndent())
             append("\nIf not found, set matched=false and explain in errorMessage. ")
-            append("Return JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -178,7 +184,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             maxTokens = 4096
         )
 
-        return parseVerifyResult(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseVerifyResult(responseText, unwrapEnabled)
     }
 
     override suspend fun generateAnswers(
@@ -404,7 +411,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 """.trimIndent())
             }
             append("\nIMPORTANT: questionNumber in your response must match the actual question numbers provided above (${questions.firstOrNull()?.questionNumber}–${questions.lastOrNull()?.questionNumber}).")
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -415,7 +423,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             maxTokens = 4096
         )
 
-        return parseAnswerResults(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseAnswerResults(responseText, unwrapEnabled)
     }
 
     override suspend fun scanAnswers(
@@ -431,7 +440,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
   {"questionNumber": 21, "answer": "A", "explanation": "explanation if visible"}
 ]
 """.trimIndent())
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -440,7 +450,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             imageBytes = images, prompt = prompt, maxTokens = 2048
         )
 
-        return parseAnswerResults(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseAnswerResults(responseText, unwrapEnabled)
     }
 
     override suspend fun scoreTranslations(
@@ -470,7 +481,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
   }
 ]
 """.trimIndent())
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -481,7 +493,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             maxTokens = 4096
         )
 
-        return parseTranslationScores(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseTranslationScores(responseText, unwrapEnabled)
     }
 
     override suspend fun searchWritingPromptSource(
@@ -510,7 +523,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -521,7 +535,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             maxTokens = 2048
         )
 
-        return parseWritingPromptSource(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseWritingPromptSource(responseText, unwrapEnabled)
     }
 
     override suspend fun searchWritingSample(
@@ -552,7 +567,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -563,7 +579,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             maxTokens = 4096
         )
 
-        return parseWritingSampleResult(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseWritingSampleResult(responseText, unwrapEnabled)
     }
 
     override suspend fun extractWritingFromImages(
@@ -575,7 +592,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             append("只保留考生写作内容，不要题干、标题、页眉页脚或批注。\n")
             append("返回严格 JSON：\n")
             append("""{"content":"作文正文"}""")
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -584,7 +602,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             imageBytes = images, prompt = prompt, maxTokens = 2048
         )
 
-        return parseWritingOcr(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseWritingOcr(responseText, unwrapEnabled)
     }
 
     override suspend fun scoreWriting(
@@ -636,7 +655,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\n")
+            append(Constants.JSON_STRICT_RULES)
         }
 
         val client = clientProvider.getClient(provider)
@@ -647,13 +667,14 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             maxTokens = 4096
         )
 
-        return parseWritingScore(responseText)
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        return parseWritingScore(responseText, unwrapEnabled)
     }
 
     // ── JSON Parsing ──
 
-    private fun parseScanResult(responseText: String): ScanResult {
-        val cleaned = stripCodeFence(responseText)
+    private fun parseScanResult(responseText: String, unwrapEnabled: Boolean): ScanResult {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(ScanResultJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -670,8 +691,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun parseVerifyResult(responseText: String): VerifyResult {
-        val cleaned = stripCodeFence(responseText)
+    private fun parseVerifyResult(responseText: String, unwrapEnabled: Boolean): VerifyResult {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(VerifyResultJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -693,8 +714,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun parseAnswerResults(responseText: String): List<AnswerResult> {
-        val cleaned = stripCodeFence(responseText)
+    private fun parseAnswerResults(responseText: String, unwrapEnabled: Boolean): List<AnswerResult> {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled)
         val json = extractFirstJsonArray(cleaned) ?: cleaned.trim()
         val type = Types.newParameterizedType(List::class.java, AnswerResultJson::class.java)
         val adapter = moshi.adapter<List<AnswerResultJson>>(type).lenient()
@@ -720,8 +741,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         return parsed?.options?.filter { it.isNotBlank() } ?: emptyList()
     }
 
-    private fun parseTranslationScores(responseText: String): List<TranslationScore> {
-        val cleaned = stripCodeFence(responseText)
+    private fun parseTranslationScores(responseText: String, unwrapEnabled: Boolean): List<TranslationScore> {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled)
         val json = extractFirstJsonArray(cleaned) ?: cleaned.trim()
         val type = Types.newParameterizedType(List::class.java, TranslationScoreJson::class.java)
         val adapter = moshi.adapter<List<TranslationScoreJson>>(type).lenient()
@@ -738,8 +759,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         } ?: emptyList()
     }
 
-    private fun parseWritingSampleResult(responseText: String): WritingSampleResult {
-        val cleaned = stripCodeFence(responseText)
+    private fun parseWritingSampleResult(responseText: String, unwrapEnabled: Boolean): WritingSampleResult {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(WritingSampleJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -901,12 +922,12 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             appendLine("文章正文：")
             appendLine(articleText.trim())
             appendLine()
-            append("Return JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append(Constants.JSON_STRICT_RULES)
         }
     }
 
-    private fun parseWritingPromptSource(responseText: String): WritingPromptSourceResult {
-        val cleaned = stripCodeFence(responseText)
+    private fun parseWritingPromptSource(responseText: String, unwrapEnabled: Boolean): WritingPromptSourceResult {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(WritingPromptSourceJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -925,8 +946,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun parseWritingOcr(responseText: String): String {
-        val cleaned = stripCodeFence(responseText)
+    private fun parseWritingOcr(responseText: String, unwrapEnabled: Boolean): String {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(WritingOcrJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -934,8 +955,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         return parsed?.content?.trim().orEmpty()
     }
 
-    private fun parseWritingScore(responseText: String): WritingScore {
-        val cleaned = stripCodeFence(responseText)
+    private fun parseWritingScore(responseText: String, unwrapEnabled: Boolean): WritingScore {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(WritingScoreJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -977,6 +998,14 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             .replace("'''json", "", ignoreCase = true)
             .replace("'''", "")
             .trim()
+
+    private fun normalizeResponse(text: String, unwrapEnabled: Boolean): String {
+        val cleaned = stripCodeFence(text)
+        if (!unwrapEnabled) return cleaned
+        val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+        val unwrapped = AiResponseUnwrapper.unwrapJsonEnvelope(candidate)
+        return stripCodeFence(unwrapped ?: cleaned)
+    }
 
     private fun extractFirstJsonObject(text: String): String? {
         val start = text.indexOf('{')

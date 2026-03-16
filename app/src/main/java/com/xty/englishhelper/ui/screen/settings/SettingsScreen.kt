@@ -223,6 +223,24 @@ private fun ProviderListSection(state: SettingsUiState, viewModel: SettingsViewM
                         )
                     }
                 }
+                Row(
+                    modifier = Modifier.padding(top = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Switch(
+                        checked = state.aiResponseUnwrapEnabled,
+                        onCheckedChange = viewModel::onAiResponseUnwrapEnabledChange
+                    )
+                    Column {
+                        Text("响应脱壳", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "当服务返回完整响应 JSON 时自动提取内容。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
             Button(onClick = viewModel::startCreateProvider) {
                 Icon(Icons.Default.Add, contentDescription = null)

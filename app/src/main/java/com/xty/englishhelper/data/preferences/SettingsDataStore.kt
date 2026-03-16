@@ -45,6 +45,7 @@ class SettingsDataStore @Inject constructor(
         val AI_DEFAULT_PROVIDER = stringPreferencesKey("ai_default_provider_v2")
         val AI_SCOPE_CONFIGS_JSON = stringPreferencesKey("ai_scope_configs_v2")
         val AI_DEBUG_MODE = booleanPreferencesKey("ai_debug_mode")
+        val AI_RESPONSE_UNWRAP_ENABLED = booleanPreferencesKey("ai_response_unwrap_enabled")
         val IMAGE_COMPRESSION_ENABLED = booleanPreferencesKey("image_compression_enabled")
         val IMAGE_COMPRESSION_TARGET_BYTES = intPreferencesKey("image_compression_target_bytes")
 
@@ -141,6 +142,10 @@ class SettingsDataStore @Inject constructor(
         prefs[AI_DEBUG_MODE] ?: false
     }
 
+    val aiResponseUnwrapEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[AI_RESPONSE_UNWRAP_ENABLED] ?: false
+    }
+
     val imageCompressionEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[IMAGE_COMPRESSION_ENABLED] ?: true
     }
@@ -187,6 +192,10 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setAiDebugMode(value: Boolean) {
         dataStore.edit { prefs -> prefs[AI_DEBUG_MODE] = value }
+    }
+
+    suspend fun setAiResponseUnwrapEnabled(value: Boolean) {
+        dataStore.edit { prefs -> prefs[AI_RESPONSE_UNWRAP_ENABLED] = value }
     }
 
     suspend fun setImageCompressionEnabled(value: Boolean) {
@@ -473,6 +482,11 @@ class SettingsDataStore @Inject constructor(
                 prefs[IMAGE_COMPRESSION_TARGET_BYTES] ?: defaultImageCompressionTargetBytes
             )
         )
+    }
+
+    suspend fun getAiResponseUnwrapEnabled(): Boolean {
+        val prefs = dataStore.data.first()
+        return prefs[AI_RESPONSE_UNWRAP_ENABLED] ?: false
     }
 
     val githubOwner: Flow<String> = dataStore.data.map { it[GITHUB_OWNER] ?: "" }
