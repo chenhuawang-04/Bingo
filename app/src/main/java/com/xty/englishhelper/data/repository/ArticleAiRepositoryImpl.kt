@@ -308,6 +308,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         return text
             .replace("```json", "", ignoreCase = true)
             .replace("```", "")
+            .replace("'''json", "", ignoreCase = true)
+            .replace("'''", "")
             .trim()
     }
 

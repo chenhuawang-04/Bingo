@@ -971,7 +971,12 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
     // ── Utility functions ──
 
     private fun stripCodeFence(text: String): String =
-        text.replace("```json", "", ignoreCase = true).replace("```", "").trim()
+        text
+            .replace("```json", "", ignoreCase = true)
+            .replace("```", "")
+            .replace("'''json", "", ignoreCase = true)
+            .replace("'''", "")
+            .trim()
 
     private fun extractFirstJsonObject(text: String): String? {
         val start = text.indexOf('{')

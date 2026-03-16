@@ -60,13 +60,10 @@ class AiRepositoryImpl @Inject constructor(
     }
 
     private fun parseAiResponse(text: String): AiOrganizeResult {
-        // Strip markdown code blocks if present
-        val jsonText = text
-            .replace(Regex("```json\\s*"), "")
-            .replace(Regex("```\\s*"), "")
-            .trim()
+        val cleaned = stripCodeFence(text)
+        val jsonText = extractFirstJsonObject(cleaned) ?: cleaned.trim()
 
-        val adapter = moshi.adapter(AiWordAnalysis::class.java)
+        val adapter = moshi.adapter(AiWordAnalysis::class.java).lenient()
         val analysis = adapter.fromJson(jsonText)
             ?: throw IllegalStateException("Failed to parse AI response")
 
@@ -92,5 +89,41 @@ class AiRepositoryImpl @Inject constructor(
                 Inflection(form = it.form, formType = it.formType)
             }
         )
+    }
+
+    private fun stripCodeFence(text: String): String {
+        return text
+            .replace("```json", "", ignoreCase = true)
+            .replace("```", "")
+            .replace("'''json", "", ignoreCase = true)
+            .replace("'''", "")
+            .trim()
+    }
+
+    private fun extractFirstJsonObject(text: String): String? {
+        val start = text.indexOf('{')
+        if (start < 0) return null
+
+        var depth = 0
+        var inString = false
+        var escaped = false
+
+        for (i in start until text.length) {
+            val ch = text[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            when (ch) {
+                '\\' -> escaped = true
+                '"' -> inString = !inString
+                '{' -> if (!inString) depth++
+                '}' -> if (!inString) {
+                    depth--
+                    if (depth == 0) return text.substring(start, i + 1)
+                }
+            }
+        }
+        return null
     }
 }
