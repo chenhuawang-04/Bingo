@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.repository.AtlanticRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -89,6 +90,26 @@ val csMonitorSections = listOf(
     GuardianSection("magazine", "Magazine", "Media")
 )
 
+val atlanticSections = listOf(
+    GuardianSection("", "首页", "Main"),
+    GuardianSection("latest", "Latest", "Main"),
+    GuardianSection("most-popular", "Popular", "Main"),
+    GuardianSection("politics", "Politics", "Topics"),
+    GuardianSection("ideas", "Ideas", "Topics"),
+    GuardianSection("technology", "Technology", "Topics"),
+    GuardianSection("science", "Science", "Topics"),
+    GuardianSection("health", "Health", "Topics"),
+    GuardianSection("education", "Education", "Topics"),
+    GuardianSection("economy", "Economy", "Topics"),
+    GuardianSection("culture", "Culture", "Culture"),
+    GuardianSection("books", "Books", "Culture"),
+    GuardianSection("family", "Family", "Culture"),
+    GuardianSection("international", "Global", "World"),
+    GuardianSection("national-security", "National Security", "World"),
+    GuardianSection("photo", "Photo", "Media"),
+    GuardianSection("projects", "Projects", "Media")
+)
+
 data class GuardianBrowseUiState(
     val sources: List<OnlineReadingSource> = OnlineReadingSource.values().toList(),
     val selectedSource: OnlineReadingSource = OnlineReadingSource.GUARDIAN,
@@ -104,6 +125,7 @@ data class GuardianBrowseUiState(
 class GuardianBrowseViewModel @Inject constructor(
     private val guardianRepository: GuardianRepository,
     private val csMonitorRepository: CsMonitorRepository,
+    private val atlanticRepository: AtlanticRepository,
     private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
@@ -114,7 +136,8 @@ class GuardianBrowseViewModel @Inject constructor(
     private var sourceInitialized = false
     private val lastSectionBySource = mutableMapOf(
         OnlineReadingSource.GUARDIAN to "international",
-        OnlineReadingSource.CSMONITOR to ""
+        OnlineReadingSource.CSMONITOR to "",
+        OnlineReadingSource.ATLANTIC to ""
     )
 
     init {
@@ -154,6 +177,19 @@ class GuardianBrowseViewModel @Inject constructor(
                     }
                     OnlineReadingSource.CSMONITOR -> {
                         csMonitorRepository.getSectionArticles(section).map { preview ->
+                            GuardianBrowseItem(
+                                title = preview.title,
+                                url = preview.url,
+                                trailText = preview.trailText,
+                                thumbnailUrl = preview.thumbnailUrl,
+                                author = preview.author,
+                                isAuthorLoading = true,
+                                isWordCountLoading = true
+                            )
+                        }
+                    }
+                    OnlineReadingSource.ATLANTIC -> {
+                        atlanticRepository.getSectionArticles(section).map { preview ->
                             GuardianBrowseItem(
                                 title = preview.title,
                                 url = preview.url,
@@ -262,6 +298,10 @@ class GuardianBrowseViewModel @Inject constructor(
                         val detail = csMonitorRepository.getArticleDetail(articleUrl)
                         csMonitorRepository.createTemporaryArticle(detail)
                     }
+                    OnlineReadingSource.ATLANTIC -> {
+                        val detail = atlanticRepository.getArticleDetail(articleUrl)
+                        atlanticRepository.createTemporaryArticle(detail)
+                    }
                 }
                 _uiState.update { it.copy(isLoadingArticle = false) }
                 onNavigate(articleId)
@@ -280,6 +320,7 @@ class GuardianBrowseViewModel @Inject constructor(
         val sections = when (source) {
             OnlineReadingSource.GUARDIAN -> guardianSections
             OnlineReadingSource.CSMONITOR -> csMonitorSections
+            OnlineReadingSource.ATLANTIC -> atlanticSections
         }
         val preferred = lastSectionBySource[source]?.takeIf { key ->
             sections.any { it.key == key }
@@ -314,6 +355,10 @@ class GuardianBrowseViewModel @Inject constructor(
             }
             OnlineReadingSource.CSMONITOR -> {
                 val detail = csMonitorRepository.getArticleDetail(url)
+                OnlineDetail(detail.author, detail.coverImageUrl, detail.paragraphs)
+            }
+            OnlineReadingSource.ATLANTIC -> {
+                val detail = atlanticRepository.getArticleDetail(url)
                 OnlineDetail(detail.author, detail.coverImageUrl, detail.paragraphs)
             }
         }

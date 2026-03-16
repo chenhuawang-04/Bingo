@@ -5,6 +5,7 @@ import com.xty.englishhelper.data.repository.AiModelRepositoryImpl
 import com.xty.englishhelper.data.repository.AiRepositoryImpl
 import com.xty.englishhelper.data.repository.ArticleAiRepositoryImpl
 import com.xty.englishhelper.data.repository.ArticleRepositoryImpl
+import com.xty.englishhelper.data.repository.AtlanticRepositoryImpl
 import com.xty.englishhelper.data.repository.BackgroundTaskRepositoryImpl
 import com.xty.englishhelper.data.repository.DictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.GitHubSyncRepositoryImpl
@@ -21,6 +22,7 @@ import com.xty.englishhelper.domain.repository.AiModelRepository
 import com.xty.englishhelper.domain.repository.AiRepository
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.repository.AtlanticRepository
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
@@ -103,6 +105,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindCsMonitorRepository(impl: CsMonitorRepositoryImpl): CsMonitorRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAtlanticRepository(impl: AtlanticRepositoryImpl): AtlanticRepository
 
     @Binds
     @Singleton

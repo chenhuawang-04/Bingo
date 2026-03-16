@@ -8,6 +8,9 @@ import com.xty.englishhelper.data.remote.GitHubApiService
 import com.xty.englishhelper.data.remote.OpenAiApiService
 import com.xty.englishhelper.data.remote.interceptor.AiDebugInterceptor
 import com.xty.englishhelper.data.remote.interceptor.AnthropicHeaderInterceptor
+import com.xty.englishhelper.data.remote.atlantic.AtlanticHtmlParser
+import com.xty.englishhelper.data.remote.atlantic.AtlanticService
+import com.xty.englishhelper.data.remote.atlantic.AtlanticServiceImpl
 import com.xty.englishhelper.data.remote.csmonitor.CsMonitorHtmlParser
 import com.xty.englishhelper.data.remote.csmonitor.CsMonitorService
 import com.xty.englishhelper.data.remote.csmonitor.CsMonitorServiceImpl
@@ -242,5 +245,42 @@ object NetworkModule {
     @Singleton
     fun provideCsMonitorService(@Named("csmonitor") client: OkHttpClient): CsMonitorService {
         return CsMonitorServiceImpl(client)
+    }
+
+    // The Atlantic
+    @Provides
+    @Singleton
+    @Named("atlantic")
+    fun provideAtlanticOkHttpClient(): OkHttpClient {
+        val builder = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header(
+                        "User-Agent",
+                        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
+                    )
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .build()
+                chain.proceed(request)
+            }
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+
+        if (BuildConfig.DEBUG) {
+            builder.addInterceptor(createLoggingInterceptor())
+        }
+
+        return builder.build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideAtlanticHtmlParser(): AtlanticHtmlParser = AtlanticHtmlParser()
+
+    @Provides
+    @Singleton
+    fun provideAtlanticService(@Named("atlantic") client: OkHttpClient): AtlanticService {
+        return AtlanticServiceImpl(client)
     }
 }

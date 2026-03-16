@@ -2,7 +2,8 @@ package com.xty.englishhelper.domain.model
 
 enum class OnlineReadingSource(val key: String, val label: String) {
     GUARDIAN("guardian", "卫报"),
-    CSMONITOR("csmonitor", "CSMonitor");
+    CSMONITOR("csmonitor", "CSMonitor"),
+    ATLANTIC("atlantic", "The Atlantic");
 
     companion object {
         fun fromKey(raw: String?): OnlineReadingSource {
