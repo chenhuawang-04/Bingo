@@ -255,6 +255,7 @@ fun QuestionBankReaderScreen(
             val isParagraphOrder = state.group?.questionType == QuestionType.PARAGRAPH_ORDER
             val isSentenceInsertion = state.group?.questionType == QuestionType.SENTENCE_INSERTION
             val isCommentOpinionMatch = state.group?.questionType == QuestionType.COMMENT_OPINION_MATCH
+            val isSubheadingMatch = state.group?.questionType == QuestionType.SUBHEADING_MATCH
             val isTranslation = state.group?.questionType == QuestionType.TRANSLATION
             val isWriting = state.group?.questionType == QuestionType.WRITING
             when {
@@ -297,6 +298,21 @@ fun QuestionBankReaderScreen(
                     modifier = Modifier.fillMaxSize().padding(padding)
                 )
                 isCommentOpinionMatch -> CommentOpinionMatchContent(
+                    state = state,
+                    onAnalyzeParagraph = viewModel::analyzeParagraph,
+                    onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
+                    onToggleAnalysisExpanded = viewModel::toggleParagraphAnalysisExpanded,
+                    onWordClick = onWordClick,
+                    onCollectWord = viewModel::collectWord,
+                    onSelectAnswer = viewModel::selectAnswer,
+                    onSubmitAnswers = { viewModel.submitAnswers() },
+                    onShowAnswers = { viewModel.showAnswers() },
+                    onRetryPractice = { viewModel.retryPractice() },
+                    onScanAnswers = { answerImageLauncher.launch("image/*") },
+                    onEditMatchOptions = { viewModel.openSentenceOptionsEditor() },
+                    modifier = Modifier.fillMaxSize().padding(padding)
+                )
+                isSubheadingMatch -> SubheadingMatchContent(
                     state = state,
                     onAnalyzeParagraph = viewModel::analyzeParagraph,
                     onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
@@ -377,11 +393,16 @@ fun QuestionBankReaderScreen(
 
     if (state.showSentenceOptionsEditor) {
         val isCommentOpinionMatch = state.group?.questionType == QuestionType.COMMENT_OPINION_MATCH
-        val dialogTitle = if (isCommentOpinionMatch) "补录观点选项" else "补录选项句子"
-        val dialogHint = if (isCommentOpinionMatch) {
-            "支持两种格式：每行一个观点，或一行粘贴 A. B. C. 格式（共 7 个）"
-        } else {
-            "支持两种格式：每行一个句子，或一行粘贴 A. B. C. 格式（共 7 个）"
+        val isSubheadingMatch = state.group?.questionType == QuestionType.SUBHEADING_MATCH
+        val dialogTitle = when {
+            isCommentOpinionMatch -> "补录观点选项"
+            isSubheadingMatch -> "补录小标题"
+            else -> "补录选项句子"
+        }
+        val dialogHint = when {
+            isCommentOpinionMatch -> "支持两种格式：每行一个观点，或一行粘贴 A. B. C. 格式（共 7 个）"
+            isSubheadingMatch -> "支持两种格式：每行一个标题，或一行粘贴 A. B. C. 格式（共 7 个）"
+            else -> "支持两种格式：每行一个句子，或一行粘贴 A. B. C. 格式（共 7 个）"
         }
         AlertDialog(
             onDismissRequest = { viewModel.dismissSentenceOptionsEditor() },
@@ -1938,6 +1959,165 @@ private fun CommentOpinionMatchContent(
     }
 }
 
+@Composable
+private fun SubheadingMatchContent(
+    state: ReaderUiState,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
+    onSelectAnswer: (Long, String) -> Unit,
+    onSubmitAnswers: () -> Unit,
+    onShowAnswers: () -> Unit,
+    onRetryPractice: () -> Unit,
+    onScanAnswers: () -> Unit,
+    onEditMatchOptions: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val group = state.group ?: return
+    val listState = rememberLazyListState()
+    val spokenParagraphId = run {
+        val ttsState = state.ttsState
+        if (!ttsState.isSpeaking) return@run 0L
+        val speakable = state.paragraphs.filter { it.text.isNotBlank() }
+        val idx = ttsState.currentIndex
+        if (idx in speakable.indices) speakable[idx].id else 0L
+    }
+
+    val options = state.sentenceInsertionOptions
+    val optionLetters = remember {
+        (0 until 7).map { index -> ('A'.code + index).toChar().toString() }
+    }
+    val subheadingParagraphs = remember(state.paragraphs) {
+        state.paragraphs.filter { paragraph ->
+            val trimmed = paragraph.text.trim()
+            if (trimmed.isBlank()) return@filter false
+            if (trimmed.startsWith("Directions", ignoreCase = true)) return@filter false
+            if (trimmed.startsWith("Read the following", ignoreCase = true)) return@filter false
+            if (trimmed.startsWith("Part ", ignoreCase = true)) return@filter false
+            val urlCount = Regex("https?://\\S+").findAll(trimmed).count()
+            val looksLikePureUrl = urlCount > 0 && trimmed.replace(Regex("https?://\\S+"), "").trim().length < 5
+            if (looksLikePureUrl) return@filter false
+            trimmed.length > 20
+        }
+    }
+    val paragraphByNumber = remember(subheadingParagraphs) {
+        val map = LinkedHashMap<Int, com.xty.englishhelper.domain.model.ArticleParagraph>()
+        subheadingParagraphs.forEach { paragraph ->
+            val match = CommentNumberRegex.find(paragraph.text)
+            val number = match?.groupValues?.getOrNull(1)?.toIntOrNull()
+            if (number != null && !map.containsKey(number)) {
+                map[number] = paragraph
+            }
+        }
+        map
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "subheading_match_header") {
+            Column {
+                if (state.paperTitle.isNotBlank()) {
+                    Text(
+                        state.paperTitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    group.sectionLabel ?: group.questionType.displayName,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (!group.directions.isNullOrBlank()) {
+                    Text(
+                        group.directions!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider()
+            }
+        }
+
+        item(key = "subheading_match_options") {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("可选小标题", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onEditMatchOptions) { Text("补录/编辑") }
+                    }
+                    if (options.isEmpty()) {
+                        Text(
+                            "未识别到小标题",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            "可先选择字母作答，之后再补录标题",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        options.take(7).forEach { option ->
+                            Text(option, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
+
+        itemsIndexed(state.items, key = { _, item -> "subheading_match_q_${item.id}" }) { index, item ->
+            val paragraph = paragraphByNumber[item.questionNumber] ?: subheadingParagraphs.getOrNull(index)
+            CommentOpinionQuestionCard(
+                item = item,
+                paragraph = paragraph,
+                spokenParagraphId = spokenParagraphId,
+                wordLinkMap = state.wordLinkMap,
+                analysis = paragraph?.let { state.paragraphAnalysis[it.id] },
+                isAnalyzing = paragraph?.id == state.analyzingParagraphId,
+                translationEnabled = state.translationEnabled,
+                translation = paragraph?.let { state.paragraphTranslations[it.id] },
+                isTranslating = paragraph?.let { it.id in state.translatingParagraphIds } ?: false,
+                translationFailed = paragraph?.let { it.id in state.translationFailedParagraphIds } ?: false,
+                analysisExpanded = paragraph?.let { it.id in state.expandedParagraphIds } ?: false,
+                onAnalyzeParagraph = onAnalyzeParagraph,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onToggleAnalysisExpanded = onToggleAnalysisExpanded,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
+                optionLetters = optionLetters,
+                selectedAnswer = state.selectedAnswers[item.id],
+                isSubmitted = state.isSubmitted,
+                showingAnswers = state.showingAnswers,
+                isCorrect = state.practiceResults[item.id],
+                onSelectAnswer = { answer -> onSelectAnswer(item.id, answer) },
+                fallbackTitle = "段落"
+            )
+        }
+
+        item(key = "subheading_match_actions") {
+            PracticeActionBar(
+                state = state,
+                onSubmit = onSubmitAnswers,
+                onShowAnswers = onShowAnswers,
+                onRetry = onRetryPractice,
+                onScanAnswers = onScanAnswers
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CommentOpinionQuestionCard(
@@ -1962,7 +2142,8 @@ private fun CommentOpinionQuestionCard(
     isSubmitted: Boolean,
     showingAnswers: Boolean,
     isCorrect: Boolean?,
-    onSelectAnswer: (String) -> Unit
+    onSelectAnswer: (String) -> Unit,
+    fallbackTitle: String = "评论"
 ) {
     val wrongCount = item.wrongCount
     val borderColor = when {
@@ -1986,7 +2167,7 @@ private fun CommentOpinionQuestionCard(
             }
 
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val title = item.questionText.takeIf { it.isNotBlank() } ?: "评论"
+                val title = item.questionText.takeIf { it.isNotBlank() } ?: fallbackTitle
                 Text(
                     "${item.questionNumber}. $title",
                     style = MaterialTheme.typography.titleSmall,

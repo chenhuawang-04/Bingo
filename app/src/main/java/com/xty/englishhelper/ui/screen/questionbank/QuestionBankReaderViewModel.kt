@@ -166,7 +166,8 @@ class QuestionBankReaderViewModel @Inject constructor(
                 val paper = repository.getExamPaperById(group.examPaperId)
                 val sentenceOptions = if (
                     group.questionType == QuestionType.SENTENCE_INSERTION ||
-                    group.questionType == QuestionType.COMMENT_OPINION_MATCH
+                    group.questionType == QuestionType.COMMENT_OPINION_MATCH ||
+                    group.questionType == QuestionType.SUBHEADING_MATCH
                 ) {
                     parseSentenceInsertionOptions(items)
                 } else {

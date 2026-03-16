@@ -179,6 +179,7 @@ class QuestionBankScanViewModel @Inject constructor(
                             when (group.questionType) {
                                 "PARAGRAPH_ORDER", "SENTENCE_INSERTION" -> "Blank ${q.questionNumber}"
                                 "COMMENT_OPINION_MATCH" -> "Comment ${q.questionNumber}"
+                                "SUBHEADING_MATCH" -> "Paragraph ${q.questionNumber}"
                                 else -> q.questionText
                             }
                         } else {
@@ -273,7 +274,9 @@ class QuestionBankScanViewModel @Inject constructor(
 
                 val groups = state.editableGroups.mapIndexed { i, eg ->
                     val sentenceOptionsJson = if (
-                        (eg.questionType == "SENTENCE_INSERTION" || eg.questionType == "COMMENT_OPINION_MATCH") &&
+                        (eg.questionType == "SENTENCE_INSERTION" ||
+                            eg.questionType == "COMMENT_OPINION_MATCH" ||
+                            eg.questionType == "SUBHEADING_MATCH") &&
                         eg.sentenceOptions.isNotEmpty()
                     ) {
                         buildSentenceInsertionExtraData(eg.sentenceOptions)
