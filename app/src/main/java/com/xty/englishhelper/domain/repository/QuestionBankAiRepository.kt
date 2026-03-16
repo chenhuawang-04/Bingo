@@ -29,6 +29,15 @@ interface QuestionBankAiRepository {
         images: List<ByteArray>, questionNumbers: List<Int>,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): List<AnswerResult>
+
+    // ── Generate questions from article ──
+    suspend fun generateQuestionsFromArticle(
+        articleTitle: String,
+        articleText: String,
+        questionType: String,
+        variant: String?,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): ScanResult
     // ── Score translations ──
     suspend fun scoreTranslations(
         items: List<TranslationScoreInput>,

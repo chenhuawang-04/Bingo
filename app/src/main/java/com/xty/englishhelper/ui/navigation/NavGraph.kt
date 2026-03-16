@@ -188,6 +188,9 @@ fun NavGraph(navController: NavHostController) {
                     onBack = { navController.popBackStack() },
                     onWordClick = { wordId, dictionaryId ->
                         navController.navigate(WordDetailRoute(wordId, dictionaryId))
+                    },
+                    onOpenQuestionGroup = { groupId ->
+                        navController.navigate(QuestionBankReaderRoute(groupId))
                     }
                 )
             }

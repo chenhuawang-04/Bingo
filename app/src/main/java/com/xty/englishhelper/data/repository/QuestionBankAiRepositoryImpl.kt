@@ -100,6 +100,36 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         return parseScanResult(responseText)
     }
 
+    override suspend fun generateQuestionsFromArticle(
+        articleTitle: String,
+        articleText: String,
+        questionType: String,
+        variant: String?,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): ScanResult {
+        val prompt = buildQuestionGenerationPrompt(
+            articleTitle = articleTitle,
+            articleText = articleText,
+            questionType = questionType,
+            variant = variant
+        )
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = prompt)),
+            maxTokens = 8192
+        )
+
+        return parseScanResult(responseText)
+    }
+
     override suspend fun verifySource(
         passageText: String, referenceUrl: String,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
@@ -727,6 +757,151 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             )
         } else {
             WritingSampleResult(matched = false, errorMessage = "Failed to parse AI response")
+        }
+    }
+
+    private fun buildQuestionGenerationPrompt(
+        articleTitle: String,
+        articleText: String,
+        questionType: String,
+        variant: String?
+    ): String {
+        val baseSchema = """
+            仅返回如下 JSON（不含答案与解析）：
+            {
+              "examPaperTitle": "试卷标题",
+              "questionGroups": [
+                {
+                  "questionType": "$questionType",
+                  "sectionLabel": "题型标题",
+                  "directions": "作答说明",
+                  "passageParagraphs": ["段落1", "段落2"],
+                  "sentenceOptions": ["A. ...", "B. ..."],
+                  "sourceInfo": "",
+                  "sourceUrl": "",
+                  "questions": [
+                    {
+                      "questionNumber": 1,
+                      "questionText": "题干",
+                      "optionA": "A选项",
+                      "optionB": "B选项",
+                      "optionC": "C选项",
+                      "optionD": "D选项"
+                    }
+                  ],
+                  "wordCount": 0,
+                  "difficultyLevel": "MEDIUM",
+                  "difficultyScore": 0
+                }
+              ],
+              "confidence": 0.85
+            }
+        """.trimIndent()
+
+        val commonRules = buildString {
+            appendLine("你是考研英语命题专家。请根据给定文章内容出题。")
+            appendLine("必须遵守：")
+            appendLine("- 只使用提供的文章内容，不虚构外部事实。")
+            appendLine("- 不输出答案与解析。")
+            appendLine("- 题干与选项必须可从文章中唯一支持。")
+            appendLine("- 返回严格 JSON，字段名必须与 schema 一致。")
+            appendLine()
+        }
+
+        val typeRules = when (questionType) {
+            "READING_COMPREHENSION" -> """
+                题型：阅读理解（Part A）。
+                - 只生成 1 篇文章 + 5 题。
+                - 文章长度约 400–500 词，逻辑清晰，议论/说明文风格。
+                - 题型分布建议：2 细节 + 1 推断 + 1 例证作用 + 1 主旨/态度。
+                - 每题 4 选项，选项语义平行，干扰项具迷惑性但可排除。
+            """.trimIndent()
+            "CLOZE" -> """
+                题型：完形填空（Use of English）。
+                - 1 篇短文，20 空，长度约 280–360 词。
+                - 空位用 __1__ 到 __20__ 标记，必须严格连续编号。
+                - questions 列表共 20 题，questionText 为空字符串即可。
+                - 每空 4 选项（词或短语），同词类/语义场平行。
+            """.trimIndent()
+            "TRANSLATION" -> {
+                if (variant == "ENG1") {
+                    """
+                    题型：翻译（英语一，长文划线）。
+                    - 生成约 400–460 词长文。
+                    - 在文中标出 5 处划线句段：((1))...((/1)) 到 ((5))...((/5))。
+                    - questions 列表共 5 题，每题 questionText 为对应划线句段（不含标记）。
+                    """.trimIndent()
+                } else {
+                    """
+                    题型：翻译（英语二，整段短文）。
+                    - 生成 140–160 词短文，8–10 句。
+                    - passageParagraphs 只保留完整段落，不做句子编号或标记。
+                    - questions 列表仅 1 题，questionText 为整段短文（不含任何标记）。
+                    """.trimIndent()
+                }
+            }
+            "WRITING" -> {
+                if (variant == "SMALL") {
+                    """
+                    题型：写作（小作文，应用文）。
+                    - 题干明确交际场景与写作目的，给出 2–3 个要点。
+                    - 明确字数：约 100 词。
+                    - questions 列表仅 1 题，questionText 为完整题干。
+                    """.trimIndent()
+                } else {
+                    """
+                    题型：写作（大作文）。
+                    - 题干为“describe → interpret → comment”结构。
+                    - 明确字数：160–200 词。
+                    - questions 列表仅 1 题，questionText 为完整题干。
+                    """.trimIndent()
+                }
+            }
+            "PARAGRAPH_ORDER" -> """
+                题型：新题型—段落排序。
+                - 生成 8 段（A–H），每段必须以 "A. ", "B. " ... "H. " 开头。
+                - 其中 2–3 段位置可在 directions 中说明“已固定”。
+                - questions 列表共 5 题，对应 5 个空位（questionText 如“空1/空2”）。
+                - 每段要有清晰的时间/因果/指代线索，保证唯一排序。
+            """.trimIndent()
+            "SENTENCE_INSERTION" -> """
+                题型：新题型—句子插入。
+                - 生成 1 篇短文，包含 5 个空位 __1__ 到 __5__。
+                - sentenceOptions 提供 7 个候选句（A–G），其中 2 个为干扰句。
+                - questions 列表共 5 题，对应 5 个空位（questionText 如“空1/空2”）。
+            """.trimIndent()
+            "COMMENT_OPINION_MATCH" -> """
+                题型：新题型—评论观点匹配。
+                - 生成 5 条评论段落，段首用“1. 姓名: ...”格式。
+                - sentenceOptions 提供 7 条总结性观点（A–G），2 个干扰项。
+                - questions 列表共 5 题，questionText 用评论者姓名。
+            """.trimIndent()
+            "SUBHEADING_MATCH" -> """
+                题型：新题型—小标题匹配。
+                - 生成 5 个段落，段首用“1. ...”编号。
+                - sentenceOptions 提供 7 个小标题（A–G），2 个干扰项。
+                - questions 列表共 5 题（questionText 可用“段落1/段落2”）。
+            """.trimIndent()
+            "INFORMATION_MATCH" -> """
+                题型：新题型—信息匹配。
+                - passageParagraphs 提供 7 条信息选项（A–G），每条信息为 1–2 句。
+                - questions 列表共 5 题，questionText 为需匹配的描述。
+                - 选项需有唯一识别特征，干扰项“关键词相同但结论不同”。
+            """.trimIndent()
+            else -> "按考研英语出题规范设计。"
+        }
+
+        return buildString {
+            appendLine(commonRules)
+            appendLine(typeRules)
+            appendLine()
+            appendLine(baseSchema)
+            appendLine()
+            appendLine("文章标题：$articleTitle")
+            appendLine("文章正文：")
+            appendLine(articleText.trim())
+            appendLine()
+            append("Return JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
     }
 

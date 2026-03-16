@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -90,6 +91,17 @@ fun ArticleListScreen(
             TopAppBar(
                 title = { Text("文章阅读") },
                 actions = {
+                    IconButton(onClick = viewModel::toggleSortByScore) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Sort,
+                            contentDescription = "按评分排序",
+                            tint = if (uiState.sortByScore) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                    }
                     IconButton(onClick = onGuardianBrowse) {
                         Icon(Icons.Default.Language, contentDescription = "在线阅读")
                     }
@@ -122,10 +134,6 @@ fun ArticleListScreen(
                         onSelect = viewModel::selectCategory,
                         onCreate = { showCreateCategoryDialog = true }
                     )
-                    SortBar(
-                        sortByScore = uiState.sortByScore,
-                        onToggleSort = viewModel::toggleSortByScore
-                    )
                 }
                 Text("暂无文章，点击 + 创建新文章", style = MaterialTheme.typography.bodyLarge)
             }
@@ -143,10 +151,6 @@ fun ArticleListScreen(
                         selectedCategoryId = uiState.selectedCategoryId,
                         onSelect = viewModel::selectCategory,
                         onCreate = { showCreateCategoryDialog = true }
-                    )
-                    SortBar(
-                        sortByScore = uiState.sortByScore,
-                        onToggleSort = viewModel::toggleSortByScore
                     )
                 }
                 items(articles, key = { it.id }) { article ->
@@ -200,26 +204,6 @@ fun ArticleListScreen(
                     }
                 ) { Text("取消") }
             }
-        )
-    }
-}
-
-@Composable
-private fun SortBar(
-    sortByScore: Boolean,
-    onToggleSort: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        FilterChip(
-            selected = sortByScore,
-            onClick = onToggleSort,
-            label = { Text("按评分排序") }
         )
     }
 }

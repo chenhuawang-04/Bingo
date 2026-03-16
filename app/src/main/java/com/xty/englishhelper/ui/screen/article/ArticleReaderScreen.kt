@@ -1,6 +1,7 @@
 package com.xty.englishhelper.ui.screen.article
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -24,10 +27,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,6 +48,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -73,6 +80,7 @@ import com.xty.englishhelper.domain.model.ArticleStatistics
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.ParagraphType
+import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.ui.components.reading.HighlightedParagraphText
 import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TranslationBlock
@@ -84,6 +92,7 @@ import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
 fun ArticleReaderScreen(
     onBack: () -> Unit,
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
+    onOpenQuestionGroup: ((Long) -> Unit)? = null,
     viewModel: ArticleReaderViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -91,6 +100,41 @@ fun ArticleReaderScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     var followTts by rememberSaveable { mutableStateOf(true) }
+    var showGenerateDialog by rememberSaveable { mutableStateOf(false) }
+    var draftPaperTitle by rememberSaveable { mutableStateOf("") }
+    var selectedGenerateId by rememberSaveable { mutableStateOf("read") }
+
+    data class GenerateOption(
+        val id: String,
+        val label: String,
+        val description: String,
+        val questionType: QuestionType,
+        val variant: String? = null
+    )
+
+    val generateOptions = remember {
+        listOf(
+            GenerateOption("read", "阅读理解", "5 题 · 400-500 词", QuestionType.READING_COMPREHENSION),
+            GenerateOption("cloze", "完形填空", "20 空 · 280-360 词", QuestionType.CLOZE),
+            GenerateOption("trans_e1", "翻译（英语一）", "长文 5 处划线", QuestionType.TRANSLATION, "ENG1"),
+            GenerateOption("trans_e2", "翻译（英语二）", "整段短文", QuestionType.TRANSLATION, "ENG2"),
+            GenerateOption("write_small", "写作（小作文）", "应用文 · 100 词", QuestionType.WRITING, "SMALL"),
+            GenerateOption("write_large", "写作（大作文）", "图表/图片作文 · 160-200 词", QuestionType.WRITING, "LARGE"),
+            GenerateOption("para_order", "新题型：段落排序", "8 段 · 5 空", QuestionType.PARAGRAPH_ORDER),
+            GenerateOption("sentence_insert", "新题型：句子插入", "5 空 · 7 句", QuestionType.SENTENCE_INSERTION),
+            GenerateOption("comment_match", "新题型：评论观点匹配", "5 题 · 7 选项", QuestionType.COMMENT_OPINION_MATCH),
+            GenerateOption("subheading_match", "新题型：小标题匹配", "5 题 · 7 标题", QuestionType.SUBHEADING_MATCH),
+            GenerateOption("info_match", "新题型：信息匹配", "5 题 · 7 信息", QuestionType.INFORMATION_MATCH)
+        )
+    }
+
+    val selectedGenerate = generateOptions.firstOrNull { it.id == selectedGenerateId } ?: generateOptions.first()
+
+    val defaultPaperTitle = remember(article?.title) {
+        val safeTitle = article?.title?.takeIf { it.isNotBlank() } ?: "未命名文章"
+        val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+        "文章出题 - $safeTitle - $date"
+    }
 
     LaunchedEffect(Unit) {
         viewModel.navigateBack.collect {
@@ -109,6 +153,26 @@ fun ArticleReaderScreen(
         uiState.ttsState.error?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearTtsError()
+        }
+    }
+
+    LaunchedEffect(uiState.generateError) {
+        uiState.generateError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearError()
+        }
+    }
+
+    LaunchedEffect(showGenerateDialog, defaultPaperTitle) {
+        if (showGenerateDialog) {
+            draftPaperTitle = defaultPaperTitle
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.generatedGroupId.collect { groupId ->
+            snackbarHostState.showSnackbar("出题完成")
+            onOpenQuestionGroup?.invoke(groupId)
         }
     }
 
@@ -145,6 +209,21 @@ fun ArticleReaderScreen(
                                 MaterialTheme.colorScheme.primary
                             else
                                 MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Generate questions
+                    IconButton(
+                        onClick = { showGenerateDialog = true },
+                        enabled = article != null && !uiState.isGeneratingQuestions
+                    ) {
+                        Icon(
+                            Icons.Default.Quiz,
+                            contentDescription = "出题",
+                            tint = if (uiState.isGeneratingQuestions)
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            else
+                                MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -269,6 +348,84 @@ fun ArticleReaderScreen(
                 viewModel.addToDictionary(word, dictId, unitId)
             },
             onDismiss = { viewModel.dismissNotebook() }
+        )
+    }
+
+    if (showGenerateDialog) {
+        AlertDialog(
+            onDismissRequest = { showGenerateDialog = false },
+            title = { Text("文章出题") },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    OutlinedTextField(
+                        value = draftPaperTitle,
+                        onValueChange = { draftPaperTitle = it },
+                        label = { Text("试卷名称") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        generateOptions.forEach { option ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedGenerateId = option.id },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                RadioButton(
+                                    selected = selectedGenerateId == option.id,
+                                    onClick = { selectedGenerateId = option.id }
+                                )
+                                Column {
+                                    Text(option.label, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        option.description,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !uiState.isGeneratingQuestions,
+                    onClick = {
+                        showGenerateDialog = false
+                        viewModel.generateQuestions(
+                            paperTitle = draftPaperTitle,
+                            questionType = selectedGenerate.questionType,
+                            variant = selectedGenerate.variant
+                        )
+                    }
+                ) { Text("开始出题") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGenerateDialog = false }) { Text("取消") }
+            }
+        )
+    }
+
+    if (uiState.isGeneratingQuestions) {
+        AlertDialog(
+            onDismissRequest = { },
+            confirmButton = { },
+            title = { Text("正在出题") },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("主模型正在生成题目…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
         )
     }
 }
