@@ -270,7 +270,8 @@ private fun PreviewPhaseContent(
                     }
 
                     if (group.sentenceOptions.isNotEmpty()) {
-                        Text("可选句子", style = MaterialTheme.typography.labelMedium)
+                        val optionsLabel = if (group.questionType == "COMMENT_OPINION_MATCH") "可选观点" else "可选句子"
+                        Text(optionsLabel, style = MaterialTheme.typography.labelMedium)
                         Text(
                             group.sentenceOptions.joinToString("\n").take(300) +
                                 if (group.sentenceOptions.joinToString("\n").length > 300) "…" else "",
@@ -325,7 +326,8 @@ private fun PreviewPhaseContent(
                                     group.questionType != "CLOZE" &&
                                     group.questionType != "TRANSLATION" &&
                                     group.questionType != "PARAGRAPH_ORDER" &&
-                                    group.questionType != "SENTENCE_INSERTION"
+                                    group.questionType != "SENTENCE_INSERTION" &&
+                                    group.questionType != "COMMENT_OPINION_MATCH"
                                 ) {
                                     Text(
                                         "此字段不能为空",

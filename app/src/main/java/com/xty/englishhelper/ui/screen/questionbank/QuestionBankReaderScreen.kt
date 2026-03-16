@@ -254,6 +254,7 @@ fun QuestionBankReaderScreen(
             val isCloze = state.group?.questionType == QuestionType.CLOZE
             val isParagraphOrder = state.group?.questionType == QuestionType.PARAGRAPH_ORDER
             val isSentenceInsertion = state.group?.questionType == QuestionType.SENTENCE_INSERTION
+            val isCommentOpinionMatch = state.group?.questionType == QuestionType.COMMENT_OPINION_MATCH
             val isTranslation = state.group?.questionType == QuestionType.TRANSLATION
             val isWriting = state.group?.questionType == QuestionType.WRITING
             when {
@@ -293,6 +294,21 @@ fun QuestionBankReaderScreen(
                     onRetryPractice = { viewModel.retryPractice() },
                     onScanAnswers = { answerImageLauncher.launch("image/*") },
                     onEditSentenceOptions = { viewModel.openSentenceOptionsEditor() },
+                    modifier = Modifier.fillMaxSize().padding(padding)
+                )
+                isCommentOpinionMatch -> CommentOpinionMatchContent(
+                    state = state,
+                    onAnalyzeParagraph = viewModel::analyzeParagraph,
+                    onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
+                    onToggleAnalysisExpanded = viewModel::toggleParagraphAnalysisExpanded,
+                    onWordClick = onWordClick,
+                    onCollectWord = viewModel::collectWord,
+                    onSelectAnswer = viewModel::selectAnswer,
+                    onSubmitAnswers = { viewModel.submitAnswers() },
+                    onShowAnswers = { viewModel.showAnswers() },
+                    onRetryPractice = { viewModel.retryPractice() },
+                    onScanAnswers = { answerImageLauncher.launch("image/*") },
+                    onEditMatchOptions = { viewModel.openSentenceOptionsEditor() },
                     modifier = Modifier.fillMaxSize().padding(padding)
                 )
                 isTranslation -> TranslationReaderContent(
@@ -360,13 +376,20 @@ fun QuestionBankReaderScreen(
     }
 
     if (state.showSentenceOptionsEditor) {
+        val isCommentOpinionMatch = state.group?.questionType == QuestionType.COMMENT_OPINION_MATCH
+        val dialogTitle = if (isCommentOpinionMatch) "补录观点选项" else "补录选项句子"
+        val dialogHint = if (isCommentOpinionMatch) {
+            "支持两种格式：每行一个观点，或一行粘贴 A. B. C. 格式（共 7 个）"
+        } else {
+            "支持两种格式：每行一个句子，或一行粘贴 A. B. C. 格式（共 7 个）"
+        }
         AlertDialog(
             onDismissRequest = { viewModel.dismissSentenceOptionsEditor() },
-            title = { Text("补录选项句子") },
+            title = { Text(dialogTitle) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "支持两种格式：每行一个选项，或一行粘贴 A. B. C. 格式（共 7 个）",
+                        dialogHint,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -870,6 +893,7 @@ private fun PracticeActionBar(
 
 private val BlankRegex = Regex("__(\\d+)__")
 private val WordSplitRegex = Regex("(?<=\\s)|(?=\\s)|(?<=[,.:;!?\"'()\\[\\]{}])|(?=[,.:;!?\"'()\\[\\]{}])")
+private val CommentNumberRegex = Regex("^\\s*[\\(（]?\\s*(\\d{1,3})\\s*[\\)）]?\\s*[\\.、]?\\s*")
 
 @Composable
 private fun ClozeReaderContent(
@@ -1735,6 +1759,357 @@ private fun SentenceInsertionQuestionCard(
             }
         }
     }
+}
+
+// ── COMMENT OPINION MATCH ──
+
+@Composable
+private fun CommentOpinionMatchContent(
+    state: ReaderUiState,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
+    onSelectAnswer: (Long, String) -> Unit,
+    onSubmitAnswers: () -> Unit,
+    onShowAnswers: () -> Unit,
+    onRetryPractice: () -> Unit,
+    onScanAnswers: () -> Unit,
+    onEditMatchOptions: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val group = state.group ?: return
+    val listState = rememberLazyListState()
+    val spokenParagraphId = run {
+        val ttsState = state.ttsState
+        if (!ttsState.isSpeaking) return@run 0L
+        val speakable = state.paragraphs.filter { it.text.isNotBlank() }
+        val idx = ttsState.currentIndex
+        if (idx in speakable.indices) speakable[idx].id else 0L
+    }
+
+    val options = state.sentenceInsertionOptions
+    val optionLetters = remember {
+        (0 until 7).map { index -> ('A'.code + index).toChar().toString() }
+    }
+    val commentParagraphs = remember(state.paragraphs) {
+        state.paragraphs.filter { paragraph ->
+            val trimmed = paragraph.text.trim()
+            if (trimmed.isBlank()) return@filter false
+            if (trimmed.startsWith("Directions", ignoreCase = true)) return@filter false
+            if (trimmed.startsWith("Read the following", ignoreCase = true)) return@filter false
+            if (trimmed.startsWith("Part ", ignoreCase = true)) return@filter false
+            val urlCount = Regex("https?://\\S+").findAll(trimmed).count()
+            val looksLikePureUrl = urlCount > 0 && trimmed.replace(Regex("https?://\\S+"), "").trim().length < 5
+            if (looksLikePureUrl) return@filter false
+            trimmed.length > 15
+        }
+    }
+    val paragraphByNumber = remember(commentParagraphs) {
+        val map = LinkedHashMap<Int, com.xty.englishhelper.domain.model.ArticleParagraph>()
+        commentParagraphs.forEach { paragraph ->
+            val match = CommentNumberRegex.find(paragraph.text)
+            val number = match?.groupValues?.getOrNull(1)?.toIntOrNull()
+            if (number != null && !map.containsKey(number)) {
+                map[number] = paragraph
+            }
+        }
+        map
+    }
+    val paragraphByName = remember(commentParagraphs) {
+        val map = LinkedHashMap<String, com.xty.englishhelper.domain.model.ArticleParagraph>()
+        commentParagraphs.forEach { paragraph ->
+            val text = paragraph.text.trim()
+            val numberMatch = CommentNumberRegex.find(text)
+            val afterNumber = if (numberMatch != null) text.substring(numberMatch.range.last + 1).trim() else text
+            val nameToken = afterNumber.split(Regex("\\s+")).firstOrNull().orEmpty()
+            val cleaned = nameToken.trim().trimEnd(':', ',', '.', ';')
+            if (cleaned.length >= 2 && cleaned.all { it.isLetter() }) {
+                map.putIfAbsent(cleaned.lowercase(), paragraph)
+            }
+        }
+        map
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "comment_match_header") {
+            Column {
+                if (state.paperTitle.isNotBlank()) {
+                    Text(
+                        state.paperTitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    group.sectionLabel ?: group.questionType.displayName,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (!group.directions.isNullOrBlank()) {
+                    Text(
+                        group.directions!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider()
+            }
+        }
+
+        item(key = "comment_match_options") {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("可选观点", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onEditMatchOptions) { Text("补录/编辑") }
+                    }
+                    if (options.isEmpty()) {
+                        Text(
+                            "未识别到观点选项",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            "可先选择字母作答，之后再补录选项",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        options.take(7).forEach { option ->
+                            Text(option, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
+
+        itemsIndexed(state.items, key = { _, item -> "comment_match_q_${item.id}" }) { index, item ->
+            val nameKey = extractCommentName(item.questionText)?.lowercase()
+            val paragraph = paragraphByNumber[item.questionNumber]
+                ?: nameKey?.let { paragraphByName[it] }
+                ?: commentParagraphs.getOrNull(index)
+            CommentOpinionQuestionCard(
+                item = item,
+                paragraph = paragraph,
+                spokenParagraphId = spokenParagraphId,
+                wordLinkMap = state.wordLinkMap,
+                analysis = paragraph?.let { state.paragraphAnalysis[it.id] },
+                isAnalyzing = paragraph?.id == state.analyzingParagraphId,
+                translationEnabled = state.translationEnabled,
+                translation = paragraph?.let { state.paragraphTranslations[it.id] },
+                isTranslating = paragraph?.let { it.id in state.translatingParagraphIds } ?: false,
+                translationFailed = paragraph?.let { it.id in state.translationFailedParagraphIds } ?: false,
+                analysisExpanded = paragraph?.let { it.id in state.expandedParagraphIds } ?: false,
+                onAnalyzeParagraph = onAnalyzeParagraph,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onToggleAnalysisExpanded = onToggleAnalysisExpanded,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
+                optionLetters = optionLetters,
+                selectedAnswer = state.selectedAnswers[item.id],
+                isSubmitted = state.isSubmitted,
+                showingAnswers = state.showingAnswers,
+                isCorrect = state.practiceResults[item.id],
+                onSelectAnswer = { answer -> onSelectAnswer(item.id, answer) }
+            )
+        }
+
+        item(key = "comment_match_actions") {
+            PracticeActionBar(
+                state = state,
+                onSubmit = onSubmitAnswers,
+                onShowAnswers = onShowAnswers,
+                onRetry = onRetryPractice,
+                onScanAnswers = onScanAnswers
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CommentOpinionQuestionCard(
+    item: QuestionItem,
+    paragraph: com.xty.englishhelper.domain.model.ArticleParagraph?,
+    spokenParagraphId: Long,
+    wordLinkMap: Map<String, List<ArticleWordLink>>,
+    analysis: com.xty.englishhelper.domain.model.ParagraphAnalysisResult?,
+    isAnalyzing: Boolean,
+    translationEnabled: Boolean,
+    translation: String?,
+    isTranslating: Boolean,
+    translationFailed: Boolean,
+    analysisExpanded: Boolean,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
+    optionLetters: List<String>,
+    selectedAnswer: String?,
+    isSubmitted: Boolean,
+    showingAnswers: Boolean,
+    isCorrect: Boolean?,
+    onSelectAnswer: (String) -> Unit
+) {
+    val wrongCount = item.wrongCount
+    val borderColor = when {
+        wrongCount >= 2 -> MaterialTheme.colorScheme.error
+        wrongCount == 1 -> Color(0xFFFF9800)
+        else -> Color.Transparent
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = if (wrongCount > 0) BorderStroke(2.dp, borderColor) else null
+    ) {
+        Box {
+            if (wrongCount > 0) {
+                Badge(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                    containerColor = borderColor
+                ) {
+                    Text("x$wrongCount")
+                }
+            }
+
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val title = item.questionText.takeIf { it.isNotBlank() } ?: "评论"
+                Text(
+                    "${item.questionNumber}. $title",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (paragraph != null) {
+                    ParagraphBlock(
+                        paragraph = paragraph,
+                        wordLinkMap = wordLinkMap,
+                        analysis = analysis,
+                        isAnalyzing = isAnalyzing,
+                        isSpeaking = spokenParagraphId == paragraph.id,
+                        translationEnabled = translationEnabled,
+                        translation = translation,
+                        isTranslating = isTranslating,
+                        translationFailed = translationFailed,
+                        analysisExpanded = analysisExpanded,
+                        onAnalyze = { onAnalyzeParagraph(paragraph.id, paragraph.text) },
+                        onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) },
+                        onToggleAnalysisExpanded = { onToggleAnalysisExpanded(paragraph.id) },
+                        onWordClick = onWordClick,
+                        onCollectWord = onCollectWord
+                    )
+                } else {
+                    Text(
+                        item.questionText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    optionLetters.forEach { letter ->
+                        val isSelected = selectedAnswer == letter
+                        val correctAnswer = item.correctAnswer
+                        val optionColor = when {
+                            !isSubmitted && !showingAnswers && isSelected -> MaterialTheme.colorScheme.primaryContainer
+                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
+                                Color(0xFF4CAF50).copy(alpha = 0.2f)
+                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
+                                MaterialTheme.colorScheme.errorContainer
+                            else -> Color.Transparent
+                        }
+                        val textColor = when {
+                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
+                                Color(0xFF2E7D32)
+                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
+                                MaterialTheme.colorScheme.error
+                            isSelected -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = optionColor),
+                            modifier = Modifier
+                                .selectable(
+                                    selected = isSelected,
+                                    onClick = { if (!isSubmitted) onSelectAnswer(letter) },
+                                    role = Role.RadioButton
+                                )
+                        ) {
+                            Text(
+                                letter,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = textColor,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isSubmitted || showingAnswers) {
+                    val answer = item.correctAnswer
+                    if (answer != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isCorrect == true) {
+                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("正确", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
+                            } else if (isCorrect == false) {
+                                Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "错误，正确答案：$answer",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            } else {
+                                Text("答案：$answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                    if (!item.explanation.isNullOrBlank()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                item.explanation!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun extractCommentName(text: String): String? {
+    val trimmed = text.trim()
+    if (trimmed.isBlank()) return null
+    val withoutLabel = trimmed.replace(Regex("(?i)comment\\s*\\d+"), "").trim()
+    val withoutNumber = withoutLabel.replace(Regex("[\\(（]?\\d+[\\)）]?"), "").trim()
+    if (withoutNumber.isBlank()) return null
+    val name = withoutNumber.split(Regex("\\s+")).firstOrNull()?.trim()?.trimEnd(':', ',', '.', ';')
+    return name?.takeIf { it.length >= 2 && it.all { ch -> ch.isLetter() || ch == '-' || ch == '.' } }
 }
 
 // ── TRANSLATION Reader ──

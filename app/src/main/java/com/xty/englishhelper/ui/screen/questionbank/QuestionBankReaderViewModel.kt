@@ -164,7 +164,10 @@ class QuestionBankReaderViewModel @Inject constructor(
                 val wrongIds = repository.getWrongItemIds(groupId).toSet()
                 val linkedId = repository.getLinkedArticleId(groupId)
                 val paper = repository.getExamPaperById(group.examPaperId)
-                val sentenceOptions = if (group.questionType == QuestionType.SENTENCE_INSERTION) {
+                val sentenceOptions = if (
+                    group.questionType == QuestionType.SENTENCE_INSERTION ||
+                    group.questionType == QuestionType.COMMENT_OPINION_MATCH
+                ) {
                     parseSentenceInsertionOptions(items)
                 } else {
                     emptyList()
@@ -979,7 +982,7 @@ class QuestionBankReaderViewModel @Inject constructor(
         val group = _uiState.value.group ?: return
         val options = parseSentenceOptionsInput(_uiState.value.sentenceOptionsDraft)
         if (options.size != 7) {
-            _uiState.update { it.copy(error = "句子插入需要 7 个选项") }
+            _uiState.update { it.copy(error = "该题型需要 7 个选项") }
             return
         }
         val extraData = buildSentenceInsertionExtraData(options)
