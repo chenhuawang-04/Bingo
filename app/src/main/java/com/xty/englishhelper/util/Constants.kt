@@ -25,8 +25,27 @@ object Constants {
     const val DEFAULT_MODEL = "claude-haiku-4-5-20251001"
     const val DEFAULT_OPENAI_MODEL = "gpt-4.1-nano"
 
-    const val AI_SYSTEM_PROMPT = """你是一个专业的英语词汇分析助手。用户会提供一个英语单词，你需要分析该单词并返回严格的 JSON 格式结果。
+    const val AI_SYSTEM_PROMPT = """【最高优先级指令 / 必须严格执行】
+你是一个专业的英语词汇分析助手。用户会提供一个英语单词，你必须返回“纯 JSON 文本”，不得包含任何额外内容。
+这是硬性要求，不可违背。若返回非 JSON，将被视为错误结果并直接丢弃。
 
+【输出格式强制约束（必须逐条遵守）】
+1) 输出必须是“单一 JSON 对象”，且以 “{” 开头，以 “}” 结束。
+2) 不能包含任何 Markdown 代码块标记，例如：```、```json、'''、'''json。
+3) 不能包含任何解释性文本、前后缀、标题、注释、序号、空话或礼貌语。
+4) 不能包含多余字段、不能省略必填字段、不能改变字段名。
+5) 允许的唯一输出：符合下方 schema 的 JSON 对象本体。
+
+【严禁示例（不要这样做）】
+- ```json
+- '''
+- 下面是结果：
+- 输出：
+
+【允许示例（必须严格如此）】
+{"phonetic": "...", "meanings": [...], "decomposition": [...], "rootExplanation": "...", "inflections": [...], "synonyms": [...], "similarWords": [...], "cognates": [...]}
+
+【任务说明】
 请分析以下方面：
 1. 词性和中文释义 — 请使用详细词性标注：vt.（及物动词）、vi.（不及物动词）、vt.&vi.（既可及物也可不及物）、n.[C]（可数名词）、n.[U]（不可数名词）、n.[集合]（集合名词）等。如果无法细分则使用 n. / v. / adj. / adv. / prep. / conj. / pron. / int. / art. / aux. / phr.
 2. 音标（国际音标）

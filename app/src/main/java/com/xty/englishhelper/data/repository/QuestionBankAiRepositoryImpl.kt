@@ -88,7 +88,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             append("- wordCount = word count of passage + all questions in the group.\n")
             append("- difficultyLevel: EASY/MEDIUM/HARD based on vocabulary and sentence complexity.\n")
             append("- confidence: your overall OCR confidence (0-1).\n")
-            append("- Return JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("- Return JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -167,7 +167,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
 """.trimIndent())
             append("\nIf not found, set matched=false and explain in errorMessage. ")
-            append("Return JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("Return JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -404,7 +404,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 """.trimIndent())
             }
             append("\nIMPORTANT: questionNumber in your response must match the actual question numbers provided above (${questions.firstOrNull()?.questionNumber}–${questions.lastOrNull()?.questionNumber}).")
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -431,7 +431,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
   {"questionNumber": 21, "answer": "A", "explanation": "explanation if visible"}
 ]
 """.trimIndent())
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -470,7 +470,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
   }
 ]
 """.trimIndent())
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -497,7 +497,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             append("要求：\n")
             append("- 返回真实可访问链接与来源描述\n")
             append("- 找不到则 matched=false 并说明原因\n")
-            append("- 返回严格 JSON（不要 Markdown）\n\n")
+            append("- 返回严格 JSON（不要 Markdown / ``` / '''）\n\n")
             append("返回格式：\n")
             append(
                 """
@@ -510,7 +510,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -537,7 +537,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             append("要求：\n")
             append("- 只返回真实存在且可访问的范文与链接\n")
             append("- 找不到则 matched=false 并说明原因\n")
-            append("- 返回严格 JSON（不要 Markdown）\n\n")
+            append("- 返回严格 JSON（不要 Markdown / ``` / '''）\n\n")
             append("返回格式：\n")
             append(
                 """
@@ -552,7 +552,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -575,7 +575,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             append("只保留考生写作内容，不要题干、标题、页眉页脚或批注。\n")
             append("返回严格 JSON：\n")
             append("""{"content":"作文正文"}""")
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -595,7 +595,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         val userMessage = buildString {
             appendLine("你是“考研英语作文阅卷专家”，评分严格遵循《考研英语一作文评分分析手册（2026版）》。")
             appendLine("先整体定档，再按扣分细则微调。")
-            appendLine("只返回 JSON，不要 Markdown。")
+            appendLine("只返回 JSON，不要 Markdown / ``` / '''。")
             appendLine()
             append("作文题干：\n").append(questionText).append("\n\n")
             append("考生作文：\n").append(essayText).append("\n\n")
@@ -636,7 +636,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -901,7 +901,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             appendLine("文章正文：")
             appendLine(articleText.trim())
             appendLine()
-            append("Return JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("Return JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
     }
 

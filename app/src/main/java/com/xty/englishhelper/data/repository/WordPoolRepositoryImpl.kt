@@ -214,7 +214,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                 appendLine("你是词汇学习助手。下面是词库中${candidateList.size}个单词（index. spelling: 首条中文释义）。")
                 appendLine("目标词是 #0（${targetWord.spelling}）。请找出其中与 #0 形近（拼写相似）或意近（语义相关）的词。")
                 appendLine("只列出相关词的序号，不相关的忽略，不含 #0 自身。")
-                appendLine("返回严格JSON数组，如 [1,5,12]，若无相关词返回 []")
+                appendLine("返回严格JSON数组，如 [1,5,12]，若无相关词返回 []；不要 Markdown / ``` / ''' / 解释性文字")
                 appendLine()
                 candidateList.forEachIndexed { i, w ->
                     val firstMeaning = w.meanings.firstOrNull()?.definition ?: ""
@@ -263,7 +263,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             coroutineContext.ensureActive()
             val prompt = buildString {
                 appendLine("以下单词来自同一词库。找出其中形近（拼写相似、易混淆）或意近（语义相关）的分组，每组至少2词。")
-                appendLine("返回严格JSON: [[0,3],[1,5,12]]（数字为列表序号，不含无关词，不要解释）")
+                appendLine("返回严格JSON: [[0,3],[1,5,12]]（数字为列表序号，不含无关词，不要解释，不要 Markdown / ``` / '''）")
                 appendLine()
                 batch.forEachIndexed { i, c ->
                     val firstMeaning = c.meanings.firstOrNull() ?: ""

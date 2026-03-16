@@ -42,7 +42,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
                 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
             if (!hint.isNullOrBlank()) {
                 append("\nHint: ")
                 append(hint)
@@ -84,7 +84,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
               ]
             }
             """.trimIndent()
-                .plus("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+                .plus("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
                 .plus("\n\nAnalyze this sentence: $sentence")
 
         val client = clientProvider.getClient(provider)
@@ -112,7 +112,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
         val conditionClause = if (conditions.isBlank()) "" else "${conditions}的"
         val prompt = buildString {
             append("请扫描图片，提取出所有${conditionClause}英语单词，以JSON数组格式返回，如 [\"word1\", \"word2\"]。只返回JSON数组，不要其他文字。")
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
@@ -157,7 +157,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
               ]
             }
             """.trimIndent()
-                .plus("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+                .plus("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
                 .plus("\n\nAnalyze this paragraph:\n\n$paragraphText")
 
         val client = clientProvider.getClient(provider)
@@ -222,7 +222,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
             - commonMeanings: up to 3 most common Chinese meanings
             - examImportance: rate importance for 考研 English
         """.trimIndent()
-            .plus("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            .plus("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
             .plus("\n\nWord: $word$contextPart")
 
         val client = clientProvider.getClient(provider)
@@ -280,7 +280,7 @@ class ArticleAiRepositoryImpl @Inject constructor(
                 }
                 """.trimIndent()
             )
-            append("\nReturn JSON only, no markdown fences， NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
+            append("\nReturn JSON only, no markdown fences (no ``` or '''), NO ANY OTHER WORDS, ONLY JSON,AS PLAIN TEXT.")
         }
 
         val client = clientProvider.getClient(provider)
