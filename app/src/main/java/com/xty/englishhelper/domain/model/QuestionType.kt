@@ -8,6 +8,7 @@ enum class QuestionType(val displayName: String) {
     SENTENCE_INSERTION("句子插入"),
     COMMENT_OPINION_MATCH("评论观点匹配"),
     SUBHEADING_MATCH("小标题匹配"),
+    INFORMATION_MATCH("信息匹配"),
     NEW_TYPE("新题型"),
     WRITING("写作");
 }

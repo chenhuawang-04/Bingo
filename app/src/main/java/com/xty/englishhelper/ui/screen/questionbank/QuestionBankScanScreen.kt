@@ -273,6 +273,7 @@ private fun PreviewPhaseContent(
                         val optionsLabel = when (group.questionType) {
                             "COMMENT_OPINION_MATCH" -> "可选观点"
                             "SUBHEADING_MATCH" -> "可选小标题"
+                            "INFORMATION_MATCH" -> "可选信息"
                             else -> "可选句子"
                         }
                         Text(optionsLabel, style = MaterialTheme.typography.labelMedium)
@@ -332,7 +333,8 @@ private fun PreviewPhaseContent(
                                     group.questionType != "PARAGRAPH_ORDER" &&
                                     group.questionType != "SENTENCE_INSERTION" &&
                                     group.questionType != "COMMENT_OPINION_MATCH" &&
-                                    group.questionType != "SUBHEADING_MATCH"
+                                    group.questionType != "SUBHEADING_MATCH" &&
+                                    group.questionType != "INFORMATION_MATCH"
                                 ) {
                                     Text(
                                         "此字段不能为空",

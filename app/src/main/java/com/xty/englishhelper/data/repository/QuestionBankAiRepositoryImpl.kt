@@ -70,7 +70,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
 }
 """.trimIndent())
             append("\nRules:\n")
-            append("- questionType: \"READING_COMPREHENSION\" for standard reading comprehension, \"CLOZE\" for cloze/fill-in-the-blank (e.g. Section I / Use of English), \"TRANSLATION\" for translation sections, \"WRITING\" for essay writing tasks, \"PARAGRAPH_ORDER\" for paragraph ordering (Part B: reorder paragraphs A-H into correct order), \"SENTENCE_INSERTION\" for sentence insertion, \"COMMENT_OPINION_MATCH\" for comment-opinion matching, \"SUBHEADING_MATCH\" for subheading matching.\n")
+            append("- questionType: \"READING_COMPREHENSION\" for standard reading comprehension, \"CLOZE\" for cloze/fill-in-the-blank (e.g. Section I / Use of English), \"TRANSLATION\" for translation sections, \"WRITING\" for essay writing tasks, \"PARAGRAPH_ORDER\" for paragraph ordering (Part B: reorder paragraphs A-H into correct order), \"SENTENCE_INSERTION\" for sentence insertion, \"COMMENT_OPINION_MATCH\" for comment-opinion matching, \"SUBHEADING_MATCH\" for subheading matching, \"INFORMATION_MATCH\" for information matching.\n")
             append("- CLOZE rules: Mark blanks in passageParagraphs as __N__ where N is the exact questionNumber of the corresponding question (e.g. if questions are numbered 1-20, blanks are __1__ to __20__; if 21-40, blanks are __21__ to __40__). questionText should be empty for CLOZE questions. Options are the candidate words.\n")
             append("- TRANSLATION rules (英语一 / multiple underlined sentences): In passageParagraphs, wrap each underlined sentence with ((N))sentence text((/N)) where N = questionNumber. Each marked sentence becomes one question with questionText = the English sentence to translate. optionA/B/C/D must all be null.\n")
             append("- TRANSLATION rules (英语二 / single paragraph translation): passageParagraphs contain the full paragraph. Only 1 question, questionText = the full English text to translate. optionA/B/C/D must all be null.\n")
@@ -79,6 +79,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             append("- SENTENCE_INSERTION rules: passageParagraphs contain the full passage with blanks marked as __N__ where N is the blank/question number. sentenceOptions must list candidate sentences labeled A-G like \"A. ...\", \"B. ...\". Each blank is one question with questionText like \"Blank 41\". optionA/B/C/D should be empty or null.\n")
             append("- COMMENT_OPINION_MATCH rules: passageParagraphs list each comment/opinion block as a separate paragraph, starting with its numbered name if present (e.g. \"(41) Hannah ...\"). sentenceOptions must list summary statements labeled A-G. Each comment is one question with questionNumber (41-45) and questionText can be the name or empty. optionA/B/C/D should be empty or null.\n")
             append("- SUBHEADING_MATCH rules: passageParagraphs list the full text for each numbered paragraph (41-45) in order, without the heading blanks. sentenceOptions must list subheadings labeled A-G. Each paragraph is one question with questionNumber (41-45) and questionText can be the paragraph title or empty. optionA/B/C/D should be empty or null.\n")
+            append("- INFORMATION_MATCH rules: passageParagraphs list the option texts labeled A-G (right column) as separate paragraphs. sentenceOptions must list the same options labeled A-G. Each matching item on the left is one question with questionNumber (41-45) and questionText as the statement to match. optionA/B/C/D should be empty or null.\n")
             append("- Transcribe passage text EXACTLY as printed, preserving all paragraphs.\n")
             append("- sourceUrl: Do NOT extract URLs from the exam paper image (exam papers never print source URLs). ")
             append("Instead, use web content to identify and confirm the original source article for each reading passage. ")
@@ -162,6 +163,7 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         val isSentenceInsertion = questionType == "SENTENCE_INSERTION"
         val isCommentOpinionMatch = questionType == "COMMENT_OPINION_MATCH"
         val isSubheadingMatch = questionType == "SUBHEADING_MATCH"
+        val isInformationMatch = questionType == "INFORMATION_MATCH"
         val instruction = when {
             isCloze -> "You are an expert English cloze test solver. " +
                 "Read the passage with numbered blanks (__1__, __2__, etc.) and choose the best word for each blank based on context, grammar, collocations and meaning."
@@ -175,9 +177,11 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
                 "Match each numbered comment to the best summary statement letter (A-G) based on stance, focus, and tone."
             isSubheadingMatch -> "You are an expert at subheading matching questions. " +
                 "Match each numbered paragraph to the best subheading letter (A-G) based on the main idea."
+            isInformationMatch -> "You are an expert at information matching questions. " +
+                "Match each numbered statement to the correct option letter (A-G) based on the key facts."
             else -> "You are an expert English exam answer generator. Read the passage and answer each multiple-choice question."
         }
-        val sentenceOptions = if (isSentenceInsertion || isCommentOpinionMatch || isSubheadingMatch) {
+        val sentenceOptions = if (isSentenceInsertion || isCommentOpinionMatch || isSubheadingMatch || isInformationMatch) {
             parseSentenceInsertionOptions(questions.firstOrNull()?.extraData)
         } else {
             emptyList()
@@ -295,6 +299,35 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
                 append("Match each numbered paragraph to the best subheading letter (A-G):\n")
                 questions.forEach { q ->
                     val label = if (q.questionText.isNotBlank()) q.questionText else "Paragraph ${q.questionNumber}"
+                    append("${q.questionNumber}. $label\n")
+                }
+                append("\nReturn strict JSON array:\n")
+                val exampleNum = questions.firstOrNull()?.questionNumber ?: 1
+                append(
+                    """
+[
+  {
+    "questionNumber": $exampleNum,
+    "answer": "A",
+    "explanation": "brief explanation",
+    "difficultyLevel": "MEDIUM",
+    "difficultyScore": 0.6
+  }
+]
+                    """.trimIndent()
+                )
+            } else if (isInformationMatch) {
+                append("Options:\n$passageText\n\n")
+                if (sentenceOptions.isNotEmpty()) {
+                    append("Options list:\n")
+                    sentenceOptions.forEach { option ->
+                        append(option).append("\n")
+                    }
+                    append("\n")
+                }
+                append("Match each numbered statement to the best option letter (A-G):\n")
+                questions.forEach { q ->
+                    val label = if (q.questionText.isNotBlank()) q.questionText else "Item ${q.questionNumber}"
                     append("${q.questionNumber}. $label\n")
                 }
                 append("\nReturn strict JSON array:\n")

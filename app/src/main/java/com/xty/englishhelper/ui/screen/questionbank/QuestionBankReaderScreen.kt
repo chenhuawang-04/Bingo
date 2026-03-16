@@ -256,6 +256,7 @@ fun QuestionBankReaderScreen(
             val isSentenceInsertion = state.group?.questionType == QuestionType.SENTENCE_INSERTION
             val isCommentOpinionMatch = state.group?.questionType == QuestionType.COMMENT_OPINION_MATCH
             val isSubheadingMatch = state.group?.questionType == QuestionType.SUBHEADING_MATCH
+            val isInformationMatch = state.group?.questionType == QuestionType.INFORMATION_MATCH
             val isTranslation = state.group?.questionType == QuestionType.TRANSLATION
             val isWriting = state.group?.questionType == QuestionType.WRITING
             when {
@@ -313,6 +314,21 @@ fun QuestionBankReaderScreen(
                     modifier = Modifier.fillMaxSize().padding(padding)
                 )
                 isSubheadingMatch -> SubheadingMatchContent(
+                    state = state,
+                    onAnalyzeParagraph = viewModel::analyzeParagraph,
+                    onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
+                    onToggleAnalysisExpanded = viewModel::toggleParagraphAnalysisExpanded,
+                    onWordClick = onWordClick,
+                    onCollectWord = viewModel::collectWord,
+                    onSelectAnswer = viewModel::selectAnswer,
+                    onSubmitAnswers = { viewModel.submitAnswers() },
+                    onShowAnswers = { viewModel.showAnswers() },
+                    onRetryPractice = { viewModel.retryPractice() },
+                    onScanAnswers = { answerImageLauncher.launch("image/*") },
+                    onEditMatchOptions = { viewModel.openSentenceOptionsEditor() },
+                    modifier = Modifier.fillMaxSize().padding(padding)
+                )
+                isInformationMatch -> InformationMatchContent(
                     state = state,
                     onAnalyzeParagraph = viewModel::analyzeParagraph,
                     onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
@@ -394,14 +410,17 @@ fun QuestionBankReaderScreen(
     if (state.showSentenceOptionsEditor) {
         val isCommentOpinionMatch = state.group?.questionType == QuestionType.COMMENT_OPINION_MATCH
         val isSubheadingMatch = state.group?.questionType == QuestionType.SUBHEADING_MATCH
+        val isInformationMatch = state.group?.questionType == QuestionType.INFORMATION_MATCH
         val dialogTitle = when {
             isCommentOpinionMatch -> "补录观点选项"
             isSubheadingMatch -> "补录小标题"
+            isInformationMatch -> "补录信息选项"
             else -> "补录选项句子"
         }
         val dialogHint = when {
             isCommentOpinionMatch -> "支持两种格式：每行一个观点，或一行粘贴 A. B. C. 格式（共 7 个）"
             isSubheadingMatch -> "支持两种格式：每行一个标题，或一行粘贴 A. B. C. 格式（共 7 个）"
+            isInformationMatch -> "支持两种格式：每行一个信息，或一行粘贴 A. B. C. 格式（共 7 个）"
             else -> "支持两种格式：每行一个句子，或一行粘贴 A. B. C. 格式（共 7 个）"
         }
         AlertDialog(
@@ -1996,10 +2015,24 @@ private fun SubheadingMatchContent(
             if (trimmed.startsWith("Directions", ignoreCase = true)) return@filter false
             if (trimmed.startsWith("Read the following", ignoreCase = true)) return@filter false
             if (trimmed.startsWith("Part ", ignoreCase = true)) return@filter false
+            val maybeTitle = trimmed.length <= 90 &&
+                trimmed.split(Regex("\\s+")).size <= 14 &&
+                trimmed.firstOrNull()?.isUpperCase() == true &&
+                !trimmed.contains(".") &&
+                !CommentNumberRegex.containsMatchIn(trimmed)
+            if (maybeTitle) return@filter false
             val urlCount = Regex("https?://\\S+").findAll(trimmed).count()
             val looksLikePureUrl = urlCount > 0 && trimmed.replace(Regex("https?://\\S+"), "").trim().length < 5
             if (looksLikePureUrl) return@filter false
             trimmed.length > 20
+        }
+    }
+    val fallbackParagraphs = remember(subheadingParagraphs, state.items) {
+        val count = state.items.size
+        if (count in 1..subheadingParagraphs.size) {
+            subheadingParagraphs.takeLast(count)
+        } else {
+            subheadingParagraphs
         }
     }
     val paragraphByNumber = remember(subheadingParagraphs) {
@@ -2077,7 +2110,7 @@ private fun SubheadingMatchContent(
         }
 
         itemsIndexed(state.items, key = { _, item -> "subheading_match_q_${item.id}" }) { index, item ->
-            val paragraph = paragraphByNumber[item.questionNumber] ?: subheadingParagraphs.getOrNull(index)
+            val paragraph = paragraphByNumber[item.questionNumber] ?: fallbackParagraphs.getOrNull(index)
             CommentOpinionQuestionCard(
                 item = item,
                 paragraph = paragraph,
@@ -2114,6 +2147,271 @@ private fun SubheadingMatchContent(
                 onScanAnswers = onScanAnswers
             )
             Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun InformationMatchContent(
+    state: ReaderUiState,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
+    onSelectAnswer: (Long, String) -> Unit,
+    onSubmitAnswers: () -> Unit,
+    onShowAnswers: () -> Unit,
+    onRetryPractice: () -> Unit,
+    onScanAnswers: () -> Unit,
+    onEditMatchOptions: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val group = state.group ?: return
+    val listState = rememberLazyListState()
+    val spokenParagraphId = run {
+        val ttsState = state.ttsState
+        if (!ttsState.isSpeaking) return@run 0L
+        val speakable = state.paragraphs.filter { it.text.isNotBlank() }
+        val idx = ttsState.currentIndex
+        if (idx in speakable.indices) speakable[idx].id else 0L
+    }
+    val optionLetters = remember {
+        (0 until 7).map { index -> ('A'.code + index).toChar().toString() }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "info_match_header") {
+            Column {
+                if (state.paperTitle.isNotBlank()) {
+                    Text(
+                        state.paperTitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    group.sectionLabel ?: group.questionType.displayName,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (!group.directions.isNullOrBlank()) {
+                    Text(
+                        group.directions!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider()
+            }
+        }
+
+        item(key = "info_match_options_header") {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("可选信息", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                TextButton(onClick = onEditMatchOptions) { Text("补录/编辑") }
+            }
+        }
+
+        if (state.paragraphs.isNotEmpty()) {
+            itemsIndexed(state.paragraphs, key = { index, paragraph -> "info_match_opt_${paragraph.id}" }) { index, paragraph ->
+                val label = optionLetters.getOrNull(index) ?: "?"
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        ParagraphBlock(
+                            paragraph = paragraph,
+                            wordLinkMap = state.wordLinkMap,
+                            analysis = state.paragraphAnalysis[paragraph.id],
+                            isAnalyzing = state.analyzingParagraphId == paragraph.id,
+                            isSpeaking = spokenParagraphId == paragraph.id,
+                            translationEnabled = state.translationEnabled,
+                            translation = state.paragraphTranslations[paragraph.id],
+                            isTranslating = paragraph.id in state.translatingParagraphIds,
+                            translationFailed = paragraph.id in state.translationFailedParagraphIds,
+                            analysisExpanded = paragraph.id in state.expandedParagraphIds,
+                            onAnalyze = { onAnalyzeParagraph(paragraph.id, paragraph.text) },
+                            onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) },
+                            onToggleAnalysisExpanded = { onToggleAnalysisExpanded(paragraph.id) },
+                            onWordClick = onWordClick,
+                            onCollectWord = onCollectWord
+                        )
+                    }
+                }
+            }
+        } else {
+            item(key = "info_match_options_fallback") {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val options = state.sentenceInsertionOptions
+                        if (options.isEmpty()) {
+                            Text(
+                                "未识别到信息选项",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else {
+                            options.take(7).forEach { option ->
+                                Text(option, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        items(state.items, key = { "info_match_q_${it.id}" }) { item ->
+            InfoMatchQuestionCard(
+                item = item,
+                optionLetters = optionLetters,
+                selectedAnswer = state.selectedAnswers[item.id],
+                isSubmitted = state.isSubmitted,
+                showingAnswers = state.showingAnswers,
+                isCorrect = state.practiceResults[item.id],
+                onSelectAnswer = { answer -> onSelectAnswer(item.id, answer) }
+            )
+        }
+
+        item(key = "info_match_actions") {
+            PracticeActionBar(
+                state = state,
+                onSubmit = onSubmitAnswers,
+                onShowAnswers = onShowAnswers,
+                onRetry = onRetryPractice,
+                onScanAnswers = onScanAnswers
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun InfoMatchQuestionCard(
+    item: QuestionItem,
+    optionLetters: List<String>,
+    selectedAnswer: String?,
+    isSubmitted: Boolean,
+    showingAnswers: Boolean,
+    isCorrect: Boolean?,
+    onSelectAnswer: (String) -> Unit
+) {
+    val wrongCount = item.wrongCount
+    val borderColor = when {
+        wrongCount >= 2 -> MaterialTheme.colorScheme.error
+        wrongCount == 1 -> Color(0xFFFF9800)
+        else -> Color.Transparent
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = if (wrongCount > 0) BorderStroke(2.dp, borderColor) else null
+    ) {
+        Box {
+            if (wrongCount > 0) {
+                Badge(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                    containerColor = borderColor
+                ) {
+                    Text("x$wrongCount")
+                }
+            }
+
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "${item.questionNumber}. ${item.questionText}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    optionLetters.forEach { letter ->
+                        val isSelected = selectedAnswer == letter
+                        val correctAnswer = item.correctAnswer
+                        val optionColor = when {
+                            !isSubmitted && !showingAnswers && isSelected -> MaterialTheme.colorScheme.primaryContainer
+                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
+                                Color(0xFF4CAF50).copy(alpha = 0.2f)
+                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
+                                MaterialTheme.colorScheme.errorContainer
+                            else -> Color.Transparent
+                        }
+                        val textColor = when {
+                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
+                                Color(0xFF2E7D32)
+                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
+                                MaterialTheme.colorScheme.error
+                            isSelected -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = optionColor),
+                            modifier = Modifier
+                                .selectable(
+                                    selected = isSelected,
+                                    onClick = { if (!isSubmitted) onSelectAnswer(letter) },
+                                    role = Role.RadioButton
+                                )
+                        ) {
+                            Text(
+                                letter,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = textColor,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isSubmitted || showingAnswers) {
+                    val answer = item.correctAnswer
+                    if (answer != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isCorrect == true) {
+                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("正确", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
+                            } else if (isCorrect == false) {
+                                Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "错误，正确答案：$answer",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            } else {
+                                Text("答案：$answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                    if (!item.explanation.isNullOrBlank()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                item.explanation!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

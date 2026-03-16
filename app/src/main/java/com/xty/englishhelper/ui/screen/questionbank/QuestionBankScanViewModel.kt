@@ -180,6 +180,7 @@ class QuestionBankScanViewModel @Inject constructor(
                                 "PARAGRAPH_ORDER", "SENTENCE_INSERTION" -> "Blank ${q.questionNumber}"
                                 "COMMENT_OPINION_MATCH" -> "Comment ${q.questionNumber}"
                                 "SUBHEADING_MATCH" -> "Paragraph ${q.questionNumber}"
+                                "INFORMATION_MATCH" -> "Item ${q.questionNumber}"
                                 else -> q.questionText
                             }
                         } else {
@@ -276,12 +277,22 @@ class QuestionBankScanViewModel @Inject constructor(
                     val sentenceOptionsJson = if (
                         (eg.questionType == "SENTENCE_INSERTION" ||
                             eg.questionType == "COMMENT_OPINION_MATCH" ||
-                            eg.questionType == "SUBHEADING_MATCH") &&
+                            eg.questionType == "SUBHEADING_MATCH" ||
+                            eg.questionType == "INFORMATION_MATCH") &&
                         eg.sentenceOptions.isNotEmpty()
                     ) {
                         buildSentenceInsertionExtraData(eg.sentenceOptions)
                     } else {
                         null
+                    }
+                    val passageParagraphs = if (
+                        eg.questionType == "INFORMATION_MATCH" &&
+                        eg.passageParagraphs.isEmpty() &&
+                        eg.sentenceOptions.isNotEmpty()
+                    ) {
+                        eg.sentenceOptions
+                    } else {
+                        eg.passageParagraphs
                     }
                     QuestionGroup(
                         uid = eg.uid,
@@ -291,7 +302,7 @@ class QuestionBankScanViewModel @Inject constructor(
                         sectionLabel = eg.sectionLabel.ifBlank { null },
                         orderInPaper = i,
                         directions = eg.directions,
-                        passageText = eg.passageParagraphs.joinToString("\n"),
+                        passageText = passageParagraphs.joinToString("\n"),
                         sourceInfo = eg.sourceInfo.ifBlank { null },
                         sourceUrl = eg.sourceUrl.ifBlank { null },
                         wordCount = eg.wordCount,
@@ -300,7 +311,7 @@ class QuestionBankScanViewModel @Inject constructor(
                         },
                         difficultyScore = eg.difficultyScore,
                         createdAt = now, updatedAt = now,
-                        paragraphs = eg.passageParagraphs.mapIndexed { pi, text ->
+                        paragraphs = passageParagraphs.mapIndexed { pi, text ->
                             ArticleParagraph(paragraphIndex = pi, text = text)
                         },
                         items = eg.questions.mapIndexed { qi, q ->

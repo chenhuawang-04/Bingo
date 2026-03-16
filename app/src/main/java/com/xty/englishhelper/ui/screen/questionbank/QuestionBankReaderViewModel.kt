@@ -167,7 +167,8 @@ class QuestionBankReaderViewModel @Inject constructor(
                 val sentenceOptions = if (
                     group.questionType == QuestionType.SENTENCE_INSERTION ||
                     group.questionType == QuestionType.COMMENT_OPINION_MATCH ||
-                    group.questionType == QuestionType.SUBHEADING_MATCH
+                    group.questionType == QuestionType.SUBHEADING_MATCH ||
+                    group.questionType == QuestionType.INFORMATION_MATCH
                 ) {
                     parseSentenceInsertionOptions(items)
                 } else {
