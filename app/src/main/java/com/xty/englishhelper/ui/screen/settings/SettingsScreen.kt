@@ -138,6 +138,10 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                ModelAdvancedSection(state, viewModel)
+
+                HorizontalDivider()
+
                 OnlineReadingSection(
                     concurrency = state.guardianDetailConcurrency,
                     selectedSource = state.onlineReadingSource,
@@ -205,42 +209,6 @@ private fun ProviderListSection(state: SettingsUiState, viewModel: SettingsViewM
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(
-                    modifier = Modifier.padding(top = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Switch(
-                        checked = state.aiDebugMode,
-                        onCheckedChange = viewModel::onAiDebugModeChange
-                    )
-                    Column {
-                        Text("调试模式", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "开启后每次 AI 请求都会弹窗展示 JSON。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Row(
-                    modifier = Modifier.padding(top = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Switch(
-                        checked = state.aiResponseUnwrapEnabled,
-                        onCheckedChange = viewModel::onAiResponseUnwrapEnabledChange
-                    )
-                    Column {
-                        Text("响应脱壳", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "当服务返回完整响应 JSON 时自动提取内容。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
             }
             Button(onClick = viewModel::startCreateProvider) {
                 Icon(Icons.Default.Add, contentDescription = null)
@@ -451,6 +419,75 @@ private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewMo
                 onProviderChange = { viewModel.onScopeProviderChange(item.scope, it) },
                 onModelChange = { viewModel.onScopeModelChange(item.scope, it) },
                 onRefreshModels = { viewModel.fetchModelsForProvider(config.providerName) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModelAdvancedSection(state: SettingsUiState, viewModel: SettingsViewModel) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("模型高级选项", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "高级调试与解析选项，影响所有模型请求。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("调试模式", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "开启后每次 AI 请求都会弹窗展示 JSON。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = state.aiDebugMode,
+                onCheckedChange = viewModel::onAiDebugModeChange
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("响应脱壳", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "当服务返回完整响应 JSON 时自动提取内容。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = state.aiResponseUnwrapEnabled,
+                onCheckedChange = viewModel::onAiResponseUnwrapEnabledChange
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("修复 JSON", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "检测到未转义引号等错误时自动修复再解析。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = state.aiJsonRepairEnabled,
+                onCheckedChange = viewModel::onAiJsonRepairEnabledChange
             )
         }
     }

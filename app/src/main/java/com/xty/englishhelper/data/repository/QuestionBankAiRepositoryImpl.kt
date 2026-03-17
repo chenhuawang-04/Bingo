@@ -21,6 +21,7 @@ import com.xty.englishhelper.domain.repository.WritingSampleResult
 import com.xty.englishhelper.domain.repository.WritingScore
 import com.xty.englishhelper.domain.repository.WritingSubScores
 import com.xty.englishhelper.util.AiResponseUnwrapper
+import com.xty.englishhelper.util.AiJsonRepairer
 import com.xty.englishhelper.util.Constants
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -102,7 +103,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseScanResult(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseScanResult(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun generateQuestionsFromArticle(
@@ -133,7 +135,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseScanResult(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseScanResult(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun verifySource(
@@ -185,7 +188,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseVerifyResult(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseVerifyResult(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun generateAnswers(
@@ -424,7 +428,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseAnswerResults(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseAnswerResults(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun scanAnswers(
@@ -451,7 +456,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseAnswerResults(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseAnswerResults(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun scoreTranslations(
@@ -494,7 +500,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseTranslationScores(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseTranslationScores(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun searchWritingPromptSource(
@@ -536,7 +543,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseWritingPromptSource(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseWritingPromptSource(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun searchWritingSample(
@@ -580,7 +588,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseWritingSampleResult(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseWritingSampleResult(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun extractWritingFromImages(
@@ -603,7 +612,8 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseWritingOcr(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseWritingOcr(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun scoreWriting(
@@ -668,13 +678,18 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseWritingScore(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseWritingScore(responseText, unwrapEnabled, repairEnabled)
     }
 
     // ── JSON Parsing ──
 
-    private fun parseScanResult(responseText: String, unwrapEnabled: Boolean): ScanResult {
-        val cleaned = normalizeResponse(responseText, unwrapEnabled)
+    private fun parseScanResult(
+        responseText: String,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): ScanResult {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(ScanResultJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -691,8 +706,12 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun parseVerifyResult(responseText: String, unwrapEnabled: Boolean): VerifyResult {
-        val cleaned = normalizeResponse(responseText, unwrapEnabled)
+    private fun parseVerifyResult(
+        responseText: String,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): VerifyResult {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(VerifyResultJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -714,8 +733,12 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun parseAnswerResults(responseText: String, unwrapEnabled: Boolean): List<AnswerResult> {
-        val cleaned = normalizeResponse(responseText, unwrapEnabled)
+    private fun parseAnswerResults(
+        responseText: String,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): List<AnswerResult> {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonArray(cleaned) ?: cleaned.trim()
         val type = Types.newParameterizedType(List::class.java, AnswerResultJson::class.java)
         val adapter = moshi.adapter<List<AnswerResultJson>>(type).lenient()
@@ -741,8 +764,12 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         return parsed?.options?.filter { it.isNotBlank() } ?: emptyList()
     }
 
-    private fun parseTranslationScores(responseText: String, unwrapEnabled: Boolean): List<TranslationScore> {
-        val cleaned = normalizeResponse(responseText, unwrapEnabled)
+    private fun parseTranslationScores(
+        responseText: String,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): List<TranslationScore> {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonArray(cleaned) ?: cleaned.trim()
         val type = Types.newParameterizedType(List::class.java, TranslationScoreJson::class.java)
         val adapter = moshi.adapter<List<TranslationScoreJson>>(type).lenient()
@@ -759,8 +786,12 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         } ?: emptyList()
     }
 
-    private fun parseWritingSampleResult(responseText: String, unwrapEnabled: Boolean): WritingSampleResult {
-        val cleaned = normalizeResponse(responseText, unwrapEnabled)
+    private fun parseWritingSampleResult(
+        responseText: String,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): WritingSampleResult {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(WritingSampleJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -926,8 +957,12 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun parseWritingPromptSource(responseText: String, unwrapEnabled: Boolean): WritingPromptSourceResult {
-        val cleaned = normalizeResponse(responseText, unwrapEnabled)
+    private fun parseWritingPromptSource(
+        responseText: String,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): WritingPromptSourceResult {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(WritingPromptSourceJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -946,8 +981,12 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun parseWritingOcr(responseText: String, unwrapEnabled: Boolean): String {
-        val cleaned = normalizeResponse(responseText, unwrapEnabled)
+    private fun parseWritingOcr(
+        responseText: String,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): String {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(WritingOcrJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -955,8 +994,12 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         return parsed?.content?.trim().orEmpty()
     }
 
-    private fun parseWritingScore(responseText: String, unwrapEnabled: Boolean): WritingScore {
-        val cleaned = normalizeResponse(responseText, unwrapEnabled)
+    private fun parseWritingScore(
+        responseText: String,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): WritingScore {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(WritingScoreJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
@@ -999,12 +1042,16 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
             .replace("'''", "")
             .trim()
 
-    private fun normalizeResponse(text: String, unwrapEnabled: Boolean): String {
+    private fun normalizeResponse(text: String, unwrapEnabled: Boolean, repairEnabled: Boolean): String {
         val cleaned = stripCodeFence(text)
-        if (!unwrapEnabled) return cleaned
-        val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
-        val unwrapped = AiResponseUnwrapper.unwrapJsonEnvelope(candidate)
-        return stripCodeFence(unwrapped ?: cleaned)
+        val unwrapped = if (unwrapEnabled) {
+            val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+            AiResponseUnwrapper.unwrapJsonEnvelope(candidate) ?: cleaned
+        } else {
+            cleaned
+        }
+        val stripped = stripCodeFence(unwrapped)
+        return if (repairEnabled) AiJsonRepairer.repair(stripped) else stripped
     }
 
     private fun extractFirstJsonObject(text: String): String? {

@@ -12,6 +12,7 @@ import com.xty.englishhelper.domain.model.SentenceAnalysisResult
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleSuitabilityResult
 import com.xty.englishhelper.util.AiResponseUnwrapper
+import com.xty.englishhelper.util.AiJsonRepairer
 import com.xty.englishhelper.util.Constants
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -65,7 +66,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseJsonPayload(responseText, ArticleOcrResult::class.java, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseJsonPayload(responseText, ArticleOcrResult::class.java, unwrapEnabled, repairEnabled)
             ?: ArticleOcrResult(confidence = 0f)
     }
 
@@ -105,7 +107,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseJsonPayload(responseText, SentenceAnalysisResult::class.java, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseJsonPayload(responseText, SentenceAnalysisResult::class.java, unwrapEnabled, repairEnabled)
             ?: SentenceAnalysisResult()
     }
 
@@ -135,7 +138,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseStringArray(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseStringArray(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun analyzeParagraph(
@@ -182,7 +186,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseJsonPayload(responseText, ParagraphAnalysisResult::class.java, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseJsonPayload(responseText, ParagraphAnalysisResult::class.java, unwrapEnabled, repairEnabled)
             ?: ParagraphAnalysisResult()
     }
 
@@ -249,7 +254,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseQuickWordAnalysis(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseQuickWordAnalysis(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun evaluateArticleSuitability(
@@ -309,11 +315,17 @@ class ArticleAiRepositoryImpl @Inject constructor(
         )
 
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseSuitability(responseText, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseSuitability(responseText, unwrapEnabled, repairEnabled)
     }
 
-    private fun <T> parseJsonPayload(responseText: String, clazz: Class<T>, unwrapEnabled: Boolean): T? {
-        val cleaned = normalizeResponse(responseText, unwrapEnabled)
+    private fun <T> parseJsonPayload(
+        responseText: String,
+        clazz: Class<T>,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): T? {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(clazz).lenient()
         return runCatching { adapter.fromJson(json) }.getOrNull()
@@ -329,12 +341,16 @@ class ArticleAiRepositoryImpl @Inject constructor(
             .trim()
     }
 
-    private fun normalizeResponse(text: String, unwrapEnabled: Boolean): String {
+    private fun normalizeResponse(text: String, unwrapEnabled: Boolean, repairEnabled: Boolean): String {
         val cleaned = stripCodeFence(text)
-        if (!unwrapEnabled) return cleaned
-        val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
-        val unwrapped = AiResponseUnwrapper.unwrapJsonEnvelope(candidate)
-        return stripCodeFence(unwrapped ?: cleaned)
+        val unwrapped = if (unwrapEnabled) {
+            val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+            AiResponseUnwrapper.unwrapJsonEnvelope(candidate) ?: cleaned
+        } else {
+            cleaned
+        }
+        val stripped = stripCodeFence(unwrapped)
+        return if (repairEnabled) AiJsonRepairer.repair(stripped) else stripped
     }
 
     private fun extractFirstJsonObject(text: String): String? {
@@ -368,8 +384,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         return json.replace(Regex(",\\s*([}\\]])"), "$1")
     }
 
-    private fun parseStringArray(text: String, unwrapEnabled: Boolean): List<String> {
-        val cleaned = normalizeResponse(text, unwrapEnabled)
+    private fun parseStringArray(text: String, unwrapEnabled: Boolean, repairEnabled: Boolean): List<String> {
+        val cleaned = normalizeResponse(text, unwrapEnabled, repairEnabled)
         val arrayMatch = Regex("\\[\\s*(\"[^\"]*\"(?:\\s*,\\s*\"[^\"]*\")*)\\s*\\]").find(cleaned)
             ?: return emptyList()
         return Regex("\"([^\"]+)\"").findAll(arrayMatch.value)
@@ -378,8 +394,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
             .toList()
     }
 
-    private fun parseQuickWordAnalysis(text: String, unwrapEnabled: Boolean): QuickWordAnalysis {
-        val cleaned = normalizeResponse(text, unwrapEnabled)
+    private fun parseQuickWordAnalysis(text: String, unwrapEnabled: Boolean, repairEnabled: Boolean): QuickWordAnalysis {
+        val cleaned = normalizeResponse(text, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
 
         // Parse using Moshi
@@ -400,8 +416,8 @@ class ArticleAiRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun parseSuitability(text: String, unwrapEnabled: Boolean): ArticleSuitabilityResult {
-        val cleaned = normalizeResponse(text, unwrapEnabled)
+    private fun parseSuitability(text: String, unwrapEnabled: Boolean, repairEnabled: Boolean): ArticleSuitabilityResult {
+        val cleaned = normalizeResponse(text, unwrapEnabled, repairEnabled)
         val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
         val adapter = moshi.adapter(SuitabilityJson::class.java).lenient()
         val parsed = runCatching { adapter.fromJson(json) }.getOrNull()

@@ -17,6 +17,7 @@ import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.repository.AiRepository
 import com.xty.englishhelper.util.Constants
 import com.xty.englishhelper.util.AiResponseUnwrapper
+import com.xty.englishhelper.util.AiJsonRepairer
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,7 +48,8 @@ class AiRepositoryImpl @Inject constructor(
             maxTokens = 2048
         )
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        return parseAiResponse(text, unwrapEnabled)
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseAiResponse(text, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun testConnection(apiKey: String, model: String, baseUrl: String, provider: AiProvider): Boolean {
@@ -63,8 +65,8 @@ class AiRepositoryImpl @Inject constructor(
         return text.isNotBlank()
     }
 
-    private fun parseAiResponse(text: String, unwrapEnabled: Boolean): AiOrganizeResult {
-        val cleaned = normalizeResponse(text, unwrapEnabled)
+    private fun parseAiResponse(text: String, unwrapEnabled: Boolean, repairEnabled: Boolean): AiOrganizeResult {
+        val cleaned = normalizeResponse(text, unwrapEnabled, repairEnabled)
         val jsonText = extractFirstJsonObject(cleaned) ?: cleaned.trim()
 
         val adapter = moshi.adapter(AiWordAnalysis::class.java).lenient()
@@ -104,12 +106,16 @@ class AiRepositoryImpl @Inject constructor(
             .trim()
     }
 
-    private fun normalizeResponse(text: String, unwrapEnabled: Boolean): String {
+    private fun normalizeResponse(text: String, unwrapEnabled: Boolean, repairEnabled: Boolean): String {
         val cleaned = stripCodeFence(text)
-        if (!unwrapEnabled) return cleaned
-        val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
-        val unwrapped = AiResponseUnwrapper.unwrapJsonEnvelope(candidate)
-        return stripCodeFence(unwrapped ?: cleaned)
+        val unwrapped = if (unwrapEnabled) {
+            val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+            AiResponseUnwrapper.unwrapJsonEnvelope(candidate) ?: cleaned
+        } else {
+            cleaned
+        }
+        val stripped = stripCodeFence(unwrapped)
+        return if (repairEnabled) AiJsonRepairer.repair(stripped) else stripped
     }
 
     private fun extractFirstJsonObject(text: String): String? {

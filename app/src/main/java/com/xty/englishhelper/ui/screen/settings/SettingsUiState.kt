@@ -26,6 +26,7 @@ data class SettingsUiState(
     val ttsAutoStudy: Boolean = true,
     val aiDebugMode: Boolean = false,
     val aiResponseUnwrapEnabled: Boolean = false,
+    val aiJsonRepairEnabled: Boolean = false,
     val imageCompressionEnabled: Boolean = true,
     val imageCompressionTargetBytes: Int = 1_000_000,
     val ttsPrewarmConcurrency: Int = 2,

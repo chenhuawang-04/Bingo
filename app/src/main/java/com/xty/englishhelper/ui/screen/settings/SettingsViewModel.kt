@@ -112,6 +112,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.aiJsonRepairEnabled.collect { value ->
+                _uiState.update { it.copy(aiJsonRepairEnabled = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.imageCompressionEnabled.collect { value ->
                 _uiState.update { it.copy(imageCompressionEnabled = value) }
             }
@@ -405,6 +410,11 @@ class SettingsViewModel @Inject constructor(
     fun onAiResponseUnwrapEnabledChange(value: Boolean) {
         _uiState.update { it.copy(aiResponseUnwrapEnabled = value) }
         viewModelScope.launch { settingsDataStore.setAiResponseUnwrapEnabled(value) }
+    }
+
+    fun onAiJsonRepairEnabledChange(value: Boolean) {
+        _uiState.update { it.copy(aiJsonRepairEnabled = value) }
+        viewModelScope.launch { settingsDataStore.setAiJsonRepairEnabled(value) }
     }
 
     fun onImageCompressionEnabledChange(value: Boolean) {
