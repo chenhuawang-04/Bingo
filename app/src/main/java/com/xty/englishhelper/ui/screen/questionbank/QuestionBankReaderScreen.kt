@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -990,7 +989,8 @@ private fun ClozeReaderContent(
     }
 
     if (isLandscape) {
-        Row(modifier = modifier.height(IntrinsicSize.Min)) {
+        // Avoid intrinsic measurement with LazyColumn (crashes on landscape).
+        Row(modifier = modifier.fillMaxSize()) {
             // Left: passage
             ClozePassagePanel(
                 state = state,
