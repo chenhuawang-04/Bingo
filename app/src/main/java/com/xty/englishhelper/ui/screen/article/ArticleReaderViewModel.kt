@@ -44,6 +44,7 @@ import com.xty.englishhelper.domain.usecase.article.TranslateParagraphUseCase
 import com.xty.englishhelper.domain.usecase.word.SaveWordUseCase
 import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -55,6 +56,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 
@@ -204,13 +206,7 @@ class ArticleReaderViewModel @Inject constructor(
                 repository.insertParagraphs(rebuilt)
                 paragraphs = rebuilt
                 sentences = emptyList()
-                viewModelScope.launch {
-                    try {
-                        parseArticle(articleId)
-                    } catch (e: Exception) {
-                        Log.w("ArticleReaderVM", "Re-parse failed for articleId=$articleId", e)
-                    }
-                }
+                launchParseArticle(articleId, "Re-parse failed for articleId=$articleId")
             }
         }
 
@@ -282,13 +278,7 @@ class ArticleReaderViewModel @Inject constructor(
         if (age < staleParseTimeoutMs) return
 
         parseRecoveryTriggered = true
-        viewModelScope.launch {
-            try {
-                parseArticle(articleId)
-            } catch (e: Exception) {
-                Log.w("ArticleReaderVM", "Parse recovery failed for articleId=$articleId", e)
-            }
-        }
+        launchParseArticle(articleId, "Parse recovery failed for articleId=$articleId")
     }
 
     private fun computeInMemoryStatistics(paragraphs: List<ArticleParagraph>, article: Article) {
@@ -328,6 +318,16 @@ class ArticleReaderViewModel @Inject constructor(
             }
         } catch (e: Exception) {
             Log.w("ArticleReaderVM", "Loading failure for articleId=$articleId", e)
+        }
+    }
+
+    private fun launchParseArticle(targetId: Long, logMessage: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                parseArticle(targetId)
+            } catch (e: Exception) {
+                Log.w("ArticleReaderVM", logMessage, e)
+            }
         }
     }
 
@@ -623,7 +623,9 @@ class ArticleReaderViewModel @Inject constructor(
             try {
                 _uiState.update { it.copy(isSavingToLocal = true) }
                 repository.markArticleSaved(articleId)
-                parseArticle(articleId)
+                withContext(Dispatchers.IO) {
+                    parseArticle(articleId)
+                }
                 _uiState.update { it.copy(isSavingToLocal = false) }
             } catch (e: Exception) {
                 _uiState.update {
@@ -799,13 +801,7 @@ class ArticleReaderViewModel @Inject constructor(
                 if (firstGroup != null) {
                     if (!article.isSaved) {
                         repository.markArticleSaved(article.id)
-                        viewModelScope.launch {
-                            try {
-                                parseArticle(article.id)
-                            } catch (e: Exception) {
-                                Log.w("ArticleReaderVM", "Parse failed for articleId=${article.id}", e)
-                            }
-                        }
+                        launchParseArticle(article.id, "Parse failed for articleId=${article.id}")
                     }
                     questionBankRepository.linkSourceArticle(firstGroup.id, article.id)
                     val sourceUrl = article.domain.takeIf { it.startsWith("http://") || it.startsWith("https://") }

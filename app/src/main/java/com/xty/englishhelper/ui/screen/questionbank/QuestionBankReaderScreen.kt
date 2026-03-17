@@ -2627,6 +2627,12 @@ private fun extractCommentName(text: String): String? {
     return name?.takeIf { it.length >= 2 && it.all { ch -> ch.isLetter() || ch == '-' || ch == '.' } }
 }
 
+private fun isHttpUrl(url: String?): Boolean {
+    if (url.isNullOrBlank()) return false
+    val trimmed = url.trim()
+    return trimmed.startsWith("http://") || trimmed.startsWith("https://")
+}
+
 // ── TRANSLATION Reader ──
 // ══════════════════════════════════════════════════════════════
 
@@ -3483,13 +3489,15 @@ private fun WritingPassagePanel(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     if (!group.sourceUrl.isNullOrBlank()) {
+                        val sourceUrl = group.sourceUrl!!.trim()
+                        val canOpen = isHttpUrl(sourceUrl)
                         Spacer(Modifier.height(6.dp))
                         Text("题干来源", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            group.sourceUrl!!,
+                            sourceUrl,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { uriHandler.openUri(group.sourceUrl!!) }
+                            color = if (canOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = if (canOpen) Modifier.clickable { uriHandler.openUri(sourceUrl) } else Modifier
                         )
                     } else {
                         Text(
@@ -3561,11 +3569,12 @@ private fun WritingPassagePanel(
                         Text(sampleInfo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (!sampleUrl.isNullOrBlank()) {
+                        val canOpen = isHttpUrl(sampleUrl)
                         Text(
                             sampleUrl,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { uriHandler.openUri(sampleUrl) }
+                            color = if (canOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = if (canOpen) Modifier.clickable { uriHandler.openUri(sampleUrl) } else Modifier
                         )
                     }
                     if (!sampleText.isNullOrBlank()) {

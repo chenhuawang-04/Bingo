@@ -311,7 +311,7 @@ class ArticleEditorViewModel @Inject constructor(
                 }
 
                 // Trigger background parse
-                viewModelScope.launch {
+                viewModelScope.launch(Dispatchers.IO) {
                     try {
                         parseArticle(savedId)
                     } catch (e: Exception) {
