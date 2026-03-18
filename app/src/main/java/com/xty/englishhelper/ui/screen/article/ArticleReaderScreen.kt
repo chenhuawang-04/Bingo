@@ -163,16 +163,15 @@ fun ArticleReaderScreen(
         }
     }
 
-    LaunchedEffect(showGenerateDialog, defaultPaperTitle) {
-        if (showGenerateDialog) {
-            draftPaperTitle = defaultPaperTitle
+    LaunchedEffect(Unit) {
+        viewModel.generateMessage.collect { message ->
+            snackbarHostState.showSnackbar(message)
         }
     }
 
-    LaunchedEffect(Unit) {
-        viewModel.generatedGroupId.collect { groupId ->
-            snackbarHostState.showSnackbar("出题完成")
-            onOpenQuestionGroup?.invoke(groupId)
+    LaunchedEffect(showGenerateDialog, defaultPaperTitle) {
+        if (showGenerateDialog) {
+            draftPaperTitle = defaultPaperTitle
         }
     }
 
@@ -412,22 +411,6 @@ fun ArticleReaderScreen(
         )
     }
 
-    if (uiState.isGeneratingQuestions) {
-        AlertDialog(
-            onDismissRequest = { },
-            confirmButton = { },
-            title = { Text("正在出题") },
-            text = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text("主模型正在生成题目…", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        )
-    }
 }
 
 @Composable

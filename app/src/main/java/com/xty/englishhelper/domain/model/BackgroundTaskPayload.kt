@@ -18,6 +18,14 @@ data class WordPoolRebuildPayload(
 ) : BackgroundTaskPayload
 
 @Serializable
+data class QuestionGeneratePayload(
+    val articleId: Long,
+    val paperTitle: String = "",
+    val questionType: String,
+    val variant: String? = null
+) : BackgroundTaskPayload
+
+@Serializable
 data class QuestionAnswerGeneratePayload(
     val groupId: Long,
     val paperTitle: String = "",

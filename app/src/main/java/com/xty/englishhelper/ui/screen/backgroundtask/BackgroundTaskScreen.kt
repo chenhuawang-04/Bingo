@@ -46,6 +46,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
+import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
@@ -303,6 +304,7 @@ private fun taskTitle(task: BackgroundTask): String {
     return when (task.type) {
         BackgroundTaskType.WORD_ORGANIZE -> "单词整理"
         BackgroundTaskType.WORD_POOL_REBUILD -> "词池重建"
+        BackgroundTaskType.QUESTION_GENERATE -> "文章出题"
         BackgroundTaskType.QUESTION_ANSWER_GENERATE -> "题库答案生成"
         BackgroundTaskType.QUESTION_SOURCE_VERIFY -> "题库来源验证"
         BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> "作文范文检索"
@@ -321,6 +323,21 @@ private fun taskSubtitle(task: BackgroundTask): String {
                 append(" · ")
                 append(payload.strategy)
             }
+        }
+        is QuestionGeneratePayload -> buildString {
+            if (payload.paperTitle.isNotBlank()) append(payload.paperTitle)
+            if (payload.questionType.isNotBlank()) {
+                if (isNotEmpty()) append(" · ")
+                val typeLabel = runCatching {
+                    com.xty.englishhelper.domain.model.QuestionType.valueOf(payload.questionType).displayName
+                }.getOrNull() ?: payload.questionType
+                append(typeLabel)
+            }
+            payload.variant?.takeIf { it.isNotBlank() }?.let { variant ->
+                if (isNotEmpty()) append(" · ")
+                append(variant)
+            }
+            if (isEmpty()) append("文章 ${payload.articleId}")
         }
         is QuestionAnswerGeneratePayload -> buildString {
             if (payload.paperTitle.isNotBlank()) append(payload.paperTitle)

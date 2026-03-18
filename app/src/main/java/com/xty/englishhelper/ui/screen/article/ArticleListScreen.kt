@@ -315,6 +315,15 @@ private fun ArticleCard(
                             )
                         }
                     }
+                    if (!article.suitabilityReason.isNullOrBlank()) {
+                        Text(
+                            article.suitabilityReason,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 Box {
@@ -374,11 +383,11 @@ private fun ArticleCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (article.author.isNotBlank()) {
                                 Text(
@@ -448,6 +457,15 @@ private fun ArticleCard(
                                     }
                                 )
                             }
+                        }
+                        if (!article.suitabilityReason.isNullOrBlank()) {
+                            Text(
+                                article.suitabilityReason,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }

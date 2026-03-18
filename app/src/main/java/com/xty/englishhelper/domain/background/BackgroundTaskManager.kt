@@ -9,6 +9,10 @@ import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.ExamPaper
+import com.xty.englishhelper.domain.model.QuestionGroup
+import com.xty.englishhelper.domain.model.QuestionItem
+import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
@@ -16,6 +20,7 @@ import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
+import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.WordRepository
@@ -32,7 +37,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.ConcurrentHashMap
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,6 +48,7 @@ class BackgroundTaskManager @Inject constructor(
     private val repository: BackgroundTaskRepository,
     private val questionBankRepository: QuestionBankRepository,
     private val questionBankAiRepository: QuestionBankAiRepository,
+    private val articleRepository: ArticleRepository,
     private val wordRepository: WordRepository,
     private val organizeWordWithAi: OrganizeWordWithAiUseCase,
     private val rebuildWordPools: RebuildWordPoolsUseCase,
@@ -68,6 +76,28 @@ class BackgroundTaskManager @Inject constructor(
     fun enqueueWordPoolRebuild(dictionaryId: Long, strategy: PoolStrategy, force: Boolean = false) {
         val payload = WordPoolRebuildPayload(dictionaryId = dictionaryId, strategy = strategy.name)
         enqueueTask(BackgroundTaskType.WORD_POOL_REBUILD, payload, "pool:$dictionaryId:${strategy.name}", force)
+    }
+
+    fun enqueueQuestionGenerateFromArticle(
+        articleId: Long,
+        paperTitle: String,
+        questionType: QuestionType,
+        variant: String?,
+        force: Boolean = false
+    ) {
+        val payload = QuestionGeneratePayload(
+            articleId = articleId,
+            paperTitle = paperTitle,
+            questionType = questionType.name,
+            variant = variant
+        )
+        val variantKey = variant.orEmpty()
+        enqueueTask(
+            BackgroundTaskType.QUESTION_GENERATE,
+            payload,
+            "generate:$articleId:${questionType.name}:$variantKey",
+            force
+        )
     }
 
     fun enqueueQuestionAnswerGeneration(
@@ -261,6 +291,7 @@ class BackgroundTaskManager @Inject constructor(
         when (task.type) {
             BackgroundTaskType.WORD_ORGANIZE -> executeWordOrganize(task)
             BackgroundTaskType.WORD_POOL_REBUILD -> executeWordPoolRebuild(task)
+            BackgroundTaskType.QUESTION_GENERATE -> executeQuestionGenerate(task)
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> executeAnswerGenerate(task)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> executeSourceVerify(task)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> executeWritingSampleSearch(task)
@@ -294,6 +325,150 @@ class BackgroundTaskManager @Inject constructor(
             inflections = currentWord.inflections.ifEmpty { result.inflections }
         )
         wordRepository.updateWord(merged)
+        repository.updateProgress(task.id, 1, 1)
+    }
+
+    private suspend fun executeQuestionGenerate(task: BackgroundTask) {
+        val payload = task.payload as? QuestionGeneratePayload ?: throw IllegalStateException("任务参数缺失")
+        val questionType = runCatching { QuestionType.valueOf(payload.questionType) }.getOrElse {
+            throw IllegalStateException("题型无效")
+        }
+        val article = articleRepository.getArticleByIdOnce(payload.articleId)
+            ?: throw IllegalStateException("文章不存在")
+        val paragraphs = articleRepository.getParagraphs(article.id)
+
+        val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
+        if (config.apiKey.isBlank()) {
+            throw IllegalStateException("主模型未配置")
+        }
+
+        val articleText = buildArticleText(article, paragraphs)
+        if (articleText.isBlank()) {
+            throw IllegalStateException("文章内容为空，无法出题")
+        }
+
+        repository.updateProgress(task.id, 0, 1)
+        val scanResult = questionBankAiRepository.generateQuestionsFromArticle(
+            articleTitle = article.title,
+            articleText = articleText,
+            questionType = questionType.name,
+            variant = payload.variant,
+            apiKey = config.apiKey,
+            model = config.model,
+            baseUrl = config.baseUrl,
+            provider = config.provider
+        )
+
+        val rawGroup = scanResult.questionGroups.firstOrNull()
+            ?: throw IllegalStateException("出题失败：未返回题组")
+
+        val normalizedGroup = normalizeGeneratedGroup(
+            rawGroup = rawGroup,
+            questionType = questionType,
+            variant = payload.variant,
+            article = article
+        )
+        validateGeneratedGroup(normalizedGroup, questionType, payload.variant)
+
+        val now = System.currentTimeMillis()
+        val finalTitle = payload.paperTitle.ifBlank { buildDefaultPaperTitle(article.title, now) }
+        val paper = ExamPaper(
+            uid = UUID.randomUUID().toString(),
+            title = finalTitle,
+            createdAt = now,
+            updatedAt = now
+        )
+
+        val sentenceOptionsJson = if (
+            questionType == QuestionType.SENTENCE_INSERTION ||
+            questionType == QuestionType.COMMENT_OPINION_MATCH ||
+            questionType == QuestionType.SUBHEADING_MATCH ||
+            questionType == QuestionType.INFORMATION_MATCH
+        ) {
+            buildSentenceInsertionExtraData(normalizedGroup.sentenceOptions)
+        } else null
+
+        val passageParagraphs = if (
+            questionType == QuestionType.INFORMATION_MATCH &&
+            normalizedGroup.passageParagraphs.isEmpty() &&
+            normalizedGroup.sentenceOptions.isNotEmpty()
+        ) {
+            normalizedGroup.sentenceOptions
+        } else {
+            normalizedGroup.passageParagraphs
+        }
+
+        val group = QuestionGroup(
+            uid = UUID.randomUUID().toString(),
+            examPaperId = 0,
+            questionType = questionType,
+            sectionLabel = normalizedGroup.sectionLabel?.takeIf { it.isNotBlank() }
+                ?: defaultSectionLabel(questionType, payload.variant),
+            orderInPaper = 0,
+            directions = normalizedGroup.directions,
+            passageText = passageParagraphs.joinToString("\n"),
+            sourceInfo = normalizedGroup.sourceInfo,
+            sourceUrl = normalizedGroup.sourceUrl,
+            wordCount = normalizedGroup.wordCount,
+            difficultyLevel = normalizedGroup.difficultyLevel?.let { level ->
+                com.xty.englishhelper.domain.model.DifficultyLevel.entries.find { it.name == level }
+            },
+            difficultyScore = normalizedGroup.difficultyScore,
+            createdAt = now,
+            updatedAt = now,
+            paragraphs = passageParagraphs.mapIndexed { index, text ->
+                ArticleParagraph(paragraphIndex = index, text = text)
+            },
+            items = normalizedGroup.questions.mapIndexed { index, q ->
+                QuestionItem(
+                    questionGroupId = 0,
+                    questionNumber = if (q.questionNumber > 0) q.questionNumber else index + 1,
+                    questionText = q.questionText,
+                    optionA = q.optionA.ifBlank { null },
+                    optionB = q.optionB.ifBlank { null },
+                    optionC = q.optionC.ifBlank { null },
+                    optionD = q.optionD.ifBlank { null },
+                    orderInGroup = index,
+                    wordCount = q.wordCount,
+                    difficultyLevel = q.difficultyLevel?.let { level ->
+                        com.xty.englishhelper.domain.model.DifficultyLevel.entries.find { it.name == level }
+                    },
+                    difficultyScore = q.difficultyScore,
+                    extraData = sentenceOptionsJson
+                )
+            }
+        )
+
+        val paperId = questionBankRepository.saveScannedPaper(paper, listOf(group))
+        val groupList = questionBankRepository.getGroupsByPaper(paperId).first()
+        val firstGroup = groupList.firstOrNull()
+        if (firstGroup != null) {
+            if (!article.isSaved) {
+                articleRepository.markArticleSaved(article.id)
+                parseArticle(article.id)
+            }
+            questionBankRepository.linkSourceArticle(firstGroup.id, article.id)
+            val sourceUrl = article.domain.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            if (!sourceUrl.isNullOrBlank()) {
+                questionBankRepository.updateSourceUrl(firstGroup.id, sourceUrl)
+            }
+            questionBankRepository.updateSourceVerification(firstGroup.id, 1, null)
+
+            if (firstGroup.questionType == QuestionType.WRITING) {
+                val snippet = firstGroup.items.firstOrNull()?.questionText?.take(300).orEmpty()
+                enqueueQuestionWritingSampleSearch(
+                    groupId = firstGroup.id,
+                    paperTitle = finalTitle,
+                    questionSnippet = snippet
+                )
+            } else {
+                enqueueQuestionAnswerGeneration(
+                    groupId = firstGroup.id,
+                    paperTitle = finalTitle,
+                    sectionLabel = firstGroup.sectionLabel.orEmpty()
+                )
+            }
+        }
         repository.updateProgress(task.id, 1, 1)
     }
 
@@ -475,5 +650,163 @@ class BackgroundTaskManager @Inject constructor(
         )
         questionBankRepository.markHasAiAnswer(group.id)
         repository.updateProgress(task.id, 1, 1)
+    }
+
+    private fun buildArticleText(article: com.xty.englishhelper.domain.model.Article, paragraphs: List<ArticleParagraph>): String {
+        val text = if (paragraphs.isNotEmpty()) {
+            paragraphs
+                .filter { it.paragraphType != com.xty.englishhelper.domain.model.ParagraphType.IMAGE }
+                .map { it.text.trim() }
+                .filter { it.isNotBlank() }
+                .joinToString("\n\n")
+        } else {
+            article.content
+        }
+        val normalized = text
+            .split(Regex("\\n\\s*\\n"))
+            .map { it.replace(Regex("\\s+"), " ").trim() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n\n")
+        return if (normalized.length > 6000) normalized.take(6000) else normalized
+    }
+
+    private fun buildDefaultPaperTitle(title: String, now: Long): String {
+        val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date(now))
+        val safeTitle = title.ifBlank { "未命名文章" }
+        return "文章出题 - $safeTitle - $date"
+    }
+
+    private fun normalizeGeneratedGroup(
+        rawGroup: com.xty.englishhelper.domain.repository.ScannedQuestionGroup,
+        questionType: QuestionType,
+        variant: String?,
+        article: com.xty.englishhelper.domain.model.Article
+    ): com.xty.englishhelper.domain.repository.ScannedQuestionGroup {
+        val sourceUrl = article.domain.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+        val sourceInfo = article.source.ifBlank { article.title }
+        val sectionLabel = rawGroup.sectionLabel?.takeIf { it.isNotBlank() }
+            ?: defaultSectionLabel(questionType, variant)
+        val directions = rawGroup.directions?.takeIf { it.isNotBlank() } ?: defaultDirections(questionType, variant)
+        val questions = rawGroup.questions.mapIndexed { index, q ->
+            q.copy(questionNumber = if (q.questionNumber > 0) q.questionNumber else index + 1)
+        }
+        return rawGroup.copy(
+            questionType = questionType.name,
+            sectionLabel = sectionLabel,
+            directions = directions,
+            sourceUrl = sourceUrl,
+            sourceInfo = sourceInfo,
+            questions = questions
+        )
+    }
+
+    private fun validateGeneratedGroup(
+        group: com.xty.englishhelper.domain.repository.ScannedQuestionGroup,
+        questionType: QuestionType,
+        variant: String?
+    ) {
+        val passageText = group.passageParagraphs.joinToString("\n")
+        val blankRegex = Regex("__(\\d+)__")
+        val blankMatches = blankRegex.findAll(passageText).toList()
+        val blankCount = blankMatches.size
+        val blankNumbers = blankMatches.mapNotNull { it.groupValues.getOrNull(1)?.toIntOrNull() }.toSet()
+        val questionNumbers = group.questions.mapNotNull { q ->
+            q.questionNumber.takeIf { it > 0 }
+        }
+        val translationMarkerRegex = Regex("\\(\\((\\d+)\\)\\)")
+
+        when (questionType.name) {
+            "READING_COMPREHENSION" -> {
+                if (group.passageParagraphs.isEmpty()) throw IllegalStateException("阅读理解未生成文章段落")
+                if (group.questions.size != 5) throw IllegalStateException("阅读理解题数必须为 5")
+            }
+            "CLOZE" -> {
+                if (group.passageParagraphs.isEmpty()) throw IllegalStateException("完形填空未生成文章")
+                if (group.questions.size != 20) throw IllegalStateException("完形填空题数必须为 20")
+                if (blankCount < group.questions.size) throw IllegalStateException("完形填空未标注足够的空位")
+                if (questionNumbers.any { it !in blankNumbers }) {
+                    throw IllegalStateException("完形填空空位编号与题号不一致")
+                }
+            }
+            "TRANSLATION" -> {
+                if (group.passageParagraphs.isEmpty()) throw IllegalStateException("翻译未生成文章")
+                if (group.questions.isEmpty()) throw IllegalStateException("翻译题未生成题目")
+                if (variant == "ENG1" && group.questions.size != 5) {
+                    throw IllegalStateException("翻译（英语一）题数必须为 5")
+                }
+                if (variant == "ENG2" && group.questions.size != 1) {
+                    throw IllegalStateException("翻译（英语二）题数必须为 1")
+                }
+                if (variant == "ENG1") {
+                    val markerCount = translationMarkerRegex.findAll(passageText).count()
+                    if (markerCount < 5) throw IllegalStateException("翻译（英语一）未标注划线句段")
+                }
+            }
+            "WRITING" -> {
+                if (group.questions.isEmpty() || group.questions.first().questionText.isBlank()) {
+                    throw IllegalStateException("写作题干缺失")
+                }
+            }
+            "PARAGRAPH_ORDER" -> {
+                if (group.passageParagraphs.size < 8) throw IllegalStateException("段落排序需至少 8 段")
+                if (group.questions.size != 5) throw IllegalStateException("段落排序题数必须为 5")
+            }
+            "SENTENCE_INSERTION" -> {
+                if (group.sentenceOptions.size < 7) throw IllegalStateException("句子插入需 7 个候选句")
+                if (group.questions.size != 5) throw IllegalStateException("句子插入题数必须为 5")
+                if (blankCount < group.questions.size) throw IllegalStateException("句子插入未标注足够的空位")
+                if (questionNumbers.any { it !in blankNumbers }) {
+                    throw IllegalStateException("句子插入空位编号与题号不一致")
+                }
+            }
+            "COMMENT_OPINION_MATCH", "SUBHEADING_MATCH" -> {
+                if (group.sentenceOptions.size < 7) throw IllegalStateException("匹配题需 7 个选项")
+                if (group.questions.size != 5) throw IllegalStateException("匹配题题数必须为 5")
+            }
+            "INFORMATION_MATCH" -> {
+                if (group.passageParagraphs.size < 7 && group.sentenceOptions.size < 7) {
+                    throw IllegalStateException("信息匹配需 7 个选项")
+                }
+                if (group.questions.size != 5) throw IllegalStateException("信息匹配题数必须为 5")
+            }
+        }
+    }
+
+    private fun defaultSectionLabel(questionType: QuestionType, variant: String?): String {
+        return when (questionType) {
+            QuestionType.TRANSLATION -> if (variant == "ENG1") "翻译（英语一）" else "翻译（英语二）"
+            QuestionType.WRITING -> if (variant == "SMALL") "写作（小作文）" else "写作（大作文）"
+            QuestionType.READING_COMPREHENSION -> "阅读理解"
+            QuestionType.CLOZE -> "完形填空"
+            QuestionType.PARAGRAPH_ORDER -> "段落排序"
+            QuestionType.SENTENCE_INSERTION -> "句子插入"
+            QuestionType.COMMENT_OPINION_MATCH -> "评论观点匹配"
+            QuestionType.SUBHEADING_MATCH -> "小标题匹配"
+            QuestionType.INFORMATION_MATCH -> "信息匹配"
+            else -> questionType.displayName
+        }
+    }
+
+    private fun defaultDirections(questionType: QuestionType, variant: String?): String {
+        return when (questionType) {
+            QuestionType.READING_COMPREHENSION -> "Read the passage and answer the questions."
+            QuestionType.CLOZE -> "Read the passage and choose the best word for each blank."
+            QuestionType.TRANSLATION -> if (variant == "ENG1") "Translate the underlined sentences into Chinese." else "Translate the following passage into Chinese."
+            QuestionType.WRITING -> if (variant == "SMALL") "Write an application letter of about 100 words." else "Write an essay of 160-200 words."
+            QuestionType.PARAGRAPH_ORDER -> "Reorder the paragraphs to form a coherent passage. Fill in the blanks."
+            QuestionType.SENTENCE_INSERTION -> "Choose the best sentence for each blank."
+            QuestionType.COMMENT_OPINION_MATCH -> "Match each comment with the best summary opinion."
+            QuestionType.SUBHEADING_MATCH -> "Match each paragraph with the most suitable heading."
+            QuestionType.INFORMATION_MATCH -> "Match each statement with the correct information."
+            else -> ""
+        }
+    }
+
+    private fun buildSentenceInsertionExtraData(options: List<String>): String {
+        val arr = org.json.JSONArray()
+        options.filter { it.isNotBlank() }.forEach { arr.put(it) }
+        val obj = org.json.JSONObject()
+        obj.put("options", arr)
+        return obj.toString()
     }
 }

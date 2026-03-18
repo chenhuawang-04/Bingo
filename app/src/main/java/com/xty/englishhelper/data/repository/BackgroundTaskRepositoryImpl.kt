@@ -6,6 +6,7 @@ import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
@@ -119,6 +120,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
         return when (type) {
             BackgroundTaskType.WORD_ORGANIZE -> json.encodeToString(payload as WordOrganizePayload)
             BackgroundTaskType.WORD_POOL_REBUILD -> json.encodeToString(payload as WordPoolRebuildPayload)
+            BackgroundTaskType.QUESTION_GENERATE -> json.encodeToString(payload as QuestionGeneratePayload)
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> json.encodeToString(payload as QuestionAnswerGeneratePayload)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.encodeToString(payload as QuestionSourceVerifyPayload)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.encodeToString(payload as QuestionWritingSamplePayload)
@@ -131,6 +133,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
             when (type) {
                 BackgroundTaskType.WORD_ORGANIZE -> json.decodeFromString<WordOrganizePayload>(raw)
                 BackgroundTaskType.WORD_POOL_REBUILD -> json.decodeFromString<WordPoolRebuildPayload>(raw)
+                BackgroundTaskType.QUESTION_GENERATE -> json.decodeFromString<QuestionGeneratePayload>(raw)
                 BackgroundTaskType.QUESTION_ANSWER_GENERATE -> json.decodeFromString<QuestionAnswerGeneratePayload>(raw)
                 BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.decodeFromString<QuestionSourceVerifyPayload>(raw)
                 BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.decodeFromString<QuestionWritingSamplePayload>(raw)
