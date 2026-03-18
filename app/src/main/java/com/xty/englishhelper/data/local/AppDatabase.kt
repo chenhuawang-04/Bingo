@@ -75,7 +75,7 @@ import java.util.UUID
         BackgroundTaskEntity::class,
         ArticleCategoryEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -759,6 +759,24 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE articles ADD COLUMN suitability_reason TEXT")
                 db.execSQL("ALTER TABLE articles ADD COLUMN suitability_updated_at INTEGER")
                 db.execSQL("ALTER TABLE articles ADD COLUMN suitability_model TEXT")
+            }
+        }
+
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    DELETE FROM background_tasks
+                    WHERE id NOT IN (
+                        SELECT MAX(id) FROM background_tasks GROUP BY dedupe_key
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("DROP INDEX IF EXISTS `index_background_tasks_dedupe_key`")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_background_tasks_dedupe_key` " +
+                        "ON `background_tasks` (`dedupe_key`)"
+                )
             }
         }
     }

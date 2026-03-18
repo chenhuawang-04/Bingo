@@ -28,6 +28,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
+import com.xty.englishhelper.domain.background.BackgroundTaskEnqueueResult
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.DictionaryRepository
@@ -121,6 +122,9 @@ class ArticleReaderViewModel @Inject constructor(
     private val _generateMessage = MutableSharedFlow<String>(replay = 0)
     val generateMessage: Flow<String> = _generateMessage
 
+    private val _notebookMessage = MutableSharedFlow<String>(replay = 0)
+    val notebookMessage: Flow<String> = _notebookMessage
+
     private var pollStarted = false
     private var translationJob: Job? = null
     // Track content fingerprint to avoid redundant reloads
@@ -132,8 +136,7 @@ class ArticleReaderViewModel @Inject constructor(
     private var cachedFallbackWordLinks: List<ArticleWordLink>? = null
     private var parseRecoveryTriggered = false
     private val staleParseTimeoutMs = java.util.concurrent.TimeUnit.MINUTES.toMillis(3)
-    private val taskObserveStartAt = System.currentTimeMillis()
-    private val notifiedTaskIds = mutableSetOf<Long>()
+    private val observedQuestionTaskStatuses = mutableMapOf<Long, BackgroundTaskStatus>()
 
     init {
         observeTtsState()
@@ -267,25 +270,33 @@ class ArticleReaderViewModel @Inject constructor(
         viewModelScope.launch {
             backgroundTaskRepository.observeTasksByTypes(listOf(BackgroundTaskType.QUESTION_GENERATE))
                 .collect { tasks ->
-                    tasks.asSequence()
-                        .filter { it.createdAt >= taskObserveStartAt }
-                        .filter { it.id !in notifiedTaskIds }
-                        .forEach { task ->
-                            val payload = task.payload as? QuestionGeneratePayload ?: return@forEach
-                            if (payload.articleId != articleId) return@forEach
-                            when (task.status) {
-                                BackgroundTaskStatus.SUCCESS -> {
-                                    notifiedTaskIds.add(task.id)
-                                    _generateMessage.emit("出题完成，可在题库中查看")
-                                }
-                                BackgroundTaskStatus.FAILED -> {
-                                    notifiedTaskIds.add(task.id)
-                                    val reason = task.errorMessage?.takeIf { it.isNotBlank() } ?: "未知错误"
-                                    _generateMessage.emit("出题失败：$reason")
-                                }
-                                else -> Unit
+                    val currentIds = mutableSetOf<Long>()
+                    tasks.forEach { task ->
+                        val payload = task.payload as? QuestionGeneratePayload ?: return@forEach
+                        if (payload.articleId != articleId) return@forEach
+
+                        currentIds += task.id
+                        val previous = observedQuestionTaskStatuses.put(task.id, task.status)
+                        val transitionedToSuccess =
+                            previous != null &&
+                                previous != BackgroundTaskStatus.SUCCESS &&
+                                task.status == BackgroundTaskStatus.SUCCESS
+                        val transitionedToFailure =
+                            previous != null &&
+                                previous != BackgroundTaskStatus.FAILED &&
+                                task.status == BackgroundTaskStatus.FAILED
+
+                        when {
+                            transitionedToSuccess -> {
+                                _generateMessage.emit("出题完成，可在题库中查看")
+                            }
+                            transitionedToFailure -> {
+                                val reason = task.errorMessage?.takeIf { it.isNotBlank() } ?: "未知错误"
+                                _generateMessage.emit("出题失败：$reason")
                             }
                         }
+                    }
+                    observedQuestionTaskStatuses.keys.retainAll(currentIds)
                 }
         }
     }
@@ -485,10 +496,19 @@ class ArticleReaderViewModel @Inject constructor(
     // 鈹€鈹€ Collection notebook 鈹€鈹€
 
     fun collectWord(word: String, contextSentence: String) {
-        if (_uiState.value.collectedWords.any { it.word.equals(word, ignoreCase = true) }) return
+        if (_uiState.value.collectedWords.any { it.word.equals(word, ignoreCase = true) }) {
+            viewModelScope.launch {
+                _notebookMessage.emit("「$word」已在收纳本中")
+            }
+            return
+        }
 
         val entry = CollectedWord(word = word, contextSentence = contextSentence, isAnalyzing = true)
         _uiState.update { it.copy(collectedWords = it.collectedWords + entry) }
+
+        viewModelScope.launch {
+            _notebookMessage.emit("已加入收纳本：$word")
+        }
 
         viewModelScope.launch {
             try {
@@ -733,13 +753,20 @@ class ArticleReaderViewModel @Inject constructor(
                 }
                 val now = System.currentTimeMillis()
                 val finalTitle = paperTitle.ifBlank { buildDefaultPaperTitle(article.title, now) }
-                backgroundTaskManager.enqueueQuestionGenerateFromArticle(
+                val enqueueResult = backgroundTaskManager.enqueueQuestionGenerateFromArticle(
                     articleId = article.id,
                     paperTitle = finalTitle,
                     questionType = questionType,
                     variant = variant
                 )
-                _generateMessage.emit("已加入后台出题任务，可在后台任务管理查看")
+                val message = when (enqueueResult) {
+                    BackgroundTaskEnqueueResult.ENQUEUED -> "已加入后台出题任务，可在后台任务管理查看"
+                    BackgroundTaskEnqueueResult.RESTARTED -> "已重新加入后台出题任务"
+                    BackgroundTaskEnqueueResult.ALREADY_PENDING -> "已有后台出题任务在等待执行"
+                    BackgroundTaskEnqueueResult.ALREADY_RUNNING -> "已有后台出题任务正在执行"
+                    BackgroundTaskEnqueueResult.SKIPPED_SUCCESS -> "相同出题任务已完成"
+                }
+                _generateMessage.emit(message)
                 _uiState.update { it.copy(isGeneratingQuestions = false) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isGeneratingQuestions = false, generateError = "出题失败：${e.message}") }

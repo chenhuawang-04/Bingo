@@ -10,7 +10,7 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["status"]),
         Index(value = ["type"]),
-        Index(value = ["dedupe_key"])
+        Index(value = ["dedupe_key"], unique = true)
     ]
 )
 data class BackgroundTaskEntity(

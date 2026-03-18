@@ -1,5 +1,7 @@
 package com.xty.englishhelper.ui.components.reading
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +55,7 @@ import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.ParagraphType
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
 import com.xty.englishhelper.ui.screen.article.ParagraphAnalysisCard
+import kotlinx.coroutines.launch
 
 @Composable
 fun ParagraphBlock(
@@ -326,12 +330,16 @@ fun HighlightedParagraphText(
     onCollectWord: (word: String, contextSentence: String) -> Unit,
     style: androidx.compose.ui.text.TextStyle = ArticleTypography.ReaderBody
 ) {
+    val scope = rememberCoroutineScope()
     val underlineStyle = SpanStyle(
         textDecoration = TextDecoration.Underline,
         color = MaterialTheme.colorScheme.primary
     )
+    val flashColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f)
+    val flashAlpha = remember { Animatable(0f) }
+    var flashRange by remember(text) { mutableStateOf<IntRange?>(null) }
 
-    val annotatedString = remember(text, wordLinkMap) {
+    val annotatedString = remember(text, wordLinkMap, flashRange, flashAlpha.value, flashColor) {
         buildAnnotatedString {
             val words = text.split(Regex("(?<=\\s)|(?=\\s)|(?<=[,.:;!?\"'()\\[\\]{}])|(?=[,.:;!?\"'()\\[\\]{}])"))
             for (word in words) {
@@ -347,6 +355,17 @@ fun HighlightedParagraphText(
                     pop()
                 } else {
                     append(word)
+                }
+            }
+            flashRange?.let { range ->
+                val start = range.first.coerceAtLeast(0)
+                val endExclusive = (range.last + 1).coerceAtMost(text.length)
+                if (flashAlpha.value > 0f && start < endExclusive) {
+                    addStyle(
+                        SpanStyle(background = flashColor.copy(alpha = flashAlpha.value)),
+                        start = start,
+                        end = endExclusive
+                    )
                 }
             }
         }
@@ -371,9 +390,18 @@ fun HighlightedParagraphText(
                                 val (wId, dId) = annotations.first().item.split(":")
                                 onWordClick(wId.toLong(), dId.toLong())
                             } else {
-                                val tappedWord = extractWordAtOffset(text, charOffset)
+                                val tappedRange = extractWordRangeAtOffset(text, charOffset)
+                                val tappedWord = tappedRange?.let { text.substring(it) }
                                 if (tappedWord != null) {
                                     val context = extractContextSentence(text, charOffset)
+                                    flashRange = tappedRange
+                                    scope.launch {
+                                        flashAlpha.snapTo(1f)
+                                        flashAlpha.animateTo(0f, animationSpec = tween(durationMillis = 650))
+                                        if (flashRange == tappedRange) {
+                                            flashRange = null
+                                        }
+                                    }
                                     onCollectWord(tappedWord, context)
                                 }
                             }
@@ -385,6 +413,11 @@ fun HighlightedParagraphText(
 }
 
 fun extractWordAtOffset(text: String, charOffset: Int): String? {
+    val range = extractWordRangeAtOffset(text, charOffset) ?: return null
+    return text.substring(range)
+}
+
+fun extractWordRangeAtOffset(text: String, charOffset: Int): IntRange? {
     if (charOffset < 0 || charOffset >= text.length) return null
     if (!text[charOffset].isLetter()) return null
 
@@ -410,7 +443,7 @@ fun extractWordAtOffset(text: String, charOffset: Int): String? {
     val word = text.substring(start, end + 1)
     return if (word.length >= 2 && word.all {
             it in 'A'..'Z' || it in 'a'..'z' || it == '\'' || it == '\u2019' || it == '-'
-        }) word else null
+        }) start..end else null
 }
 
 fun extractContextSentence(text: String, charOffset: Int): String {

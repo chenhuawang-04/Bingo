@@ -5,6 +5,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -15,7 +18,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -50,6 +52,7 @@ import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -83,6 +86,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
@@ -98,6 +103,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.domain.model.AnswerSource
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.model.QuestionType
@@ -108,6 +114,8 @@ import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
 import com.xty.englishhelper.ui.components.reading.extractContextSentence
 import com.xty.englishhelper.ui.components.reading.extractWordAtOffset
+import com.xty.englishhelper.ui.components.reading.extractWordRangeAtOffset
+import com.xty.englishhelper.ui.designsystem.tokens.LocalEhSemanticColors
 import com.xty.englishhelper.ui.screen.article.CollectionNotebookSheet
 import kotlinx.coroutines.launch
 
@@ -122,6 +130,8 @@ fun QuestionBankReaderScreen(
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
+    val notebookPulseScale = remember { Animatable(1f) }
+    val notebookPulseTint = remember { Animatable(0f) }
     var followTts by rememberSaveable { mutableStateOf(true) }
     var showSourceEditor by remember { mutableStateOf(false) }
     var sourceUrlDraft by remember { mutableStateOf("") }
@@ -152,6 +162,24 @@ fun QuestionBankReaderScreen(
         state.ttsState.error?.let {
             snackbarHostState.showSnackbar("TTS: $it")
             viewModel.clearTtsError()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.notebookMessage.collect { message ->
+            launch {
+                notebookPulseTint.snapTo(1f)
+                notebookPulseTint.animateTo(0f, animationSpec = tween(durationMillis = 520))
+            }
+            launch {
+                notebookPulseScale.snapTo(1f)
+                notebookPulseScale.animateTo(1.14f, animationSpec = tween(durationMillis = 120))
+                notebookPulseScale.animateTo(
+                    1f,
+                    animationSpec = spring(dampingRatio = 0.45f, stiffness = 520f)
+                )
+            }
+            snackbarHostState.showSnackbar(message)
         }
     }
 
@@ -210,10 +238,43 @@ fun QuestionBankReaderScreen(
                         )
                     }
                     // Notebook
+                    val notebookBaseTint = if (state.collectedWords.isNotEmpty()) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    val notebookTint = lerp(
+                        notebookBaseTint,
+                        MaterialTheme.colorScheme.primary,
+                        notebookPulseTint.value
+                    )
                     IconButton(onClick = { viewModel.toggleNotebook() }) {
-                        Icon(Icons.Outlined.CollectionsBookmark, contentDescription = "收纳本")
                         if (state.collectedWords.isNotEmpty()) {
-                            Badge { Text("${state.collectedWords.size}") }
+                            BadgedBox(
+                                badge = {
+                                    Badge { Text("${state.collectedWords.size}") }
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Outlined.CollectionsBookmark,
+                                    contentDescription = "收纳本",
+                                    tint = notebookTint,
+                                    modifier = Modifier.graphicsLayer {
+                                        scaleX = notebookPulseScale.value
+                                        scaleY = notebookPulseScale.value
+                                    }
+                                )
+                            }
+                        } else {
+                            Icon(
+                                Icons.Outlined.CollectionsBookmark,
+                                contentDescription = "收纳本",
+                                tint = notebookTint,
+                                modifier = Modifier.graphicsLayer {
+                                    scaleX = notebookPulseScale.value
+                                    scaleY = notebookPulseScale.value
+                                }
+                            )
                         }
                     }
                 }
@@ -694,6 +755,165 @@ private fun SourceStatusRow(
     }
 }
 
+private data class PracticeStatusColors(
+    val success: Color,
+    val successContainer: Color,
+    val successStrongContainer: Color,
+    val successSubtleContainer: Color,
+    val warning: Color
+)
+
+private data class PracticeOptionColors(
+    val container: Color,
+    val content: Color
+)
+
+@Composable
+private fun rememberPracticeStatusColors(): PracticeStatusColors {
+    val semanticColors = LocalEhSemanticColors.current
+    return remember(semanticColors) {
+        PracticeStatusColors(
+            success = semanticColors.retentionHigh,
+            successContainer = semanticColors.retentionHigh.copy(alpha = 0.15f),
+            successStrongContainer = semanticColors.retentionHigh.copy(alpha = 0.2f),
+            successSubtleContainer = semanticColors.retentionHigh.copy(alpha = 0.1f),
+            warning = semanticColors.retentionMid
+        )
+    }
+}
+
+private fun wrongCountHighlightColor(
+    wrongCount: Int,
+    warningColor: Color,
+    errorColor: Color
+): Color {
+    return when {
+        wrongCount >= 2 -> errorColor
+        wrongCount == 1 -> warningColor
+        else -> Color.Transparent
+    }
+}
+
+private fun resolveOptionColors(
+    isSelected: Boolean,
+    isSubmitted: Boolean,
+    showingAnswers: Boolean,
+    isCorrect: Boolean?,
+    correctAnswer: String?,
+    optionLetter: String,
+    colors: PracticeStatusColors,
+    primaryColor: Color,
+    primaryContainer: Color,
+    errorColor: Color,
+    errorContainer: Color,
+    defaultContentColor: Color
+): PracticeOptionColors {
+    val container = when {
+        !isSubmitted && !showingAnswers && isSelected -> primaryContainer
+        (isSubmitted || showingAnswers) && correctAnswer != null && optionLetter.equals(correctAnswer, ignoreCase = true) ->
+            colors.successStrongContainer
+        (isSubmitted || showingAnswers) && isSelected && isCorrect == false -> errorContainer
+        else -> Color.Transparent
+    }
+    val content = when {
+        (isSubmitted || showingAnswers) && correctAnswer != null && optionLetter.equals(correctAnswer, ignoreCase = true) ->
+            colors.success
+        (isSubmitted || showingAnswers) && isSelected && isCorrect == false -> errorColor
+        isSelected -> primaryColor
+        else -> defaultContentColor
+    }
+    return PracticeOptionColors(container = container, content = content)
+}
+
+private fun translationScoreColors(
+    score: Float,
+    colors: PracticeStatusColors,
+    errorColor: Color,
+    errorContainer: Color
+): PracticeOptionColors {
+    return when {
+        score >= 1.5f -> PracticeOptionColors(
+            container = colors.successContainer,
+            content = colors.success
+        )
+        score >= 1f -> PracticeOptionColors(
+            container = colors.warning.copy(alpha = 0.15f),
+            content = colors.warning
+        )
+        else -> PracticeOptionColors(
+            container = errorContainer,
+            content = errorColor
+        )
+    }
+}
+
+private fun answerSourceText(source: AnswerSource?): String {
+    return when (source) {
+        AnswerSource.AI -> "(AI)"
+        AnswerSource.SCANNED -> "(扫描)"
+        AnswerSource.WEB -> "(范文)"
+        else -> ""
+    }
+}
+
+@Composable
+private fun PracticeResultRow(
+    correctAnswer: String,
+    isCorrect: Boolean?,
+    answerSource: AnswerSource? = null
+) {
+    val statusColors = rememberPracticeStatusColors()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        when (isCorrect) {
+            true -> {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = statusColors.success,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "正确",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = statusColors.success
+                )
+            }
+            false -> {
+                Icon(
+                    Icons.Default.Error,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "错误，正确答案：$correctAnswer",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            null -> {
+                Text(
+                    "答案：$correctAnswer",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        val sourceText = answerSourceText(answerSource)
+        if (sourceText.isNotBlank()) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                sourceText,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 @Composable
 private fun QuestionCard(
     item: QuestionItem,
@@ -705,11 +925,12 @@ private fun QuestionCard(
     onSelectAnswer: (String) -> Unit
 ) {
     val wrongCount = item.wrongCount
-    val borderColor = when {
-        wrongCount >= 2 -> MaterialTheme.colorScheme.error
-        wrongCount == 1 -> Color(0xFFFF9800) // orange
-        else -> Color.Transparent
-    }
+    val statusColors = rememberPracticeStatusColors()
+    val borderColor = wrongCountHighlightColor(
+        wrongCount = wrongCount,
+        warningColor = statusColors.warning,
+        errorColor = MaterialTheme.colorScheme.error
+    )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -751,15 +972,23 @@ private fun QuestionCard(
                 for ((letter, text) in options) {
                     val isSelected = selectedAnswer == letter
                     val correctAnswer = item.correctAnswer
-                    val optionColor = when {
-                        !isSubmitted && !showingAnswers -> Color.Transparent
-                        correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) -> Color(0xFF4CAF50).copy(alpha = 0.15f)
-                        isSelected && isCorrect == false -> MaterialTheme.colorScheme.errorContainer
-                        else -> Color.Transparent
-                    }
+                    val optionColors = resolveOptionColors(
+                        isSelected = isSelected,
+                        isSubmitted = isSubmitted,
+                        showingAnswers = showingAnswers,
+                        isCorrect = isCorrect,
+                        correctAnswer = correctAnswer,
+                        optionLetter = letter,
+                        colors = statusColors,
+                        primaryColor = MaterialTheme.colorScheme.primary,
+                        primaryContainer = MaterialTheme.colorScheme.primaryContainer,
+                        errorColor = MaterialTheme.colorScheme.error,
+                        errorContainer = MaterialTheme.colorScheme.errorContainer,
+                        defaultContentColor = MaterialTheme.colorScheme.onSurface
+                    )
 
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = optionColor),
+                        colors = CardDefaults.cardColors(containerColor = optionColors.container),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 2.dp)
@@ -781,6 +1010,7 @@ private fun QuestionCard(
                             Text(
                                 "[$letter] $text",
                                 style = MaterialTheme.typography.bodyMedium,
+                                color = optionColors.content,
                                 modifier = Modifier.padding(start = 4.dp)
                             )
                         }
@@ -793,30 +1023,11 @@ private fun QuestionCard(
                     val source = item.answerSource
                     if (answer != null) {
                         Spacer(Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isCorrect == true) {
-                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("正确", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
-                            } else if (isCorrect == false) {
-                                Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("错误，正确答案: $answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                            } else {
-                                Text("答案: $answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                when (source) {
-                                    com.xty.englishhelper.domain.model.AnswerSource.AI -> "(AI)"
-                                    com.xty.englishhelper.domain.model.AnswerSource.SCANNED -> "(扫描)"
-                                    com.xty.englishhelper.domain.model.AnswerSource.WEB -> "(范文)"
-                                    else -> ""
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        PracticeResultRow(
+                            correctAnswer = answer,
+                            isCorrect = isCorrect,
+                            answerSource = source
+                        )
                     }
 
                     if (!item.explanation.isNullOrBlank()) {
@@ -849,6 +1060,7 @@ private fun PracticeActionBar(
 ) {
     val hasAnswers = state.items.any { it.correctAnswer != null }
     val hasSelection = state.selectedAnswers.isNotEmpty()
+    val statusColors = rememberPracticeStatusColors()
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -887,7 +1099,7 @@ private fun PracticeActionBar(
                     Text(
                         "$correct / $total 正确",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (correct == total) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error,
+                        color = if (correct == total) statusColors.success else MaterialTheme.colorScheme.error,
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
                 }
@@ -1150,10 +1362,10 @@ private fun ClozePassageText(
     practiceResults: Map<Long, Boolean>,
     onBlankClick: (Int) -> Unit
 ) {
+    val statusColors = rememberPracticeStatusColors()
     val primary = MaterialTheme.colorScheme.primary
     val onPrimary = MaterialTheme.colorScheme.onPrimary
     val errorColor = MaterialTheme.colorScheme.error
-    val greenColor = Color(0xFF4CAF50)
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val bodyStyle = MaterialTheme.typography.bodyMedium
 
@@ -1180,9 +1392,9 @@ private fun ClozePassageText(
                 }
                 // Determine color
                 val (bg, fg) = when {
-                    (isSubmitted || showingAnswers) && result == true -> greenColor to onPrimary
+                    (isSubmitted || showingAnswers) && result == true -> statusColors.success to onPrimary
                     (isSubmitted || showingAnswers) && result == false -> errorColor to onPrimary
-                    (isSubmitted || showingAnswers) && correctAnswer != null -> greenColor to onPrimary
+                    (isSubmitted || showingAnswers) && correctAnswer != null -> statusColors.success to onPrimary
                     selected != null -> primary to onPrimary
                     else -> surfaceVariant to primary
                 }
@@ -1233,6 +1445,7 @@ private fun ClozeOptionRow(
     isFocused: Boolean,
     onSelectAnswer: (String) -> Unit
 ) {
+    val statusColors = rememberPracticeStatusColors()
     val options = listOfNotNull(
         item.optionA?.let { "A" to it },
         item.optionB?.let { "B" to it },
@@ -1268,26 +1481,28 @@ private fun ClozeOptionRow(
             for ((letter, text) in options) {
                 val isSelected = selectedAnswer == letter
                 val correctAnswer = item.correctAnswer
-                val chipColor = when {
-                    !isSubmitted && !showingAnswers && isSelected -> MaterialTheme.colorScheme.primaryContainer
-                    (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) -> Color(0xFF4CAF50).copy(alpha = 0.2f)
-                    (isSubmitted || showingAnswers) && isSelected && isCorrect == false -> MaterialTheme.colorScheme.errorContainer
-                    else -> Color.Transparent
-                }
-                val textColor = when {
-                    (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) -> Color(0xFF2E7D32)
-                    (isSubmitted || showingAnswers) && isSelected && isCorrect == false -> MaterialTheme.colorScheme.error
-                    isSelected -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurface
-                }
+                val optionColors = resolveOptionColors(
+                    isSelected = isSelected,
+                    isSubmitted = isSubmitted,
+                    showingAnswers = showingAnswers,
+                    isCorrect = isCorrect,
+                    correctAnswer = correctAnswer,
+                    optionLetter = letter,
+                    colors = statusColors,
+                    primaryColor = MaterialTheme.colorScheme.primary,
+                    primaryContainer = MaterialTheme.colorScheme.primaryContainer,
+                    errorColor = MaterialTheme.colorScheme.error,
+                    errorContainer = MaterialTheme.colorScheme.errorContainer,
+                    defaultContentColor = MaterialTheme.colorScheme.onSurface
+                )
 
                 Text(
                     text = "$letter $text",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = textColor,
+                    color = optionColors.content,
                     modifier = Modifier
-                        .background(chipColor, RoundedCornerShape(4.dp))
+                        .background(optionColors.container, RoundedCornerShape(4.dp))
                         .clickable(enabled = !isSubmitted) { onSelectAnswer(letter) }
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
@@ -1296,7 +1511,11 @@ private fun ClozeOptionRow(
 
         // Wrong count badge
         if (wrongCount > 0) {
-            val badgeColor = if (wrongCount >= 2) MaterialTheme.colorScheme.error else Color(0xFFFF9800)
+            val badgeColor = wrongCountHighlightColor(
+                wrongCount = wrongCount,
+                warningColor = statusColors.warning,
+                errorColor = MaterialTheme.colorScheme.error
+            )
             Badge(containerColor = badgeColor) { Text("x$wrongCount") }
         }
     }
@@ -1347,7 +1566,7 @@ private fun SentenceInsertionReaderContent(
     }
 
     if (isLandscape) {
-        Row(modifier = modifier.height(IntrinsicSize.Min)) {
+        Row(modifier = modifier.fillMaxSize()) {
             SentenceInsertionPassagePanel(
                 state = state,
                 spokenParagraphId = spokenParagraphId,
@@ -1505,18 +1724,33 @@ private fun SentenceInsertionPassageText(
     onCollectWord: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val statusColors = rememberPracticeStatusColors()
+    val scope = rememberCoroutineScope()
     val primary = MaterialTheme.colorScheme.primary
     val onPrimary = MaterialTheme.colorScheme.onPrimary
     val errorColor = MaterialTheme.colorScheme.error
-    val greenColor = Color(0xFF4CAF50)
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val bodyStyle = MaterialTheme.typography.bodyMedium
+    val flashColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f)
+    val flashAlpha = remember { Animatable(0f) }
+    var flashRange by remember(text) { mutableStateOf<IntRange?>(null) }
     val underlineStyle = SpanStyle(
         textDecoration = TextDecoration.Underline,
         color = primary
     )
 
-    val annotated = remember(text, itemByNumber, wordLinkMap, selectedAnswers, isSubmitted, showingAnswers, practiceResults) {
+    val annotated = remember(
+        text,
+        itemByNumber,
+        wordLinkMap,
+        selectedAnswers,
+        isSubmitted,
+        showingAnswers,
+        practiceResults,
+        flashRange,
+        flashAlpha.value,
+        flashColor
+    ) {
         buildAnnotatedString {
             fun appendSegment(segment: String) {
                 if (segment.isEmpty()) return
@@ -1555,9 +1789,9 @@ private fun SentenceInsertionPassageText(
                     else -> " $number "
                 }
                 val (bg, fg) = when {
-                    (isSubmitted || showingAnswers) && result == true -> greenColor to onPrimary
+                    (isSubmitted || showingAnswers) && result == true -> statusColors.success to onPrimary
                     (isSubmitted || showingAnswers) && result == false -> errorColor to onPrimary
-                    (isSubmitted || showingAnswers) && correctAnswer != null -> greenColor to onPrimary
+                    (isSubmitted || showingAnswers) && correctAnswer != null -> statusColors.success to onPrimary
                     selected != null -> primary to onPrimary
                     else -> surfaceVariant to primary
                 }
@@ -1577,6 +1811,17 @@ private fun SentenceInsertionPassageText(
             }
             if (lastEnd < text.length) {
                 appendSegment(text.substring(lastEnd))
+            }
+            flashRange?.let { range ->
+                val start = range.first.coerceAtLeast(0)
+                val endExclusive = (range.last + 1).coerceAtMost(length)
+                if (flashAlpha.value > 0f && start < endExclusive) {
+                    addStyle(
+                        SpanStyle(background = flashColor.copy(alpha = flashAlpha.value)),
+                        start = start,
+                        end = endExclusive
+                    )
+                }
             }
         }
     }
@@ -1605,9 +1850,18 @@ private fun SentenceInsertionPassageText(
                                 onWordClick(wId.toLong(), dId.toLong())
                             } else {
                                 val visibleText = annotated.text
-                                val tappedWord = extractWordAtOffset(visibleText, charOffset)
+                                val tappedRange = extractWordRangeAtOffset(visibleText, charOffset)
+                                val tappedWord = tappedRange?.let { visibleText.substring(it) }
                                 if (tappedWord != null) {
                                     val context = extractContextSentence(visibleText, charOffset)
+                                    flashRange = tappedRange
+                                    scope.launch {
+                                        flashAlpha.snapTo(1f)
+                                        flashAlpha.animateTo(0f, animationSpec = tween(durationMillis = 650))
+                                        if (flashRange == tappedRange) {
+                                            flashRange = null
+                                        }
+                                    }
                                     onCollectWord(tappedWord, context)
                                 }
                             }
@@ -1712,11 +1966,12 @@ private fun SentenceInsertionQuestionCard(
     onSelectAnswer: (String) -> Unit
 ) {
     val wrongCount = item.wrongCount
-    val borderColor = when {
-        wrongCount >= 2 -> MaterialTheme.colorScheme.error
-        wrongCount == 1 -> Color(0xFFFF9800)
-        else -> Color.Transparent
-    }
+    val statusColors = rememberPracticeStatusColors()
+    val borderColor = wrongCountHighlightColor(
+        wrongCount = wrongCount,
+        warningColor = statusColors.warning,
+        errorColor = MaterialTheme.colorScheme.error
+    )
     val focusColor = if (isFocused) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
     else MaterialTheme.colorScheme.surface
 
@@ -1756,25 +2011,23 @@ private fun SentenceInsertionQuestionCard(
                     optionLetters.forEach { letter ->
                         val isSelected = selectedAnswer == letter
                         val correctAnswer = item.correctAnswer
-                        val optionColor = when {
-                            !isSubmitted && !showingAnswers && isSelected -> MaterialTheme.colorScheme.primaryContainer
-                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
-                                Color(0xFF4CAF50).copy(alpha = 0.2f)
-                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
-                                MaterialTheme.colorScheme.errorContainer
-                            else -> Color.Transparent
-                        }
-                        val textColor = when {
-                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
-                                Color(0xFF2E7D32)
-                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
-                                MaterialTheme.colorScheme.error
-                            isSelected -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.onSurface
-                        }
+                        val optionColors = resolveOptionColors(
+                            isSelected = isSelected,
+                            isSubmitted = isSubmitted,
+                            showingAnswers = showingAnswers,
+                            isCorrect = isCorrect,
+                            correctAnswer = correctAnswer,
+                            optionLetter = letter,
+                            colors = statusColors,
+                            primaryColor = MaterialTheme.colorScheme.primary,
+                            primaryContainer = MaterialTheme.colorScheme.primaryContainer,
+                            errorColor = MaterialTheme.colorScheme.error,
+                            errorContainer = MaterialTheme.colorScheme.errorContainer,
+                            defaultContentColor = MaterialTheme.colorScheme.onSurface
+                        )
 
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = optionColor),
+                            colors = CardDefaults.cardColors(containerColor = optionColors.container),
                             modifier = Modifier
                                 .selectable(
                                     selected = isSelected,
@@ -1786,7 +2039,7 @@ private fun SentenceInsertionQuestionCard(
                                 letter,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = textColor,
+                                color = optionColors.content,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
@@ -1796,23 +2049,7 @@ private fun SentenceInsertionQuestionCard(
                 if (isSubmitted || showingAnswers) {
                     val answer = item.correctAnswer
                     if (answer != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isCorrect == true) {
-                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("正确", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
-                            } else if (isCorrect == false) {
-                                Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    "错误，正确答案：$answer",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            } else {
-                                Text("答案：$answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
+                        PracticeResultRow(correctAnswer = answer, isCorrect = isCorrect)
                     }
                     if (!item.explanation.isNullOrBlank()) {
                         Card(
@@ -2343,11 +2580,12 @@ private fun InfoMatchQuestionCard(
     onSelectAnswer: (String) -> Unit
 ) {
     val wrongCount = item.wrongCount
-    val borderColor = when {
-        wrongCount >= 2 -> MaterialTheme.colorScheme.error
-        wrongCount == 1 -> Color(0xFFFF9800)
-        else -> Color.Transparent
-    }
+    val statusColors = rememberPracticeStatusColors()
+    val borderColor = wrongCountHighlightColor(
+        wrongCount = wrongCount,
+        warningColor = statusColors.warning,
+        errorColor = MaterialTheme.colorScheme.error
+    )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2377,25 +2615,23 @@ private fun InfoMatchQuestionCard(
                     optionLetters.forEach { letter ->
                         val isSelected = selectedAnswer == letter
                         val correctAnswer = item.correctAnswer
-                        val optionColor = when {
-                            !isSubmitted && !showingAnswers && isSelected -> MaterialTheme.colorScheme.primaryContainer
-                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
-                                Color(0xFF4CAF50).copy(alpha = 0.2f)
-                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
-                                MaterialTheme.colorScheme.errorContainer
-                            else -> Color.Transparent
-                        }
-                        val textColor = when {
-                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
-                                Color(0xFF2E7D32)
-                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
-                                MaterialTheme.colorScheme.error
-                            isSelected -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.onSurface
-                        }
+                        val optionColors = resolveOptionColors(
+                            isSelected = isSelected,
+                            isSubmitted = isSubmitted,
+                            showingAnswers = showingAnswers,
+                            isCorrect = isCorrect,
+                            correctAnswer = correctAnswer,
+                            optionLetter = letter,
+                            colors = statusColors,
+                            primaryColor = MaterialTheme.colorScheme.primary,
+                            primaryContainer = MaterialTheme.colorScheme.primaryContainer,
+                            errorColor = MaterialTheme.colorScheme.error,
+                            errorContainer = MaterialTheme.colorScheme.errorContainer,
+                            defaultContentColor = MaterialTheme.colorScheme.onSurface
+                        )
 
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = optionColor),
+                            colors = CardDefaults.cardColors(containerColor = optionColors.container),
                             modifier = Modifier
                                 .selectable(
                                     selected = isSelected,
@@ -2407,7 +2643,7 @@ private fun InfoMatchQuestionCard(
                                 letter,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = textColor,
+                                color = optionColors.content,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
@@ -2417,23 +2653,7 @@ private fun InfoMatchQuestionCard(
                 if (isSubmitted || showingAnswers) {
                     val answer = item.correctAnswer
                     if (answer != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isCorrect == true) {
-                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("正确", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
-                            } else if (isCorrect == false) {
-                                Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    "错误，正确答案：$answer",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            } else {
-                                Text("答案：$answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
+                        PracticeResultRow(correctAnswer = answer, isCorrect = isCorrect)
                     }
                     if (!item.explanation.isNullOrBlank()) {
                         Card(
@@ -2481,11 +2701,12 @@ private fun CommentOpinionQuestionCard(
     fallbackTitle: String = "评论"
 ) {
     val wrongCount = item.wrongCount
-    val borderColor = when {
-        wrongCount >= 2 -> MaterialTheme.colorScheme.error
-        wrongCount == 1 -> Color(0xFFFF9800)
-        else -> Color.Transparent
-    }
+    val statusColors = rememberPracticeStatusColors()
+    val borderColor = wrongCountHighlightColor(
+        wrongCount = wrongCount,
+        warningColor = statusColors.warning,
+        errorColor = MaterialTheme.colorScheme.error
+    )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2542,25 +2763,23 @@ private fun CommentOpinionQuestionCard(
                     optionLetters.forEach { letter ->
                         val isSelected = selectedAnswer == letter
                         val correctAnswer = item.correctAnswer
-                        val optionColor = when {
-                            !isSubmitted && !showingAnswers && isSelected -> MaterialTheme.colorScheme.primaryContainer
-                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
-                                Color(0xFF4CAF50).copy(alpha = 0.2f)
-                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
-                                MaterialTheme.colorScheme.errorContainer
-                            else -> Color.Transparent
-                        }
-                        val textColor = when {
-                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
-                                Color(0xFF2E7D32)
-                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
-                                MaterialTheme.colorScheme.error
-                            isSelected -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.onSurface
-                        }
+                        val optionColors = resolveOptionColors(
+                            isSelected = isSelected,
+                            isSubmitted = isSubmitted,
+                            showingAnswers = showingAnswers,
+                            isCorrect = isCorrect,
+                            correctAnswer = correctAnswer,
+                            optionLetter = letter,
+                            colors = statusColors,
+                            primaryColor = MaterialTheme.colorScheme.primary,
+                            primaryContainer = MaterialTheme.colorScheme.primaryContainer,
+                            errorColor = MaterialTheme.colorScheme.error,
+                            errorContainer = MaterialTheme.colorScheme.errorContainer,
+                            defaultContentColor = MaterialTheme.colorScheme.onSurface
+                        )
 
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = optionColor),
+                            colors = CardDefaults.cardColors(containerColor = optionColors.container),
                             modifier = Modifier
                                 .selectable(
                                     selected = isSelected,
@@ -2572,7 +2791,7 @@ private fun CommentOpinionQuestionCard(
                                 letter,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = textColor,
+                                color = optionColors.content,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
@@ -2582,23 +2801,7 @@ private fun CommentOpinionQuestionCard(
                 if (isSubmitted || showingAnswers) {
                     val answer = item.correctAnswer
                     if (answer != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isCorrect == true) {
-                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("正确", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
-                            } else if (isCorrect == false) {
-                                Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    "错误，正确答案：$answer",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            } else {
-                                Text("答案：$answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
+                        PracticeResultRow(correctAnswer = answer, isCorrect = isCorrect)
                     }
                     if (!item.explanation.isNullOrBlank()) {
                         Card(
@@ -2652,7 +2855,7 @@ private fun TranslationReaderContent(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     if (isLandscape) {
-        Row(modifier = modifier.height(IntrinsicSize.Min)) {
+        Row(modifier = modifier.fillMaxSize()) {
             TranslationPassagePanel(
                 state = state,
                 modifier = Modifier.weight(0.5f).fillMaxHeight()
@@ -2852,6 +3055,7 @@ private fun TranslationQuestionCard(
     isScoringTranslation: Boolean,
     onAnswerChange: (String) -> Unit
 ) {
+    val statusColors = rememberPracticeStatusColors()
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // Question number + original text snippet
@@ -2906,12 +3110,16 @@ private fun TranslationQuestionCard(
                 }
 
                 if (score != null) {
+                    val scoreColors = translationScoreColors(
+                        score = score.score,
+                        colors = statusColors,
+                        errorColor = MaterialTheme.colorScheme.error,
+                        errorContainer = MaterialTheme.colorScheme.errorContainer
+                    )
                     // Score badge
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = if (score.score >= 1.5f) Color(0xFF4CAF50).copy(alpha = 0.15f)
-                            else if (score.score >= 1f) Color(0xFFFF9800).copy(alpha = 0.15f)
-                            else MaterialTheme.colorScheme.errorContainer
+                            containerColor = scoreColors.container
                         ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -2926,9 +3134,7 @@ private fun TranslationQuestionCard(
                                     "${score.score}/${score.maxScore}",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (score.score >= 1.5f) Color(0xFF4CAF50)
-                                    else if (score.score >= 1f) Color(0xFFFF9800)
-                                    else MaterialTheme.colorScheme.error
+                                    color = scoreColors.content
                                 )
                             }
                             if (score.feedback.isNotBlank()) {
@@ -2947,7 +3153,7 @@ private fun TranslationQuestionCard(
                 if (answer != null) {
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF4CAF50).copy(alpha = 0.1f)
+                            containerColor = statusColors.successSubtleContainer
                         ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -2956,7 +3162,7 @@ private fun TranslationQuestionCard(
                                 "参考译文",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2E7D32)
+                                color = statusColors.success
                             )
                             Text(
                                 answer,
@@ -3081,7 +3287,7 @@ private fun ParagraphOrderReaderContent(
     }
 
     if (isLandscape) {
-        Row(modifier = modifier.height(IntrinsicSize.Min)) {
+        Row(modifier = modifier.fillMaxSize()) {
             ParagraphOrderPassagePanel(
                 state = state,
                 spokenParagraphId = spokenParagraphId,
@@ -3264,11 +3470,12 @@ private fun ParagraphOrderQuestionCard(
     onSelectAnswer: (String) -> Unit
 ) {
     val wrongCount = item.wrongCount
-    val borderColor = when {
-        wrongCount >= 2 -> MaterialTheme.colorScheme.error
-        wrongCount == 1 -> Color(0xFFFF9800)
-        else -> Color.Transparent
-    }
+    val statusColors = rememberPracticeStatusColors()
+    val borderColor = wrongCountHighlightColor(
+        wrongCount = wrongCount,
+        warningColor = statusColors.warning,
+        errorColor = MaterialTheme.colorScheme.error
+    )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -3305,25 +3512,23 @@ private fun ParagraphOrderQuestionCard(
                     optionLetters.forEach { letter ->
                         val isSelected = selectedAnswer == letter
                         val correctAnswer = item.correctAnswer
-                        val optionColor = when {
-                            !isSubmitted && !showingAnswers && isSelected -> MaterialTheme.colorScheme.primaryContainer
-                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
-                                Color(0xFF4CAF50).copy(alpha = 0.2f)
-                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
-                                MaterialTheme.colorScheme.errorContainer
-                            else -> Color.Transparent
-                        }
-                        val textColor = when {
-                            (isSubmitted || showingAnswers) && correctAnswer != null && letter.equals(correctAnswer, ignoreCase = true) ->
-                                Color(0xFF2E7D32)
-                            (isSubmitted || showingAnswers) && isSelected && isCorrect == false ->
-                                MaterialTheme.colorScheme.error
-                            isSelected -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.onSurface
-                        }
+                        val optionColors = resolveOptionColors(
+                            isSelected = isSelected,
+                            isSubmitted = isSubmitted,
+                            showingAnswers = showingAnswers,
+                            isCorrect = isCorrect,
+                            correctAnswer = correctAnswer,
+                            optionLetter = letter,
+                            colors = statusColors,
+                            primaryColor = MaterialTheme.colorScheme.primary,
+                            primaryContainer = MaterialTheme.colorScheme.primaryContainer,
+                            errorColor = MaterialTheme.colorScheme.error,
+                            errorContainer = MaterialTheme.colorScheme.errorContainer,
+                            defaultContentColor = MaterialTheme.colorScheme.onSurface
+                        )
 
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = optionColor),
+                            colors = CardDefaults.cardColors(containerColor = optionColors.container),
                             modifier = Modifier
                                 .selectable(
                                     selected = isSelected,
@@ -3335,7 +3540,7 @@ private fun ParagraphOrderQuestionCard(
                                 letter,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = textColor,
+                                color = optionColors.content,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
@@ -3345,23 +3550,7 @@ private fun ParagraphOrderQuestionCard(
                 if (isSubmitted || showingAnswers) {
                     val answer = item.correctAnswer
                     if (answer != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isCorrect == true) {
-                                Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("正确", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50))
-                            } else if (isCorrect == false) {
-                                Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    "错误，正确答案：$answer",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            } else {
-                                Text("答案：$answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
+                        PracticeResultRow(correctAnswer = answer, isCorrect = isCorrect)
                     }
                     if (!item.explanation.isNullOrBlank()) {
                         Card(
@@ -3399,7 +3588,7 @@ private fun WritingReaderContent(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     if (isLandscape) {
-        Row(modifier = modifier.height(IntrinsicSize.Min)) {
+        Row(modifier = modifier.fillMaxSize()) {
             WritingPassagePanel(
                 state = state,
                 onSearchSample = onSearchSample,

@@ -51,6 +51,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -138,6 +140,9 @@ class QuestionBankReaderViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
+
+    private val _notebookMessage = MutableSharedFlow<String>(replay = 0)
+    val notebookMessage: Flow<String> = _notebookMessage
 
     private var translationJob: Job? = null
 
@@ -470,10 +475,18 @@ class QuestionBankReaderViewModel @Inject constructor(
     // ── Collection Notebook ──
 
     fun collectWord(word: String, contextSentence: String) {
-        val existing = _uiState.value.collectedWords.find { it.word == word }
-        if (existing != null) return
+        val existing = _uiState.value.collectedWords.find { it.word.equals(word, ignoreCase = true) }
+        if (existing != null) {
+            viewModelScope.launch {
+                _notebookMessage.emit("「$word」已在收纳本中")
+            }
+            return
+        }
         _uiState.update {
             it.copy(collectedWords = it.collectedWords + CollectedWord(word, contextSentence, isAnalyzing = true))
+        }
+        viewModelScope.launch {
+            _notebookMessage.emit("已加入收纳本：$word")
         }
         viewModelScope.launch {
             try {

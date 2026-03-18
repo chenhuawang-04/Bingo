@@ -5,12 +5,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.AlertDialog
@@ -208,7 +212,7 @@ fun ArticleListScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ArticleCard(
     article: Article,
@@ -326,42 +330,23 @@ private fun ArticleCard(
                     }
                 }
 
-                Box {
-                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
-                        Text("···", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("重新评估") },
-                            onClick = {
-                                showMenu = false
-                                onReevaluate()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("移动到分类") },
-                            onClick = {
-                                showMenu = false
-                                selectedCategoryId = article.categoryId
-                                showMoveDialog = true
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("删除") },
-                            onClick = {
-                                showMenu = false
-                                showDeleteConfirm = true
-                            }
-                        )
-                    }
-                }
+                ArticleCardMenu(
+                    expanded = showMenu,
+                    onExpand = { showMenu = true },
+                    onDismiss = { showMenu = false },
+                    onReevaluate = onReevaluate,
+                    onMoveCategory = {
+                        selectedCategoryId = article.categoryId
+                        showMoveDialog = true
+                    },
+                    onDelete = { showDeleteConfirm = true }
+                )
             }
         } else {
-            // Card without cover: gradient background
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(100.dp)
+                    .heightIn(min = 120.dp)
                     .background(
                         brush = Brush.horizontalGradient(
                             colors = listOf(
@@ -373,8 +358,10 @@ private fun ArticleCard(
                     .padding(16.dp)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 40.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         article.title,
@@ -383,92 +370,74 @@ private fun ArticleCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (article.author.isNotBlank()) {
-                                Text(
-                                    article.author,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                )
-                            }
-                            if (article.wordCount > 0) {
-                                Text(
-                                    "${article.wordCount} 词",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                )
-                            }
-                            if (!categoryName.isNullOrBlank()) {
-                                Text(
-                                    categoryName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                )
-                            }
-                            Text(
-                                scoreText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (article.suitabilityScore != null) {
-                                    MaterialTheme.colorScheme.onPrimaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                }
-                            )
-                            val statusText = parseStatusText(article.parseStatus)
-                            if (statusText != null) {
-                                Text(
-                                    statusText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
 
-                        Box {
-                            IconButton(onClick = { showMenu = true }, modifier = Modifier.size(24.dp)) {
-                                Text("···", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            }
-                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("重新评估") },
-                                    onClick = {
-                                        showMenu = false
-                                        onReevaluate()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("移动到分类") },
-                                    onClick = {
-                                        showMenu = false
-                                        selectedCategoryId = article.categoryId
-                                        showMoveDialog = true
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("删除") },
-                                    onClick = {
-                                        showMenu = false
-                                        showDeleteConfirm = true
-                                    }
-                                )
-                            }
-                        }
-                        if (!article.suitabilityReason.isNullOrBlank()) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (article.author.isNotBlank()) {
                             Text(
-                                article.suitabilityReason,
+                                article.author,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                        if (article.wordCount > 0) {
+                            Text(
+                                "${article.wordCount} 词",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                        if (!categoryName.isNullOrBlank()) {
+                            Text(
+                                categoryName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                        Text(
+                            scoreText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (article.suitabilityScore != null) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            }
+                        )
+                        parseStatusText(article.parseStatus)?.let { statusText ->
+                            Text(
+                                statusText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                             )
                         }
                     }
+
+                    if (!article.suitabilityReason.isNullOrBlank()) {
+                        Text(
+                            article.suitabilityReason,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
+
+                ArticleCardMenu(
+                    expanded = showMenu,
+                    onExpand = { showMenu = true },
+                    onDismiss = { showMenu = false },
+                    onReevaluate = onReevaluate,
+                    onMoveCategory = {
+                        selectedCategoryId = article.categoryId
+                        showMoveDialog = true
+                    },
+                    onDelete = { showDeleteConfirm = true },
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
             }
         }
     }
@@ -534,6 +503,51 @@ private fun ArticleCard(
                 TextButton(onClick = { showMoveDialog = false }) { Text("取消") }
             }
         )
+    }
+}
+
+@Composable
+private fun ArticleCardMenu(
+    expanded: Boolean,
+    onExpand: () -> Unit,
+    onDismiss: () -> Unit,
+    onReevaluate: () -> Unit,
+    onMoveCategory: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+) {
+    Box(modifier = modifier) {
+        IconButton(onClick = onExpand) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "更多操作",
+                tint = iconTint
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+            DropdownMenuItem(
+                text = { Text("重新评估") },
+                onClick = {
+                    onDismiss()
+                    onReevaluate()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("移动到分类") },
+                onClick = {
+                    onDismiss()
+                    onMoveCategory()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("删除") },
+                onClick = {
+                    onDismiss()
+                    onDelete()
+                }
+            )
+        }
     }
 }
 

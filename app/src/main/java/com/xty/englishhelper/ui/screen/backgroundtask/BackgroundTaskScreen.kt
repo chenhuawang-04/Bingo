@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Pause
@@ -30,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -48,6 +50,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
+import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
@@ -146,6 +149,7 @@ private fun FilterBar(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BatchActions(
     onPauseAll: () -> Unit,
@@ -154,36 +158,36 @@ private fun BatchActions(
     onRetryFailed: () -> Unit,
     onClearFinished: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistChip(
-                onClick = onPauseAll,
-                label = { Text("全部暂停") },
-                leadingIcon = { Icon(Icons.Default.Pause, contentDescription = null) }
-            )
-            AssistChip(
-                onClick = onCancelAll,
-                label = { Text("全部停止") },
-                leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
-            )
-            AssistChip(
-                onClick = onResumeAll,
-                label = { Text("全部继续") },
-                leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null) }
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistChip(
-                onClick = onRetryFailed,
-                label = { Text("重试失败") },
-                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) }
-            )
-            AssistChip(
-                onClick = onClearFinished,
-                label = { Text("清除已结束") },
-                leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
-            )
-        }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        AssistChip(
+            onClick = onPauseAll,
+            label = { Text("全部暂停") },
+            leadingIcon = { Icon(Icons.Default.Pause, contentDescription = null) }
+        )
+        AssistChip(
+            onClick = onCancelAll,
+            label = { Text("全部停止") },
+            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
+        )
+        AssistChip(
+            onClick = onResumeAll,
+            label = { Text("全部继续") },
+            leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null) }
+        )
+        AssistChip(
+            onClick = onRetryFailed,
+            label = { Text("重试失败") },
+            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) }
+        )
+        AssistChip(
+            onClick = onClearFinished,
+            label = { Text("清除已结束") },
+            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
+        )
     }
 }
 
@@ -256,6 +260,7 @@ private fun TaskCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ActionRow(
     task: BackgroundTask,
@@ -264,7 +269,11 @@ private fun ActionRow(
     onRestart: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
         when (task.status) {
             BackgroundTaskStatus.PENDING, BackgroundTaskStatus.RUNNING -> {
                 TextButton(onClick = onCancel) { Text("停止") }
@@ -286,18 +295,49 @@ private fun ActionRow(
 
 @Composable
 private fun StatusChip(status: BackgroundTaskStatus) {
-    val (label, color) = when (status) {
-        BackgroundTaskStatus.PENDING -> "等待中" to MaterialTheme.colorScheme.onSurfaceVariant
-        BackgroundTaskStatus.RUNNING -> "进行中" to MaterialTheme.colorScheme.primary
-        BackgroundTaskStatus.PAUSED -> "已暂停" to MaterialTheme.colorScheme.tertiary
-        BackgroundTaskStatus.SUCCESS -> "已完成" to MaterialTheme.colorScheme.primary
-        BackgroundTaskStatus.FAILED -> "失败" to MaterialTheme.colorScheme.error
-        BackgroundTaskStatus.CANCELED -> "已停止" to MaterialTheme.colorScheme.onSurfaceVariant
+    val (label, containerColor, contentColor) = when (status) {
+        BackgroundTaskStatus.PENDING -> Triple(
+            "等待中",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        BackgroundTaskStatus.RUNNING -> Triple(
+            "进行中",
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        BackgroundTaskStatus.PAUSED -> Triple(
+            "已暂停",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        BackgroundTaskStatus.SUCCESS -> Triple(
+            "已完成",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        BackgroundTaskStatus.FAILED -> Triple(
+            "失败",
+            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.onErrorContainer
+        )
+        BackgroundTaskStatus.CANCELED -> Triple(
+            "已停止",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
-    AssistChip(
-        onClick = {},
-        label = { Text(label, color = color, style = MaterialTheme.typography.labelSmall) }
-    )
+    Surface(
+        color = containerColor,
+        contentColor = contentColor,
+        shape = RoundedCornerShape(999.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        )
+    }
 }
 
 private fun taskTitle(task: BackgroundTask): String {
@@ -356,6 +396,14 @@ private fun taskSubtitle(task: BackgroundTask): String {
             if (!payload.sourceUrlOverride.isNullOrBlank()) {
                 if (isNotEmpty()) append(" · ")
                 append(payload.sourceUrlOverride)
+            }
+            if (isEmpty()) append("题组 ${payload.groupId}")
+        }
+        is QuestionWritingSamplePayload -> buildString {
+            if (payload.paperTitle.isNotBlank()) append(payload.paperTitle)
+            payload.questionSnippet.takeIf { it.isNotBlank() }?.let { snippet ->
+                if (isNotEmpty()) append(" · ")
+                append(snippet)
             }
             if (isEmpty()) append("题组 ${payload.groupId}")
         }

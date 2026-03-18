@@ -43,6 +43,14 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class BackgroundTaskEnqueueResult {
+    ENQUEUED,
+    RESTARTED,
+    ALREADY_PENDING,
+    ALREADY_RUNNING,
+    SKIPPED_SUCCESS
+}
+
 @Singleton
 class BackgroundTaskManager @Inject constructor(
     private val repository: BackgroundTaskRepository,
@@ -70,21 +78,21 @@ class BackgroundTaskManager @Inject constructor(
 
     fun enqueueWordOrganize(wordId: Long, dictionaryId: Long, spelling: String, force: Boolean = false) {
         val payload = WordOrganizePayload(wordId = wordId, dictionaryId = dictionaryId, spelling = spelling)
-        enqueueTask(BackgroundTaskType.WORD_ORGANIZE, payload, "word:$wordId", force)
+        enqueueTaskAsync(BackgroundTaskType.WORD_ORGANIZE, payload, "word:$wordId", force)
     }
 
     fun enqueueWordPoolRebuild(dictionaryId: Long, strategy: PoolStrategy, force: Boolean = false) {
         val payload = WordPoolRebuildPayload(dictionaryId = dictionaryId, strategy = strategy.name)
-        enqueueTask(BackgroundTaskType.WORD_POOL_REBUILD, payload, "pool:$dictionaryId:${strategy.name}", force)
+        enqueueTaskAsync(BackgroundTaskType.WORD_POOL_REBUILD, payload, "pool:$dictionaryId:${strategy.name}", force)
     }
 
-    fun enqueueQuestionGenerateFromArticle(
+    suspend fun enqueueQuestionGenerateFromArticle(
         articleId: Long,
         paperTitle: String,
         questionType: QuestionType,
         variant: String?,
-        force: Boolean = false
-    ) {
+        force: Boolean = true
+    ): BackgroundTaskEnqueueResult {
         val payload = QuestionGeneratePayload(
             articleId = articleId,
             paperTitle = paperTitle,
@@ -92,7 +100,7 @@ class BackgroundTaskManager @Inject constructor(
             variant = variant
         )
         val variantKey = variant.orEmpty()
-        enqueueTask(
+        return enqueueTaskInternal(
             BackgroundTaskType.QUESTION_GENERATE,
             payload,
             "generate:$articleId:${questionType.name}:$variantKey",
@@ -107,7 +115,7 @@ class BackgroundTaskManager @Inject constructor(
         force: Boolean = false
     ) {
         val payload = QuestionAnswerGeneratePayload(groupId, paperTitle, sectionLabel)
-        enqueueTask(BackgroundTaskType.QUESTION_ANSWER_GENERATE, payload, "answer:$groupId", force)
+        enqueueTaskAsync(BackgroundTaskType.QUESTION_ANSWER_GENERATE, payload, "answer:$groupId", force)
     }
 
     fun enqueueQuestionSourceVerify(
@@ -118,7 +126,7 @@ class BackgroundTaskManager @Inject constructor(
         force: Boolean = false
     ) {
         val payload = QuestionSourceVerifyPayload(groupId, paperTitle, sectionLabel, sourceUrlOverride)
-        enqueueTask(BackgroundTaskType.QUESTION_SOURCE_VERIFY, payload, "verify:$groupId", force)
+        enqueueTaskAsync(BackgroundTaskType.QUESTION_SOURCE_VERIFY, payload, "verify:$groupId", force)
     }
 
     fun enqueueQuestionWritingSampleSearch(
@@ -128,7 +136,7 @@ class BackgroundTaskManager @Inject constructor(
         force: Boolean = false
     ) {
         val payload = QuestionWritingSamplePayload(groupId, paperTitle, questionSnippet)
-        enqueueTask(BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH, payload, "writing_sample:$groupId", force)
+        enqueueTaskAsync(BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH, payload, "writing_sample:$groupId", force)
     }
 
     fun pauseTask(taskId: Long) {
@@ -204,23 +212,35 @@ class BackgroundTaskManager @Inject constructor(
         }
     }
 
-    private fun enqueueTask(
+    private fun enqueueTaskAsync(
         type: BackgroundTaskType,
         payload: BackgroundTaskPayload,
         dedupeKey: String,
         force: Boolean
     ) {
         scope.launch {
+            enqueueTaskInternal(type, payload, dedupeKey, force)
+        }
+    }
+
+    private suspend fun enqueueTaskInternal(
+        type: BackgroundTaskType,
+        payload: BackgroundTaskPayload,
+        dedupeKey: String,
+        force: Boolean
+    ): BackgroundTaskEnqueueResult {
+        val result = dispatchLock.withLock {
             val existing = repository.getTaskByDedupeKey(dedupeKey)
             if (existing != null) {
                 when (existing.status) {
-                    BackgroundTaskStatus.PENDING,
-                    BackgroundTaskStatus.RUNNING -> return@launch
+                    BackgroundTaskStatus.PENDING -> return@withLock BackgroundTaskEnqueueResult.ALREADY_PENDING
+                    BackgroundTaskStatus.RUNNING -> return@withLock BackgroundTaskEnqueueResult.ALREADY_RUNNING
                     BackgroundTaskStatus.SUCCESS -> {
-                        if (!force) return@launch
+                        if (!force) return@withLock BackgroundTaskEnqueueResult.SKIPPED_SUCCESS
                         repository.updatePayload(existing.id, type, payload)
                         repository.updateStatus(existing.id, BackgroundTaskStatus.PENDING, null)
                         repository.updateProgress(existing.id, 0, 0)
+                        return@withLock BackgroundTaskEnqueueResult.RESTARTED
                     }
                     BackgroundTaskStatus.FAILED,
                     BackgroundTaskStatus.PAUSED,
@@ -228,13 +248,32 @@ class BackgroundTaskManager @Inject constructor(
                         repository.updatePayload(existing.id, type, payload)
                         repository.updateStatus(existing.id, BackgroundTaskStatus.PENDING, null)
                         repository.updateProgress(existing.id, 0, 0)
+                        return@withLock BackgroundTaskEnqueueResult.RESTARTED
                     }
                 }
-            } else {
-                repository.insertTask(type, payload, dedupeKey)
             }
+
+            val insertedId = repository.insertTask(type, payload, dedupeKey)
+            if (insertedId != -1L) {
+                BackgroundTaskEnqueueResult.ENQUEUED
+            } else {
+                val latest = repository.getTaskByDedupeKey(dedupeKey)
+                when (latest?.status) {
+                    BackgroundTaskStatus.RUNNING -> BackgroundTaskEnqueueResult.ALREADY_RUNNING
+                    BackgroundTaskStatus.PENDING -> BackgroundTaskEnqueueResult.ALREADY_PENDING
+                    BackgroundTaskStatus.SUCCESS -> BackgroundTaskEnqueueResult.SKIPPED_SUCCESS
+                    BackgroundTaskStatus.FAILED,
+                    BackgroundTaskStatus.PAUSED,
+                    BackgroundTaskStatus.CANCELED -> BackgroundTaskEnqueueResult.RESTARTED
+                    null -> BackgroundTaskEnqueueResult.SKIPPED_SUCCESS
+                }
+            }
+        }
+
+        if (result == BackgroundTaskEnqueueResult.ENQUEUED || result == BackgroundTaskEnqueueResult.RESTARTED) {
             schedule()
         }
+        return result
     }
 
     private suspend fun schedule() {

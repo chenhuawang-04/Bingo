@@ -22,6 +22,9 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -63,6 +66,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.SpanStyle
@@ -86,6 +91,7 @@ import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TranslationBlock
 import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,6 +105,8 @@ fun ArticleReaderScreen(
     val article = uiState.article
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
+    val notebookPulseScale = remember { Animatable(1f) }
+    val notebookPulseTint = remember { Animatable(0f) }
     var followTts by rememberSaveable { mutableStateOf(true) }
     var showGenerateDialog by rememberSaveable { mutableStateOf(false) }
     var draftPaperTitle by rememberSaveable { mutableStateOf("") }
@@ -169,6 +177,24 @@ fun ArticleReaderScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.notebookMessage.collect { message ->
+            launch {
+                notebookPulseTint.snapTo(1f)
+                notebookPulseTint.animateTo(0f, animationSpec = tween(durationMillis = 520))
+            }
+            launch {
+                notebookPulseScale.snapTo(1f)
+                notebookPulseScale.animateTo(1.14f, animationSpec = tween(durationMillis = 120))
+                notebookPulseScale.animateTo(
+                    1f,
+                    animationSpec = spring(dampingRatio = 0.45f, stiffness = 520f)
+                )
+            }
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
     LaunchedEffect(showGenerateDialog, defaultPaperTitle) {
         if (showGenerateDialog) {
             draftPaperTitle = defaultPaperTitle
@@ -227,6 +253,16 @@ fun ArticleReaderScreen(
                     }
 
                     // Notebook button with badge
+                    val notebookBaseTint = if (uiState.collectedWords.isNotEmpty()) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    val notebookTint = lerp(
+                        notebookBaseTint,
+                        MaterialTheme.colorScheme.primary,
+                        notebookPulseTint.value
+                    )
                     IconButton(onClick = { viewModel.toggleNotebook() }) {
                         if (uiState.collectedWords.isNotEmpty()) {
                             BadgedBox(
@@ -238,14 +274,23 @@ fun ArticleReaderScreen(
                             ) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.MenuBook,
-                                    contentDescription = "收纳本"
+                                    contentDescription = "收纳本",
+                                    tint = notebookTint,
+                                    modifier = Modifier.graphicsLayer {
+                                        scaleX = notebookPulseScale.value
+                                        scaleY = notebookPulseScale.value
+                                    }
                                 )
                             }
                         } else {
                             Icon(
                                 Icons.AutoMirrored.Filled.MenuBook,
                                 contentDescription = "收纳本",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = notebookTint,
+                                modifier = Modifier.graphicsLayer {
+                                    scaleX = notebookPulseScale.value
+                                    scaleY = notebookPulseScale.value
+                                }
                             )
                         }
                     }
