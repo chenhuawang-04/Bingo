@@ -154,7 +154,12 @@ fun NavGraph(navController: NavHostController) {
             composable<StudyRoute> { backStackEntry ->
                 val route = backStackEntry.toRoute<StudyRoute>()
                 StudyScreen(
-                    onBack = { navController.popBackStack() }
+                    onBack = {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("study_refresh_token", System.currentTimeMillis())
+                        navController.popBackStack()
+                    }
                 )
             }
 

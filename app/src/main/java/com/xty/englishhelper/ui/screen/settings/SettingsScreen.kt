@@ -129,6 +129,8 @@ fun SettingsScreen(
                 HorizontalDivider()
 
                 BackgroundTaskSection(
+                    concurrency = state.backgroundTaskConcurrency,
+                    onConcurrencyChange = viewModel::onBackgroundTaskConcurrencyChange,
                     onManage = onBackgroundTasks
                 )
 
@@ -562,15 +564,50 @@ private fun ImageCompressionSection(
 
 @Composable
 private fun BackgroundTaskSection(
+    concurrency: Int,
+    onConcurrencyChange: (Int) -> Unit,
     onManage: () -> Unit
 ) {
+    var input by remember { mutableStateOf(concurrency.toString()) }
+
+    LaunchedEffect(concurrency) {
+        val current = concurrency.toString()
+        if (input != current) {
+            input = current
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("后台任务", style = MaterialTheme.typography.titleMedium)
         Text(
-            "查看与管理后台整理、题库答案生成等任务。",
+            "查看与管理后台整理、题库答案生成等任务，并控制后台并发。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        OutlinedTextField(
+            value = input,
+            onValueChange = { value ->
+                val filtered = value.filter { it.isDigit() }
+                input = filtered
+                if (filtered.isBlank()) {
+                    onConcurrencyChange(2)
+                    return@OutlinedTextField
+                }
+                val parsed = filtered.toIntOrNull() ?: return@OutlinedTextField
+                val clamped = parsed.coerceIn(1, 6)
+                if (clamped != concurrency) {
+                    onConcurrencyChange(clamped)
+                }
+            },
+            label = { Text("后台并发") },
+            placeholder = { Text("2") },
+            supportingText = { Text("建议 2-4，过高可能挤占 OCR 与朗读资源") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Button(
             onClick = onManage,
             modifier = Modifier.fillMaxWidth()

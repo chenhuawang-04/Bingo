@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.study
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -25,6 +26,8 @@ fun StudyScreen(
     viewModel: StudyViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+
+    BackHandler(onBack = onBack)
 
     Scaffold(
         topBar = {

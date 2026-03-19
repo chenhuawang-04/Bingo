@@ -127,6 +127,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.backgroundTaskConcurrency.collect { value ->
+                _uiState.update { it.copy(backgroundTaskConcurrency = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.ttsPrewarmConcurrency.collect { value ->
                 _uiState.update { it.copy(ttsPrewarmConcurrency = value) }
             }
@@ -425,6 +430,12 @@ class SettingsViewModel @Inject constructor(
     fun onImageCompressionTargetBytesChange(value: Int) {
         _uiState.update { it.copy(imageCompressionTargetBytes = value) }
         viewModelScope.launch { settingsDataStore.setImageCompressionTargetBytes(value) }
+    }
+
+    fun onBackgroundTaskConcurrencyChange(value: Int) {
+        val clamped = value.coerceIn(1, 6)
+        _uiState.update { it.copy(backgroundTaskConcurrency = clamped) }
+        viewModelScope.launch { settingsDataStore.setBackgroundTaskConcurrency(clamped) }
     }
 
     fun onTtsPrewarmConcurrencyChange(value: Int) {

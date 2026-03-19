@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -210,15 +211,17 @@ fun WordDetailContent(
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             assoc.commonSegments.forEach { seg ->
-                                                AssistChip(
-                                                    onClick = {},
-                                                    label = {
-                                                        Text(
-                                                            seg,
-                                                            style = MaterialTheme.typography.labelSmall
-                                                        )
-                                                    }
-                                                )
+                                                Surface(
+                                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    shape = MaterialTheme.shapes.small
+                                                ) {
+                                                    Text(
+                                                        seg,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -440,15 +443,17 @@ fun WordDetailContent(
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         assoc.commonSegments.forEach { seg ->
-                                            AssistChip(
-                                                onClick = {},
-                                                label = {
-                                                    Text(
-                                                        seg,
-                                                        style = MaterialTheme.typography.labelSmall
-                                                    )
-                                                }
-                                            )
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                shape = MaterialTheme.shapes.small
+                                            ) {
+                                                Text(
+                                                    seg,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -633,15 +638,17 @@ internal fun InflectionsDisplay(inflections: List<Inflection>) {
         modifier = Modifier.fillMaxWidth()
     ) {
         inflections.forEach { inflection ->
-            AssistChip(
-                onClick = {},
-                label = {
-                    Text(
-                        "${inflectionTypeLabel(inflection.formType)}: ${inflection.form}",
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-            )
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    "${inflectionTypeLabel(inflection.formType)}: ${inflection.form}",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
         }
     }
 }

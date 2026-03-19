@@ -18,7 +18,6 @@ import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.ScanResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -51,7 +50,8 @@ enum class ScanPhase { SELECT, SCANNING, PREVIEW }
 
 data class EditableQuestionGroup(
     val uid: String = UUID.randomUUID().toString(),
-    val questionType: String = "READING_COMPREHENSION",
+    val questionType: String = QuestionType.READING_COMPREHENSION.name,
+    val rawQuestionType: String = QuestionType.READING_COMPREHENSION.name,
     val directions: String? = null,
     val sectionLabel: String = "",
     val sourceInfo: String = "",
@@ -102,12 +102,13 @@ class QuestionBankScanViewModel @Inject constructor(
             _uiState.update { it.copy(phase = ScanPhase.SCANNING, isScanning = true, isCompressing = false, error = null) }
             try {
                 val compressionConfig = settingsDataStore.getImageCompressionConfig()
-                val imageBytes = PdfPageRenderer.renderPages(appContext, uri)
                 if (compressionConfig.enabled) {
                     _uiState.update { it.copy(isCompressing = true) }
                 }
                 val compressed = try {
-                    imageCompressionManager.compressAll(imageBytes, compressionConfig)
+                    PdfPageRenderer.renderPages(appContext, uri) { pageBytes ->
+                        imageCompressionManager.compressIfNeeded(pageBytes, compressionConfig)
+                    }
                 } finally {
                     if (compressionConfig.enabled) {
                         _uiState.update { it.copy(isCompressing = false) }
@@ -127,16 +128,13 @@ class QuestionBankScanViewModel @Inject constructor(
             _uiState.update { it.copy(phase = ScanPhase.SCANNING, isScanning = true, isCompressing = false, error = null) }
             try {
                 val compressionConfig = settingsDataStore.getImageCompressionConfig()
-                val imageBytes = withContext(Dispatchers.IO) {
-                    uris.mapNotNull { uri ->
-                        appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    }
-                }
                 if (compressionConfig.enabled) {
                     _uiState.update { it.copy(isCompressing = true) }
                 }
                 val compressed = try {
-                    imageCompressionManager.compressAll(imageBytes, compressionConfig)
+                    imageCompressionManager.readAndCompressAll(uris, compressionConfig) { uri ->
+                        appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    }
                 } finally {
                     if (compressionConfig.enabled) {
                         _uiState.update { it.copy(isCompressing = false) }
@@ -166,8 +164,10 @@ class QuestionBankScanViewModel @Inject constructor(
             )
 
             val editableGroups = result.questionGroups.map { group ->
+                val resolvedQuestionType = resolveQuestionTypeName(group.questionType)
                 EditableQuestionGroup(
-                    questionType = group.questionType,
+                    questionType = resolvedQuestionType.orEmpty(),
+                    rawQuestionType = group.questionType,
                     directions = group.directions,
                     sectionLabel = group.sectionLabel ?: "",
                     sourceInfo = group.sourceInfo ?: "",
@@ -211,7 +211,12 @@ class QuestionBankScanViewModel @Inject constructor(
                     scanResult = result,
                     paperTitle = result.examPaperTitle.ifBlank { "未命名试卷" },
                     editableGroups = editableGroups,
-                    confidence = result.confidence
+                    confidence = result.confidence,
+                    error = if (editableGroups.any { group -> group.questionType.isBlank() }) {
+                        "检测到未识别题型，请在预览中手动确认后再保存"
+                    } else {
+                        null
+                    }
                 )
             }
         } catch (e: Exception) {
@@ -230,6 +235,19 @@ class QuestionBankScanViewModel @Inject constructor(
             val groups = state.editableGroups.toMutableList()
             if (groupIndex in groups.indices) {
                 groups[groupIndex] = groups[groupIndex].copy(sectionLabel = label)
+            }
+            state.copy(editableGroups = groups)
+        }
+    }
+
+    fun updateGroupQuestionType(groupIndex: Int, questionType: String) {
+        _uiState.update { state ->
+            val groups = state.editableGroups.toMutableList()
+            if (groupIndex in groups.indices) {
+                groups[groupIndex] = groups[groupIndex].copy(
+                    questionType = questionType,
+                    rawQuestionType = questionType
+                )
             }
             state.copy(editableGroups = groups)
         }
@@ -262,6 +280,13 @@ class QuestionBankScanViewModel @Inject constructor(
     fun save() {
         val state = _uiState.value
         if (state.isSaving) return
+        val unresolvedIndex = state.editableGroups.indexOfFirst { resolveQuestionTypeName(it.questionType) == null }
+        if (unresolvedIndex >= 0) {
+            _uiState.update {
+                it.copy(error = "请先为第 ${unresolvedIndex + 1} 个题组选择正确题型后再保存")
+            }
+            return
+        }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, error = null) }
@@ -297,8 +322,10 @@ class QuestionBankScanViewModel @Inject constructor(
                     QuestionGroup(
                         uid = eg.uid,
                         examPaperId = 0,
-                        questionType = com.xty.englishhelper.domain.model.QuestionType.entries.find { it.name == eg.questionType }
-                            ?: com.xty.englishhelper.domain.model.QuestionType.READING_COMPREHENSION,
+                        questionType = requireNotNull(
+                            resolveQuestionTypeName(eg.questionType)
+                                ?.let { resolved -> QuestionType.entries.find { it.name == resolved } }
+                        ) { "题组 ${i + 1} 的题型无法识别" },
                         sectionLabel = eg.sectionLabel.ifBlank { null },
                         orderInPaper = i,
                         directions = eg.directions,
@@ -394,5 +421,41 @@ class QuestionBankScanViewModel @Inject constructor(
         val obj = org.json.JSONObject()
         obj.put("options", arr)
         return obj.toString()
+    }
+
+    private fun resolveQuestionTypeName(raw: String): String? {
+        if (raw.isBlank()) return null
+        val normalized = normalizeQuestionTypeKey(raw)
+        val direct = QuestionType.entries.firstOrNull { normalizeQuestionTypeKey(it.name) == normalized }
+        if (direct != null) return direct.name
+
+        val aliasMap = mapOf(
+            "READING" to QuestionType.READING_COMPREHENSION.name,
+            "READINGCOMPREHENSION" to QuestionType.READING_COMPREHENSION.name,
+            "READINGUNDERSTANDING" to QuestionType.READING_COMPREHENSION.name,
+            "CLOZETEST" to QuestionType.CLOZE.name,
+            "TRANSLATE" to QuestionType.TRANSLATION.name,
+            "PARAGRAPHSORTING" to QuestionType.PARAGRAPH_ORDER.name,
+            "PARAGRAPHREORDER" to QuestionType.PARAGRAPH_ORDER.name,
+            "PARAGRAPHORDERING" to QuestionType.PARAGRAPH_ORDER.name,
+            "SENTENCEINSERT" to QuestionType.SENTENCE_INSERTION.name,
+            "COMMENTMATCH" to QuestionType.COMMENT_OPINION_MATCH.name,
+            "OPINIONMATCH" to QuestionType.COMMENT_OPINION_MATCH.name,
+            "COMMENTOPINION" to QuestionType.COMMENT_OPINION_MATCH.name,
+            "HEADINGMATCH" to QuestionType.SUBHEADING_MATCH.name,
+            "SUBHEADING" to QuestionType.SUBHEADING_MATCH.name,
+            "INFORMATIONALMATCH" to QuestionType.INFORMATION_MATCH.name,
+            "INFORMATION" to QuestionType.INFORMATION_MATCH.name,
+            "WRITINGTASK" to QuestionType.WRITING.name,
+            "ESSAY" to QuestionType.WRITING.name
+        )
+        aliasMap[normalized]?.let { return it }
+
+        return QuestionType.entries.firstOrNull { normalizeQuestionTypeKey(it.displayName) == normalized }?.name
+    }
+
+    private fun normalizeQuestionTypeKey(raw: String): String {
+        return raw.uppercase()
+            .replace(Regex("[^A-Z0-9\\u4E00-\\u9FFF]"), "")
     }
 }

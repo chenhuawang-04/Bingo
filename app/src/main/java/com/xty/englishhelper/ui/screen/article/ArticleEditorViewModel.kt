@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class ParagraphInput(
@@ -208,14 +207,11 @@ class ArticleEditorViewModel @Inject constructor(
                 }
 
                 val compressionConfig = settingsDataStore.getImageCompressionConfig()
-                val imageBytesList = withContext(Dispatchers.IO) {
-                    uris.map { uri -> readImageBytes(uri) }
-                }
                 if (compressionConfig.enabled) {
                     _uiState.update { it.copy(isCompressing = true) }
                 }
                 val compressedBytes = try {
-                    imageCompressionManager.compressAll(imageBytesList, compressionConfig)
+                    imageCompressionManager.readAndCompressAll(uris, compressionConfig, readImageBytes)
                 } finally {
                     if (compressionConfig.enabled) {
                         _uiState.update { it.copy(isCompressing = false) }

@@ -820,16 +820,13 @@ class QuestionBankReaderViewModel @Inject constructor(
                 }
 
                 val compressionConfig = settingsDataStore.getImageCompressionConfig()
-                val imageBytes = withContext(Dispatchers.IO) {
-                    uris.mapNotNull { uri ->
-                        appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    }
-                }
                 if (compressionConfig.enabled) {
                     _uiState.update { it.copy(isCompressingAnswers = true) }
                 }
                 val compressed = try {
-                    imageCompressionManager.compressAll(imageBytes, compressionConfig)
+                    imageCompressionManager.readAndCompressAll(uris, compressionConfig) { uri ->
+                        appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    }
                 } finally {
                     if (compressionConfig.enabled) {
                         _uiState.update { it.copy(isCompressingAnswers = false) }
@@ -930,16 +927,13 @@ class QuestionBankReaderViewModel @Inject constructor(
                 }
 
                 val compressionConfig = settingsDataStore.getImageCompressionConfig()
-                val imageBytes = withContext(Dispatchers.IO) {
-                    uris.mapNotNull { uri ->
-                        appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    }
-                }
                 if (compressionConfig.enabled) {
                     _uiState.update { it.copy(isCompressingWriting = true) }
                 }
                 val compressed = try {
-                    imageCompressionManager.compressAll(imageBytes, compressionConfig)
+                    imageCompressionManager.readAndCompressAll(uris, compressionConfig) { uri ->
+                        appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    }
                 } finally {
                     if (compressionConfig.enabled) {
                         _uiState.update { it.copy(isCompressingWriting = false) }

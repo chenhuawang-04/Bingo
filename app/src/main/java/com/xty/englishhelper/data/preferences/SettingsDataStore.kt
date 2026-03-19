@@ -49,6 +49,7 @@ class SettingsDataStore @Inject constructor(
         val AI_JSON_REPAIR_ENABLED = booleanPreferencesKey("ai_json_repair_enabled")
         val IMAGE_COMPRESSION_ENABLED = booleanPreferencesKey("image_compression_enabled")
         val IMAGE_COMPRESSION_TARGET_BYTES = intPreferencesKey("image_compression_target_bytes")
+        val BACKGROUND_TASK_CONCURRENCY = intPreferencesKey("background_task_concurrency")
 
         val GITHUB_OWNER = stringPreferencesKey("github_owner")
         val GITHUB_REPO = stringPreferencesKey("github_repo")
@@ -119,6 +120,10 @@ class SettingsDataStore @Inject constructor(
         prefs[GUARDIAN_DETAIL_CONCURRENCY] ?: 5
     }
 
+    val backgroundTaskConcurrency: Flow<Int> = dataStore.data.map { prefs ->
+        (prefs[BACKGROUND_TASK_CONCURRENCY] ?: 2).coerceIn(1, 6)
+    }
+
     val onlineReadingSource: Flow<String> = dataStore.data.map { prefs ->
         prefs[ONLINE_READING_SOURCE] ?: OnlineReadingSource.GUARDIAN.key
     }
@@ -170,6 +175,12 @@ class SettingsDataStore @Inject constructor(
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
+        }
+    }
+
+    suspend fun setBackgroundTaskConcurrency(value: Int) {
+        dataStore.edit { prefs ->
+            prefs[BACKGROUND_TASK_CONCURRENCY] = value.coerceIn(1, 6)
         }
     }
 
@@ -491,6 +502,11 @@ class SettingsDataStore @Inject constructor(
                 prefs[IMAGE_COMPRESSION_TARGET_BYTES] ?: defaultImageCompressionTargetBytes
             )
         )
+    }
+
+    suspend fun getBackgroundTaskConcurrency(): Int {
+        val prefs = dataStore.data.first()
+        return (prefs[BACKGROUND_TASK_CONCURRENCY] ?: 2).coerceIn(1, 6)
     }
 
     suspend fun getAiResponseUnwrapEnabled(): Boolean {

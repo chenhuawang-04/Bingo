@@ -45,8 +45,32 @@ class ImageCompressionManager @Inject constructor(
         if (bytes.isEmpty()) return bytes
         if (!config.enabled) return bytes
         return withContext(Dispatchers.Default) {
-            bytes.map { ImageCompressor.compress(it, config.targetBytes) }
+            buildList(bytes.size) {
+                bytes.forEach { add(ImageCompressor.compress(it, config.targetBytes)) }
+            }
         }
+    }
+
+    suspend fun <T> readAndCompressAll(
+        items: List<T>,
+        config: SettingsDataStore.ImageCompressionConfig,
+        reader: suspend (T) -> ByteArray?
+    ): List<ByteArray> {
+        if (items.isEmpty()) return emptyList()
+
+        val results = ArrayList<ByteArray>(items.size)
+        for (item in items) {
+            val rawBytes = withContext(Dispatchers.IO) { reader(item) } ?: continue
+            val finalBytes = if (config.enabled) {
+                withContext(Dispatchers.Default) {
+                    ImageCompressor.compress(rawBytes, config.targetBytes)
+                }
+            } else {
+                rawBytes
+            }
+            results.add(finalBytes)
+        }
+        return results
     }
 }
 

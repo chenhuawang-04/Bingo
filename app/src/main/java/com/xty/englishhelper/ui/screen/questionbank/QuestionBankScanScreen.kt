@@ -23,11 +23,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -39,12 +43,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.domain.model.QuestionType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -135,6 +142,7 @@ fun QuestionBankScanScreen(
                 PreviewPhaseContent(
                     state = state,
                     onTitleChange = viewModel::updatePaperTitle,
+                    onGroupQuestionTypeChange = viewModel::updateGroupQuestionType,
                     onGroupSectionLabelChange = viewModel::updateGroupSectionLabel,
                     onGroupSourceUrlChange = viewModel::updateGroupSourceUrl,
                     onQuestionTextChange = viewModel::updateQuestionText,
@@ -182,10 +190,12 @@ private fun SelectPhaseContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PreviewPhaseContent(
     state: ScanUiState,
     onTitleChange: (String) -> Unit,
+    onGroupQuestionTypeChange: (Int, String) -> Unit,
     onGroupSectionLabelChange: (Int, String) -> Unit,
     onGroupSourceUrlChange: (Int, String) -> Unit,
     onQuestionTextChange: (Int, Int, String) -> Unit,
@@ -224,8 +234,50 @@ private fun PreviewPhaseContent(
 
         // Question groups
         itemsIndexed(state.editableGroups) { groupIndex, group ->
+            var questionTypeExpanded by remember(group.uid) { mutableStateOf(false) }
+            val selectedQuestionType = QuestionType.entries.firstOrNull { it.name == group.questionType }
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ExposedDropdownMenuBox(
+                        expanded = questionTypeExpanded,
+                        onExpandedChange = { questionTypeExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedQuestionType?.displayName
+                                ?: if (group.rawQuestionType.isNotBlank()) "未识别：${group.rawQuestionType}" else "请选择题型",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("题型") },
+                            supportingText = {
+                                if (selectedQuestionType == null && group.rawQuestionType.isNotBlank()) {
+                                    Text("OCR 原始返回：${group.rawQuestionType}")
+                                }
+                            },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = questionTypeExpanded)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = questionTypeExpanded,
+                            onDismissRequest = { questionTypeExpanded = false }
+                        ) {
+                            QuestionType.entries
+                                .filterNot { it == QuestionType.NEW_TYPE }
+                                .forEach { type ->
+                                    DropdownMenuItem(
+                                        text = { Text(type.displayName) },
+                                        onClick = {
+                                            onGroupQuestionTypeChange(groupIndex, type.name)
+                                            questionTypeExpanded = false
+                                        }
+                                    )
+                                }
+                        }
+                    }
+
                     // Section label
                     OutlinedTextField(
                         value = group.sectionLabel,

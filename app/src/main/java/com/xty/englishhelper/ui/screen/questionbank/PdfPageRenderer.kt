@@ -14,7 +14,8 @@ object PdfPageRenderer {
         context: Context,
         uri: Uri,
         pageRange: IntRange? = null,
-        dpi: Int = 200
+        dpi: Int = 200,
+        transform: suspend (ByteArray) -> ByteArray = { it }
     ): List<ByteArray> = withContext(Dispatchers.IO) {
         val fd = context.contentResolver.openFileDescriptor(uri, "r")
             ?: throw IllegalArgumentException("Cannot open PDF")
@@ -25,18 +26,20 @@ object PdfPageRenderer {
                 val range = pageRange ?: (0 until pdf.pageCount)
                 val scaleFactor = dpi / 72f
 
-                range.mapNotNull { pageIndex ->
-                    if (pageIndex < 0 || pageIndex >= pdf.pageCount) return@mapNotNull null
-                    val page = pdf.openPage(pageIndex)
-                    page.use { p ->
-                        val width = (p.width * scaleFactor).toInt()
-                        val height = (p.height * scaleFactor).toInt()
-                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                        p.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        val stream = ByteArrayOutputStream()
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, stream)
-                        bitmap.recycle()
-                        stream.toByteArray()
+                buildList {
+                    range.forEach { pageIndex ->
+                        if (pageIndex < 0 || pageIndex >= pdf.pageCount) return@forEach
+                        val page = pdf.openPage(pageIndex)
+                        page.use { p ->
+                            val width = (p.width * scaleFactor).toInt()
+                            val height = (p.height * scaleFactor).toInt()
+                            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                            p.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            val stream = ByteArrayOutputStream()
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, stream)
+                            bitmap.recycle()
+                            add(transform(stream.toByteArray()))
+                        }
                     }
                 }
             }

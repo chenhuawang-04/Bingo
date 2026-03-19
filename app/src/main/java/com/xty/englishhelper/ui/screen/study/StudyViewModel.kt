@@ -14,8 +14,6 @@ import com.xty.englishhelper.domain.usecase.study.GetNewWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.PreviewIntervalsUseCase
 import com.xty.englishhelper.domain.usecase.study.ReviewWordUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +25,7 @@ import javax.inject.Inject
 /**
  * A queued word with its earliest eligible display time.
  * [dueAt] is 0 for initial queue entries (show immediately),
- * or a future timestamp for Again-rated words that need a wait.
+ * or a future timestamp used as a soft ordering hint after an Again rating.
  */
 private data class QueueEntry(
     val word: WordDetails,
@@ -61,7 +59,6 @@ class StudyViewModel @Inject constructor(
     private var goodCount = 0
     private var easyCount = 0
     private var totalUniqueWords = 0
-    private var waitJob: Job? = null
 
     // Brainstorm data: wordId -> set of related wordIds (via pool union)
     private var brainstormRelated: Map<Long, Set<Long>> = emptyMap()
@@ -188,13 +185,7 @@ class StudyViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     phase = StudyPhase.Finished,
-                    stats = StudyStats(
-                        totalWords = totalUniqueWords,
-                        againCount = againCount,
-                        hardCount = hardCount,
-                        goodCount = goodCount,
-                        easyCount = easyCount
-                    )
+                    stats = buildStats()
                 )
             }
             return
@@ -202,13 +193,19 @@ class StudyViewModel @Inject constructor(
 
         val now = System.currentTimeMillis()
 
-        // Find first entry that is due now
+        // Prefer entries whose soft due time has arrived.
         val readyIndex = queue.indexOfFirst { it.dueAt <= now }
+        val nextIndex = if (readyIndex >= 0) {
+            readyIndex
+        } else {
+            // When all cards were rated Again, the queue can contain only future-due entries.
+            // Fall back to the earliest one instead of blocking the whole session behind a spinner.
+            queue.withIndex().minByOrNull { it.value.dueAt }?.index ?: -1
+        }
 
-        if (readyIndex >= 0) {
+        if (nextIndex >= 0) {
             isProcessingRating = false
-            // Found a ready entry — remove it and show
-            val entry = queue.removeAt(readyIndex)
+            val entry = queue.removeAt(nextIndex)
 
             // Compute related spellings for brainstorm tag
             val relatedSpellings = if (studyMode == StudyMode.BRAINSTORM) {
@@ -226,6 +223,7 @@ class StudyViewModel @Inject constructor(
                     previewIntervals = emptyMap(),
                     progress = processedWordIds.size,
                     total = totalUniqueWords,
+                    stats = buildStats(),
                     currentWordRelatedSpellings = relatedSpellings
                 )
             }
@@ -236,18 +234,6 @@ class StudyViewModel @Inject constructor(
                 if (enabled) {
                     ttsManager.speakWord(entry.word.id, entry.word.spelling)
                 }
-            }
-        } else {
-            // All remaining entries are waiting — show waiting state and schedule
-            isProcessingRating = false
-            _uiState.update { it.copy(phase = StudyPhase.WaitingForNext) }
-
-            val earliest = queue.minOf { it.dueAt }
-            val waitMs = earliest - now
-            waitJob?.cancel()
-            waitJob = viewModelScope.launch {
-                delay(waitMs)
-                showNextWord()
             }
         }
     }
@@ -270,7 +256,6 @@ class StudyViewModel @Inject constructor(
         if (isProcessingRating) return
         val word = _uiState.value.currentWord ?: return
         isProcessingRating = true
-        waitJob?.cancel()
         viewModelScope.launch {
             try {
                 val result = reviewWord(word.id, rating)
@@ -296,6 +281,16 @@ class StudyViewModel @Inject constructor(
                 _uiState.update { it.copy(error = e.message) }
             }
         }
+    }
+
+    private fun buildStats(): StudyStats {
+        return StudyStats(
+            totalWords = totalUniqueWords,
+            againCount = againCount,
+            hardCount = hardCount,
+            goodCount = goodCount,
+            easyCount = easyCount
+        )
     }
 
     fun clearError() {

@@ -405,7 +405,7 @@ class ArticleReaderViewModel @Inject constructor(
         }
     }
 
-    // 鈹€鈹€ Translation 鈹€鈹€
+    // Translation
 
     fun toggleTranslation() {
         val enabled = !_uiState.value.translationEnabled
@@ -428,7 +428,7 @@ class ArticleReaderViewModel @Inject constructor(
         translationJob = viewModelScope.launch {
             val config = settingsDataStore.getFastAiConfig()
             if (config.apiKey.isBlank()) {
-                _uiState.update { it.copy(analyzeError = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
+                _uiState.update { it.copy(analyzeError = "请先在设置中配置 API Key") }
                 return@launch
             }
             val isSaved = _uiState.value.article?.isSaved ?: true
@@ -465,7 +465,7 @@ class ArticleReaderViewModel @Inject constructor(
         viewModelScope.launch {
             val config = settingsDataStore.getFastAiConfig()
             if (config.apiKey.isBlank()) {
-                _uiState.update { it.copy(analyzeError = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
+                _uiState.update { it.copy(analyzeError = "请先在设置中配置 API Key") }
                 return@launch
             }
             val isSaved = _uiState.value.article?.isSaved ?: true
@@ -493,7 +493,7 @@ class ArticleReaderViewModel @Inject constructor(
         }
     }
 
-    // 鈹€鈹€ Collection notebook 鈹€鈹€
+    // Collection notebook
 
     fun collectWord(word: String, contextSentence: String) {
         if (_uiState.value.collectedWords.any { it.word.equals(word, ignoreCase = true) }) {
@@ -589,12 +589,12 @@ class ArticleReaderViewModel @Inject constructor(
                 // Remove from notebook
                 removeCollectedWord(word)
             } catch (e: Exception) {
-                _uiState.update { it.copy(analyzeError = "鍔犲叆璇嶅吀澶辫触锛?{e.message}") }
+                _uiState.update { it.copy(analyzeError = "加入词典失败：${e.message}") }
             }
         }
     }
 
-    // 鈹€鈹€ Paragraph analysis 鈹€鈹€
+    // Paragraph analysis
 
     fun analyzeParagraph(paragraphId: Long, paragraphText: String) {
         _uiState.update { it.copy(analyzingParagraphId = paragraphId, analyzeError = null) }
@@ -604,7 +604,7 @@ class ArticleReaderViewModel @Inject constructor(
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.ARTICLE)
 
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
+                    _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "请先在设置中配置 API Key") }
                     return@launch
                 }
 
@@ -623,7 +623,7 @@ class ArticleReaderViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "鍒嗘瀽澶辫触锛?{e.message}") }
+                _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "分析失败：${e.message}") }
             }
         }
     }
@@ -647,7 +647,7 @@ class ArticleReaderViewModel @Inject constructor(
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
 
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
+                    _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "请先在设置中配置 API Key") }
                     return@launch
                 }
 
@@ -659,7 +659,7 @@ class ArticleReaderViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "鍒嗘瀽澶辫触锛?{e.message}") }
+                _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "分析失败：${e.message}") }
             }
         }
     }
@@ -675,7 +675,7 @@ class ArticleReaderViewModel @Inject constructor(
                 _uiState.update { it.copy(isSavingToLocal = false) }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isSavingToLocal = false, analyzeError = "淇濆瓨澶辫触锛?{e.message}")
+                    it.copy(isSavingToLocal = false, analyzeError = "保存失败：${e.message}")
                 }
             }
         }

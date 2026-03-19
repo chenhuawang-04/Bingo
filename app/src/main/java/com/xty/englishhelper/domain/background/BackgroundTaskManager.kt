@@ -35,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.first
@@ -67,9 +68,25 @@ class BackgroundTaskManager @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val runningJobs = ConcurrentHashMap<Long, kotlinx.coroutines.Job>()
     private val dispatchLock = Mutex()
-    private val maxConcurrency = 2
+    @Volatile
+    private var maxConcurrency = 2
+    @Volatile
+    private var started = false
+
+    init {
+        scope.launch {
+            settingsDataStore.backgroundTaskConcurrency.collect { value ->
+                maxConcurrency = value.coerceIn(1, 6)
+                if (started) {
+                    schedule()
+                }
+            }
+        }
+    }
 
     fun start() {
+        if (started) return
+        started = true
         scope.launch {
             repository.updateStatusByStatus(BackgroundTaskStatus.RUNNING, BackgroundTaskStatus.PENDING)
             schedule()

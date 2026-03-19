@@ -17,7 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -185,12 +185,16 @@ private fun BrainstormTag(state: StudyUiState) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             state.currentWordRelatedSpellings.forEach { spelling ->
-                SuggestionChip(
-                    onClick = {},
-                    label = {
-                        Text(spelling, style = MaterialTheme.typography.labelSmall)
-                    }
-                )
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = spelling,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
     }

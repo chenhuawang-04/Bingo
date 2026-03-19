@@ -254,7 +254,7 @@ class AddWordViewModel @Inject constructor(
     fun organizeWithAi() {
         val spelling = _uiState.value.spelling.trim()
         if (spelling.isBlank()) {
-            _uiState.update { it.copy(error = "璇峰厛杈撳叆鍗曡瘝") }
+            _uiState.update { it.copy(error = "请先输入单词") }
             return
         }
 
@@ -264,7 +264,7 @@ class AddWordViewModel @Inject constructor(
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
 
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(isAiLoading = false, error = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
+                    _uiState.update { it.copy(isAiLoading = false, error = "请先在设置中配置 API Key") }
                     return@launch
                 }
 

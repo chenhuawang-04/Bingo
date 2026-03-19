@@ -21,8 +21,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class ExtractedWord(
@@ -97,7 +95,7 @@ class BatchImportViewModel @Inject constructor(
     fun extractWords(readImageBytes: suspend (Uri) -> ByteArray) {
         val state = _uiState.value
         if (state.imageUris.isEmpty()) {
-            _uiState.update { it.copy(error = "璇峰厛閫夋嫨鍥剧墖") }
+            _uiState.update { it.copy(error = "请先选择图片") }
             return
         }
         if (state.conditions.isBlank()) {
@@ -110,19 +108,16 @@ class BatchImportViewModel @Inject constructor(
             try {
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.OCR)
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(isExtracting = false, error = "璇峰厛鍦ㄨ缃腑閰嶇疆 API Key") }
+                    _uiState.update { it.copy(isExtracting = false, error = "请先在设置中配置 API Key") }
                     return@launch
                 }
 
                 val compressionConfig = settingsDataStore.getImageCompressionConfig()
-                val imageBytesList = withContext(Dispatchers.IO) {
-                    state.imageUris.map { uri -> readImageBytes(uri) }
-                }
                 if (compressionConfig.enabled) {
                     _uiState.update { it.copy(isCompressing = true) }
                 }
                 val compressedBytes = try {
-                    imageCompressionManager.compressAll(imageBytesList, compressionConfig)
+                    imageCompressionManager.readAndCompressAll(state.imageUris, compressionConfig, readImageBytes)
                 } finally {
                     if (compressionConfig.enabled) {
                         _uiState.update { it.copy(isCompressing = false) }

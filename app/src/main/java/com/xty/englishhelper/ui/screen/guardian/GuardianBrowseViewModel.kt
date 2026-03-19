@@ -279,7 +279,6 @@ class GuardianBrowseViewModel @Inject constructor(
                                     state
                                 }
                             }
-                            maybeEvaluateSuitability(item.url, source, sectionKey = _uiState.value.selectedSection)
                         }
                     }
                 }
@@ -327,6 +326,7 @@ class GuardianBrowseViewModel @Inject constructor(
 
     fun reEvaluate(url: String) {
         viewModelScope.launch {
+            ensureDetailLoadedForEvaluation(url, _uiState.value.selectedSource)
             maybeEvaluateSuitability(url, _uiState.value.selectedSource, sectionKey = _uiState.value.selectedSection, force = true)
         }
     }
@@ -411,11 +411,17 @@ class GuardianBrowseViewModel @Inject constructor(
             return
         }
 
+        val excerpt = item.evaluationExcerpt?.takeIf { it.isNotBlank() }
+        if (excerpt.isNullOrBlank()) {
+            if (force) {
+                _uiState.update { it.copy(error = "文章详情尚未加载完成，无法准确评估") }
+            }
+            return
+        }
+
         updateItemEvaluating(url, true)
         evaluationSemaphore.withPermit {
             try {
-                val excerpt = item.evaluationExcerpt?.takeIf { it.isNotBlank() }
-                    ?: item.trailText.orEmpty()
                 val result = articleAiRepository.evaluateArticleSuitability(
                     title = item.title,
                     excerpt = excerpt,
@@ -472,6 +478,55 @@ class GuardianBrowseViewModel @Inject constructor(
             } finally {
                 updateItemEvaluating(url, false)
             }
+        }
+    }
+
+    private suspend fun ensureDetailLoadedForEvaluation(url: String, source: OnlineReadingSource) {
+        val item = _uiState.value.articles.firstOrNull { it.url == url } ?: return
+        if (!item.evaluationExcerpt.isNullOrBlank()) return
+
+        val detail = fetchArticleDetail(source, url)
+        val wordCount = detail.paragraphs
+            .joinToString(" ") { it.text }
+            .split(Regex("\\s+"))
+            .count { it.isNotBlank() }
+        val excerpt = buildExcerpt(detail.paragraphs)
+        updateItemDetail(
+            url = url,
+            author = detail.author.takeIf { it.isNotBlank() },
+            coverImageUrl = detail.coverImageUrl,
+            wordCount = wordCount,
+            evaluationExcerpt = excerpt,
+            detailError = null,
+            isAuthorLoading = false,
+            isWordCountLoading = false
+        )
+    }
+
+    private fun updateItemDetail(
+        url: String,
+        author: String?,
+        coverImageUrl: String?,
+        wordCount: Int?,
+        evaluationExcerpt: String?,
+        detailError: String?,
+        isAuthorLoading: Boolean,
+        isWordCountLoading: Boolean
+    ) {
+        _uiState.update { state ->
+            val idx = state.articles.indexOfFirst { it.url == url }
+            if (idx < 0) return@update state
+            val updated = state.articles.toMutableList()
+            updated[idx] = updated[idx].copy(
+                author = author,
+                coverImageUrl = coverImageUrl,
+                wordCount = wordCount,
+                evaluationExcerpt = evaluationExcerpt,
+                detailError = detailError,
+                isAuthorLoading = isAuthorLoading,
+                isWordCountLoading = isWordCountLoading
+            )
+            state.copy(articles = updated)
         }
     }
 
