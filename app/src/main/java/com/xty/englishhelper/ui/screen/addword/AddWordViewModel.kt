@@ -259,12 +259,18 @@ class AddWordViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isAiLoading = true, error = null) }
+            _uiState.update { it.copy(isAiLoading = true, aiLoadingMessage = "准备整理", error = null) }
             try {
                 val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
 
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(isAiLoading = false, error = "请先在设置中配置 API Key") }
+                    _uiState.update {
+                        it.copy(
+                            isAiLoading = false,
+                            aiLoadingMessage = null,
+                            error = "请先在设置中配置 API Key"
+                        )
+                    }
                     return@launch
                 }
 
@@ -274,10 +280,18 @@ class AddWordViewModel @Inject constructor(
                     config.model,
                     config.baseUrl,
                     config.provider
-                )
+                ) { progress ->
+                    _uiState.update {
+                        it.copy(
+                            isAiLoading = progress.current < progress.total,
+                            aiLoadingMessage = progress.label
+                        )
+                    }
+                }
                 _uiState.update {
                     it.copy(
                         isAiLoading = false,
+                        aiLoadingMessage = null,
                         phonetic = result.phonetic.ifBlank { it.phonetic },
                         meanings = result.meanings.ifEmpty { it.meanings },
                         rootExplanation = result.rootExplanation.ifBlank { it.rootExplanation },
@@ -289,7 +303,13 @@ class AddWordViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isAiLoading = false, error = "AI 整理失败：${e.message}") }
+                _uiState.update {
+                    it.copy(
+                        isAiLoading = false,
+                        aiLoadingMessage = null,
+                        error = "AI 整理失败：${e.message}"
+                    )
+                }
             }
         }
     }

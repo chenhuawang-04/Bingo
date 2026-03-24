@@ -540,14 +540,13 @@ private fun AiOrganizeButton(state: AddWordUiState, onClick: () -> Unit) {
                 strokeWidth = 2.dp,
                 color = MaterialTheme.colorScheme.onPrimary
             )
-            Text("  正在整理…")
+            Text("  ${state.aiLoadingMessage ?: "正在整理"}")
         } else {
             Icon(Icons.Default.AutoAwesome, contentDescription = null)
             Text("  AI 自动整理")
         }
     }
 }
-
 @Composable
 private fun SaveAndOrganizeButton(state: AddWordUiState, onClick: () -> Unit) {
     OutlinedButton(

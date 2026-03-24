@@ -13,6 +13,7 @@ import com.xty.englishhelper.domain.model.AiProviderProfile
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.util.Constants
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -47,6 +48,8 @@ class SettingsDataStore @Inject constructor(
         val AI_DEBUG_MODE = booleanPreferencesKey("ai_debug_mode")
         val AI_RESPONSE_UNWRAP_ENABLED = booleanPreferencesKey("ai_response_unwrap_enabled")
         val AI_JSON_REPAIR_ENABLED = booleanPreferencesKey("ai_json_repair_enabled")
+        val WORD_ORGANIZE_HIGH_QUALITY_ENABLED = booleanPreferencesKey("word_organize_high_quality_enabled")
+        val WORD_ORGANIZE_REFERENCE_SOURCE = stringPreferencesKey("word_organize_reference_source")
         val IMAGE_COMPRESSION_ENABLED = booleanPreferencesKey("image_compression_enabled")
         val IMAGE_COMPRESSION_TARGET_BYTES = intPreferencesKey("image_compression_target_bytes")
         val BACKGROUND_TASK_CONCURRENCY = intPreferencesKey("background_task_concurrency")
@@ -156,6 +159,16 @@ class SettingsDataStore @Inject constructor(
         prefs[AI_JSON_REPAIR_ENABLED] ?: false
     }
 
+    val wordOrganizeHighQualityEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[WORD_ORGANIZE_HIGH_QUALITY_ENABLED] ?: false
+    }
+
+    val wordOrganizeReferenceSource: Flow<WordReferenceSource> = dataStore.data.map { prefs ->
+        prefs[WORD_ORGANIZE_REFERENCE_SOURCE]
+            ?.let { raw -> runCatching { WordReferenceSource.valueOf(raw) }.getOrNull() }
+            ?: WordReferenceSource.FAST
+    }
+
     val imageCompressionEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[IMAGE_COMPRESSION_ENABLED] ?: true
     }
@@ -216,6 +229,14 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setAiJsonRepairEnabled(value: Boolean) {
         dataStore.edit { prefs -> prefs[AI_JSON_REPAIR_ENABLED] = value }
+    }
+
+    suspend fun setWordOrganizeHighQualityEnabled(value: Boolean) {
+        dataStore.edit { prefs -> prefs[WORD_ORGANIZE_HIGH_QUALITY_ENABLED] = value }
+    }
+
+    suspend fun setWordOrganizeReferenceSource(value: WordReferenceSource) {
+        dataStore.edit { prefs -> prefs[WORD_ORGANIZE_REFERENCE_SOURCE] = value.name }
     }
 
     suspend fun setImageCompressionEnabled(value: Boolean) {
@@ -452,6 +473,14 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun getAiConfig(scope: AiSettingsScope): AiConfig {
+        return getAiConfigInternal(scope, allowApiKeyFallback = true)
+    }
+
+    suspend fun getConfiguredAiConfig(scope: AiSettingsScope): AiConfig {
+        return getAiConfigInternal(scope, allowApiKeyFallback = false)
+    }
+
+    private suspend fun getAiConfigInternal(scope: AiSettingsScope, allowApiKeyFallback: Boolean): AiConfig {
         val prefs = dataStore.data.first()
         val providers = readProviders(prefs)
         val defaultProvider = resolveDefaultProvider(prefs, providers)
@@ -461,7 +490,7 @@ class SettingsDataStore @Inject constructor(
         val model = scopeConfig.model.ifBlank { defaultModel(chosen.provider) }
         val apiKey = encryptedApiKeyStore.getApiKey(chosen.name)
 
-        if (apiKey.isBlank() && chosen.name != defaultProvider.name) {
+        if (allowApiKeyFallback && apiKey.isBlank() && chosen.name != defaultProvider.name) {
             val fallbackKey = encryptedApiKeyStore.getApiKey(defaultProvider.name)
             if (fallbackKey.isNotBlank()) {
                 return AiConfig(
@@ -517,6 +546,18 @@ class SettingsDataStore @Inject constructor(
     suspend fun getAiJsonRepairEnabled(): Boolean {
         val prefs = dataStore.data.first()
         return prefs[AI_JSON_REPAIR_ENABLED] ?: false
+    }
+
+    suspend fun getWordOrganizeHighQualityEnabled(): Boolean {
+        val prefs = dataStore.data.first()
+        return prefs[WORD_ORGANIZE_HIGH_QUALITY_ENABLED] ?: false
+    }
+
+    suspend fun getWordOrganizeReferenceSource(): WordReferenceSource {
+        val prefs = dataStore.data.first()
+        return prefs[WORD_ORGANIZE_REFERENCE_SOURCE]
+            ?.let { raw -> runCatching { WordReferenceSource.valueOf(raw) }.getOrNull() }
+            ?: WordReferenceSource.FAST
     }
 
     val githubOwner: Flow<String> = dataStore.data.map { it[GITHUB_OWNER] ?: "" }

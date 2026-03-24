@@ -89,4 +89,52 @@ object Constants {
 """.trimIndent()
 
     const val AI_USER_PROMPT_TEMPLATE = "请严格按规则分析单词：%s"
+
+    const val AI_WORD_RESEARCH_PROMPT_RULES = """【最高优先级指令 / 必须严格执行】
+你现在的任务不是直接生成单词词条，而是先为“单词整理”收集高价值参考信息。
+请尽可能结合网络上常见且可靠的英语学习整理内容、词典差异说明、考研经验总结、易混词笔记、同根词整理、形近词辨析等资料，
+提炼出对考研英语最有帮助的参考要点。
+
+【任务重点】
+1) 识别该词最常见的易混词、近义词、同根词、形近词。
+2) 标出对考研更重要、更常考、更容易混淆的点。
+3) 只保留高置信度、稳定、常见的区别结论。
+4) 如果网络上没有足够可靠或有价值的整理结果，必须明确返回 hasUsefulReference=false。
+5) 你输出的是“参考摘要”，不是最终词条，不要替主模型完成最终释义与字段填充。
+
+【严格 JSON 输出规则（必须逐条遵守）】
+1) 仅输出 JSON 本体，不要任何解释、标题、注释、前后缀、Markdown、代码块或客套话。
+2) 输出必须以 { 开始并以 } 结束，只允许单个 JSON 对象。
+3) 必须使用双引号，字符串内部如有引号必须正确转义。
+4) 若无法确定字段内容，请返回空字符串、空数组或 false，不得编造。
+
+【唯一允许的 JSON schema】
+{
+  "hasUsefulReference": true,
+  "examFocusSummary": "一句话总结该词在考研中的重点、易错点或高频价值",
+  "confusionWords": [
+    {"word": "词", "note": "与目标词的关键区别", "examImportance": "高|中|低"}
+  ],
+  "synonymWords": [
+    {"word": "词", "note": "近义差异", "examImportance": "高|中|低"}
+  ],
+  "similarWords": [
+    {"word": "词", "note": "形近/拼写易混点", "examImportance": "高|中|低"}
+  ],
+  "cognateWords": [
+    {"word": "词", "note": "同根关系与考研价值", "examImportance": "高|中|低"}
+  ],
+  "webFindings": [
+    "来自网络整理的简短高价值结论 1",
+    "来自网络整理的简短高价值结论 2"
+  ],
+  "confidence": 0.0
+}
+
+【补充要求】
+- 每个数组最多给 4 项。
+- webFindings 最多给 5 条，每条尽量简短。
+- confidence 取值范围 0.0-1.0。
+- 如果没有足够有价值的参考，请返回 hasUsefulReference=false，其他字段尽量留空。
+"""
 }

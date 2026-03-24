@@ -5,10 +5,22 @@ import kotlinx.serialization.Serializable
 sealed interface BackgroundTaskPayload
 
 @Serializable
+data class AiModelSnapshot(
+    val providerName: String,
+    val provider: AiProvider,
+    val model: String,
+    val baseUrl: String
+)
+
+@Serializable
 data class WordOrganizePayload(
     val wordId: Long,
     val dictionaryId: Long,
-    val spelling: String
+    val spelling: String,
+    val highQualityEnabled: Boolean = false,
+    val referenceSource: String = WordReferenceSource.FAST.name,
+    val mainModelSnapshot: AiModelSnapshot? = null,
+    val referenceModelSnapshot: AiModelSnapshot? = null
 ) : BackgroundTaskPayload
 
 @Serializable

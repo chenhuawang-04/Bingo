@@ -5,6 +5,7 @@ import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.domain.repository.SyncProgress
 
 data class SettingsUiState(
@@ -27,6 +28,8 @@ data class SettingsUiState(
     val aiDebugMode: Boolean = false,
     val aiResponseUnwrapEnabled: Boolean = false,
     val aiJsonRepairEnabled: Boolean = false,
+    val wordOrganizeHighQualityEnabled: Boolean = false,
+    val wordOrganizeReferenceSource: WordReferenceSource = WordReferenceSource.FAST,
     val imageCompressionEnabled: Boolean = true,
     val imageCompressionTargetBytes: Int = 1_000_000,
     val backgroundTaskConcurrency: Int = 2,

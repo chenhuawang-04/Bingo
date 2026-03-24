@@ -56,6 +56,7 @@ import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.util.Constants
 
@@ -140,6 +141,15 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                WordOrganizeSection(
+                    enabled = state.wordOrganizeHighQualityEnabled,
+                    source = state.wordOrganizeReferenceSource,
+                    onEnabledChange = viewModel::onWordOrganizeHighQualityEnabledChange,
+                    onSourceChange = viewModel::onWordOrganizeReferenceSourceChange
+                )
+
+                HorizontalDivider()
+
                 ModelAdvancedSection(state, viewModel)
 
                 HorizontalDivider()
@@ -193,6 +203,64 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WordOrganizeSection(
+    enabled: Boolean,
+    source: WordReferenceSource,
+    onEnabledChange: (Boolean) -> Unit,
+    onSourceChange: (WordReferenceSource) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("单词整理增强", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "高质量整理模式会先检索网络上的易混词、同义词、同根词和形近词摘要，再交给主模型整理。单个整理和后台批量整理都会生效。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("高质量整理模式", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "会增加耗时与 token 消耗，但能补充考研高频易混点。参考步骤不可用时会回退为常规整理。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnabledChange
+            )
+        }
+
+        Text(
+            "参考来源",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = source == WordReferenceSource.FAST,
+                onClick = { onSourceChange(WordReferenceSource.FAST) },
+                label = { Text("快速模型") }
+            )
+            FilterChip(
+                selected = source == WordReferenceSource.SEARCH,
+                onClick = { onSourceChange(WordReferenceSource.SEARCH) },
+                label = { Text("搜索模型") }
+            )
+        }
+        Text(
+            "默认使用快速模型；如果你切到搜索模型，会改用“搜索模型”作用域进行参考检索。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

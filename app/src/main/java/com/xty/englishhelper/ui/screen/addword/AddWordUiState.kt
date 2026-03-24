@@ -20,6 +20,7 @@ data class AddWordUiState(
     val cognates: List<CognateInfo> = emptyList(),
     val inflections: List<Inflection> = emptyList(),
     val isAiLoading: Boolean = false,
+    val aiLoadingMessage: String? = null,
     val isSaving: Boolean = false,
     val error: String? = null,
     val savedSuccessfully: Boolean = false,

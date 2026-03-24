@@ -1,6 +1,7 @@
 package com.xty.englishhelper.domain.background
 
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.model.AiModelSnapshot
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleSourceType
@@ -17,6 +18,7 @@ import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.QuestionType
+import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
@@ -89,13 +91,36 @@ class BackgroundTaskManager @Inject constructor(
         started = true
         scope.launch {
             repository.updateStatusByStatus(BackgroundTaskStatus.RUNNING, BackgroundTaskStatus.PENDING)
+            migrateLegacyWordOrganizeTasks()
             schedule()
         }
     }
 
     fun enqueueWordOrganize(wordId: Long, dictionaryId: Long, spelling: String, force: Boolean = false) {
-        val payload = WordOrganizePayload(wordId = wordId, dictionaryId = dictionaryId, spelling = spelling)
-        enqueueTaskAsync(BackgroundTaskType.WORD_ORGANIZE, payload, "word:$wordId", force)
+        scope.launch {
+            val highQualityEnabled = settingsDataStore.getWordOrganizeHighQualityEnabled()
+            val referenceSource = settingsDataStore.getWordOrganizeReferenceSource()
+            val mainSnapshot = settingsDataStore.getAiConfig(AiSettingsScope.MAIN).toSnapshot()
+            val referenceSnapshot = if (highQualityEnabled) {
+                val referenceScope = when (referenceSource) {
+                    WordReferenceSource.FAST -> AiSettingsScope.FAST
+                    WordReferenceSource.SEARCH -> AiSettingsScope.SEARCH
+                }
+                settingsDataStore.getConfiguredAiConfig(referenceScope).toSnapshot()
+            } else {
+                null
+            }
+            val payload = WordOrganizePayload(
+                wordId = wordId,
+                dictionaryId = dictionaryId,
+                spelling = spelling,
+                highQualityEnabled = highQualityEnabled,
+                referenceSource = referenceSource.name,
+                mainModelSnapshot = mainSnapshot,
+                referenceModelSnapshot = referenceSnapshot
+            )
+            enqueueTaskInternal(BackgroundTaskType.WORD_ORGANIZE, payload, "word:$wordId", force)
+        }
     }
 
     fun enqueueWordPoolRebuild(dictionaryId: Long, strategy: PoolStrategy, force: Boolean = false) {
@@ -357,18 +382,32 @@ class BackgroundTaskManager @Inject constructor(
 
     private suspend fun executeWordOrganize(task: BackgroundTask) {
         val payload = task.payload as? WordOrganizePayload ?: throw IllegalStateException("任务参数缺失")
-        val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
-        if (config.apiKey.isBlank()) {
+        val mainSnapshot = payload.mainModelSnapshot
+            ?: throw IllegalStateException("旧任务缺少主模型快照，请重新开始后台整理")
+        val mainApiKey = settingsDataStore.getProviderApiKey(mainSnapshot.providerName)
+        if (mainApiKey.isBlank()) {
             throw IllegalStateException("API Key 未配置")
         }
-        repository.updateProgress(task.id, 0, 1)
+        val referenceSource = runCatching { WordReferenceSource.valueOf(payload.referenceSource) }
+            .getOrDefault(WordReferenceSource.FAST)
+        val referenceSnapshot = if (payload.highQualityEnabled) {
+            payload.referenceModelSnapshot
+                ?: throw IllegalStateException("旧任务缺少参考模型快照，请重新开始后台整理")
+        } else {
+            null
+        }
         val result = organizeWordWithAi(
             payload.spelling,
-            config.apiKey,
-            config.model,
-            config.baseUrl,
-            config.provider
-        )
+            mainApiKey,
+            mainSnapshot.model,
+            mainSnapshot.baseUrl,
+            mainSnapshot.provider,
+            highQualityEnabledOverride = payload.highQualityEnabled,
+            referenceSourceOverride = referenceSource,
+            referenceModelSnapshotOverride = referenceSnapshot
+        ) { progress ->
+            repository.updateProgress(task.id, progress.current, progress.total)
+        }
         val currentWord = wordRepository.getWordById(payload.wordId) ?: throw IllegalStateException("单词不存在")
         val merged = currentWord.copy(
             phonetic = currentWord.phonetic.ifBlank { result.phonetic },
@@ -381,7 +420,58 @@ class BackgroundTaskManager @Inject constructor(
             inflections = currentWord.inflections.ifEmpty { result.inflections }
         )
         wordRepository.updateWord(merged)
-        repository.updateProgress(task.id, 1, 1)
+    }
+
+    private fun SettingsDataStore.AiConfig.toSnapshot(): AiModelSnapshot {
+        return AiModelSnapshot(
+            providerName = providerName,
+            provider = provider,
+            model = model,
+            baseUrl = baseUrl
+        )
+    }
+
+    private suspend fun migrateLegacyWordOrganizeTasks() {
+        val tasks = repository.observeAllTasks().first()
+            .filter { task ->
+                task.type == BackgroundTaskType.WORD_ORGANIZE &&
+                    task.status in setOf(
+                        BackgroundTaskStatus.PENDING,
+                        BackgroundTaskStatus.PAUSED,
+                        BackgroundTaskStatus.FAILED
+                    )
+            }
+
+        tasks.forEach { task ->
+            val payload = task.payload as? WordOrganizePayload ?: return@forEach
+            if (!payload.requiresSnapshotMigration()) return@forEach
+
+            val migratedPayload = payload.copy(
+                mainModelSnapshot = payload.mainModelSnapshot ?: settingsDataStore.getAiConfig(AiSettingsScope.MAIN).toSnapshot(),
+                referenceModelSnapshot = if (payload.highQualityEnabled) {
+                    payload.referenceModelSnapshot ?: buildReferenceSnapshot(
+                        runCatching { WordReferenceSource.valueOf(payload.referenceSource) }
+                            .getOrDefault(WordReferenceSource.FAST)
+                    )
+                } else {
+                    null
+                }
+            )
+            repository.updatePayload(task.id, task.type, migratedPayload)
+        }
+    }
+
+    private suspend fun buildReferenceSnapshot(referenceSource: WordReferenceSource): AiModelSnapshot {
+        val referenceScope = when (referenceSource) {
+            WordReferenceSource.FAST -> AiSettingsScope.FAST
+            WordReferenceSource.SEARCH -> AiSettingsScope.SEARCH
+        }
+        return settingsDataStore.getConfiguredAiConfig(referenceScope).toSnapshot()
+    }
+
+    private fun WordOrganizePayload.requiresSnapshotMigration(): Boolean {
+        if (mainModelSnapshot == null) return true
+        return highQualityEnabled && referenceModelSnapshot == null
     }
 
     private suspend fun executeQuestionGenerate(task: BackgroundTask) {
