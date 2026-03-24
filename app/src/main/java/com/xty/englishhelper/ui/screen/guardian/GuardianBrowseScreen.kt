@@ -52,6 +52,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.ui.screen.article.ArticleFilterPanel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +63,7 @@ fun GuardianBrowseScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val visibleEvaluatingCount = uiState.articles.count { it.isEvaluating }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -102,11 +104,15 @@ fun GuardianBrowseScreen(
             )
 
             SortAndStatusBar(
-                sortByScore = uiState.sortByScore,
-                isEvaluating = uiState.isEvaluating,
-                evaluatingCount = uiState.evaluatingCount,
+                lengthFilter = uiState.lengthFilter,
+                scoreFilter = uiState.scoreFilter,
+                sortOption = uiState.sortOption,
+                isEvaluating = visibleEvaluatingCount > 0,
+                evaluatingCount = visibleEvaluatingCount,
                 totalCount = uiState.articles.size,
-                onToggleSort = viewModel::toggleSortByScore
+                onLengthFilterChange = viewModel::setLengthFilter,
+                onScoreFilterChange = viewModel::setScoreFilter,
+                onSortOptionChange = viewModel::setSortOption
             )
 
             HorizontalDivider()
@@ -124,7 +130,10 @@ fun GuardianBrowseScreen(
                             modifier = Modifier.align(Alignment.Center),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("暂无文章", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                if (uiState.allArticles.isNotEmpty()) "没有符合筛选条件的文章" else "暂无文章",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
                             Spacer(Modifier.height(8.dp))
                             TextButton(onClick = { viewModel.refresh() }) {
                                 Text("重试")
@@ -151,7 +160,6 @@ fun GuardianBrowseScreen(
                         ArticleList(
                             articles = uiState.articles,
                             isLoadingArticle = uiState.isLoadingArticle,
-                            sortByScore = uiState.sortByScore,
                             onArticleClick = { url ->
                                 viewModel.openArticle(url, onArticleClick)
                             },
@@ -246,25 +254,14 @@ private fun SectionChips(
 private fun ArticleList(
     articles: List<GuardianBrowseItem>,
     isLoadingArticle: Boolean,
-    sortByScore: Boolean,
     onArticleClick: (url: String) -> Unit,
     onReevaluate: (url: String) -> Unit
 ) {
-    val sorted = remember(articles, sortByScore) {
-        if (!sortByScore) {
-            articles
-        } else {
-            articles.sortedWith(
-                compareByDescending<GuardianBrowseItem> { it.suitabilityScore ?: -1 }
-                    .thenBy { it.title }
-            )
-        }
-    }
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(sorted, key = { it.url }) { article ->
+        items(articles, key = { it.url }) { article ->
             ArticlePreviewCard(
                 article = article,
                 onClick = {
@@ -426,23 +423,30 @@ private fun ArticlePreviewCard(
 
 @Composable
 private fun SortAndStatusBar(
-    sortByScore: Boolean,
+    lengthFilter: com.xty.englishhelper.ui.screen.article.ArticleLengthFilter,
+    scoreFilter: com.xty.englishhelper.ui.screen.article.ArticleScoreFilter,
+    sortOption: com.xty.englishhelper.ui.screen.article.ArticleSortOption,
     isEvaluating: Boolean,
     evaluatingCount: Int,
     totalCount: Int,
-    onToggleSort: () -> Unit
+    onLengthFilterChange: (com.xty.englishhelper.ui.screen.article.ArticleLengthFilter) -> Unit,
+    onScoreFilterChange: (com.xty.englishhelper.ui.screen.article.ArticleScoreFilter) -> Unit,
+    onSortOptionChange: (com.xty.englishhelper.ui.screen.article.ArticleSortOption) -> Unit
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        FilterChip(
-            selected = sortByScore,
-            onClick = onToggleSort,
-            label = { Text("按评分排序") }
+        ArticleFilterPanel(
+            lengthFilter = lengthFilter,
+            scoreFilter = scoreFilter,
+            sortOption = sortOption,
+            onLengthFilterChange = onLengthFilterChange,
+            onScoreFilterChange = onScoreFilterChange,
+            onSortOptionChange = onSortOptionChange,
+            helperText = "自动评分只会处理当前筛选后仍然可见的文章。"
         )
         if (isEvaluating) {
             Text(

@@ -24,6 +24,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class ArticleListUiState(
+    val allArticles: List<Article> = emptyList(),
     val articles: List<Article> = emptyList(),
     val categories: List<ArticleCategory> = emptyList(),
     val selectedCategoryId: Long? = null,
@@ -31,7 +32,9 @@ data class ArticleListUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val evaluatingIds: Set<Long> = emptySet(),
-    val sortByScore: Boolean = false
+    val lengthFilter: ArticleLengthFilter = ArticleLengthFilter.ALL,
+    val scoreFilter: ArticleScoreFilter = ArticleScoreFilter.ALL,
+    val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT
 )
 
 @HiltViewModel
@@ -100,19 +103,22 @@ class ArticleListViewModel @Inject constructor(
                 }
                 .collectLatest { articles ->
                     _uiState.update { state ->
-                        state.copy(articles = sortArticles(articles, state.sortByScore))
+                        state.withPresentedArticles(articles)
                     }
                 }
         }
     }
 
-    fun toggleSortByScore() {
-        _uiState.update { state ->
-            state.copy(
-                sortByScore = !state.sortByScore,
-                articles = sortArticles(state.articles, !state.sortByScore)
-            )
-        }
+    fun setLengthFilter(filter: ArticleLengthFilter) {
+        _uiState.update { it.copy(lengthFilter = filter).applyPresentation() }
+    }
+
+    fun setScoreFilter(filter: ArticleScoreFilter) {
+        _uiState.update { it.copy(scoreFilter = filter).applyPresentation() }
+    }
+
+    fun setSortOption(option: ArticleSortOption) {
+        _uiState.update { it.copy(sortOption = option).applyPresentation() }
     }
 
     fun selectCategory(categoryId: Long?) {
@@ -218,12 +224,20 @@ class ArticleListViewModel @Inject constructor(
         return if (joined.length > 2200) joined.take(2200) else joined
     }
 
-    private fun sortArticles(items: List<Article>, sortByScore: Boolean): List<Article> {
-        if (!sortByScore) return items
-        return items.sortedWith(
-            compareByDescending<Article> { it.suitabilityScore ?: -1 }
-                .thenByDescending { it.updatedAt }
-                .thenBy { it.title }
+    private fun ArticleListUiState.withPresentedArticles(items: List<Article>): ArticleListUiState {
+        return copy(allArticles = items).applyPresentation()
+    }
+
+    private fun ArticleListUiState.applyPresentation(): ArticleListUiState {
+        val presented = applyArticlePresentation(
+            items = allArticles,
+            lengthFilter = lengthFilter,
+            scoreFilter = scoreFilter,
+            sortOption = sortOption,
+            wordCountOf = { it.wordCount.takeIf { count -> count > 0 } },
+            scoreOf = { it.suitabilityScore },
+            titleOf = { it.title }
         )
+        return copy(articles = presented)
     }
 }

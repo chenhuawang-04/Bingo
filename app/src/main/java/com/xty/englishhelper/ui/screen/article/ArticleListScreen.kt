@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -79,6 +78,7 @@ fun ArticleListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val articles = uiState.articles
+    val hasSourceArticles = uiState.allArticles.isNotEmpty()
     val snackbarHostState = remember { SnackbarHostState() }
     var showCreateCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var newCategoryName by rememberSaveable { mutableStateOf("") }
@@ -95,17 +95,6 @@ fun ArticleListScreen(
             TopAppBar(
                 title = { Text("文章阅读") },
                 actions = {
-                    IconButton(onClick = viewModel::toggleSortByScore) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Sort,
-                            contentDescription = "按评分排序",
-                            tint = if (uiState.sortByScore) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            }
-                        )
-                    }
                     IconButton(onClick = onGuardianBrowse) {
                         Icon(Icons.Default.Language, contentDescription = "在线阅读")
                     }
@@ -139,7 +128,18 @@ fun ArticleListScreen(
                         onCreate = { showCreateCategoryDialog = true }
                     )
                 }
-                Text("暂无文章，点击 + 创建新文章", style = MaterialTheme.typography.bodyLarge)
+                ArticleFilterPanel(
+                    lengthFilter = uiState.lengthFilter,
+                    scoreFilter = uiState.scoreFilter,
+                    sortOption = uiState.sortOption,
+                    onLengthFilterChange = viewModel::setLengthFilter,
+                    onScoreFilterChange = viewModel::setScoreFilter,
+                    onSortOptionChange = viewModel::setSortOption
+                )
+                Text(
+                    if (hasSourceArticles) "没有符合筛选条件的文章" else "暂无文章，点击 + 创建新文章",
+                    style = MaterialTheme.typography.bodyLarge
+                )
             }
         } else {
             LazyColumn(
@@ -155,6 +155,16 @@ fun ArticleListScreen(
                         selectedCategoryId = uiState.selectedCategoryId,
                         onSelect = viewModel::selectCategory,
                         onCreate = { showCreateCategoryDialog = true }
+                    )
+                }
+                item {
+                    ArticleFilterPanel(
+                        lengthFilter = uiState.lengthFilter,
+                        scoreFilter = uiState.scoreFilter,
+                        sortOption = uiState.sortOption,
+                        onLengthFilterChange = viewModel::setLengthFilter,
+                        onScoreFilterChange = viewModel::setScoreFilter,
+                        onSortOptionChange = viewModel::setSortOption
                     )
                 }
                 items(articles, key = { it.id }) { article ->

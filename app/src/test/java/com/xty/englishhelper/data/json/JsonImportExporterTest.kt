@@ -74,7 +74,7 @@ class JsonImportExporterTest {
         val json = exporter.exportToJson(dictionary, words, units, unitWordMap, studyStates, wordIdToUid)
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 4"))
+        assertTrue(json.contains("\"schemaVersion\": 5"))
 
         val result = exporter.importFromJson(json)
 
@@ -188,10 +188,34 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 4`() {
+    fun `export produces schemaVersion 5`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 4"))
+        assertTrue(json.contains("\"schemaVersion\": 5"))
+    }
+
+    @Test
+    fun `import still accepts schemaVersion 4 for backward compatibility`() {
+        val json = """
+        {
+            "name": "Legacy",
+            "description": "schema4",
+            "schemaVersion": 4,
+            "words": [
+                {
+                    "spelling": "apple",
+                    "phonetic": "/ˈæp.əl/",
+                    "wordUid": "legacy-uid"
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val result = exporter.importFromJson(json)
+
+        assertEquals("Legacy", result.dictionary.name)
+        assertEquals(1, result.words.size)
+        assertEquals("legacy-uid", result.words.single().wordUid)
     }
 
     @Test

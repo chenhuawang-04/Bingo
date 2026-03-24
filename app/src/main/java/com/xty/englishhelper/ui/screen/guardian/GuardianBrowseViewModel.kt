@@ -11,9 +11,16 @@ import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.AtlanticRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
+import com.xty.englishhelper.ui.screen.article.ArticleLengthFilter
+import com.xty.englishhelper.ui.screen.article.ArticleScoreFilter
+import com.xty.englishhelper.ui.screen.article.ArticleSortOption
+import com.xty.englishhelper.ui.screen.article.applyArticlePresentation
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +30,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 data class GuardianSection(val key: String, val label: String, val group: String = "")
@@ -122,13 +130,16 @@ data class GuardianBrowseUiState(
     val selectedSource: OnlineReadingSource = OnlineReadingSource.GUARDIAN,
     val sections: List<GuardianSection> = guardianSections,
     val selectedSection: String = "international",
+    val allArticles: List<GuardianBrowseItem> = emptyList(),
     val articles: List<GuardianBrowseItem> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingArticle: Boolean = false,
     val error: String? = null,
     val isEvaluating: Boolean = false,
     val evaluatingCount: Int = 0,
-    val sortByScore: Boolean = false
+    val lengthFilter: ArticleLengthFilter = ArticleLengthFilter.ALL,
+    val scoreFilter: ArticleScoreFilter = ArticleScoreFilter.ALL,
+    val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT
 )
 
 @HiltViewModel
@@ -147,6 +158,7 @@ class GuardianBrowseViewModel @Inject constructor(
     private var detailJob: Job? = null
     private var sourceInitialized = false
     private val evaluationSemaphore = Semaphore(2)
+    private val autoEvaluationJobs = ConcurrentHashMap<String, Job>()
     private val lastSectionBySource = mutableMapOf(
         OnlineReadingSource.GUARDIAN to "international",
         OnlineReadingSource.CSMONITOR to "",
@@ -169,6 +181,7 @@ class GuardianBrowseViewModel @Inject constructor(
         val source = _uiState.value.selectedSource
         detailJob?.cancel()
         detailJob = null
+        cancelAutoEvaluationJobsExcept(emptySet())
         _uiState.update { it.copy(selectedSection = section, isLoading = true, error = null) }
         lastSectionBySource[source] = section
 
@@ -216,7 +229,8 @@ class GuardianBrowseViewModel @Inject constructor(
                     }
                 }
                 val hydrated = hydrateSuitability(items)
-                _uiState.update { it.copy(articles = hydrated, isLoading = false) }
+                _uiState.update { it.withPresentedArticles(hydrated).copy(isLoading = false) }
+                maybeEvaluateVisibleArticles(source = source, sectionKey = section)
                 detailJob = viewModelScope.launch {
                     loadArticleDetails(hydrated, source)
                 }
@@ -231,8 +245,6 @@ class GuardianBrowseViewModel @Inject constructor(
         if (items.isEmpty()) return
         val concurrency = settingsDataStore.guardianDetailConcurrency.first().coerceIn(1, 10)
         val semaphore = Semaphore(concurrency)
-        // Build URL -> index map for O(1) lookup instead of O(n) scan per update
-        val urlToIndex = items.withIndex().associate { (i, item) -> item.url to i }
         coroutineScope {
             items.forEach { item ->
                 launch {
@@ -245,10 +257,8 @@ class GuardianBrowseViewModel @Inject constructor(
                                 .count { it.isNotBlank() }
                             val excerpt = buildExcerpt(detail.paragraphs)
                             _uiState.update { state ->
-                                val idx = urlToIndex[item.url]
-                                if (idx != null && idx < state.articles.size && state.articles[idx].url == item.url) {
-                                    val updated = state.articles.toMutableList()
-                                    updated[idx] = updated[idx].copy(
+                                state.updateSourceArticle(item.url) { current ->
+                                    current.copy(
                                         author = detail.author.takeIf { it.isNotBlank() },
                                         coverImageUrl = detail.coverImageUrl,
                                         wordCount = wordCount,
@@ -257,26 +267,18 @@ class GuardianBrowseViewModel @Inject constructor(
                                         detailError = null,
                                         evaluationExcerpt = excerpt
                                     )
-                                    state.copy(articles = updated)
-                                } else {
-                                    state
                                 }
                             }
-                            maybeEvaluateSuitability(item.url, source, sectionKey = _uiState.value.selectedSection)
+                            maybeEvaluateVisibleArticles(source = source, sectionKey = _uiState.value.selectedSection)
                         } catch (e: Exception) {
                             Log.w("GuardianBrowseVM", "Detail load failed: ${item.url}", e)
                             _uiState.update { state ->
-                                val idx = urlToIndex[item.url]
-                                if (idx != null && idx < state.articles.size && state.articles[idx].url == item.url) {
-                                    val updated = state.articles.toMutableList()
-                                    updated[idx] = updated[idx].copy(
+                                state.updateSourceArticle(item.url) { current ->
+                                    current.copy(
                                         isAuthorLoading = false,
                                         isWordCountLoading = false,
                                         detailError = e.message
                                     )
-                                    state.copy(articles = updated)
-                                } else {
-                                    state
                                 }
                             }
                         }
@@ -320,11 +322,32 @@ class GuardianBrowseViewModel @Inject constructor(
         applySource(source, forceReload = true)
     }
 
-    fun toggleSortByScore() {
-        _uiState.update { it.copy(sortByScore = !it.sortByScore) }
+    fun setLengthFilter(filter: ArticleLengthFilter) {
+        _uiState.update { it.copy(lengthFilter = filter).applyPresentation() }
+        maybeEvaluateVisibleArticles(
+            source = _uiState.value.selectedSource,
+            sectionKey = _uiState.value.selectedSection
+        )
+    }
+
+    fun setScoreFilter(filter: ArticleScoreFilter) {
+        _uiState.update { it.copy(scoreFilter = filter).applyPresentation() }
+        maybeEvaluateVisibleArticles(
+            source = _uiState.value.selectedSource,
+            sectionKey = _uiState.value.selectedSection
+        )
+    }
+
+    fun setSortOption(option: ArticleSortOption) {
+        _uiState.update { it.copy(sortOption = option).applyPresentation() }
+        maybeEvaluateVisibleArticles(
+            source = _uiState.value.selectedSource,
+            sectionKey = _uiState.value.selectedSection
+        )
     }
 
     fun reEvaluate(url: String) {
+        cancelAutoEvaluationJob(url)
         viewModelScope.launch {
             ensureDetailLoadedForEvaluation(url, _uiState.value.selectedSource)
             maybeEvaluateSuitability(url, _uiState.value.selectedSource, sectionKey = _uiState.value.selectedSection, force = true)
@@ -380,11 +403,13 @@ class GuardianBrowseViewModel @Inject constructor(
 
         if (!forceReload && _uiState.value.selectedSource == source) return
 
+        cancelAutoEvaluationJobsExcept(emptySet())
         _uiState.update {
             it.copy(
                 selectedSource = source,
                 sections = sections,
                 selectedSection = preferred,
+                allArticles = emptyList(),
                 articles = emptyList(),
                 isLoading = true,
                 error = null
@@ -400,6 +425,7 @@ class GuardianBrowseViewModel @Inject constructor(
         force: Boolean = false
     ) {
         val item = _uiState.value.articles.firstOrNull { it.url == url } ?: return
+        if (!force && !isCurrentlyVisible(url)) return
         if (!force && item.suitabilityScore != null) return
         if (item.isEvaluating) return
 
@@ -421,6 +447,10 @@ class GuardianBrowseViewModel @Inject constructor(
 
         updateItemEvaluating(url, true)
         evaluationSemaphore.withPermit {
+            if (!force) {
+                currentCoroutineContext().ensureActive()
+                if (!isCurrentlyVisible(url)) return@withPermit
+            }
             try {
                 val result = articleAiRepository.evaluateArticleSuitability(
                     title = item.title,
@@ -437,6 +467,11 @@ class GuardianBrowseViewModel @Inject constructor(
                 )
                 val now = System.currentTimeMillis()
                 val modelKey = "${config.providerName}|${config.baseUrl.trimEnd('/')}|${config.model}"
+
+                if (!force) {
+                    currentCoroutineContext().ensureActive()
+                    if (!isCurrentlyVisible(url)) return@withPermit
+                }
 
                 val updated = articleRepository.updateSuitabilityBySourceUrl(
                     sourceUrl = item.url,
@@ -481,6 +516,47 @@ class GuardianBrowseViewModel @Inject constructor(
         }
     }
 
+    private fun maybeEvaluateVisibleArticles(
+        source: OnlineReadingSource,
+        sectionKey: String
+    ) {
+        val visibleUrls = _uiState.value.articles.map { it.url }.toSet()
+        cancelAutoEvaluationJobsExcept(visibleUrls)
+        visibleUrls.forEach { url ->
+            if (autoEvaluationJobs.containsKey(url)) return@forEach
+            val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+                maybeEvaluateSuitability(
+                    url = url,
+                    source = source,
+                    sectionKey = sectionKey
+                )
+            }
+            val existing = autoEvaluationJobs.putIfAbsent(url, job)
+            if (existing == null) {
+                job.invokeOnCompletion { autoEvaluationJobs.remove(url, job) }
+                job.start()
+            } else {
+                job.cancel()
+            }
+        }
+    }
+
+    private fun cancelAutoEvaluationJobsExcept(visibleUrls: Set<String>) {
+        autoEvaluationJobs.entries.toList().forEach { (url, job) ->
+            if (url !in visibleUrls && autoEvaluationJobs.remove(url, job)) {
+                job.cancel()
+            }
+        }
+    }
+
+    private fun cancelAutoEvaluationJob(url: String) {
+        autoEvaluationJobs.remove(url)?.cancel()
+    }
+
+    private fun isCurrentlyVisible(url: String): Boolean {
+        return _uiState.value.articles.any { it.url == url }
+    }
+
     private suspend fun ensureDetailLoadedForEvaluation(url: String, source: OnlineReadingSource) {
         val item = _uiState.value.articles.firstOrNull { it.url == url } ?: return
         if (!item.evaluationExcerpt.isNullOrBlank()) return
@@ -514,31 +590,27 @@ class GuardianBrowseViewModel @Inject constructor(
         isWordCountLoading: Boolean
     ) {
         _uiState.update { state ->
-            val idx = state.articles.indexOfFirst { it.url == url }
-            if (idx < 0) return@update state
-            val updated = state.articles.toMutableList()
-            updated[idx] = updated[idx].copy(
-                author = author,
-                coverImageUrl = coverImageUrl,
-                wordCount = wordCount,
-                evaluationExcerpt = evaluationExcerpt,
-                detailError = detailError,
-                isAuthorLoading = isAuthorLoading,
-                isWordCountLoading = isWordCountLoading
-            )
-            state.copy(articles = updated)
+            state.updateSourceArticle(url) { current ->
+                current.copy(
+                    author = author,
+                    coverImageUrl = coverImageUrl,
+                    wordCount = wordCount,
+                    evaluationExcerpt = evaluationExcerpt,
+                    detailError = detailError,
+                    isAuthorLoading = isAuthorLoading,
+                    isWordCountLoading = isWordCountLoading
+                )
+            }
         }
     }
 
     private fun updateItemEvaluating(url: String, evaluating: Boolean) {
         _uiState.update { state ->
-            val idx = state.articles.indexOfFirst { it.url == url }
-            if (idx < 0) return@update state
-            val updated = state.articles.toMutableList()
-            updated[idx] = updated[idx].copy(isEvaluating = evaluating)
-            val newCount = if (evaluating) state.evaluatingCount + 1 else (state.evaluatingCount - 1).coerceAtLeast(0)
-            state.copy(
-                articles = updated,
+            val updatedState = state.updateSourceArticle(url) { current ->
+                current.copy(isEvaluating = evaluating)
+            }
+            val newCount = updatedState.allArticles.count { it.isEvaluating }
+            updatedState.copy(
                 evaluatingCount = newCount,
                 isEvaluating = newCount > 0
             )
@@ -547,16 +619,42 @@ class GuardianBrowseViewModel @Inject constructor(
 
     private fun updateItemScore(url: String, score: Int, reason: String, evaluatedAt: Long) {
         _uiState.update { state ->
-            val idx = state.articles.indexOfFirst { it.url == url }
-            if (idx < 0) return@update state
-            val updated = state.articles.toMutableList()
-            updated[idx] = updated[idx].copy(
-                suitabilityScore = score,
-                suitabilityReason = reason,
-                suitabilityEvaluatedAt = evaluatedAt
-            )
-            state.copy(articles = updated)
+            state.updateSourceArticle(url) { current ->
+                current.copy(
+                    suitabilityScore = score,
+                    suitabilityReason = reason,
+                    suitabilityEvaluatedAt = evaluatedAt
+                )
+            }
         }
+    }
+
+    private fun GuardianBrowseUiState.updateSourceArticle(
+        url: String,
+        transform: (GuardianBrowseItem) -> GuardianBrowseItem
+    ): GuardianBrowseUiState {
+        val idx = allArticles.indexOfFirst { it.url == url }
+        if (idx < 0) return this
+        val updated = allArticles.toMutableList()
+        updated[idx] = transform(updated[idx])
+        return copy(allArticles = updated).applyPresentation()
+    }
+
+    private fun GuardianBrowseUiState.withPresentedArticles(items: List<GuardianBrowseItem>): GuardianBrowseUiState {
+        return copy(allArticles = items).applyPresentation()
+    }
+
+    private fun GuardianBrowseUiState.applyPresentation(): GuardianBrowseUiState {
+        val presented = applyArticlePresentation(
+            items = allArticles,
+            lengthFilter = lengthFilter,
+            scoreFilter = scoreFilter,
+            sortOption = sortOption,
+            wordCountOf = { it.wordCount },
+            scoreOf = { it.suitabilityScore },
+            titleOf = { it.title }
+        )
+        return copy(articles = presented)
     }
 
     private fun buildExcerpt(paragraphs: List<ArticleParagraph>): String {
