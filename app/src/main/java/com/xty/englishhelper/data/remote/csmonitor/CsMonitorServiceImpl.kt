@@ -25,6 +25,10 @@ class CsMonitorServiceImpl @Inject constructor(
         return fetchHtml(articleUrl)
     }
 
+    override suspend fun fetchRawUrl(url: String): String {
+        return fetchHtml(url)
+    }
+
     private suspend fun fetchHtml(url: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)

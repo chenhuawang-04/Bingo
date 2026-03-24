@@ -1,6 +1,7 @@
 package com.xty.englishhelper.ui.screen.guardian
 
 import android.util.Log
+import com.xty.englishhelper.domain.article.OnlineArticleSourceUrl
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
@@ -482,6 +483,7 @@ class GuardianBrowseViewModel @Inject constructor(
                 )
 
                 if (updated == 0) {
+                    val normalizedSourceUrl = OnlineArticleSourceUrl.normalize(item.url).ifBlank { item.url }
                     val article = com.xty.englishhelper.domain.model.Article(
                         title = item.title,
                         content = "",
@@ -493,7 +495,7 @@ class GuardianBrowseViewModel @Inject constructor(
                         author = item.author.orEmpty(),
                         source = source.label,
                         coverImageUrl = item.coverImageUrl,
-                        domain = item.url,
+                        domain = normalizedSourceUrl,
                         isSaved = false,
                         wordCount = item.wordCount ?: 0,
                         suitabilityScore = result.score,

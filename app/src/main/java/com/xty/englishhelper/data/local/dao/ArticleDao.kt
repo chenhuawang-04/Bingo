@@ -116,26 +116,6 @@ interface ArticleDao {
         now: Long = System.currentTimeMillis()
     )
 
-    @Query(
-        """
-        UPDATE articles
-        SET suitability_score = :score,
-            suitability_reason = :reason,
-            suitability_updated_at = :evaluatedAt,
-            suitability_model = :modelKey,
-            updated_at = :now
-        WHERE domain = :sourceUrl AND source_type_v2 = 'ONLINE'
-        """
-    )
-    suspend fun updateSuitabilityBySourceUrl(
-        sourceUrl: String,
-        score: Int?,
-        reason: String?,
-        evaluatedAt: Long?,
-        modelKey: String?,
-        now: Long = System.currentTimeMillis()
-    ): Int
-
     // Word stats
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertWordStats(stats: List<ArticleWordStatEntity>)
@@ -224,9 +204,15 @@ interface ArticleDao {
         deleteArticle(articleId)
     }
 
-    // Guardian: find article by source URL (stored in domain field)
-    @Query("SELECT * FROM articles WHERE domain = :sourceUrl AND source_type_v2 = 'ONLINE' LIMIT 1")
-    suspend fun getArticleBySourceUrl(sourceUrl: String): ArticleEntity?
+    @Query("SELECT * FROM articles WHERE domain IN (:sourceUrls) AND source_type_v2 = 'ONLINE'")
+    suspend fun getArticlesBySourceUrls(sourceUrls: List<String>): List<ArticleEntity>
+
+    @Query("UPDATE articles SET domain = :sourceUrl, updated_at = :now WHERE id = :articleId")
+    suspend fun updateSourceUrlById(
+        articleId: Long,
+        sourceUrl: String,
+        now: Long = System.currentTimeMillis()
+    )
 
     // Guardian: delete old unsaved articles
     @Query("DELETE FROM articles WHERE is_saved = 0 AND created_at < :cutoff")

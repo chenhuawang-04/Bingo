@@ -14,6 +14,7 @@ import com.xty.englishhelper.data.local.entity.ParagraphAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.SentenceAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.WordExampleEntity
 import com.xty.englishhelper.data.mapper.parseInflections
+import com.xty.englishhelper.domain.article.OnlineArticleSourceUrl
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
@@ -336,7 +337,7 @@ class ArticleRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getArticleBySourceUrl(sourceUrl: String): Article? {
-        return articleDao.getArticleBySourceUrl(sourceUrl)?.toDomain()
+        return findBestOnlineArticleBySourceUrl(sourceUrl)?.toDomain()
     }
 
     override suspend fun markArticleSaved(articleId: Long) {
@@ -368,7 +369,31 @@ class ArticleRepositoryImpl @Inject constructor(
         evaluatedAt: Long?,
         modelKey: String?
     ): Int {
-        return articleDao.updateSuitabilityBySourceUrl(sourceUrl, score, reason, evaluatedAt, modelKey)
+        val entity = findBestOnlineArticleBySourceUrl(sourceUrl) ?: return 0
+        articleDao.updateSuitabilityById(entity.id, score, reason, evaluatedAt, modelKey)
+
+        val normalizedSourceUrl = OnlineArticleSourceUrl.normalize(sourceUrl)
+        if (normalizedSourceUrl.isNotBlank() && normalizedSourceUrl != entity.domain) {
+            articleDao.updateSourceUrlById(entity.id, normalizedSourceUrl)
+        }
+        return 1
+    }
+
+    private suspend fun findBestOnlineArticleBySourceUrl(sourceUrl: String): ArticleEntity? {
+        val candidates = OnlineArticleSourceUrl.variants(sourceUrl)
+        if (candidates.isEmpty()) return null
+        val candidateRanks = candidates.withIndex().associate { it.value to it.index }
+        val normalizedSourceUrl = OnlineArticleSourceUrl.normalize(sourceUrl)
+        return articleDao.getArticlesBySourceUrls(candidates)
+            .minWithOrNull(
+                compareBy<ArticleEntity>(
+                    { if (it.isSaved == 1) 0 else 1 },
+                    { if (it.domain == normalizedSourceUrl) 0 else 1 },
+                    { if (it.content.isBlank()) 1 else 0 },
+                    { candidateRanks[it.domain] ?: Int.MAX_VALUE },
+                    { -it.updatedAt }
+                )
+            )
     }
 
     // Entity <-> Domain mapping

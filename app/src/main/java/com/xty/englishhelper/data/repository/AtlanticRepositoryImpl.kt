@@ -4,6 +4,7 @@ import com.xty.englishhelper.data.remote.atlantic.AtlanticArticleDetail
 import com.xty.englishhelper.data.remote.atlantic.AtlanticArticlePreview
 import com.xty.englishhelper.data.remote.atlantic.AtlanticHtmlParser
 import com.xty.englishhelper.data.remote.atlantic.AtlanticService
+import com.xty.englishhelper.domain.article.OnlineArticleSourceUrl
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSourceType
@@ -34,7 +35,8 @@ class AtlanticRepositoryImpl @Inject constructor(
     }
 
     override suspend fun createTemporaryArticle(detail: AtlanticArticleDetail): Long {
-        val existing = articleRepository.getArticleBySourceUrl(detail.sourceUrl)
+        val normalizedSourceUrl = OnlineArticleSourceUrl.normalize(detail.sourceUrl).ifBlank { detail.sourceUrl }
+        val existing = articleRepository.getArticleBySourceUrl(normalizedSourceUrl)
         if (existing != null) {
             val needsUpdate = existing.content.isBlank() || existing.title != detail.title
             if (needsUpdate) {
@@ -48,7 +50,7 @@ class AtlanticRepositoryImpl @Inject constructor(
                     author = detail.author,
                     source = detail.source,
                     coverImageUrl = detail.coverImageUrl,
-                    domain = detail.sourceUrl,
+                    domain = normalizedSourceUrl,
                     wordCount = existing.wordCount
                 )
                 val articleId = articleRepository.upsertArticle(updated)
@@ -73,7 +75,7 @@ class AtlanticRepositoryImpl @Inject constructor(
             author = detail.author,
             source = detail.source,
             coverImageUrl = detail.coverImageUrl,
-            domain = detail.sourceUrl,
+            domain = normalizedSourceUrl,
             isSaved = false
         )
 

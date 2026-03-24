@@ -4,6 +4,7 @@ import com.xty.englishhelper.data.remote.guardian.GuardianArticleDetail
 import com.xty.englishhelper.data.remote.guardian.GuardianArticlePreview
 import com.xty.englishhelper.data.remote.guardian.GuardianHtmlParser
 import com.xty.englishhelper.data.remote.guardian.GuardianService
+import com.xty.englishhelper.domain.article.OnlineArticleSourceUrl
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSourceType
@@ -35,8 +36,9 @@ class GuardianRepositoryImpl @Inject constructor(
     }
 
     override suspend fun createTemporaryArticle(detail: GuardianArticleDetail): Long {
+        val normalizedSourceUrl = OnlineArticleSourceUrl.normalize(detail.sourceUrl).ifBlank { detail.sourceUrl }
         // Check if article already exists by source URL
-        val existing = articleRepository.getArticleBySourceUrl(detail.sourceUrl)
+        val existing = articleRepository.getArticleBySourceUrl(normalizedSourceUrl)
         if (existing != null) {
             val needsUpdate = existing.content.isBlank() || existing.title != detail.title
             if (needsUpdate) {
@@ -50,7 +52,7 @@ class GuardianRepositoryImpl @Inject constructor(
                     author = detail.author,
                     source = detail.source,
                     coverImageUrl = detail.coverImageUrl,
-                    domain = detail.sourceUrl,
+                    domain = normalizedSourceUrl,
                     wordCount = existing.wordCount
                 )
                 val articleId = articleRepository.upsertArticle(updated)
@@ -76,7 +78,7 @@ class GuardianRepositoryImpl @Inject constructor(
             author = detail.author,
             source = detail.source,
             coverImageUrl = detail.coverImageUrl,
-            domain = detail.sourceUrl, // Store source URL in domain field for dedup
+            domain = normalizedSourceUrl,
             isSaved = false
         )
 

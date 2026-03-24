@@ -217,6 +217,41 @@ class GuardianBrowseViewModelTest {
         assertEquals("existing reason", viewModel.uiState.value.allArticles.single().suitabilityReason)
     }
 
+    @Test
+    fun `placeholder article created by auto evaluation stores normalized source url`() = runTest(mainDispatcherRule.dispatcher.scheduler) {
+        val rawUrl = "https://www.csmonitor.com/World/2026/0324/Test-story/?utm_source=test"
+        val normalizedUrl = "https://www.csmonitor.com/World/2026/0324/Test-story"
+
+        coEvery { guardianRepository.getSectionArticles("international") } returns listOf(
+            preview(title = "CSMonitor Style Article", url = rawUrl)
+        )
+        coEvery { guardianRepository.getArticleDetail(rawUrl) } returns detail(
+            title = "CSMonitor Style Article",
+            url = rawUrl,
+            wordCount = 900
+        )
+        coEvery {
+            articleAiRepository.evaluateArticleSuitability(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
+            )
+        } returns ArticleSuitabilityResult(score = 88, reason = "Good fit")
+        coEvery { articleRepository.updateSuitabilityBySourceUrl(rawUrl, any(), any(), any(), any()) } returns 0
+        coEvery { articleRepository.upsertArticle(any()) } returns 21L
+
+        val viewModel = createViewModel()
+
+        viewModel.loadSection("international")
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            articleRepository.upsertArticle(match {
+                it.domain == normalizedUrl &&
+                    it.suitabilityScore == 88 &&
+                    it.suitabilityReason == "Good fit"
+            })
+        }
+    }
+
     private fun createViewModel(): GuardianBrowseViewModel {
         return GuardianBrowseViewModel(
             guardianRepository = guardianRepository,
