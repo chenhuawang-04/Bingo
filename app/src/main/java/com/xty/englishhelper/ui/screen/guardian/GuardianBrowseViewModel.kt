@@ -16,6 +16,8 @@ import com.xty.englishhelper.ui.screen.article.ArticleLengthFilter
 import com.xty.englishhelper.ui.screen.article.ArticleScoreFilter
 import com.xty.englishhelper.ui.screen.article.ArticleSortOption
 import com.xty.englishhelper.ui.screen.article.applyArticlePresentation
+import com.xty.englishhelper.ui.screen.article.hasArticleFilterConfig
+import com.xty.englishhelper.ui.screen.article.resolveFilterEnabledAfterConfigChange
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -138,6 +140,7 @@ data class GuardianBrowseUiState(
     val error: String? = null,
     val isEvaluating: Boolean = false,
     val evaluatingCount: Int = 0,
+    val filterEnabled: Boolean = false,
     val lengthFilter: ArticleLengthFilter = ArticleLengthFilter.ALL,
     val scoreFilter: ArticleScoreFilter = ArticleScoreFilter.ALL,
     val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT
@@ -324,7 +327,17 @@ class GuardianBrowseViewModel @Inject constructor(
     }
 
     fun setLengthFilter(filter: ArticleLengthFilter) {
-        _uiState.update { it.copy(lengthFilter = filter).applyPresentation() }
+        _uiState.update {
+            it.copy(
+                filterEnabled = resolveFilterEnabledAfterConfigChange(
+                    previousEnabled = it.filterEnabled,
+                    lengthFilter = filter,
+                    scoreFilter = it.scoreFilter,
+                    sortOption = it.sortOption
+                ),
+                lengthFilter = filter
+            ).applyPresentation()
+        }
         maybeEvaluateVisibleArticles(
             source = _uiState.value.selectedSource,
             sectionKey = _uiState.value.selectedSection
@@ -332,7 +345,17 @@ class GuardianBrowseViewModel @Inject constructor(
     }
 
     fun setScoreFilter(filter: ArticleScoreFilter) {
-        _uiState.update { it.copy(scoreFilter = filter).applyPresentation() }
+        _uiState.update {
+            it.copy(
+                filterEnabled = resolveFilterEnabledAfterConfigChange(
+                    previousEnabled = it.filterEnabled,
+                    lengthFilter = it.lengthFilter,
+                    scoreFilter = filter,
+                    sortOption = it.sortOption
+                ),
+                scoreFilter = filter
+            ).applyPresentation()
+        }
         maybeEvaluateVisibleArticles(
             source = _uiState.value.selectedSource,
             sectionKey = _uiState.value.selectedSection
@@ -340,7 +363,45 @@ class GuardianBrowseViewModel @Inject constructor(
     }
 
     fun setSortOption(option: ArticleSortOption) {
-        _uiState.update { it.copy(sortOption = option).applyPresentation() }
+        _uiState.update {
+            it.copy(
+                filterEnabled = resolveFilterEnabledAfterConfigChange(
+                    previousEnabled = it.filterEnabled,
+                    lengthFilter = it.lengthFilter,
+                    scoreFilter = it.scoreFilter,
+                    sortOption = option
+                ),
+                sortOption = option
+            ).applyPresentation()
+        }
+        maybeEvaluateVisibleArticles(
+            source = _uiState.value.selectedSource,
+            sectionKey = _uiState.value.selectedSection
+        )
+    }
+
+    fun setFilterEnabled(enabled: Boolean) {
+        _uiState.update {
+            it.copy(
+                filterEnabled = enabled &&
+                    hasArticleFilterConfig(it.lengthFilter, it.scoreFilter, it.sortOption)
+            ).applyPresentation()
+        }
+        maybeEvaluateVisibleArticles(
+            source = _uiState.value.selectedSource,
+            sectionKey = _uiState.value.selectedSection
+        )
+    }
+
+    fun resetFilters() {
+        _uiState.update {
+            it.copy(
+                filterEnabled = false,
+                lengthFilter = ArticleLengthFilter.ALL,
+                scoreFilter = ArticleScoreFilter.ALL,
+                sortOption = ArticleSortOption.DEFAULT
+            ).applyPresentation()
+        }
         maybeEvaluateVisibleArticles(
             source = _uiState.value.selectedSource,
             sectionKey = _uiState.value.selectedSection
@@ -649,6 +710,7 @@ class GuardianBrowseViewModel @Inject constructor(
     private fun GuardianBrowseUiState.applyPresentation(): GuardianBrowseUiState {
         val presented = applyArticlePresentation(
             items = allArticles,
+            filtersEnabled = filterEnabled,
             lengthFilter = lengthFilter,
             scoreFilter = scoreFilter,
             sortOption = sortOption,

@@ -27,9 +27,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
+private val paragraphInputIdGenerator = AtomicLong(1L)
+
+private fun nextParagraphInputId(): Long = paragraphInputIdGenerator.getAndIncrement()
+
 data class ParagraphInput(
+    val localId: Long = nextParagraphInputId(),
     val text: String = "",
     val imageUri: Uri? = null,
     val type: ParagraphType = ParagraphType.TEXT

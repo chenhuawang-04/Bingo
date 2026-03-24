@@ -12,6 +12,7 @@ import com.xty.englishhelper.domain.usecase.article.GetArticleListUseCase
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,12 +33,14 @@ data class ArticleListUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val evaluatingIds: Set<Long> = emptySet(),
+    val filterEnabled: Boolean = false,
     val lengthFilter: ArticleLengthFilter = ArticleLengthFilter.ALL,
     val scoreFilter: ArticleScoreFilter = ArticleScoreFilter.ALL,
     val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT
 )
 
 @HiltViewModel
+@OptIn(ExperimentalCoroutinesApi::class)
 class ArticleListViewModel @Inject constructor(
     private val getArticleList: GetArticleListUseCase,
     private val deleteArticleUseCase: DeleteArticleUseCase,
@@ -110,15 +113,65 @@ class ArticleListViewModel @Inject constructor(
     }
 
     fun setLengthFilter(filter: ArticleLengthFilter) {
-        _uiState.update { it.copy(lengthFilter = filter).applyPresentation() }
+        _uiState.update {
+            it.copy(
+                filterEnabled = resolveFilterEnabledAfterConfigChange(
+                    previousEnabled = it.filterEnabled,
+                    lengthFilter = filter,
+                    scoreFilter = it.scoreFilter,
+                    sortOption = it.sortOption
+                ),
+                lengthFilter = filter
+            ).applyPresentation()
+        }
     }
 
     fun setScoreFilter(filter: ArticleScoreFilter) {
-        _uiState.update { it.copy(scoreFilter = filter).applyPresentation() }
+        _uiState.update {
+            it.copy(
+                filterEnabled = resolveFilterEnabledAfterConfigChange(
+                    previousEnabled = it.filterEnabled,
+                    lengthFilter = it.lengthFilter,
+                    scoreFilter = filter,
+                    sortOption = it.sortOption
+                ),
+                scoreFilter = filter
+            ).applyPresentation()
+        }
     }
 
     fun setSortOption(option: ArticleSortOption) {
-        _uiState.update { it.copy(sortOption = option).applyPresentation() }
+        _uiState.update {
+            it.copy(
+                filterEnabled = resolveFilterEnabledAfterConfigChange(
+                    previousEnabled = it.filterEnabled,
+                    lengthFilter = it.lengthFilter,
+                    scoreFilter = it.scoreFilter,
+                    sortOption = option
+                ),
+                sortOption = option
+            ).applyPresentation()
+        }
+    }
+
+    fun setFilterEnabled(enabled: Boolean) {
+        _uiState.update {
+            it.copy(
+                filterEnabled = enabled &&
+                    hasArticleFilterConfig(it.lengthFilter, it.scoreFilter, it.sortOption)
+            ).applyPresentation()
+        }
+    }
+
+    fun resetFilters() {
+        _uiState.update {
+            it.copy(
+                filterEnabled = false,
+                lengthFilter = ArticleLengthFilter.ALL,
+                scoreFilter = ArticleScoreFilter.ALL,
+                sortOption = ArticleSortOption.DEFAULT
+            ).applyPresentation()
+        }
     }
 
     fun selectCategory(categoryId: Long?) {
@@ -231,6 +284,7 @@ class ArticleListViewModel @Inject constructor(
     private fun ArticleListUiState.applyPresentation(): ArticleListUiState {
         val presented = applyArticlePresentation(
             items = allArticles,
+            filtersEnabled = filterEnabled,
             lengthFilter = lengthFilter,
             scoreFilter = scoreFilter,
             sortOption = sortOption,

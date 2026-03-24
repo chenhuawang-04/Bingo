@@ -6,6 +6,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +30,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Quiz
@@ -36,9 +39,12 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -80,6 +86,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleParagraph
+import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSentence
 import com.xty.englishhelper.domain.model.ArticleStatistics
 import com.xty.englishhelper.domain.model.ArticleWordLink
@@ -93,7 +100,7 @@ import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ArticleReaderScreen(
     onBack: () -> Unit,
@@ -109,6 +116,7 @@ fun ArticleReaderScreen(
     val notebookPulseTint = remember { Animatable(0f) }
     var followTts by rememberSaveable { mutableStateOf(true) }
     var showGenerateDialog by rememberSaveable { mutableStateOf(false) }
+    var showToolsMenu by rememberSaveable { mutableStateOf(false) }
     var draftPaperTitle by rememberSaveable { mutableStateOf("") }
     var selectedGenerateId by rememberSaveable { mutableStateOf("read") }
 
@@ -201,6 +209,12 @@ fun ArticleReaderScreen(
         }
     }
 
+    val ttsSessionId = article?.let { "article:${it.id}" }
+    val isArticleSpeaking = uiState.ttsState.isSpeaking && uiState.ttsState.sessionId == ttsSessionId
+    val canSpeak = article != null &&
+        (uiState.paragraphs?.isNotEmpty() == true) &&
+        uiState.ttsState.isReady
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -211,48 +225,49 @@ fun ArticleReaderScreen(
                     }
                 },
                 actions = {
-                    val ttsSessionId = article?.let { "article:${it.id}" }
-                    val isArticleSpeaking = uiState.ttsState.isSpeaking && uiState.ttsState.sessionId == ttsSessionId
-                    val canSpeak = article != null && (uiState.paragraphs?.isNotEmpty() == true) && uiState.ttsState.isReady
-
-                    IconButton(
-                        onClick = { viewModel.toggleSpeakArticle() },
-                        enabled = canSpeak
-                    ) {
-                        Icon(
-                            if (isArticleSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isArticleSpeaking) "暂停朗读" else "朗读"
-                        )
+                    Box {
+                        IconButton(onClick = { showToolsMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "阅读工具菜单")
+                        }
+                        DropdownMenu(
+                            expanded = showToolsMenu,
+                            onDismissRequest = { showToolsMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(if (isArticleSpeaking) "暂停朗读" else "开始朗读") },
+                                onClick = {
+                                    showToolsMenu = false
+                                    viewModel.toggleSpeakArticle()
+                                },
+                                enabled = canSpeak
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (uiState.translationEnabled) "关闭翻译" else "显示翻译") },
+                                onClick = {
+                                    showToolsMenu = false
+                                    viewModel.toggleTranslation()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (uiState.isGeneratingQuestions) "出题中…" else "基于文章出题") },
+                                onClick = {
+                                    showToolsMenu = false
+                                    showGenerateDialog = true
+                                },
+                                enabled = article != null && !uiState.isGeneratingQuestions
+                            )
+                            if (article?.isSaved == false) {
+                                DropdownMenuItem(
+                                    text = { Text(if (uiState.isSavingToLocal) "保存中…" else "保存到本地") },
+                                    onClick = {
+                                        showToolsMenu = false
+                                        viewModel.saveToLocal()
+                                    },
+                                    enabled = !uiState.isSavingToLocal
+                                )
+                            }
+                        }
                     }
-
-                    // Translation toggle
-                    IconButton(onClick = { viewModel.toggleTranslation() }) {
-                        Icon(
-                            Icons.Default.Translate,
-                            contentDescription = "翻译",
-                            tint = if (uiState.translationEnabled)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Generate questions
-                    IconButton(
-                        onClick = { showGenerateDialog = true },
-                        enabled = article != null && !uiState.isGeneratingQuestions
-                    ) {
-                        Icon(
-                            Icons.Default.Quiz,
-                            contentDescription = "出题",
-                            tint = if (uiState.isGeneratingQuestions)
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            else
-                                MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    // Notebook button with badge
                     val notebookBaseTint = if (uiState.collectedWords.isNotEmpty()) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
@@ -292,24 +307,6 @@ fun ArticleReaderScreen(
                                     scaleY = notebookPulseScale.value
                                 }
                             )
-                        }
-                    }
-
-                    // Save button for online/unsaved articles
-                    if (article?.isSaved == false) {
-                        TextButton(
-                            onClick = { viewModel.saveToLocal() },
-                            enabled = !uiState.isSavingToLocal
-                        ) {
-                            if (uiState.isSavingToLocal) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier
-                                        .padding(end = 4.dp)
-                                        .size(16.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            }
-                            Text("保存")
                         }
                     }
                 }
@@ -373,6 +370,14 @@ fun ArticleReaderScreen(
                 onCollectWord = { word, context ->
                     viewModel.collectWord(word, context)
                 },
+                canSpeak = canSpeak,
+                isArticleSpeaking = isArticleSpeaking,
+                isSavingToLocal = uiState.isSavingToLocal,
+                isGeneratingQuestions = uiState.isGeneratingQuestions,
+                onToggleSpeak = viewModel::toggleSpeakArticle,
+                onToggleTranslation = viewModel::toggleTranslation,
+                onGenerateQuestions = { showGenerateDialog = true },
+                onSaveToLocal = viewModel::saveToLocal,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
@@ -458,6 +463,7 @@ fun ArticleReaderScreen(
 
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ArticleReaderContent(
     article: Article,
@@ -479,6 +485,14 @@ private fun ArticleReaderContent(
     onToggleAnalysisExpanded: (Long) -> Unit,
     onWordClick: (Long, Long) -> Unit,
     onCollectWord: (word: String, contextSentence: String) -> Unit,
+    canSpeak: Boolean,
+    isArticleSpeaking: Boolean,
+    isSavingToLocal: Boolean,
+    isGeneratingQuestions: Boolean,
+    onToggleSpeak: () -> Unit,
+    onToggleTranslation: () -> Unit,
+    onGenerateQuestions: () -> Unit,
+    onSaveToLocal: () -> Unit,
     modifier: Modifier = Modifier,
     listState: LazyListState
 ) {
@@ -490,11 +504,13 @@ private fun ArticleReaderContent(
             if (article.author.isNotBlank()) add(article.author)
             if (article.source.isNotBlank()) add(article.source)
             if (displayWordCount != null) add("$displayWordCount 词")
+            parseStatusText(article.parseStatus)?.let(::add)
         }
     }
     val hasSummary = article.summary.isNotBlank()
+    val hasQuickActions = true
     val headerCount = (if (coverUri != null) 1 else 0) + 1 + 1 +
-        (if (hasSummary) 1 else 0) + 1
+        (if (hasSummary) 1 else 0) + (if (hasQuickActions) 1 else 0) + 1
 
     val ttsSessionId = "article:${article.id}"
     val ttsActive = ttsState.sessionId == ttsSessionId
@@ -560,11 +576,14 @@ private fun ArticleReaderContent(
         // Meta row
         item(key = "meta") {
             if (metaParts.isNotEmpty()) {
-                Text(
-                    metaParts.joinToString(" · "),
-                    style = ArticleTypography.ReaderMeta,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    metaParts.forEach { part ->
+                        ReaderMetaPill(part)
+                    }
+                }
             }
         }
 
@@ -594,6 +613,21 @@ private fun ArticleReaderContent(
             }
         }
 
+        item(key = "quick_actions") {
+            ReaderQuickActionsPanel(
+                canSpeak = canSpeak,
+                isArticleSpeaking = isArticleSpeaking,
+                translationEnabled = translationEnabled,
+                isSavingToLocal = isSavingToLocal,
+                isGeneratingQuestions = isGeneratingQuestions,
+                showSaveAction = article.isSaved == false,
+                onToggleSpeak = onToggleSpeak,
+                onToggleTranslation = onToggleTranslation,
+                onGenerateQuestions = onGenerateQuestions,
+                onSaveToLocal = onSaveToLocal
+            )
+        }
+
         if (prewarmActive) {
             item(key = "tts_prewarm") {
                 Row(
@@ -603,7 +637,7 @@ private fun ArticleReaderContent(
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "Caching audio $prewarmDone/${ttsState.prewarmTotal}",
+                        "正在缓存朗读音频 $prewarmDone/${ttsState.prewarmTotal}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -645,6 +679,106 @@ private fun ArticleReaderContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReaderQuickActionsPanel(
+    canSpeak: Boolean,
+    isArticleSpeaking: Boolean,
+    translationEnabled: Boolean,
+    isSavingToLocal: Boolean,
+    isGeneratingQuestions: Boolean,
+    showSaveAction: Boolean,
+    onToggleSpeak: () -> Unit,
+    onToggleTranslation: () -> Unit,
+    onGenerateQuestions: () -> Unit,
+    onSaveToLocal: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                "阅读工具",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                AssistChip(
+                    onClick = onToggleSpeak,
+                    enabled = canSpeak,
+                    label = {
+                        Text(if (isArticleSpeaking) "暂停朗读" else "开始朗读")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            if (isArticleSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = null
+                        )
+                    }
+                )
+                AssistChip(
+                    onClick = onToggleTranslation,
+                    label = {
+                        Text(if (translationEnabled) "关闭翻译" else "显示翻译")
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.Translate, contentDescription = null)
+                    }
+                )
+                AssistChip(
+                    onClick = onGenerateQuestions,
+                    enabled = !isGeneratingQuestions,
+                    label = {
+                        Text(if (isGeneratingQuestions) "出题中…" else "基于文章出题")
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.Quiz, contentDescription = null)
+                    }
+                )
+                if (showSaveAction) {
+                    AssistChip(
+                        onClick = onSaveToLocal,
+                        enabled = !isSavingToLocal,
+                        label = {
+                            Text(if (isSavingToLocal) "保存中…" else "保存到本地")
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReaderMetaPill(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(999.dp)
+    ) {
+        Text(
+            text = text,
+            style = ArticleTypography.ReaderMeta,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        )
+    }
+}
+
 // ParagraphBlock, TtsPlaybackBar, TranslationBlock, HighlightedParagraphText,
 // extractWordAtOffset, extractContextSentence are now in
 // com.xty.englishhelper.ui.components.reading.ReadingComponents
+
+private fun parseStatusText(status: ArticleParseStatus): String? {
+    return when (status) {
+        ArticleParseStatus.PROCESSING -> "解析中…"
+        ArticleParseStatus.FAILED -> "解析失败"
+        else -> null
+    }
+}

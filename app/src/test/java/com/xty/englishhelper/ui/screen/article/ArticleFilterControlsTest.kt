@@ -1,76 +1,122 @@
 package com.xty.englishhelper.ui.screen.article
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ArticleFilterControlsTest {
 
-    private data class TestArticle(
+    private data class FakeArticle(
         val title: String,
         val wordCount: Int?,
         val score: Int?
     )
 
     @Test
-    fun `length filter excludes unknown word count when non all`() {
+    fun `disabled filters keep original list regardless of configured rules`() {
         val items = listOf(
-            TestArticle(title = "Unknown", wordCount = null, score = 88),
-            TestArticle(title = "Short", wordCount = 720, score = 75),
-            TestArticle(title = "Medium", wordCount = 1200, score = 82)
+            FakeArticle(title = "B", wordCount = 1800, score = 92),
+            FakeArticle(title = "A", wordCount = 500, score = 58)
         )
 
-        val result = applyArticlePresentation(
+        val presented = applyArticlePresentation(
             items = items,
-            lengthFilter = ArticleLengthFilter.SHORT,
-            scoreFilter = ArticleScoreFilter.ALL,
-            sortOption = ArticleSortOption.DEFAULT,
-            wordCountOf = { it.wordCount },
-            scoreOf = { it.score },
-            titleOf = { it.title }
-        )
-
-        assertEquals(listOf("Short"), result.map { it.title })
-    }
-
-    @Test
-    fun `score filter excludes unscored items`() {
-        val items = listOf(
-            TestArticle(title = "Unscored", wordCount = 900, score = null),
-            TestArticle(title = "Low", wordCount = 900, score = 58),
-            TestArticle(title = "High", wordCount = 900, score = 91)
-        )
-
-        val result = applyArticlePresentation(
-            items = items,
-            lengthFilter = ArticleLengthFilter.ALL,
+            filtersEnabled = false,
+            lengthFilter = ArticleLengthFilter.LONG,
             scoreFilter = ArticleScoreFilter.TOP,
-            sortOption = ArticleSortOption.DEFAULT,
+            sortOption = ArticleSortOption.SCORE_ASC,
             wordCountOf = { it.wordCount },
             scoreOf = { it.score },
             titleOf = { it.title }
         )
 
-        assertEquals(listOf("High"), result.map { it.title })
+        assertEquals(items, presented)
     }
 
     @Test
-    fun `score descending keeps unscored items at the end`() {
+    fun `enabled filters apply both filtering and sorting`() {
         val items = listOf(
-            TestArticle(title = "Gamma", wordCount = 800, score = null),
-            TestArticle(title = "Alpha", wordCount = 800, score = 86),
-            TestArticle(title = "Beta", wordCount = 800, score = 92)
+            FakeArticle(title = "Gamma", wordCount = 2100, score = 88),
+            FakeArticle(title = "Alpha", wordCount = 1600, score = 85),
+            FakeArticle(title = "Beta", wordCount = 700, score = 95)
         )
 
-        val result = applyArticlePresentation(
+        val presented = applyArticlePresentation(
             items = items,
-            lengthFilter = ArticleLengthFilter.ALL,
-            scoreFilter = ArticleScoreFilter.ALL,
+            filtersEnabled = true,
+            lengthFilter = ArticleLengthFilter.LONG,
+            scoreFilter = ArticleScoreFilter.HIGH,
             sortOption = ArticleSortOption.SCORE_DESC,
             wordCountOf = { it.wordCount },
             scoreOf = { it.score },
             titleOf = { it.title }
         )
 
-        assertEquals(listOf("Beta", "Alpha", "Gamma"), result.map { it.title })
+        assertEquals(listOf("Gamma", "Alpha"), presented.map { it.title })
+    }
+
+    @Test
+    fun `filter config and active state are computed separately`() {
+        assertFalse(
+            hasArticleFilterConfig(
+                lengthFilter = ArticleLengthFilter.ALL,
+                scoreFilter = ArticleScoreFilter.ALL,
+                sortOption = ArticleSortOption.DEFAULT
+            )
+        )
+        assertTrue(
+            hasArticleFilterConfig(
+                lengthFilter = ArticleLengthFilter.MEDIUM,
+                scoreFilter = ArticleScoreFilter.ALL,
+                sortOption = ArticleSortOption.DEFAULT
+            )
+        )
+        assertFalse(
+            isArticleFilterActive(
+                filtersEnabled = false,
+                lengthFilter = ArticleLengthFilter.MEDIUM,
+                scoreFilter = ArticleScoreFilter.ALL,
+                sortOption = ArticleSortOption.DEFAULT
+            )
+        )
+        assertTrue(
+            isArticleFilterActive(
+                filtersEnabled = true,
+                lengthFilter = ArticleLengthFilter.MEDIUM,
+                scoreFilter = ArticleScoreFilter.ALL,
+                sortOption = ArticleSortOption.DEFAULT
+            )
+        )
+    }
+
+    @Test
+    fun `config updates preserve paused state and only keep active state when already enabled`() {
+        assertFalse(
+            resolveFilterEnabledAfterConfigChange(
+                previousEnabled = false,
+                lengthFilter = ArticleLengthFilter.LONG,
+                scoreFilter = ArticleScoreFilter.ALL,
+                sortOption = ArticleSortOption.DEFAULT
+            )
+        )
+
+        assertTrue(
+            resolveFilterEnabledAfterConfigChange(
+                previousEnabled = true,
+                lengthFilter = ArticleLengthFilter.LONG,
+                scoreFilter = ArticleScoreFilter.ALL,
+                sortOption = ArticleSortOption.DEFAULT
+            )
+        )
+
+        assertFalse(
+            resolveFilterEnabledAfterConfigChange(
+                previousEnabled = true,
+                lengthFilter = ArticleLengthFilter.ALL,
+                scoreFilter = ArticleScoreFilter.ALL,
+                sortOption = ArticleSortOption.DEFAULT
+            )
+        )
     }
 }

@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.article
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -44,10 +45,19 @@ fun ParagraphAnalysisCard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggleExpanded),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("分析结果", style = MaterialTheme.typography.labelMedium)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("分析结果", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        if (expanded) "点击收起详细整理结果" else "点击展开逐句翻译、语法和重点词汇",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 IconButton(onClick = onToggleExpanded) {
                     Icon(
                         imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,

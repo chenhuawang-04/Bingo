@@ -114,6 +114,7 @@ class GuardianBrowseViewModelTest {
         val viewModel = createViewModel()
 
         viewModel.setLengthFilter(com.xty.englishhelper.ui.screen.article.ArticleLengthFilter.SHORT)
+        viewModel.setFilterEnabled(true)
         viewModel.loadSection("international")
         advanceUntilIdle()
 
@@ -162,6 +163,7 @@ class GuardianBrowseViewModelTest {
         assertTrue(viewModel.uiState.value.allArticles.any { it.isEvaluating })
 
         viewModel.setLengthFilter(com.xty.englishhelper.ui.screen.article.ArticleLengthFilter.SHORT)
+        viewModel.setFilterEnabled(true)
         runCurrent()
 
         resultsByUrl.getValue(longUrl).complete(ArticleSuitabilityResult(score = 52, reason = "should be ignored"))

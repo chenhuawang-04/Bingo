@@ -10,16 +10,17 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -34,6 +35,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +44,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -57,7 +60,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -66,6 +72,7 @@ import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.ArticleParseStatus
+import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,6 +105,17 @@ fun ArticleListScreen(
                     IconButton(onClick = onGuardianBrowse) {
                         Icon(Icons.Default.Language, contentDescription = "在线阅读")
                     }
+                    ArticleFilterActionButton(
+                        filterEnabled = uiState.filterEnabled,
+                        lengthFilter = uiState.lengthFilter,
+                        scoreFilter = uiState.scoreFilter,
+                        sortOption = uiState.sortOption,
+                        onFilterEnabledChange = viewModel::setFilterEnabled,
+                        onLengthFilterChange = viewModel::setLengthFilter,
+                        onScoreFilterChange = viewModel::setScoreFilter,
+                        onSortOptionChange = viewModel::setSortOption,
+                        onReset = viewModel::resetFilters
+                    )
                     IconButton(onClick = onSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "设置")
                     }
@@ -111,75 +129,69 @@ fun ArticleListScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        if (articles.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                if (uiState.categories.isNotEmpty()) {
-                    CategoryFilterBar(
+        EhMaxWidthContainer(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            maxWidth = 920.dp
+        ) {
+            if (articles.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    ArticleCategoryPanel(
                         categories = uiState.categories,
                         selectedCategoryId = uiState.selectedCategoryId,
-                        onSelect = viewModel::selectCategory,
-                        onCreate = { showCreateCategoryDialog = true }
-                    )
-                }
-                ArticleFilterPanel(
-                    lengthFilter = uiState.lengthFilter,
-                    scoreFilter = uiState.scoreFilter,
-                    sortOption = uiState.sortOption,
-                    onLengthFilterChange = viewModel::setLengthFilter,
-                    onScoreFilterChange = viewModel::setScoreFilter,
-                    onSortOptionChange = viewModel::setSortOption
-                )
-                Text(
-                    if (hasSourceArticles) "没有符合筛选条件的文章" else "暂无文章，点击 + 创建新文章",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                item {
-                    CategoryFilterBar(
-                        categories = uiState.categories,
-                        selectedCategoryId = uiState.selectedCategoryId,
-                        onSelect = viewModel::selectCategory,
-                        onCreate = { showCreateCategoryDialog = true }
-                    )
-                }
-                item {
-                    ArticleFilterPanel(
+                        filterEnabled = uiState.filterEnabled,
                         lengthFilter = uiState.lengthFilter,
                         scoreFilter = uiState.scoreFilter,
                         sortOption = uiState.sortOption,
-                        onLengthFilterChange = viewModel::setLengthFilter,
-                        onScoreFilterChange = viewModel::setScoreFilter,
-                        onSortOptionChange = viewModel::setSortOption
+                        onSelect = viewModel::selectCategory,
+                        onCreate = { showCreateCategoryDialog = true }
+                    )
+                    EmptyArticleStateCard(
+                        hasSourceArticles = hasSourceArticles,
+                        onCreateArticle = onCreateArticle
                     )
                 }
-                items(articles, key = { it.id }) { article ->
-                    ArticleCard(
-                        article = article,
-                        categoryName = uiState.categories.firstOrNull { it.id == article.categoryId }?.name,
-                        categories = uiState.categories,
-                        onRead = { onReadArticle(article.id) },
-                        onDelete = { viewModel.deleteArticle(article.id) },
-                        onReevaluate = { viewModel.reEvaluateArticle(article.id) },
-                        isEvaluating = uiState.evaluatingIds.contains(article.id),
-                        onMoveCategory = { categoryId ->
-                            viewModel.moveArticleToCategory(article.id, categoryId)
-                        }
-                    )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item {
+                        ArticleCategoryPanel(
+                            categories = uiState.categories,
+                            selectedCategoryId = uiState.selectedCategoryId,
+                            filterEnabled = uiState.filterEnabled,
+                            lengthFilter = uiState.lengthFilter,
+                            scoreFilter = uiState.scoreFilter,
+                            sortOption = uiState.sortOption,
+                            onSelect = viewModel::selectCategory,
+                            onCreate = { showCreateCategoryDialog = true }
+                        )
+                    }
+                    items(articles, key = { it.id }) { article ->
+                        ArticleCard(
+                            article = article,
+                            categoryName = uiState.categories.firstOrNull { it.id == article.categoryId }?.name,
+                            categories = uiState.categories,
+                            onRead = { onReadArticle(article.id) },
+                            onDelete = { viewModel.deleteArticle(article.id) },
+                            onReevaluate = { viewModel.reEvaluateArticle(article.id) },
+                            isEvaluating = uiState.evaluatingIds.contains(article.id),
+                            onMoveCategory = { categoryId ->
+                                viewModel.moveArticleToCategory(article.id, categoryId)
+                            }
+                        )
+                    }
+                    item {
+                        Spacer(Modifier.height(88.dp))
+                    }
                 }
             }
         }
@@ -222,6 +234,142 @@ fun ArticleListScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ArticleCategoryPanel(
+    categories: List<ArticleCategory>,
+    selectedCategoryId: Long?,
+    filterEnabled: Boolean,
+    lengthFilter: ArticleLengthFilter,
+    scoreFilter: ArticleScoreFilter,
+    sortOption: ArticleSortOption,
+    onSelect: (Long?) -> Unit,
+    onCreate: () -> Unit
+) {
+    val selectedName = categories.firstOrNull { it.id == selectedCategoryId }?.name ?: "全部文章"
+    val hasFilterConfig = hasArticleFilterConfig(lengthFilter, scoreFilter, sortOption)
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("分类与范围", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = when {
+                            filterEnabled -> "当前仅展示符合筛选条件的文章"
+                            hasFilterConfig -> "筛选条件已保存，尚未启用"
+                            else -> "先选分类，再决定是否启用筛选"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = onCreate) {
+                    Text("新建分类")
+                }
+            }
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ArticleInfoPill(
+                    text = selectedName,
+                    emphasized = true
+                )
+                if (filterEnabled) {
+                    ArticleInfoPill(
+                        text = "筛选已启用",
+                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                } else if (hasFilterConfig) {
+                    ArticleInfoPill(text = "筛选已暂停")
+                }
+            }
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    FilterChip(
+                        selected = selectedCategoryId == null,
+                        onClick = { onSelect(null) },
+                        label = { Text("全部") }
+                    )
+                }
+                items(categories, key = { it.id }) { category ->
+                    FilterChip(
+                        selected = selectedCategoryId == category.id,
+                        onClick = { onSelect(category.id) },
+                        label = { Text(category.name) }
+                    )
+                }
+            }
+
+            if (selectedCategoryId == ArticleCategoryDefaults.SOURCE_ID) {
+                Text(
+                    "题目来源文章会自动归入该分类，便于和普通阅读文章分开查看。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyArticleStateCard(
+    hasSourceArticles: Boolean,
+    onCreateArticle: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = if (hasSourceArticles) "没有符合当前条件的文章" else "还没有文章",
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = if (hasSourceArticles) {
+                    "可以切换分类，或暂停筛选后再看完整列表。"
+                } else {
+                    "可以手动创建文章，也可以进入在线阅读后保存文章到本地。"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            if (!hasSourceArticles) {
+                TextButton(onClick = onCreateArticle) {
+                    Text("立即创建")
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ArticleCard(
@@ -239,215 +387,117 @@ private fun ArticleCard(
     var showMoveDialog by remember { mutableStateOf(false) }
     var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
 
-    val hasCover = article.coverImageUri != null || article.coverImageUrl != null
     val scoreText = when {
         isEvaluating -> "评估中…"
-        article.suitabilityScore != null -> "评分：${article.suitabilityScore}"
+        article.suitabilityScore != null -> "评分 ${article.suitabilityScore}"
         else -> "未评估"
     }
+    val scoreColor = when {
+        isEvaluating -> MaterialTheme.colorScheme.primary
+        article.suitabilityScore != null -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val parseStatusText = parseStatusText(article.parseStatus)
+    val coverModel = article.coverImageUri ?: article.coverImageUrl
+    val placeholderSeed = article.title.firstOrNull()?.uppercase() ?: "A"
 
     Card(
         onClick = onRead,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(18.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        if (hasCover) {
-            // Card with cover image
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            ArticleCardThumbnail(
+                coverModel = coverModel,
+                placeholderSeed = placeholderSeed
+            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                AsyncImage(
-                    model = article.coverImageUri ?: article.coverImageUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
-                )
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Text(
-                        article.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (article.author.isNotBlank()) {
-                        Text(
-                            article.author,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (article.wordCount > 0) {
-                            Text(
-                                "${article.wordCount} 词",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (article.source.isNotBlank()) {
-                            Text(
-                                article.source,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (!categoryName.isNullOrBlank()) {
-                            Text(
-                                categoryName,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.tertiary
-                            )
-                        }
-                        Text(
-                            scoreText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (article.suitabilityScore != null) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        )
-                        val statusText = parseStatusText(article.parseStatus)
-                        if (statusText != null) {
-                            Text(
-                                statusText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.tertiary
-                            )
-                        }
-                    }
-                    if (!article.suitabilityReason.isNullOrBlank()) {
-                        Text(
-                            article.suitabilityReason,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                ArticleCardMenu(
-                    expanded = showMenu,
-                    onExpand = { showMenu = true },
-                    onDismiss = { showMenu = false },
-                    onReevaluate = onReevaluate,
-                    onMoveCategory = {
-                        selectedCategoryId = article.categoryId
-                        showMoveDialog = true
-                    },
-                    onDelete = { showDeleteConfirm = true }
-                )
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 120.dp)
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.secondaryContainer
-                            )
-                        )
-                    )
-                    .padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(end = 40.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        article.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Column(
+                        modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        if (article.author.isNotBlank()) {
-                            Text(
-                                article.author,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                            )
-                        }
-                        if (article.wordCount > 0) {
-                            Text(
-                                "${article.wordCount} 词",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                            )
-                        }
-                        if (!categoryName.isNullOrBlank()) {
-                            Text(
-                                categoryName,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                            )
-                        }
                         Text(
-                            scoreText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (article.suitabilityScore != null) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                            }
-                        )
-                        parseStatusText(article.parseStatus)?.let { statusText ->
-                            Text(
-                                statusText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                            )
-                        }
-                    }
-
-                    if (!article.suitabilityReason.isNullOrBlank()) {
-                        Text(
-                            article.suitabilityReason,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                            text = article.title,
+                            style = MaterialTheme.typography.titleMedium,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
+                        val subtitle = buildList {
+                            if (article.author.isNotBlank()) add(article.author)
+                            if (article.source.isNotBlank()) add(article.source)
+                        }.joinToString(" · ")
+                        if (subtitle.isNotBlank()) {
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    ArticleCardMenu(
+                        expanded = showMenu,
+                        onExpand = { showMenu = true },
+                        onDismiss = { showMenu = false },
+                        onReevaluate = onReevaluate,
+                        onMoveCategory = {
+                            selectedCategoryId = article.categoryId
+                            showMoveDialog = true
+                        },
+                        onDelete = { showDeleteConfirm = true }
+                    )
+                }
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (article.wordCount > 0) {
+                        ArticleInfoPill(text = "${article.wordCount} 词")
+                    }
+                    if (!categoryName.isNullOrBlank()) {
+                        ArticleInfoPill(
+                            text = categoryName,
+                            containerColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+                            contentColor = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                    ArticleInfoPill(
+                        text = scoreText,
+                        containerColor = scoreColor.copy(alpha = 0.12f),
+                        contentColor = scoreColor
+                    )
+                    if (parseStatusText != null) {
+                        ArticleInfoPill(text = parseStatusText)
                     }
                 }
 
-                ArticleCardMenu(
-                    expanded = showMenu,
-                    onExpand = { showMenu = true },
-                    onDismiss = { showMenu = false },
-                    onReevaluate = onReevaluate,
-                    onMoveCategory = {
-                        selectedCategoryId = article.categoryId
-                        showMoveDialog = true
-                    },
-                    onDelete = { showDeleteConfirm = true },
-                    modifier = Modifier.align(Alignment.TopEnd),
-                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                if (!article.suitabilityReason.isNullOrBlank()) {
+                    Text(
+                        text = article.suitabilityReason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -501,10 +551,7 @@ private fun ArticleCard(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val targetId = selectedCategoryId
-                        if (targetId != null) {
-                            onMoveCategory(targetId)
-                        }
+                        selectedCategoryId?.let(onMoveCategory)
                         showMoveDialog = false
                     }
                 ) { Text("确定") }
@@ -512,6 +559,81 @@ private fun ArticleCard(
             dismissButton = {
                 TextButton(onClick = { showMoveDialog = false }) { Text("取消") }
             }
+        )
+    }
+}
+
+@Composable
+private fun ArticleCardThumbnail(
+    coverModel: Any?,
+    placeholderSeed: String
+) {
+    if (coverModel != null) {
+        AsyncImage(
+            model = coverModel,
+            contentDescription = null,
+            modifier = Modifier
+                .width(92.dp)
+                .aspectRatio(0.78f)
+                .clip(RoundedCornerShape(14.dp)),
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .width(92.dp)
+                .aspectRatio(0.78f)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.08f),
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = CircleShape
+            ) {
+                Text(
+                    text = placeholderSeed,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArticleInfoPill(
+    text: String,
+    emphasized: Boolean = false,
+    containerColor: Color = if (emphasized) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    },
+    contentColor: Color = if (emphasized) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+) {
+    Surface(
+        color = containerColor,
+        contentColor = contentColor,
+        shape = RoundedCornerShape(999.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         )
     }
 }
@@ -525,7 +647,7 @@ private fun ArticleCardMenu(
     onMoveCategory: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
-    iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+    iconTint: Color = MaterialTheme.colorScheme.onSurface
 ) {
     Box(modifier = modifier) {
         IconButton(onClick = onExpand) {
@@ -556,45 +678,6 @@ private fun ArticleCardMenu(
                     onDismiss()
                     onDelete()
                 }
-            )
-        }
-    }
-}
-
-@Composable
-private fun CategoryFilterBar(
-    categories: List<ArticleCategory>,
-    selectedCategoryId: Long?,
-    onSelect: (Long?) -> Unit,
-    onCreate: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                FilterChip(
-                    selected = selectedCategoryId == null,
-                    onClick = { onSelect(null) },
-                    label = { Text("全部") }
-                )
-            }
-            items(categories, key = { it.id }) { category ->
-                FilterChip(
-                    selected = selectedCategoryId == category.id,
-                    onClick = { onSelect(category.id) },
-                    label = { Text(category.name) }
-                )
-            }
-            item {
-                TextButton(onClick = onCreate) {
-                    Text("新建分类")
-                }
-            }
-        }
-        if (selectedCategoryId == ArticleCategoryDefaults.SOURCE_ID) {
-            Text(
-                "题目来源文章将默认进入此分类",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
