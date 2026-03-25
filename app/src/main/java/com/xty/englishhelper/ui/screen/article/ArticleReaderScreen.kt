@@ -30,6 +30,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -39,17 +41,15 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
@@ -59,6 +59,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -72,6 +73,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -80,6 +83,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -116,7 +120,7 @@ fun ArticleReaderScreen(
     val notebookPulseTint = remember { Animatable(0f) }
     var followTts by rememberSaveable { mutableStateOf(true) }
     var showGenerateDialog by rememberSaveable { mutableStateOf(false) }
-    var showToolsMenu by rememberSaveable { mutableStateOf(false) }
+    var showToolsSheet by rememberSaveable { mutableStateOf(false) }
     var draftPaperTitle by rememberSaveable { mutableStateOf("") }
     var selectedGenerateId by rememberSaveable { mutableStateOf("read") }
 
@@ -214,60 +218,37 @@ fun ArticleReaderScreen(
     val canSpeak = article != null &&
         (uiState.paragraphs?.isNotEmpty() == true) &&
         uiState.ttsState.isReady
+    val topBarSupportingText = article?.source?.takeIf { it.isNotBlank() }
+        ?: article?.domain?.takeIf { it.isNotBlank() }
+    val topBarTitleText = article?.title?.takeIf { it.isNotBlank() } ?: "文章阅读"
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(article?.title ?: "文章", maxLines = 1) },
+                title = {
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        if (!topBarSupportingText.isNullOrBlank()) {
+                            Text(
+                                text = topBarSupportingText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Text(
+                            text = topBarTitleText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = { showToolsMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "阅读工具菜单")
-                        }
-                        DropdownMenu(
-                            expanded = showToolsMenu,
-                            onDismissRequest = { showToolsMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(if (isArticleSpeaking) "暂停朗读" else "开始朗读") },
-                                onClick = {
-                                    showToolsMenu = false
-                                    viewModel.toggleSpeakArticle()
-                                },
-                                enabled = canSpeak
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (uiState.translationEnabled) "关闭翻译" else "显示翻译") },
-                                onClick = {
-                                    showToolsMenu = false
-                                    viewModel.toggleTranslation()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (uiState.isGeneratingQuestions) "出题中…" else "基于文章出题") },
-                                onClick = {
-                                    showToolsMenu = false
-                                    showGenerateDialog = true
-                                },
-                                enabled = article != null && !uiState.isGeneratingQuestions
-                            )
-                            if (article?.isSaved == false) {
-                                DropdownMenuItem(
-                                    text = { Text(if (uiState.isSavingToLocal) "保存中…" else "保存到本地") },
-                                    onClick = {
-                                        showToolsMenu = false
-                                        viewModel.saveToLocal()
-                                    },
-                                    enabled = !uiState.isSavingToLocal
-                                )
-                            }
-                        }
-                    }
                     val notebookBaseTint = if (uiState.collectedWords.isNotEmpty()) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
@@ -308,6 +289,9 @@ fun ArticleReaderScreen(
                                 }
                             )
                         }
+                    }
+                    IconButton(onClick = { showToolsSheet = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "阅读工具")
                     }
                 }
             )
@@ -370,14 +354,6 @@ fun ArticleReaderScreen(
                 onCollectWord = { word, context ->
                     viewModel.collectWord(word, context)
                 },
-                canSpeak = canSpeak,
-                isArticleSpeaking = isArticleSpeaking,
-                isSavingToLocal = uiState.isSavingToLocal,
-                isGeneratingQuestions = uiState.isGeneratingQuestions,
-                onToggleSpeak = viewModel::toggleSpeakArticle,
-                onToggleTranslation = viewModel::toggleTranslation,
-                onGenerateQuestions = { showGenerateDialog = true },
-                onSaveToLocal = viewModel::saveToLocal,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
@@ -461,6 +437,39 @@ fun ArticleReaderScreen(
         )
     }
 
+    if (showToolsSheet && article != null) {
+        ReaderToolsSheet(
+            showSaveAction = article.isSaved == false,
+            canSpeak = canSpeak,
+            isArticleSpeaking = isArticleSpeaking,
+            translationEnabled = uiState.translationEnabled,
+            isSavingToLocal = uiState.isSavingToLocal,
+            isGeneratingQuestions = uiState.isGeneratingQuestions,
+            collectedCount = uiState.collectedWords.size,
+            onDismiss = { showToolsSheet = false },
+            onOpenNotebook = {
+                showToolsSheet = false
+                viewModel.toggleNotebook()
+            },
+            onToggleSpeak = {
+                showToolsSheet = false
+                viewModel.toggleSpeakArticle()
+            },
+            onToggleTranslation = {
+                showToolsSheet = false
+                viewModel.toggleTranslation()
+            },
+            onGenerateQuestions = {
+                showToolsSheet = false
+                showGenerateDialog = true
+            },
+            onSaveToLocal = {
+                showToolsSheet = false
+                viewModel.saveToLocal()
+            }
+        )
+    }
+
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -485,32 +494,22 @@ private fun ArticleReaderContent(
     onToggleAnalysisExpanded: (Long) -> Unit,
     onWordClick: (Long, Long) -> Unit,
     onCollectWord: (word: String, contextSentence: String) -> Unit,
-    canSpeak: Boolean,
-    isArticleSpeaking: Boolean,
-    isSavingToLocal: Boolean,
-    isGeneratingQuestions: Boolean,
-    onToggleSpeak: () -> Unit,
-    onToggleTranslation: () -> Unit,
-    onGenerateQuestions: () -> Unit,
-    onSaveToLocal: () -> Unit,
     modifier: Modifier = Modifier,
     listState: LazyListState
 ) {
     val coverUri = article.coverImageUri ?: article.coverImageUrl
     val displayWordCount = article.wordCount.takeIf { it > 0 }
         ?: statistics?.wordCount?.takeIf { it > 0 }
-    val metaParts = remember(article.author, article.source, displayWordCount) {
+    val metaParts = remember(article.author, article.source, article.domain, displayWordCount, article.parseStatus) {
         buildList {
             if (article.author.isNotBlank()) add(article.author)
             if (article.source.isNotBlank()) add(article.source)
+            else if (article.domain.isNotBlank()) add(article.domain)
             if (displayWordCount != null) add("$displayWordCount 词")
             parseStatusText(article.parseStatus)?.let(::add)
         }
     }
     val hasSummary = article.summary.isNotBlank()
-    val hasQuickActions = true
-    val headerCount = (if (coverUri != null) 1 else 0) + 1 + 1 +
-        (if (hasSummary) 1 else 0) + (if (hasQuickActions) 1 else 0) + 1
 
     val ttsSessionId = "article:${article.id}"
     val ttsActive = ttsState.sessionId == ttsSessionId
@@ -526,6 +525,7 @@ private fun ArticleReaderContent(
     val spokenParagraphId = if (ttsActive && ttsState.currentIndex > 0) {
         speakableParagraphs.getOrNull(ttsState.currentIndex - 1)?.id
     } else null
+    val headerCount = 1 + (if (prewarmActive) 1 else 0) + 1
 
     LaunchedEffect(ttsActive, ttsState.currentIndex, paragraphs.size, headerCount, followTts) {
         if (!ttsActive || !followTts) return@LaunchedEffect
@@ -548,99 +548,35 @@ private fun ArticleReaderContent(
         ),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // Cover image
-        if (coverUri != null) {
-            item(key = "cover") {
-                AsyncImage(
-                    model = coverUri,
-                    contentDescription = "封面",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                    contentScale = ContentScale.Crop
-                )
-                Spacer(Modifier.height(16.dp))
-            }
-        }
-
-        // Title
-        item(key = "title") {
-            Text(
-                article.title,
-                style = ArticleTypography.ReaderTitle,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-
-        // Meta row
-        item(key = "meta") {
-            if (metaParts.isNotEmpty()) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    metaParts.forEach { part ->
-                        ReaderMetaPill(part)
-                    }
-                }
-            }
-        }
-
-        // Summary
-        if (hasSummary) {
-            item(key = "summary") {
-                val quoteColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .drawBehind {
-                            drawLine(
-                                color = quoteColor,
-                                start = Offset(0f, 0f),
-                                end = Offset(0f, size.height),
-                                strokeWidth = 3.dp.toPx()
-                            )
-                        }
-                        .padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
-                ) {
-                    Text(
-                        article.summary,
-                        style = ArticleTypography.ReaderQuote,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        item(key = "quick_actions") {
-            ReaderQuickActionsPanel(
-                canSpeak = canSpeak,
-                isArticleSpeaking = isArticleSpeaking,
+        item(key = "hero") {
+            ReaderHeroCard(
+                article = article,
+                coverUri = coverUri,
+                metaParts = metaParts,
+                hasSummary = hasSummary,
                 translationEnabled = translationEnabled,
-                isSavingToLocal = isSavingToLocal,
-                isGeneratingQuestions = isGeneratingQuestions,
-                showSaveAction = article.isSaved == false,
-                onToggleSpeak = onToggleSpeak,
-                onToggleTranslation = onToggleTranslation,
-                onGenerateQuestions = onGenerateQuestions,
-                onSaveToLocal = onSaveToLocal
+                isArticleSpeaking = ttsActive && ttsState.isSpeaking
             )
         }
 
         if (prewarmActive) {
             item(key = "tts_prewarm") {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "正在缓存朗读音频 $prewarmDone/${ttsState.prewarmTotal}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "正在缓存朗读音频 $prewarmDone/${ttsState.prewarmTotal}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -681,86 +617,302 @@ private fun ArticleReaderContent(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ReaderQuickActionsPanel(
-    canSpeak: Boolean,
-    isArticleSpeaking: Boolean,
+private fun ReaderHeroCard(
+    article: Article,
+    coverUri: String?,
+    metaParts: List<String>,
+    hasSummary: Boolean,
     translationEnabled: Boolean,
-    isSavingToLocal: Boolean,
-    isGeneratingQuestions: Boolean,
-    showSaveAction: Boolean,
-    onToggleSpeak: () -> Unit,
-    onToggleTranslation: () -> Unit,
-    onGenerateQuestions: () -> Unit,
-    onSaveToLocal: () -> Unit
+    isArticleSpeaking: Boolean
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-        shape = RoundedCornerShape(16.dp)
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(30.dp)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                "阅读工具",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AssistChip(
-                    onClick = onToggleSpeak,
-                    enabled = canSpeak,
-                    label = {
-                        Text(if (isArticleSpeaking) "暂停朗读" else "开始朗读")
-                    },
-                    leadingIcon = {
-                        Icon(
-                            if (isArticleSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = null
+            if (coverUri != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(248.dp)
+                ) {
+                    AsyncImage(
+                        model = coverUri,
+                        contentDescription = "封面",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color.Black.copy(alpha = 0.08f),
+                                        Color.Black.copy(alpha = 0.66f)
+                                    )
+                                )
+                            )
+                    )
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(horizontal = 20.dp, vertical = 18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ReaderMetaPill(
+                            text = if (article.sourceTypeV2 == com.xty.englishhelper.domain.model.ArticleSourceTypeV2.ONLINE) {
+                                "在线文章"
+                            } else {
+                                "本地文章"
+                            },
+                            emphasized = true
+                        )
+                        Text(
+                            text = article.title,
+                            style = ArticleTypography.ReaderTitle,
+                            color = Color.White
                         )
                     }
-                )
-                AssistChip(
-                    onClick = onToggleTranslation,
-                    label = {
-                        Text(if (translationEnabled) "关闭翻译" else "显示翻译")
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Translate, contentDescription = null)
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
+                                    MaterialTheme.colorScheme.surface,
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.36f)
+                                )
+                            )
+                        )
+                        .padding(horizontal = 20.dp, vertical = 22.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ReaderMetaPill(
+                            text = if (article.sourceTypeV2 == com.xty.englishhelper.domain.model.ArticleSourceTypeV2.ONLINE) {
+                                "在线文章"
+                            } else {
+                                "本地文章"
+                            },
+                            emphasized = true
+                        )
+                        Text(
+                            text = article.title,
+                            style = ArticleTypography.ReaderTitle,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
-                )
-                AssistChip(
-                    onClick = onGenerateQuestions,
-                    enabled = !isGeneratingQuestions,
-                    label = {
-                        Text(if (isGeneratingQuestions) "出题中…" else "基于文章出题")
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Quiz, contentDescription = null)
+                }
+            }
+
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    metaParts.forEach { part ->
+                        ReaderMetaPill(part)
                     }
-                )
-                if (showSaveAction) {
-                    AssistChip(
-                        onClick = onSaveToLocal,
-                        enabled = !isSavingToLocal,
-                        label = {
-                            Text(if (isSavingToLocal) "保存中…" else "保存到本地")
-                        }
+                    ReaderMetaPill(
+                        text = if (translationEnabled) "双语辅助已开" else "原文模式",
+                        emphasized = translationEnabled
                     )
+                    if (isArticleSpeaking) {
+                        ReaderMetaPill(text = "朗读中", emphasized = true)
+                    }
+                }
+
+                if (hasSummary) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "导语",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = article.summary,
+                                style = ArticleTypography.ReaderQuote,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReaderMetaPill(text: String) {
+private fun ReaderToolsSheet(
+    showSaveAction: Boolean,
+    canSpeak: Boolean,
+    isArticleSpeaking: Boolean,
+    translationEnabled: Boolean,
+    isSavingToLocal: Boolean,
+    isGeneratingQuestions: Boolean,
+    collectedCount: Int,
+    onDismiss: () -> Unit,
+    onOpenNotebook: () -> Unit,
+    onToggleSpeak: () -> Unit,
+    onToggleTranslation: () -> Unit,
+    onGenerateQuestions: () -> Unit,
+    onSaveToLocal: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "阅读工具",
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                text = "把朗读、翻译、收纳本和出题都放到这里，正文区域保持安静。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            ReaderToolActionRow(
+                title = if (isArticleSpeaking) "暂停朗读" else "开始朗读",
+                description = if (canSpeak) "按段连续播放全文，可配合底部播放器跟读。" else "当前文章暂时无法朗读。",
+                icon = if (isArticleSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
+                onClick = onToggleSpeak,
+                enabled = canSpeak,
+                prominent = isArticleSpeaking
+            )
+            ReaderToolActionRow(
+                title = if (translationEnabled) "关闭段落翻译" else "显示段落翻译",
+                description = if (translationEnabled) "已显示中文辅助，适合精读核对。" else "保留原文界面，只在需要时显示翻译。",
+                icon = Icons.Default.Translate,
+                onClick = onToggleTranslation,
+                prominent = translationEnabled
+            )
+            ReaderToolActionRow(
+                title = "打开收纳本",
+                description = if (collectedCount > 0) "已收集 $collectedCount 个词，随时整理进辞书。" else "查看刚刚点击收集的单词，统一整理进辞书。",
+                icon = Icons.AutoMirrored.Filled.MenuBook,
+                onClick = onOpenNotebook
+            )
+            ReaderToolActionRow(
+                title = if (isGeneratingQuestions) "后台出题中" else "基于文章出题",
+                description = "在后台生成考研题型，不阻塞当前阅读。",
+                icon = Icons.Default.AutoAwesome,
+                onClick = onGenerateQuestions,
+                enabled = !isGeneratingQuestions
+            )
+            if (showSaveAction) {
+                ReaderToolActionRow(
+                    title = if (isSavingToLocal) "保存中…" else "保存到本地",
+                    description = "把在线文章转成本地材料，后续可继续解析、出题和同步。",
+                    icon = Icons.Default.Download,
+                    onClick = onSaveToLocal,
+                    enabled = !isSavingToLocal
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun ReaderToolActionRow(
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    prominent: Boolean = false
+) {
+    val containerColor = when {
+        !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
+        prominent -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+    }
+    val titleColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        prominent -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(22.dp),
+        color = containerColor
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 15.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = titleColor
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = titleColor
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = titleColor.copy(alpha = 0.78f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReaderMetaPill(
+    text: String,
+    emphasized: Boolean = false
+) {
+    Surface(
+        color = if (emphasized) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        contentColor = if (emphasized) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
         shape = RoundedCornerShape(999.dp)
     ) {
         Text(

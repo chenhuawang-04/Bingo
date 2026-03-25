@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,8 +19,8 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 enum class ArticleLengthFilter(
@@ -164,6 +167,10 @@ fun ArticleFilterActionButton(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val configuration = LocalConfiguration.current
+    val popupMaxHeight = remember(configuration.screenHeightDp) {
+        (configuration.screenHeightDp.dp - 112.dp).coerceIn(240.dp, 520.dp)
+    }
     val hasConfig = remember(lengthFilter, scoreFilter, sortOption) {
         hasArticleFilterConfig(lengthFilter, scoreFilter, sortOption)
     }
@@ -242,31 +249,32 @@ fun ArticleFilterActionButton(
                 }
             }
         }
-
         DropdownMenu(
             expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.widthIn(min = 292.dp, max = 348.dp)
+            onDismissRequest = { expanded = false }
         ) {
-            ArticleFilterMenuContent(
-                filterEnabled = filterEnabled,
-                lengthFilter = lengthFilter,
-                scoreFilter = scoreFilter,
-                sortOption = sortOption,
-                onFilterEnabledChange = onFilterEnabledChange,
-                onLengthFilterChange = onLengthFilterChange,
-                onScoreFilterChange = onScoreFilterChange,
-                onSortOptionChange = onSortOptionChange,
-                helperText = helperText,
-                onReset = onReset,
-                onDone = { expanded = false }
-            )
+            Box(modifier = Modifier.widthIn(min = 260.dp, max = 348.dp)) {
+                ArticleFilterPopupContent(
+                    filterEnabled = filterEnabled,
+                    lengthFilter = lengthFilter,
+                    scoreFilter = scoreFilter,
+                    sortOption = sortOption,
+                    onFilterEnabledChange = onFilterEnabledChange,
+                    onLengthFilterChange = onLengthFilterChange,
+                    onScoreFilterChange = onScoreFilterChange,
+                    onSortOptionChange = onSortOptionChange,
+                    helperText = helperText,
+                    onReset = onReset,
+                    onDone = { expanded = false },
+                    maxHeight = popupMaxHeight
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun ArticleFilterMenuContent(
+private fun ArticleFilterPopupContent(
     filterEnabled: Boolean,
     lengthFilter: ArticleLengthFilter,
     scoreFilter: ArticleScoreFilter,
@@ -278,6 +286,7 @@ private fun ArticleFilterMenuContent(
     helperText: String?,
     onReset: () -> Unit,
     onDone: () -> Unit,
+    maxHeight: Dp,
     helperColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
 ) {
     val hasConfig = hasArticleFilterConfig(lengthFilter, scoreFilter, sortOption)
@@ -289,7 +298,7 @@ private fun ArticleFilterMenuContent(
 
     Column(
         modifier = Modifier
-            .widthIn(min = 292.dp, max = 348.dp)
+            .heightIn(max = maxHeight)
             .padding(12.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
