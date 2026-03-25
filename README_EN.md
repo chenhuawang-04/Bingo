@@ -5,238 +5,178 @@
 <h1 align="center">Bingo</h1>
 
 <p align="center">
-  <a href="README.md">中文</a>
+  AI-powered English exam prep platform for Android<br/>
+  Vocabulary · Reading · Practice · Grading · Review
 </p>
 
-An AI-powered English vocabulary learning app for Android that helps you systematically master English words through a complete workflow: look up → decompose → read → practice → review.
+<p align="center">
+  <a href="README.md">中文</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="RELEASE_NOTES.md">Release Notes</a>
+</p>
+
+---
+
+## Overview
+
+Bingo is a native Android app designed for **postgraduate English exam (考研英语) preparation**. With deep AI integration, it unifies vocabulary management, English reading, exam practice, and spaced repetition into three tabs:
+
+| Dictionary | Articles | Question Bank |
+|:---:|:---:|:---:|
+| Add words · AI organize · Root decomposition · Word pools · FSRS review | Local articles · Online reading · Paragraph translation/analysis · Word collection · TTS | Paper scanning · 10 question types · AI answers/grading · Source verification · Wrong tracking |
+
+---
 
 ## Features
 
-### Vocabulary Management
-- **Dictionary system** — Create multiple dictionaries to organize vocabulary from different sources
-- **Word entry** — Manually add words with spelling, phonetics, POS & definitions, root explanation, inflections, and more
-- **AI auto-organize** — One-click AI call to auto-fill phonetics, definitions, decomposition, synonyms, similar words, cognates, and inflections
-- **Background organize** — "Save & Background Organize" button saves and enqueues AI processing in the background, so you can keep adding words without waiting; failed tasks can be retried with one click
-- **Batch photo import** — Select images → enter extraction conditions (e.g., "blue text") → AI extracts word list → preview and select → batch import with automatic background organization
-- **Deduplication** — Automatic duplicate detection based on normalized spelling (lowercase + trimmed), with upsert semantics
-- **Inflections** — Track plural, past tense, past participle, present participle, third person, comparative, and superlative forms
-- **Word TTS** — Text-to-speech playback for words with controls
+### Dictionary & Vocabulary
 
-### Morpheme Decomposition
-- **Structured decomposition** — Break words into prefixes, roots, suffixes, stems, linking elements and other morphemes, each labeled with role and meaning
-- **Visual display** — Detail page shows decomposition as structured cards with root segments bolded and highlighted
+- **Multi-dictionary** — Create multiple dictionaries organized by source, difficulty, or purpose
+- **AI auto-organize** — One-click fill: phonetics, definitions, root decomposition, synonyms, similar words, cognates, inflections
+- **Background organize** — AI runs in background after save; failed tasks support retry
+- **Batch photo import** — Select images → enter extraction criteria → AI extracts → preview & select → batch import
+- **Root decomposition** — Structured breakdown into prefix/root/suffix/stem/linking morphemes with card visualization
+- **Association network** — Auto-computed related words via morpheme Jaccard similarity; clickable navigation
+- **Deduplication** — Normalized spelling detection with upsert semantics
 
-### Word Association Network
-- **Associated words** — Automatically computes inter-word associations using Jaccard similarity on decomposition segments with a root bonus, recalculated on every save
-- **Linked word navigation** — Synonyms, similar words, and cognates that exist in the dictionary are clickable, navigating directly to their detail page
-- **Association display** — Bottom of detail page shows associated words sharing morphemes with the current word, all clickable
+### Word Pools
 
-### Question Bank (New)
-- **Exam paper scanning** — Select images or PDF, AI automatically recognizes question types, passage paragraphs, questions and options; supports preview editing before saving
-- **PDF support** — Uses Android PdfRenderer to render PDF pages into images, feeding into the unified scanning pipeline
-- **Question bank list** — Groups question sets by exam paper, displaying question type tags, question count/word count/difficulty stats, source verification and answer status
-- **Read & practice** — Single page combining article reading (word link highlighting, TTS, translation, paragraph analysis, reading notebook) with practice (answer selection, submission, scoring)
-- **Wrong answer tracking** — Auto-increments `wrong_count` on each wrong answer; historical mistakes highlighted with orange (1x) / red (2x+) border with error count badge
-- **AI answer generation** — Automatically generates answers and explanations for each question in the background using the fast model
-- **Answer scanning** — Upload answer sheet photos, AI extracts answers and updates them
-- **Source verification** — Automatically verifies source URLs in the background (requires search model); on success, creates a linked article navigable from the reader; on failure, supports editing the URL and retrying or re-searching
-- **Scoped AI settings** — New search model (SEARCH) as independent AI configuration; question bank scanning reuses OCR model
+Three strategies for grouping related words to aid associative memory:
 
-### Article Reading & Vocabulary Linking (Refactored)
-- **Paragraph-first data model** — Articles are stored and rendered by paragraphs
-- **Article management** — Manually enter articles or upload photos for AI OCR extraction of title, content, domain, and difficulty level
-- **Automatic parsing** — After saving, articles enter a background pipeline: sentence splitting, tokenization, and word frequency statistics
-- **Vocabulary highlighting** — Dictionary words are automatically highlighted in the reader (including inflection matching); tap any highlighted word to jump to its detail page
-- **Bidirectional linking** — Matched vocabulary automatically creates Article ↔ Word links; saving or editing a word automatically backfills new links to matching articles
-- **Example extraction** — Automatically extracts example sentences containing target words from articles, labeled with source (e.g., "Article Title" examples), displayed on word detail pages
-- **Paragraph translation** — Paragraph-level AI translation with a global toggle and cache
-- **Paragraph analysis** — Paragraph-level AI analysis (translation, grammar points, keywords, sentence breakdowns) with cache
-- **Reading notebook** — Collect new words while reading, quick analysis, and one-tap add to dictionary/unit
-- **Article TTS** — Text-to-speech playback for articles with play/pause, previous/next paragraph, stop, and auto-follow scroll
+| Strategy | Description |
+|----------|-------------|
+| Balanced (local) | Edit distance + synonym/similar/cognate cross-refs + definition overlap via Union-Find |
+| Balanced + AI | Local strategy + AI batch supplementation for unassigned words |
+| Quality-first | Per-word AI matching, high token cost but most precise |
 
-### Guardian Online Reading
-- **Section browsing** — Browse Guardian sections with grouped categories
-- **Online parsing** — Parse online articles into temporary entries for reading
-- **Save to local** — One-tap save to local and enter full parsing & stats flow
-- **Online word scanning** — On-the-fly vocabulary scanning and highlighting
+### Spaced Repetition
 
-### Word Pool System
-- **Word Pools** — Automatically groups related words based on multiple linguistic signals for associative learning
-- **Three generation strategies**:
-  - **Balanced (Local)**: Union-Find clustering using edit distance, synonym/similar/cognate cross-references, Chinese meaning overlap, and association similarity
-  - **Balanced + AI**: Extends balanced strategy by sending orphaned words to AI in batches for supplementary grouping
-  - **Quality-First (High Cost)**: Per-word AI comparison against random candidates; requires user confirmation with estimated token cost
-- **Algorithm version tracking** — Shows a warning when existing pools were built with an outdated algorithm, prompting rebuild
+- **FSRS-5 algorithm** — Adaptive scheduling replacing fixed Ebbinghaus curves
+- **4-level rating** — Again / Hard / Good / Easy with real-time interval preview
+- **Brainstorm mode** — Pool-based associative review while maintaining FSRS scheduling
+- **Study dashboard** — Retention rate, due words, daily progress, completion estimates
 
-### Spaced Repetition Study
-- **Unit grouping** — Organize words into units with multi-select assignment
-- **FSRS-5 algorithm** — Adaptive spaced repetition scheduling using FSRS-5, replacing fixed Ebbinghaus intervals
-- **Learning dashboard** — Home screen shows retention rate, due word count, today's progress, and estimated clear time
-- **Study mode** — Select units to enter review flow with four-level ratings (Again/Hard/Good/Easy) and real-time next-interval preview
-- **Brainstorm mode** — Uses word pools to cluster related words for consecutive review, enhancing associative memory while preserving FSRS scheduling
+### Article Reading
+
+- **Paragraph-level data model** — Articles stored and rendered by paragraph
+- **AI OCR input** — Upload photos, AI extracts title, body, domain, and difficulty
+- **Vocabulary highlighting** — Dictionary words (including inflected forms) auto-highlighted; click to view details
+- **Bidirectional linking** — Article ↔ Word automatic links; example sentences auto-extracted with source attribution
+- **Paragraph translation** — Per-paragraph AI translation with toggle and caching
+- **Paragraph analysis** — AI analysis: Chinese translation, grammar points, key vocabulary, sentence breakdown
+- **Word collection notebook** — Collect unfamiliar words during reading, AI quick analysis, one-click add to dictionary/unit
+- **Article TTS** — Paragraph-by-paragraph reading with pause/follow-scroll/navigation
+- **Suitability scoring** — AI evaluates article fitness for question generation (0-100), filterable and sortable
+- **Category management** — Organize articles by category with multi-dimensional filtering
+- **Question generation** — Generate exam questions from article content in the reader
+
+### Online Reading
+
+Three English media sources with unified browsing:
+
+- **The Guardian** — Browse by section
+- **The Atlantic** — Long-form articles
+- **CS Monitor** — Current affairs
+
+Online articles are parsed into temporary articles for immediate reading, word scanning, and one-click save to local.
+
+### Question Bank
+
+#### Paper Scanning
+
+Select images or PDF → AI auto-recognizes question types/passages/questions/options → preview & edit → save. Supports auto-detection and manual correction of question types.
+
+#### 10 Question Types
+
+| Type | Key Features |
+|------|-------------|
+| **Reading Comprehension** | Integrated reading + practice, word links/TTS/translation/analysis/notebook |
+| **Cloze** | Interactive inline blanks, portrait vertical / landscape horizontal split |
+| **Translation** (Eng I/II) | Free-text input → AI scoring (0-2 pts) + reference translation + key points |
+| **Writing** (Small/Large) | OCR handwriting → AI five-band scoring + sub-scores + deductions + suggestions |
+| **Paragraph Order** | Select paragraph letters (A-H) for blank positions |
+| **Sentence Insertion** | Select candidate sentences (A-G) for passage blanks, editable options |
+| **Comment-Opinion Match** | Match comments to summary statements (A-G) |
+| **Subheading Match** | Match paragraphs to best subheadings (A-G) |
+| **Information Match** | Match descriptions to options (A-G) |
+
+#### Deep AI Integration
+
+- **Answer generation** — Background auto-generation of answers and explanations after saving
+- **Answer scanning** — Upload answer sheet photos, AI extracts and updates
+- **Source verification** — Web search for original article sources; success auto-creates linked readable articles
+- **Translation scoring** — Per-sentence comparison against reference, scoring + gain/loss feedback
+- **Writing grading** — Following official scoring guidelines: five-band placement → fine-tuning, including word count deductions and template penalties
+- **Sample search** — Search model finds real sample essays with links
+- **Wrong tracking** — Auto-increments wrong count; orange (1×) / red (2×+) border highlighting
+
+### Import/Export & Sync
+
+- **JSON import/export** — Full dictionary (words + units + study state), Schema v3
+- **GitHub cloud sync** — Question bank data via `questionbank.json` with incremental merge
 
 ### Adaptive UI
-- **Responsive layouts** — Built on Material 3 Adaptive framework, automatically switches between phone and tablet layouts based on WindowSizeClass
-- **Bottom navigation** — Dictionary tab + Article tab + Question Bank tab with NavigationBar (compact) or NavigationRail (expanded)
-- **Adaptive home** — Phone: dashboard card + dictionary list; Tablet: sidebar dashboard + dictionary grid
-- **List-detail split** — Tablet dictionary screen shows list-detail split pane; tapping a word displays details in the right panel
-- **Dual-column form** — Tablet add/edit word screen uses side-by-side two-column layout
-- **Study split pane** — Tablet study screen with main pane on the left + progress/stats panel on the right
-- **Reader split pane** — Tablet article reader with main pane + statistics sidebar
-- **Large screen max-width** — Settings and import/export screens are centered and width-constrained on large screens
-- **Design token system** — "Ink & Mint" color tokens (InkBlue + MintTeal) + semantic colors + spacing system + responsive Typography
 
-### Import / Export
-- **JSON format** — Import/export entire dictionaries as JSON files, including words, units, and study states
-- **Schema versioning** — Current version schemaVersion: 3, includes decomposition data
-- **Post-import rebuild** — Automatically batch-computes word associations after importing a dictionary
+- **Responsive layout** — Material 3 Adaptive, phone NavigationBar / tablet NavigationRail
+- **List-detail split** — Tablet dictionary and study screens auto-split
+- **Two-column forms** — Tablet word edit with side-by-side layout
+- **Design tokens** — "Ink & Mint" color system (InkBlue + MintTeal)
 
 ### Settings
-- **API configuration** — Supports Anthropic and OpenAI-compatible providers with custom API Key, model selection, and custom Base URL
-- **Scoped AI settings** — Configure independent AI models for word pool generation (POOL), OCR recognition & question bank scanning (OCR), article analysis (ARTICLE), and source search (SEARCH)
-- **Encrypted API Key storage** — Stored using AndroidX Security Crypto
-- **Connection test** — One-click API connectivity test for both main and scoped settings
+
+- **Multi-provider** — Anthropic Claude / OpenAI-compatible, custom providers with name/URL/key
+- **Scoped AI** — MAIN / FAST / POOL / OCR / ARTICLE / SEARCH — 6 independent model configurations
+- **Encrypted API keys** — AndroidX Security Crypto
+- **Connection testing** — Per-scope one-click test
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| UI | Jetpack Compose + Material 3 + Material 3 Adaptive |
-| Architecture | Clean Architecture (Domain / Data / UI), Screen three-layer split (Container/Content/Components) |
-| DI | Hilt |
-| Local Storage | Room (SQLite), DataStore Preferences |
-| Network | Retrofit + OkHttp + Moshi |
-| Images | Coil |
-| HTML Parsing | Jsoup |
-| Navigation | Navigation Compose (type-safe routes + triple-tab navigation) |
-| AI | Anthropic Claude API / OpenAI-compatible API (auto-organize, OCR extraction, sentence analysis, pool generation, batch import, paragraph analysis/translation, question bank scanning/answer generation/source verification) |
-| Security | AndroidX Security Crypto |
-| Async | Kotlin Coroutines + Flow |
-| Spaced Repetition | FSRS-5 adaptive algorithm |
-| NLP | Sentence splitting, tokenization, dictionary matching (pre-compiled Regex + inflection index) |
-| Testing | JUnit 4 + MockK + Room Testing + CI (GitHub Actions) |
+| **Language** | Kotlin 2.1.0 |
+| **UI** | Jetpack Compose + Material 3 + Adaptive |
+| **Architecture** | Clean Architecture · MVVM · Use Cases |
+| **DI** | Hilt 2.53.1 |
+| **Database** | Room 2.6.1 (v19, 19 migrations) |
+| **Preferences** | DataStore Preferences |
+| **Network** | Retrofit 2.11.0 + OkHttp 4.12.0 + Moshi |
+| **Images** | Coil |
+| **HTML** | Jsoup |
+| **Navigation** | Navigation Compose (type-safe routes) |
+| **AI** | Anthropic Claude API / OpenAI-compatible API |
+| **Security** | AndroidX Security Crypto |
+| **Async** | Coroutines + Flow |
+| **Spaced Repetition** | FSRS-5 |
+| **NLP** | Tokenization / sentence splitting / dictionary matching (precompiled regex + inflection index) |
 
-## Project Structure
-
-```
-com.xty.englishhelper/
-├── data/                        # Data layer
-│   ├── json/                    # JSON import/export
-│   ├── local/                   # Room database
-│   │   ├── converter/           # Type converters
-│   │   ├── dao/                 # Data access objects
-│   │   ├── entity/              # Database entities
-│   │   └── relation/            # Relation queries
-│   ├── mapper/                  # Entity ↔ Domain mapping
-│   ├── preferences/             # DataStore + encrypted storage
-│   ├── remote/                  # AI clients + Guardian parsing
-│   │   ├── dto/                 # Request/response DTOs
-│   │   ├── guardian/            # Guardian fetch & parse
-│   │   └── interceptor/         # OkHttp interceptors
-│   └── repository/              # Repository implementations
-├── di/                          # Hilt DI modules
-├── domain/                      # Domain layer
-│   ├── article/                 # Article parsing tools (sentence splitting, tokenization, dictionary matching)
-│   ├── model/                   # Domain models (incl. AiSettingsScope enum)
-│   ├── organize/                # Background organize manager
-│   ├── pool/                    # Word pool engine
-│   ├── repository/              # Repository interfaces
-│   ├── study/                   # FSRS spaced repetition engine
-│   ├── tts/                     # Text-to-speech
-│   └── usecase/                 # Use cases
-│       ├── ai/                  # AI auto-organize
-│       ├── article/             # Article parsing, paragraph analysis/translation, vocabulary backfill
-│       ├── dictionary/          # Dictionary CRUD
-│       ├── importexport/        # Import/export
-│       ├── questionbank/        # Question bank use cases (cache ID isolation, scan result conversion)
-│       ├── study/               # Study scheduling
-│       ├── unit/                # Unit management
-│       └── word/                # Word save (with automatic article linking)
-├── ui/                          # UI layer
-│   ├── adaptive/                # WindowSizeClass utilities
-│   ├── components/              # Reusable components
-│   │   └── reading/             # Shared reading components (ParagraphBlock, TtsPlaybackBar, etc.)
-│   ├── designsystem/            # Design system
-│   │   ├── components/          # Common component library (EhCard, EhStatTile, EhStudyRatingBar, etc.)
-│   │   └── tokens/              # Design tokens (color/spacing/Typography)
-│   ├── navigation/              # Nav graph + route definitions (triple-tab)
-│   ├── screen/                  # Screen pages (container/content/component split)
-│   │   ├── addword/             # Add/edit word
-│   │   ├── article/             # Article list/editor/reader/paragraph analysis
-│   │   ├── batchimport/         # Batch photo import
-│   │   ├── dictionary/          # Dictionary detail
-│   │   ├── guardian/            # Guardian browse & reader
-│   │   ├── home/                # Home + dashboard
-│   │   ├── importexport/        # Import/export
-│   │   ├── main/                # Main scaffold + bottom/rail navigation
-│   │   ├── questionbank/        # Question bank (list/scan/reader-practice)
-│   │   ├── settings/            # Settings
-│   │   ├── study/               # Study mode
-│   │   ├── unitdetail/          # Unit detail
-│   │   └── word/                # Word detail (incl. article examples)
-│   └── theme/                   # Material theme
-└── util/                        # Utilities
-```
+---
 
 ## Build
 
-### Requirements
-
-- Android Studio Hedgehog or later
-- JDK 17
-- Android SDK 35 (compileSdk)
-- Minimum Android 8.0 (API 26)
-
-### Compile & Run
+**Requirements:** Android Studio Hedgehog+, JDK 17, Android SDK 35 (compileSdk), Min API 26
 
 ```bash
-# Build Debug APK
-./gradlew assembleDebug
-
-# Run unit tests
-./gradlew testDebugUnitTest
-
-# Run instrumented tests (requires device or emulator)
-./gradlew connectedDebugAndroidTest
+./gradlew assembleDebug          # Build Debug APK
+./gradlew testDebugUnitTest      # Unit tests
 ```
 
-## Usage
+---
 
-1. **Configure API** — Go to Settings, enter your API Key, select a provider and model, and test the connection
-2. **Create a dictionary** — On the Dictionary tab, tap "+" to create a dictionary
-3. **Add words** — Enter the dictionary, tap "+", choose "Manual Add", type a word, and tap "AI Auto-Organize" to auto-fill
-4. **Batch import** — Enter the dictionary, tap "+", choose "Batch Photo Import", select images, enter conditions, AI extract, select and import
-5. **Browse associations** — On the word detail page, view morpheme decomposition, tap synonyms/similar words/cognates to navigate, and browse associated words and word pools
-6. **Create units** — Manage units on the dictionary page and assign words to different units
-7. **Generate word pools** — Select a pool generation strategy from the dictionary page menu to prepare for associative learning
-8. **Start studying** — Select units to enter review mode; switch to Brainstorm mode for pool-based learning; FSRS-5 handles adaptive scheduling
-9. **Add articles** — Switch to the Article tab, tap "+" to enter manually or upload photos for AI extraction
-10. **Read articles** — Tap an article card to open the reader; dictionary words are highlighted automatically; tap any highlighted word to jump to its detail page
-11. **Paragraph analysis/translation** — Toggle translation in the reader or tap “Organize” on a paragraph
-12. **Reading notebook** — Tap unknown words to add to notebook, then add to dictionary/unit
-13. **Guardian reading** — Browse Guardian online articles and save to local
-14. **Text-to-speech** — Play article TTS with follow-scroll and paragraph controls
-15. **Question bank scanning** — Switch to the Question Bank tab, tap "Scan", select images or PDF, AI auto-recognizes questions
-16. **Practice** — Tap a question group to enter the reader/practice page; full reading features above, questions below with scoring and explanations
-17. **Scoped settings** (optional) — Enable Pool/OCR/Article/Search AI in Settings to configure independent models
+## Quick Start
 
-## Database Versions
+1. **Configure AI** — Settings → enter API Key → select provider & model → test connection
+2. **Create dictionary** — Dictionary tab → "+" → enter name
+3. **Add words** — Enter dictionary → "+" → manual add or batch photo import → AI auto-organize
+4. **Generate pools** — Dictionary menu → select strategy → generate
+5. **Study & review** — Select units → start study (toggle brainstorm mode)
+6. **Add articles** — Articles tab → "+" → manual input or photo AI extraction
+7. **Online reading** — Articles tab → online reading → browse Guardian/Atlantic/CSMonitor
+8. **Scan papers** — Question Bank tab → scan → select images/PDF → AI recognition → save
+9. **Practice** — Tap question group → answer → submit → view results/AI scoring/explanations
 
-| Version | Changes |
-|---------|---------|
-| 1 | Initial schema: dictionaries, words, synonyms, similar_words, cognates |
-| 2 | Added units, unit_word_cross_ref, word_study_state |
-| 3 | Added normalized_spelling, word_uid columns to words + unique index |
-| 4 | Added decomposition_json column to words; new word_associations table |
-| 5 | Migrated word_study_state to FSRS-5 fields (stability/difficulty/due/reps/lapses) |
-| 6 | Added inflections_json to words; new article module (articles, article_sentences, article_word_stats, article_word_links, sentence_analysis_cache, word_examples, article_images) |
-| 7 | Added normalized_token index to article_word_stats |
-| 8 | Added model_key column + composite unique index to sentence_analysis_cache |
-| 9 | Added word_pools table (id, dictionary_id, focus_word_id, strategy, algorithm_version) and word_pool_members join table (word_id, pool_id) with cascading foreign keys |
-| 10 | Refactored articles to paragraph-first storage and paragraph analysis cache |
-| 11 | Paragraph analysis/translation cache improvements + Guardian online reading and temporary articles |
-| 12 | Question bank module: exam_papers, question_groups, question_group_paragraphs, question_items, practice_records, question_source_articles (6 new tables) |
+---
 
 ## License
 
-This project is licensed under the [AGPL-3.0 license](LICENSE).
+[AGPL-3.0](LICENSE)
