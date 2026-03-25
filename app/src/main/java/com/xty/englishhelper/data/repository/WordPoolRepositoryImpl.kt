@@ -95,6 +95,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         coroutineContext.ensureActive()
 
         // Single transaction write
+        val now = System.currentTimeMillis()
         db.withTransaction {
             wordPoolDao.deleteByDictionaryAndStrategy(dictionaryId, strategy.dbValue)
             pools.forEach { builtPool ->
@@ -103,7 +104,8 @@ class WordPoolRepositoryImpl @Inject constructor(
                         dictionaryId = dictionaryId,
                         focusWordId = builtPool.focusWordId,
                         strategy = strategy.dbValue,
-                        algorithmVersion = strategy.algorithmVersion
+                        algorithmVersion = strategy.algorithmVersion,
+                        updatedAt = now
                     )
                 )
                 wordPoolDao.insertMembers(

@@ -10,7 +10,10 @@ import com.xty.englishhelper.data.json.ArticleImageJsonModel
 import com.xty.englishhelper.data.json.ArticleJsonModel
 import com.xty.englishhelper.data.json.ArticleParagraphJsonModel
 import com.xty.englishhelper.data.json.ArticlesExportModel
+import com.xty.englishhelper.data.json.DictionaryCloudEntryJsonModel
 import com.xty.englishhelper.data.json.DictionaryJsonModel
+import com.xty.englishhelper.data.json.DictionaryShardChunkJsonModel
+import com.xty.englishhelper.data.json.DictionaryShardIndexJsonModel
 import com.xty.englishhelper.data.json.ExamPaperJson
 import com.xty.englishhelper.data.json.InflectionJsonModel
 import com.xty.englishhelper.data.json.ParagraphJson
@@ -21,6 +24,7 @@ import com.xty.englishhelper.data.json.QuestionItemJson
 import com.xty.englishhelper.data.json.StudyStateJsonModel
 import com.xty.englishhelper.data.json.SyncManifest
 import com.xty.englishhelper.data.json.UnitJsonModel
+import com.xty.englishhelper.data.json.WordJsonModel
 import com.xty.englishhelper.data.json.WordExampleJsonModel
 import com.xty.englishhelper.data.json.WordExamplesExportModel
 import com.xty.englishhelper.data.json.WordPoolJsonModel
@@ -38,14 +42,27 @@ import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.GitHubApiService
 import com.xty.englishhelper.data.remote.dto.GitHubPutRequest
+import com.xty.englishhelper.data.sync.DictionaryShardAssembler
+import com.xty.englishhelper.data.sync.DictionaryWordMergePlanner
+import com.xty.englishhelper.data.sync.DictionaryWordPoolMergePlanner
+import com.xty.englishhelper.data.sync.DictionaryWordUidNormalizer
+import com.xty.englishhelper.data.sync.DictionaryWordUpdatePlanner
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
+import com.xty.englishhelper.domain.model.CognateInfo
+import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.domain.model.Inflection
+import com.xty.englishhelper.domain.model.Meaning
+import com.xty.englishhelper.domain.model.MorphemeRole
+import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.StudyUnit
+import com.xty.englishhelper.domain.model.SynonymInfo
+import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.WordExample
@@ -59,8 +76,8 @@ import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.usecase.importexport.ExportDictionaryUseCase
+import com.xty.englishhelper.domain.usecase.word.EnsureDictionaryWordUidsUseCase
 import kotlinx.coroutines.flow.first
-import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -81,10 +98,18 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val importExporter: DictionaryImportExporter,
     private val exportDictionary: ExportDictionaryUseCase,
     private val transactionRunner: TransactionRunner,
-    private val moshi: Moshi
+    private val moshi: Moshi,
+    private val dictionaryShardAssembler: DictionaryShardAssembler,
+    private val dictionaryWordMergePlanner: DictionaryWordMergePlanner,
+    private val dictionaryWordUpdatePlanner: DictionaryWordUpdatePlanner,
+    private val dictionaryWordPoolMergePlanner: DictionaryWordPoolMergePlanner,
+    private val dictionaryWordUidNormalizer: DictionaryWordUidNormalizer,
+    private val ensureDictionaryWordUids: EnsureDictionaryWordUidsUseCase
 ) : CloudSyncRepository {
 
     private val dictAdapter = moshi.adapter(DictionaryJsonModel::class.java).indent("  ")
+    private val dictionaryShardIndexAdapter = moshi.adapter(DictionaryShardIndexJsonModel::class.java).indent("  ")
+    private val dictionaryShardChunkAdapter = moshi.adapter(DictionaryShardChunkJsonModel::class.java).indent("  ")
     private val articlesAdapter = moshi.adapter(ArticlesExportModel::class.java).indent("  ")
     private val manifestAdapter = moshi.adapter(SyncManifest::class.java).indent("  ")
     private val questionBankAdapter = moshi.adapter(QuestionBankExportModel::class.java).indent("  ")
@@ -109,7 +134,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         return r
     }
 
-    // ── Public API ──
+    // Public API
 
     override suspend fun testConnection(): Boolean {
         val response = gitHubApi.getRepo(authHeader(), owner(), repo())
@@ -121,21 +146,23 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     }
 
     override suspend fun sync(onProgress: (SyncProgress) -> Unit) {
-        val auth = authHeader()
-        val owner = owner()
-        val repo = repo()
+        authHeader()
+        owner()
+        repo()
 
         // 1. Download cloud data
         onProgress(SyncProgress("下载中", "正在下载云端数据...", 0, 4))
         val cloudManifest = downloadJson("manifest.json", manifestAdapter)
-        val cloudDicts = mutableMapOf<String, DictionaryJsonModel>()
-        if (cloudManifest != null) {
-            cloudManifest.dictionaries.forEachIndexed { i, fileName ->
-                onProgress(SyncProgress("下载中", "正在下载 $fileName", i + 1, cloudManifest.dictionaries.size + 1))
-                val dict = downloadJson("dictionaries/$fileName", dictAdapter)
-                if (dict != null) cloudDicts[dict.name] = dict
-            }
-        }
+        val cloudDicts = downloadCloudDictionaries(cloudManifest) { current, total, entry ->
+            onProgress(
+                SyncProgress(
+                    "Downloading",
+                    "Downloading ${entry.name.ifBlank { entry.path }}",
+                    current,
+                    total.coerceAtLeast(1)
+                )
+            )
+        }.toMutableMap()
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
         val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
@@ -155,24 +182,24 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             val cloudJson = cloudDicts.remove(localDict.name)
 
             if (cloudJson == null) {
-                // Only local → upload as-is
+                // Only local -> upload as-is
                 mergedDictJsons.add(localJson)
             } else {
-                // Both exist → merge
+                // Both exist -> merge
                 val merged = mergeDictionaries(localDict, localJson, cloudJson)
                 mergedDictJsons.add(merged)
             }
         }
 
-        // Cloud-only dicts → import to local
+        // Cloud-only dicts -> import to local
         for ((_, cloudDict) in cloudDicts) {
-            onProgress(SyncProgress("合并中", "正在导入 ${cloudDict.name}...", 2, 4))
+            onProgress(SyncProgress("导入中", "正在导入云端辞书 ${cloudDict.name}...", 2, 4))
             importCloudDictionary(cloudDict)
             mergedDictJsons.add(cloudDict)
         }
 
         // Merge articles
-        val mergedArticles = mergeArticles(localArticles, cloudArticles)
+        mergeArticles(localArticles, cloudArticles)
 
         // Merge question bank (after articles, so source links can resolve)
         val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
@@ -189,13 +216,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         // 4. Upload merged snapshot
-        onProgress(SyncProgress("上传中", "正在上传数据...", 3, 4))
-        val fileNames = mutableListOf<String>()
-        for (dictJson in finalDictJsons) {
-            val fileName = dictFileName(dictJson.name)
-            fileNames.add(fileName)
-            uploadJson("dictionaries/$fileName", dictJson, dictAdapter)
-        }
+        onProgress(SyncProgress("Uploading", "Uploading merged snapshot...", 3, 4))
+        val dictionaryUpload = uploadDictionarySnapshot(
+            dictionaries = finalDictJsons,
+            previousManifest = cloudManifest
+        )
 
         // Upload articles
         val allArticles = articleRepository.getAllArticles().first()
@@ -224,10 +249,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         // Upload manifest
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
-            schemaVersion = 5,
+            schemaVersion = 6,
             syncedAt = System.currentTimeMillis(),
             deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
-            dictionaries = fileNames,
+            dictionaries = emptyList(),
+            dictionaryEntries = dictionaryUpload.entries,
             hasArticles = allArticles.isNotEmpty(),
             hasQuestionBank = questionBankExport.papers.isNotEmpty(),
             hasWordExamples = wordExamplesExport.examples.isNotEmpty()
@@ -242,15 +268,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         onProgress(SyncProgress("上传中", "正在导出本地数据...", 0, 3))
 
         val localDicts = dictionaryRepository.getAllDictionaries().first()
-        val fileNames = mutableListOf<String>()
-
-        localDicts.forEachIndexed { i, dict ->
-            onProgress(SyncProgress("上传中", "正在上传 ${dict.name}...", i + 1, localDicts.size + 2))
-            val json = exportLocalDictionary(dict)
-            val fileName = dictFileName(dict.name)
-            fileNames.add(fileName)
-            uploadJson("dictionaries/$fileName", json, dictAdapter)
+        val finalDictJsons = localDicts.mapIndexed { i, dict ->
+            onProgress(SyncProgress("Uploading", "Exporting ${dict.name}...", i + 1, localDicts.size + 2))
+            exportLocalDictionary(dict)
         }
+        val previousManifest = downloadJson("manifest.json", manifestAdapter)
+        val dictionaryUpload = uploadDictionarySnapshot(
+            dictionaries = finalDictJsons,
+            previousManifest = previousManifest
+        )
 
         // Upload articles
         val allArticles = articleRepository.getAllArticles().first()
@@ -279,10 +305,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         // Upload manifest
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
-            schemaVersion = 5,
+            schemaVersion = 6,
             syncedAt = System.currentTimeMillis(),
             deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
-            dictionaries = fileNames,
+            dictionaries = emptyList(),
+            dictionaryEntries = dictionaryUpload.entries,
             hasArticles = allArticles.isNotEmpty(),
             hasQuestionBank = questionBankExport.papers.isNotEmpty(),
             hasWordExamples = wordExamplesExport.examples.isNotEmpty()
@@ -300,12 +327,16 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             ?: throw IllegalStateException("云端没有同步数据")
 
         // Download all dicts
-        val cloudDicts = mutableListOf<DictionaryJsonModel>()
-        cloudManifest.dictionaries.forEachIndexed { i, fileName ->
-            onProgress(SyncProgress("下载中", "正在下载 $fileName", i + 1, cloudManifest.dictionaries.size + 1))
-            val dict = downloadJson("dictionaries/$fileName", dictAdapter)
-            if (dict != null) cloudDicts.add(dict)
-        }
+        val cloudDicts = downloadCloudDictionaries(cloudManifest) { current, total, entry ->
+            onProgress(
+                SyncProgress(
+                    "Downloading",
+                    "Downloading ${entry.name.ifBlank { entry.path }}",
+                    current,
+                    total.coerceAtLeast(1)
+                )
+            )
+        }.values.toList()
 
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
@@ -358,26 +389,144 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         onProgress(SyncProgress("完成", "下载完成", 3, 3))
     }
 
-    // ── Merge Logic ──
+    private data class DictionaryUploadResult(
+        val entries: List<DictionaryCloudEntryJsonModel>
+    )
+
+    private fun resolveDictionaryEntries(manifest: SyncManifest?): List<DictionaryCloudEntryJsonModel> {
+        if (manifest == null) return emptyList()
+        if (manifest.dictionaryEntries.isNotEmpty()) {
+            return manifest.dictionaryEntries
+        }
+        return manifest.dictionaries.map { fileName ->
+            DictionaryCloudEntryJsonModel(
+                name = fileName,
+                format = DictionaryCloudEntryJsonModel.FORMAT_SINGLE,
+                path = "dictionaries/$fileName"
+            )
+        }
+    }
+
+    private suspend fun downloadCloudDictionaries(
+        manifest: SyncManifest?,
+        onEntry: (current: Int, total: Int, entry: DictionaryCloudEntryJsonModel) -> Unit = { _, _, _ -> }
+    ): Map<String, DictionaryJsonModel> {
+        val entries = resolveDictionaryEntries(manifest)
+        if (entries.isEmpty()) return emptyMap()
+
+        val dictionaries = linkedMapOf<String, DictionaryJsonModel>()
+        entries.forEachIndexed { index, entry ->
+            onEntry(index + 1, entries.size, entry)
+            val dictionary = downloadDictionaryEntry(entry)
+            if (dictionaries.put(dictionary.name, dictionary) != null) {
+                throw IllegalStateException("云端同步清单中存在重复的辞书名称：${dictionary.name}")
+            }
+        }
+        return dictionaries
+    }
+
+    private suspend fun downloadDictionaryEntry(entry: DictionaryCloudEntryJsonModel): DictionaryJsonModel {
+        return when (entry.format) {
+            DictionaryCloudEntryJsonModel.FORMAT_SINGLE -> {
+                downloadJson(entry.path, dictAdapter)
+                    ?: throw IllegalStateException("云端同步清单引用了不存在的辞书文件：${entry.path}")
+            }
+
+            DictionaryCloudEntryJsonModel.FORMAT_SHARDED -> {
+                val index = downloadJson(entry.path, dictionaryShardIndexAdapter)
+                    ?: throw IllegalStateException("云端同步清单引用了不存在的辞书索引：${entry.path}")
+                if (entry.chunkCount > 0 && index.chunks.size != entry.chunkCount) {
+                    throw IllegalStateException(
+                        "Dictionary chunk count mismatch for ${entry.name}: expected=${entry.chunkCount} actual=${index.chunks.size}"
+                    )
+                }
+                val chunksByPath = linkedMapOf<String, DictionaryShardChunkJsonModel>()
+                index.chunks.forEach { ref ->
+                    val chunk = downloadJson(ref.file, dictionaryShardChunkAdapter)
+                        ?: throw IllegalStateException("Missing dictionary chunk: ${ref.file}")
+                    chunksByPath[ref.file] = chunk
+                }
+                dictionaryShardAssembler.assemble(index, chunksByPath).also { assembled ->
+                    if (index.totalWords > 0 && assembled.words.size != index.totalWords) {
+                        throw IllegalStateException(
+                            "Dictionary word total mismatch for ${entry.name}: expected=${index.totalWords} actual=${assembled.words.size}"
+                        )
+                    }
+                    if (index.totalStudyStates > 0 && assembled.studyStates.size != index.totalStudyStates) {
+                        throw IllegalStateException(
+                            "Dictionary study state total mismatch for ${entry.name}: expected=${index.totalStudyStates} actual=${assembled.studyStates.size}"
+                        )
+                    }
+                }
+            }
+
+            else -> throw IllegalStateException("Unsupported dictionary cloud format: ${entry.format}")
+        }.let(dictionaryWordUidNormalizer::normalize)
+    }
+
+    private suspend fun uploadDictionarySnapshot(
+        dictionaries: List<DictionaryJsonModel>,
+        previousManifest: SyncManifest?
+    ): DictionaryUploadResult {
+        val previousEntries = resolveDictionaryEntries(previousManifest)
+        val previousShardedByName = previousEntries
+            .filter { it.format == DictionaryCloudEntryJsonModel.FORMAT_SHARDED && it.name.isNotBlank() }
+            .associateBy { it.name }
+
+        val entries = dictionaries.map { dictionary ->
+            val sharded = dictionaryShardAssembler.shard(dictionary)
+            val previousEntry = previousShardedByName[dictionary.name]
+            val previousIndex = previousEntry?.let { downloadJson(it.path, dictionaryShardIndexAdapter) }
+            uploadShardedDictionary(sharded, previousIndex)
+            sharded.entry
+        }
+
+        return DictionaryUploadResult(
+            entries = entries
+        )
+    }
+
+    private suspend fun uploadShardedDictionary(
+        sharded: DictionaryShardAssembler.ShardedDictionary,
+        previousIndex: DictionaryShardIndexJsonModel?
+    ) {
+        val previousRefsByFile = previousIndex
+            ?.chunks
+            ?.associateBy { it.file }
+            .orEmpty()
+
+        sharded.chunks.forEach { chunk ->
+            val previousRef = previousRefsByFile[chunk.path]
+            if (previousRef?.contentHash == chunk.ref.contentHash) return@forEach
+            uploadJson(chunk.path, chunk.payload, dictionaryShardChunkAdapter)
+        }
+
+        uploadJson(sharded.entry.path, sharded.index, dictionaryShardIndexAdapter)
+    }
+
+    // Merge Logic
 
     private suspend fun mergeDictionaries(
         localDict: Dictionary,
         localJson: DictionaryJsonModel,
         cloudJson: DictionaryJsonModel
     ): DictionaryJsonModel {
-        val localWordsByUid = localJson.words.filter { it.wordUid.isNotBlank() }.associateBy { it.wordUid }
-        val cloudWordsByUid = cloudJson.words.filter { it.wordUid.isNotBlank() }.associateBy { it.wordUid }
-        val allUids = localWordsByUid.keys + cloudWordsByUid.keys
+        val wordPlan = dictionaryWordMergePlanner.plan(
+            localWords = localJson.words,
+            cloudWords = cloudJson.words
+        )
+        var didMutateWords = false
+        val cloudOnlyWordUids = wordPlan.cloudOnlyWords
+            .mapNotNull { it.wordUid.takeIf(String::isNotBlank) }
+            .toSet()
 
-        // Find cloud-only words and import them to local DB
-        val cloudOnlyWords = allUids.filter { it !in localWordsByUid.keys }.mapNotNull { cloudWordsByUid[it] }
-        if (cloudOnlyWords.isNotEmpty()) {
+        if (wordPlan.cloudOnlyWords.isNotEmpty()) {
             val importResult = importExporter.importFromJson(
                 dictAdapter.toJson(cloudJson.copy(
-                    words = cloudOnlyWords,
+                    words = wordPlan.cloudOnlyWords,
                     units = emptyList(),
                     studyStates = cloudJson.studyStates.filter { state ->
-                        cloudOnlyWords.any { it.wordUid == state.wordUid }
+                        state.wordUid.isNotBlank() && state.wordUid in cloudOnlyWordUids
                     },
                     wordPools = emptyList()
                 ))
@@ -388,7 +537,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     if (existing == null) {
                         val wordWithDict = word.copy(
                             dictionaryId = localDict.id,
-                            wordUid = word.wordUid.ifBlank { UUID.randomUUID().toString() }
+                            wordUid = word.wordUid
                         )
                         val wordId = wordRepository.insertWord(wordWithDict)
                         // Import study state if available
@@ -412,23 +561,53 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 }
                 dictionaryRepository.updateWordCount(localDict.id)
             }
+            didMutateWords = true
         }
 
-        // For words that exist on both sides, update local if cloud is newer
-        // We use studyStates' lastReviewAt as a proxy for "updatedAt" for study state merging
+        if (wordPlan.cloudUpdates.isNotEmpty()) {
+            val currentLocalWords = wordRepository.getWordsByDictionary(localDict.id).first()
+            val resolvedUpdates = resolveCloudWordUpdates(
+                dictionaryId = localDict.id,
+                localWords = currentLocalWords,
+                cloudUpdates = wordPlan.cloudUpdates
+            )
+            val updatePlan = dictionaryWordUpdatePlanner.plan(
+                localWords = currentLocalWords,
+                candidates = resolvedUpdates
+            )
+
+            transactionRunner.runInTransaction {
+                applyWordUpdatePlan(updatePlan, currentLocalWords)
+            }
+            didMutateWords = true
+        }
+
+        // For study states, keep the more recent lastReviewAt
         val cloudStudyByUid = cloudJson.studyStates.associateBy { it.wordUid }
         val localStudyByUid = localJson.studyStates.associateBy { it.wordUid }
-        val allStudyUids = cloudStudyByUid.keys + localStudyByUid.keys
+        val allStudyUids = (cloudStudyByUid.keys + localStudyByUid.keys)
+            .filter { it.isNotBlank() }
+            .toSet()
 
-        // Get local word mapping for study state updates
+        // Get local word mapping after word imports/updates
         val localWords = wordRepository.getWordsByDictionary(localDict.id).first()
-        val wordUidToId = localWords.associate { it.wordUid to it.id }
+        val wordUidToId = localWords
+            .filter { it.wordUid.isNotBlank() }
+            .associate { it.wordUid to it.id }
 
-        if (cloudJson.wordPools.isNotEmpty()) {
-            val localPoolCount = wordPoolRepository.getPoolCount(localDict.id)
-            if (localPoolCount == 0) {
-                transactionRunner.runInTransaction {
-                    importWordPools(localDict.id, cloudJson.wordPools, wordUidToId)
+        val wordPoolPlan = dictionaryWordPoolMergePlanner.plan(
+            localPools = localJson.wordPools,
+            cloudPools = cloudJson.wordPools
+        )
+        if (wordPoolPlan.cloudSnapshotsToApply.isNotEmpty()) {
+            transactionRunner.runInTransaction {
+                wordPoolPlan.cloudSnapshotsToApply.forEach { snapshot ->
+                    replaceWordPoolStrategy(
+                        dictionaryId = localDict.id,
+                        strategy = snapshot.strategy,
+                        pools = snapshot.pools,
+                        wordUidToId = wordUidToId
+                    )
                 }
             }
         }
@@ -454,7 +633,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     )
                 )
             } else if (local != null && cloud != null) {
-                // Both exist → keep the one with more recent lastReviewAt
+                // Both exist -> keep the one with more recent lastReviewAt
                 if (cloud.lastReviewAt > local.lastReviewAt) {
                     studyRepository.upsertStudyState(
                         WordStudyState(
@@ -480,7 +659,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         for ((name, cloudUnit) in cloudUnitsByName) {
             if (name !in localUnitNames) {
-                // Cloud-only unit → import
+                // Cloud-only unit -> import
                 val unitId = unitRepository.insertUnit(
                     StudyUnit(dictionaryId = localDict.id, name = name, defaultRepeatCount = cloudUnit.repeatCount)
                 )
@@ -489,8 +668,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     unitRepository.addWordsToUnit(unitId, wordIds)
                 }
             } else {
-                // Both exist → merge member wordUids (union)
+                // Both exist -> merge member wordUids (union)
                 val localUnit = localUnits.find { it.name == name } ?: continue
+                if (cloudUnit.repeatCount > localUnit.defaultRepeatCount) {
+                    unitRepository.updateRepeatCount(localUnit.id, cloudUnit.repeatCount)
+                }
                 val existingWordIds = unitRepository.getWordIdsInUnit(localUnit.id).toSet()
                 val cloudWordIds = cloudUnit.wordUids.mapNotNull { wordUidToId[it] }
                 val newWordIds = cloudWordIds.filter { it !in existingWordIds }
@@ -500,8 +682,81 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             }
         }
 
+        if (didMutateWords) {
+            wordRepository.recomputeAllAssociationsForDictionary(localDict.id)
+        }
+
         // Return merged JSON (will be re-exported from local DB later)
         return localJson
+    }
+
+    private fun resolveCloudWordUpdates(
+        dictionaryId: Long,
+        localWords: List<WordDetails>,
+        cloudUpdates: List<DictionaryWordMergePlanner.CloudWordUpdate>
+    ): List<DictionaryWordUpdatePlanner.Candidate> {
+        val localWordsByUid = localWords
+            .filter { it.wordUid.isNotBlank() }
+            .associateBy { it.wordUid }
+        val localWordsByNormalized = localWords.associateBy { it.normalizedSpelling }
+
+        return cloudUpdates.mapNotNull { update ->
+            val cloudWord = update.cloudWord
+            val existing = update.localWordUid
+                ?.let(localWordsByUid::get)
+                ?: localWordsByNormalized[update.localNormalizedSpelling]
+                ?: throw IllegalStateException(
+                    "同步时找不到云端更新对应的本地单词：${cloudWord.spelling}"
+                )
+
+            if (
+                cloudWord.wordUid.isNotBlank() &&
+                existing.wordUid.isNotBlank() &&
+                cloudWord.wordUid != existing.wordUid
+            ) {
+                throw IllegalStateException(
+                    "单词 ${cloudWord.spelling} 的云端标识与本地标识不一致，无法安全同步，请先手动处理该词条。"
+                )
+            }
+
+            DictionaryWordUpdatePlanner.Candidate(
+                existingWord = existing,
+                finalWord = cloudWord.toWordDetails(
+                    dictionaryId = dictionaryId,
+                    existingId = existing.id,
+                    fallbackWordUid = existing.wordUid,
+                    fallbackCreatedAt = existing.createdAt,
+                    fallbackUpdatedAt = existing.updatedAt
+                )
+            )
+        }
+    }
+
+    private suspend fun applyWordUpdatePlan(
+        plan: DictionaryWordUpdatePlanner.Plan,
+        localWords: List<WordDetails>
+    ) {
+        if (plan.finalUpdates.isEmpty()) return
+
+        val localWordsById = localWords.associateBy { it.id }
+
+        plan.temporaryRenameIds.forEach { wordId ->
+            val existing = localWordsById[wordId]
+                ?: throw IllegalStateException("同步时找不到待改名的本地单词记录：$wordId")
+            wordRepository.updateWord(
+                existing.copy(
+                    normalizedSpelling = temporaryNormalizedSpelling(existing.id)
+                )
+            )
+        }
+
+        plan.finalUpdates.forEach { finalWord ->
+            wordRepository.updateWord(finalWord)
+        }
+    }
+
+    private fun temporaryNormalizedSpelling(wordId: Long): String {
+        return "__sync_tmp__${wordId}__${UUID.randomUUID()}"
     }
 
     private suspend fun mergeArticles(
@@ -519,15 +774,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             val cloud = cloudByUid[uid]
 
             if (local == null && cloud != null) {
-                // Cloud-only → import
+                // Cloud-only -> import
                 importArticleFromJson(cloud, null, supportsStructuredContent = (cloudArticlesModel.schemaVersion >= 2))
             } else if (local != null && cloud != null) {
-                // Both exist → keep newer
+                // Both exist -> keep newer
                 if (cloud.updatedAt > local.updatedAt) {
                     importArticleFromJson(cloud, local, supportsStructuredContent = (cloudArticlesModel.schemaVersion >= 2))
                 }
             }
-            // local-only → no action needed, will be uploaded
+            // local-only -> no action needed, will be uploaded
         }
 
         return articleRepository.getAllArticles().first()
@@ -593,27 +848,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         articleRepository.upsertArticle(article.copy(categoryId = targetId, updatedAt = article.updatedAt))
     }
 
-    private fun dictFileName(name: String): String {
-        val slug = name.replace(Regex("[^\\w\\u4e00-\\u9fff]+"), "_").trim { it == '_' }
-        val safeSlug = if (slug.isBlank()) "dict" else slug
-        val hash = shortHash(name)
-        return "${safeSlug}__${hash}.json"
-    }
-
-    private fun shortHash(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(input.toByteArray(Charsets.UTF_8))
-        return digest.take(4).joinToString("") { "%02x".format(it) }
-    }
-
-    // ── Export Helpers ──
+    // Export Helpers
 
     private suspend fun exportLocalDictionary(dict: Dictionary): DictionaryJsonModel {
         val json = exportDictionary(dict.id, dict.name, dict.description)
         val model = dictAdapter.fromJson(json) ?: throw IllegalStateException("Failed to parse exported dict")
+        val normalizedModel = dictionaryWordUidNormalizer.normalize(model)
 
         // Enrich with word pools
-        val words = wordRepository.getWordsByDictionary(dict.id).first()
+        val words = ensureDictionaryWordUids(dict.id, dict.name)
         val wordIdToUid = words.associate { it.id to it.wordUid }
 
         val poolToMembers = wordPoolRepository.getPoolToMembersMap(dict.id)
@@ -631,12 +874,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     focusWordUid = focusUid,
                     memberWordUids = memberUids,
                     strategy = strategy,
-                    algorithmVersion = algorithmVersion
+                    algorithmVersion = algorithmVersion,
+                    updatedAt = poolEntity?.updatedAt ?: 0L
                 )
             )
         }
 
-        return model.copy(wordPools = wordPools)
+        return dictionaryWordUidNormalizer.normalize(
+            normalizedModel.copy(wordPools = wordPools)
+        )
     }
 
     private suspend fun exportArticleCategories(): ArticleCategoriesExportModel {
@@ -857,10 +1103,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val dicts = dictionaryRepository.getAllDictionaries().first()
         val map = mutableMapOf<String, Long>()
         for (dict in dicts) {
-            val words = wordRepository.getWordsByDictionary(dict.id).first()
+            val words = ensureDictionaryWordUids(dict.id, dict.name)
             for (word in words) {
-                if (word.wordUid.isNotBlank()) {
-                    map[word.wordUid] = word.id
+                val previous = map.put(word.wordUid, word.id)
+                if (previous != null && previous != word.id) {
+                    throw IllegalStateException("存在重复的全局 wordUid：${word.wordUid}")
                 }
             }
         }
@@ -924,20 +1171,54 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         wordPoolDao.deleteByDictionary(dictionaryId)
         if (pools.isEmpty()) return
 
-        pools.forEach { pool ->
-            val memberIds = pool.memberWordUids.mapNotNull { wordUidToId[it] }.distinct()
-            if (memberIds.size < 2) return@forEach
+        pools.groupBy { it.strategy.ifBlank { "BALANCED" } }
+            .forEach { (strategy, strategyPools) ->
+                replaceWordPoolStrategy(
+                    dictionaryId = dictionaryId,
+                    strategy = strategy,
+                    pools = strategyPools,
+                    wordUidToId = wordUidToId
+                )
+            }
+    }
 
-            val focusId = pool.focusWordUid?.let { wordUidToId[it] }
-            val strategy = pool.strategy.ifBlank { "BALANCED" }
+    private suspend fun replaceWordPoolStrategy(
+        dictionaryId: Long,
+        strategy: String,
+        pools: List<WordPoolJsonModel>,
+        wordUidToId: Map<String, Long>
+    ) {
+        wordPoolDao.deleteByDictionaryAndStrategy(dictionaryId, strategy)
+        if (pools.isEmpty()) return
+
+        pools.forEach { pool ->
+            val memberUids = pool.memberWordUids.filter { it.isNotBlank() }.distinct()
+            val memberIds = memberUids.mapNotNull { wordUidToId[it] }.distinct()
+            if (memberIds.size != memberUids.size) {
+                throw IllegalStateException(
+                    "词池策略 $strategy 引用了不存在的单词，无法安全同步。"
+                )
+            }
+            if (memberIds.size < 2) {
+                throw IllegalStateException(
+                    "词池策略 $strategy 存在成员数不足 2 的无效词池，无法安全同步。"
+                )
+            }
+
+            val focusId = pool.focusWordUid?.let { focusUid ->
+                wordUidToId[focusUid]
+                    ?: throw IllegalStateException("词池策略 $strategy 的焦点词不存在，无法安全同步。")
+            }
             val algorithmVersion = pool.algorithmVersion.ifBlank { "${strategy}_v1" }
+            val updatedAt = pool.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()
 
             val poolId = wordPoolDao.insertPool(
                 WordPoolEntity(
                     dictionaryId = dictionaryId,
                     focusWordId = focusId,
                     strategy = strategy,
-                    algorithmVersion = algorithmVersion
+                    algorithmVersion = algorithmVersion,
+                    updatedAt = updatedAt
                 )
             )
             wordPoolDao.insertMembers(
@@ -946,7 +1227,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
     }
 
-    // ── Import Helper ──
+    // Import Helper
 
     private suspend fun importCloudDictionary(cloudDict: DictionaryJsonModel) {
         val json = dictAdapter.toJson(cloudDict)
@@ -960,7 +1241,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         val wordWithDict = word.copy(
                             dictionaryId = dictId,
                             normalizedSpelling = word.spelling.trim().lowercase(),
-                            wordUid = word.wordUid.ifBlank { UUID.randomUUID().toString() }
+                            wordUid = word.wordUid
                         )
                         val wordId = wordRepository.insertWord(wordWithDict)
                         wordUidToId[wordWithDict.wordUid] = wordId
@@ -1008,7 +1289,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
     }
 
-    // ── Question Bank Export/Import/Merge ──
+    // Question Bank Export/Import/Merge
 
     private suspend fun buildArticleUidToIdMap(): Map<String, Long> {
         val articles = articleRepository.getAllArticles().first()
@@ -1254,13 +1535,13 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             val cloud = cloudByUid[uid]
 
             if (local == null && cloud != null) {
-                // Cloud-only → import
+                // Cloud-only -> import
                 importQuestionBank(
                     QuestionBankExportModel(papers = listOf(cloud)),
                     articleUidToId
                 )
             } else if (local != null && cloud != null) {
-                // Both exist → newer wins (using effective updatedAt that includes child changes)
+                // Both exist -> newer wins (using effective updatedAt that includes child changes)
                 val localEffective = questionBankDao.getEffectiveUpdatedAt(local.id) ?: local.updatedAt
                 val cloudEffective = cloudEffectiveUpdatedAt(cloud)
                 if (cloudEffective > localEffective) {
@@ -1272,7 +1553,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     )
                 }
             }
-            // local-only → keep (will be uploaded)
+            // local-only -> keep (will be uploaded)
         }
     }
 
@@ -1289,7 +1570,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         return max
     }
 
-    // ── GitHub API Helpers ──
+    // GitHub API Helpers
 
     private suspend fun <T> downloadJson(path: String, adapter: com.squareup.moshi.JsonAdapter<T>): T? {
         val response = gitHubApi.getContent(authHeader(), owner(), repo(), path)
@@ -1316,6 +1597,42 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         return adapter.fromJson(decoded)
     }
 
+    private fun WordJsonModel.toWordDetails(
+        dictionaryId: Long,
+        existingId: Long = 0,
+        fallbackWordUid: String = "",
+        fallbackCreatedAt: Long = System.currentTimeMillis(),
+        fallbackUpdatedAt: Long = System.currentTimeMillis()
+    ): WordDetails {
+        return WordDetails(
+            id = existingId,
+            dictionaryId = dictionaryId,
+            spelling = spelling,
+            phonetic = phonetic,
+            meanings = meanings.map { Meaning(pos = it.pos, definition = it.definition) },
+            rootExplanation = rootExplanation,
+            normalizedSpelling = spelling.trim().lowercase(),
+            wordUid = wordUid.ifBlank { fallbackWordUid },
+            synonyms = synonyms.map { SynonymInfo(word = it.word, explanation = it.explanation) },
+            similarWords = similarWords.map {
+                SimilarWordInfo(word = it.word, meaning = it.meaning, explanation = it.explanation)
+            },
+            cognates = cognates.map {
+                CognateInfo(word = it.word, meaning = it.meaning, sharedRoot = it.sharedRoot)
+            },
+            decomposition = decomposition.map {
+                DecompositionPart(
+                    segment = it.segment,
+                    role = runCatching { MorphemeRole.valueOf(it.role) }.getOrDefault(MorphemeRole.OTHER),
+                    meaning = it.meaning
+                )
+            },
+            inflections = inflections.map { Inflection(form = it.form, formType = it.formType) },
+            createdAt = createdAt.takeIf { it > 0 } ?: fallbackCreatedAt,
+            updatedAt = updatedAt.takeIf { it > 0 } ?: fallbackUpdatedAt
+        )
+    }
+
     private suspend fun <T> uploadJson(path: String, data: T, adapter: com.squareup.moshi.JsonAdapter<T>) {
         val json = adapter.toJson(data)
         val encoded = Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
@@ -1335,3 +1652,4 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
     }
 }
+

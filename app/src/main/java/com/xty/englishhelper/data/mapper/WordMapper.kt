@@ -122,7 +122,7 @@ fun WordDetails.toEntity() = WordEntity(
     decompositionJson = decompositionToJson(decomposition),
     inflectionsJson = inflectionsToJson(inflections),
     createdAt = createdAt,
-    updatedAt = System.currentTimeMillis()
+    updatedAt = updatedAt
 )
 
 fun WordDetails.toSynonymEntities(wordId: Long) = synonyms.map {

@@ -33,5 +33,7 @@ data class WordPoolEntity(
     val focusWordId: Long? = null,
     val strategy: String,
     @ColumnInfo(name = "algorithm_version")
-    val algorithmVersion: String
+    val algorithmVersion: String,
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: Long = System.currentTimeMillis()
 )

@@ -1,6 +1,7 @@
 package com.xty.englishhelper.data.json
 
 import com.squareup.moshi.Moshi
+import com.xty.englishhelper.data.sync.DictionaryWordUidNormalizer
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Dictionary
@@ -18,7 +19,8 @@ import javax.inject.Singleton
 
 @Singleton
 class JsonImportExporter @Inject constructor(
-    private val moshi: Moshi
+    private val moshi: Moshi,
+    private val wordUidNormalizer: DictionaryWordUidNormalizer
 ) : DictionaryImportExporter {
 
     private val adapter = moshi.adapter(DictionaryJsonModel::class.java).indent("  ")
@@ -31,15 +33,33 @@ class JsonImportExporter @Inject constructor(
         studyStates: List<WordStudyState>,
         wordIdToUid: Map<Long, String>
     ): String {
+        words.forEach { word ->
+            require(word.wordUid.isNotBlank()) {
+                "导出失败：单词 ${word.spelling} 缺少 wordUid"
+            }
+        }
+        unitWordMap.forEach { (unitId, wordUids) ->
+            require(wordUids.all { it.isNotBlank() }) {
+                "导出失败：单元 $unitId 包含空 wordUid 引用"
+            }
+        }
+        studyStates.forEach { state ->
+            require(wordIdToUid[state.wordId].orEmpty().isNotBlank()) {
+                "导出失败：学习状态 ${state.wordId} 缺少 wordUid 引用"
+            }
+        }
+
         val model = DictionaryJsonModel(
             name = dictionary.name,
             description = dictionary.description,
-            schemaVersion = 5,
+            schemaVersion = 6,
             words = words.map { word ->
                 WordJsonModel(
                     spelling = word.spelling,
                     phonetic = word.phonetic,
                     wordUid = word.wordUid,
+                    createdAt = word.createdAt,
+                    updatedAt = word.updatedAt,
                     meanings = word.meanings.map { MeaningJsonModel(it.pos, it.definition) },
                     rootExplanation = word.rootExplanation,
                     decomposition = word.decomposition.map {
@@ -83,15 +103,15 @@ class JsonImportExporter @Inject constructor(
     }
 
     override fun importFromJson(json: String): DictionaryImportExporter.ImportResult {
-        val model = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
+        val parsedModel = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
 
         // Validate schema version
-        if (model.schemaVersion !in listOf(4, 5)) {
-            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4 或 5）")
+        if (parsedModel.schemaVersion !in listOf(4, 5, 6)) {
+            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5 或 6）")
         }
 
         // Validate no empty spellings
-        model.words.forEachIndexed { index, word ->
+        parsedModel.words.forEachIndexed { index, word ->
             if (word.spelling.isBlank()) {
                 throw IllegalArgumentException("第 ${index + 1} 个单词的 spelling 为空")
             }
@@ -99,12 +119,14 @@ class JsonImportExporter @Inject constructor(
 
         // Validate no duplicate normalized spellings
         val normalizedSet = mutableSetOf<String>()
-        model.words.forEach { word ->
+        parsedModel.words.forEach { word ->
             val normalized = word.spelling.trim().lowercase()
             if (!normalizedSet.add(normalized)) {
                 throw IllegalArgumentException("文件中存在重复拼写：${word.spelling}")
             }
         }
+
+        val model = wordUidNormalizer.normalize(parsedModel)
 
         // Validate wordUid: when present, must be unique
         val uidSet = mutableSetOf<String>()
@@ -133,6 +155,8 @@ class JsonImportExporter @Inject constructor(
                 spelling = word.spelling,
                 phonetic = word.phonetic,
                 wordUid = word.wordUid,
+                createdAt = word.createdAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
+                updatedAt = word.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
                 normalizedSpelling = word.spelling.trim().lowercase(),
                 meanings = word.meanings.map { Meaning(it.pos, it.definition) },
                 rootExplanation = word.rootExplanation,

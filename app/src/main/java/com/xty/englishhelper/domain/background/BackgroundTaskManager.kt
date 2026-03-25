@@ -417,7 +417,8 @@ class BackgroundTaskManager @Inject constructor(
             synonyms = currentWord.synonyms.ifEmpty { result.synonyms },
             similarWords = currentWord.similarWords.ifEmpty { result.similarWords },
             cognates = currentWord.cognates.ifEmpty { result.cognates },
-            inflections = currentWord.inflections.ifEmpty { result.inflections }
+            inflections = currentWord.inflections.ifEmpty { result.inflections },
+            updatedAt = System.currentTimeMillis()
         )
         wordRepository.updateWord(merged)
     }

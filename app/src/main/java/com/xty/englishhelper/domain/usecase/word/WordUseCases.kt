@@ -36,8 +36,12 @@ class SaveWordUseCase @Inject constructor(
     private val linkWordToArticles: LinkWordToArticlesUseCase
 ) {
     suspend operator fun invoke(word: WordDetails): Long {
+        val now = System.currentTimeMillis()
         val normalized = word.spelling.trim().lowercase()
-        val wordWithNormalized = word.copy(normalizedSpelling = normalized)
+        val wordWithNormalized = word.copy(
+            normalizedSpelling = normalized,
+            updatedAt = now
+        )
 
         val savedId = if (word.id == 0L) {
             // Insert mode: check for existing word with same normalized spelling
@@ -46,7 +50,8 @@ class SaveWordUseCase @Inject constructor(
                 // Upsert: update using existing id and wordUid
                 val merged = wordWithNormalized.copy(
                     id = existing.id,
-                    wordUid = existing.wordUid
+                    wordUid = existing.wordUid,
+                    createdAt = existing.createdAt
                 )
                 wordRepository.updateWord(merged)
                 wordRepository.recomputeAssociations(existing.id, word.dictionaryId)

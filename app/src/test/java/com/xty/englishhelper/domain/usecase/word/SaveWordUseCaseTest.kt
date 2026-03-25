@@ -56,7 +56,8 @@ class SaveWordUseCaseTest {
             id = 10,
             dictionaryId = 1,
             spelling = "hello",
-            wordUid = "existing-uid-123"
+            wordUid = "existing-uid-123",
+            createdAt = 1234L
         )
         coEvery { wordRepository.findByNormalizedSpelling(1, "hello") } returns existing
 
@@ -72,7 +73,10 @@ class SaveWordUseCaseTest {
         assertEquals(10L, result)
         coVerify {
             wordRepository.updateWord(match {
-                it.id == 10L && it.wordUid == "existing-uid-123" && it.normalizedSpelling == "hello"
+                it.id == 10L &&
+                    it.wordUid == "existing-uid-123" &&
+                    it.normalizedSpelling == "hello" &&
+                    it.createdAt == 1234L
             })
         }
         // Should NOT call insertWord

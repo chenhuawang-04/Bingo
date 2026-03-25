@@ -2,6 +2,7 @@ package com.xty.englishhelper.data.json
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.xty.englishhelper.data.sync.DictionaryWordUidNormalizer
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.Meaning
@@ -23,7 +24,7 @@ class JsonImportExporterTest {
     @Before
     fun setUp() {
         val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-        exporter = JsonImportExporter(moshi)
+        exporter = JsonImportExporter(moshi, DictionaryWordUidNormalizer())
     }
 
     @Test
@@ -36,6 +37,8 @@ class JsonImportExporterTest {
                 spelling = "apple",
                 phonetic = "/ˈæp.əl/",
                 wordUid = "uid-1",
+                createdAt = 111L,
+                updatedAt = 222L,
                 normalizedSpelling = "apple",
                 meanings = listOf(Meaning("n.", "苹果")),
                 rootExplanation = "from Latin",
@@ -49,6 +52,8 @@ class JsonImportExporterTest {
                 spelling = "banana",
                 phonetic = "/bəˈnæn.ə/",
                 wordUid = "uid-2",
+                createdAt = 333L,
+                updatedAt = 444L,
                 normalizedSpelling = "banana",
                 meanings = listOf(Meaning("n.", "香蕉"))
             )
@@ -74,7 +79,7 @@ class JsonImportExporterTest {
         val json = exporter.exportToJson(dictionary, words, units, unitWordMap, studyStates, wordIdToUid)
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 5"))
+        assertTrue(json.contains("\"schemaVersion\": 6"))
 
         val result = exporter.importFromJson(json)
 
@@ -86,6 +91,8 @@ class JsonImportExporterTest {
         assertEquals("apple", importedApple.spelling)
         assertEquals("/ˈæp.əl/", importedApple.phonetic)
         assertEquals("uid-1", importedApple.wordUid)
+        assertEquals(111L, importedApple.createdAt)
+        assertEquals(222L, importedApple.updatedAt)
         assertEquals(1, importedApple.meanings.size)
         assertEquals("n.", importedApple.meanings[0].pos)
         assertEquals("苹果", importedApple.meanings[0].definition)
@@ -188,10 +195,10 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 5`() {
+    fun `export produces schemaVersion 6`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 5"))
+        assertTrue(json.contains("\"schemaVersion\": 6"))
     }
 
     @Test
@@ -237,6 +244,123 @@ class JsonImportExporterTest {
             fail("Expected exception for duplicate wordUid")
         } catch (e: IllegalArgumentException) {
             assertTrue(e.message!!.contains("wordUid"))
+        }
+    }
+
+    @Test
+    fun `import schema 5 without timestamps still assigns timestamps`() {
+        val json = """
+        {
+            "name": "Legacy",
+            "description": "",
+            "schemaVersion": 5,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "legacy-uid"}
+            ]
+        }
+        """.trimIndent()
+
+        val result = exporter.importFromJson(json)
+
+        assertEquals(1, result.words.size)
+        assertTrue(result.words.single().createdAt > 0)
+        assertTrue(result.words.single().updatedAt > 0)
+    }
+
+    @Test
+    fun `import canonicalizes blank wordUid when no relations depend on it`() {
+        val json = """
+        {
+            "name": "Legacy",
+            "description": "",
+            "schemaVersion": 5,
+            "words": [
+                {"spelling": "apple", "phonetic": ""}
+            ]
+        }
+        """.trimIndent()
+
+        val result = exporter.importFromJson(json)
+
+        assertEquals(1, result.words.size)
+        assertTrue(result.words.single().wordUid.startsWith("legacy-"))
+    }
+
+    @Test
+    fun `import remaps blank relation references when exactly one blank word exists`() {
+        val json = """
+        {
+            "name": "Legacy",
+            "description": "",
+            "schemaVersion": 5,
+            "words": [
+                {"spelling": "apple", "phonetic": ""}
+            ],
+            "units": [
+                {"name": "Unit 1", "repeatCount": 2, "wordUids": [""]}
+            ],
+            "studyStates": [
+                {"wordUid": "", "state": 2, "stability": 1.0, "difficulty": 2.0, "due": 1, "lastReviewAt": 1, "reps": 1, "lapses": 0}
+            ],
+            "wordPools": [
+                {"memberWordUids": ["", ""], "strategy": "BALANCED", "algorithmVersion": "BALANCED_v1"}
+            ]
+        }
+        """.trimIndent()
+
+        val result = exporter.importFromJson(json)
+        val generatedUid = result.words.single().wordUid
+
+        assertEquals(listOf(generatedUid), result.units.single().wordUids)
+        assertEquals(generatedUid, result.studyStates.single().wordUid)
+    }
+
+    @Test
+    fun `import rejects ambiguous blank relation references`() {
+        val json = """
+        {
+            "name": "Legacy",
+            "description": "",
+            "schemaVersion": 5,
+            "words": [
+                {"spelling": "apple", "phonetic": ""},
+                {"spelling": "banana", "phonetic": ""}
+            ],
+            "units": [
+                {"name": "Unit 1", "repeatCount": 2, "wordUids": [""]}
+            ]
+        }
+        """.trimIndent()
+
+        try {
+            exporter.importFromJson(json)
+            fail("Expected exception for ambiguous blank wordUid reference")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("空 wordUid"))
+        }
+    }
+
+    @Test
+    fun `import rejects unknown relation references`() {
+        val json = """
+        {
+            "name": "Legacy",
+            "description": "",
+            "schemaVersion": 5,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "uid-1"}
+            ],
+            "studyStates": [
+                {"wordUid": "uid-missing", "state": 2, "stability": 1.0, "difficulty": 2.0, "due": 1, "lastReviewAt": 1, "reps": 1, "lapses": 0}
+            ]
+        }
+        """.trimIndent()
+
+        try {
+            exporter.importFromJson(json)
+            fail("Expected exception for unknown wordUid reference")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("不存在的 wordUid"))
         }
     }
 }

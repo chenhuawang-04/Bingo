@@ -9,8 +9,8 @@ import com.xty.englishhelper.domain.repository.StudyRepository
 import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordRepository
+import com.xty.englishhelper.domain.usecase.word.EnsureDictionaryWordUidsUseCase
 import kotlinx.coroutines.flow.first
-import java.util.UUID
 import javax.inject.Inject
 
 class ImportDictionaryUseCase @Inject constructor(
@@ -33,7 +33,7 @@ class ImportDictionaryUseCase @Inject constructor(
                 val wordWithDict = word.copy(
                     dictionaryId = dictId,
                     normalizedSpelling = word.spelling.trim().lowercase(),
-                    wordUid = word.wordUid.ifBlank { UUID.randomUUID().toString() }
+                    wordUid = word.wordUid
                 )
                 val wordId = wordRepository.insertWord(wordWithDict)
                 wordUidToId[wordWithDict.wordUid] = wordId
@@ -85,10 +85,11 @@ class ExportDictionaryUseCase @Inject constructor(
     private val wordRepository: WordRepository,
     private val unitRepository: UnitRepository,
     private val studyRepository: StudyRepository,
-    private val importExporter: DictionaryImportExporter
+    private val importExporter: DictionaryImportExporter,
+    private val ensureDictionaryWordUids: EnsureDictionaryWordUidsUseCase
 ) {
     suspend operator fun invoke(dictionaryId: Long, dictionaryName: String, dictionaryDescription: String): String {
-        val words = wordRepository.getWordsByDictionary(dictionaryId).first()
+        val words = ensureDictionaryWordUids(dictionaryId, dictionaryName)
         val units = unitRepository.getUnitsByDictionary(dictionaryId)
         val studyStates = studyRepository.getStudyStatesForDictionary(dictionaryId)
 

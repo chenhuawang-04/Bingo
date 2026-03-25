@@ -131,7 +131,7 @@ fun CloudSyncSection(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${state.cloudManifest.dictionaries.size} 本辞书" +
+                        "${state.cloudManifest.dictionaryCount} 本辞书" +
                                 if (state.cloudManifest.hasArticles) ", 含文章" else "",
                         style = MaterialTheme.typography.bodySmall
                     )

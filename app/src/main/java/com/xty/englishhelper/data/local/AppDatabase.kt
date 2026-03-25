@@ -75,7 +75,7 @@ import java.util.UUID
         BackgroundTaskEntity::class,
         ArticleCategoryEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -776,6 +776,14 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_background_tasks_dedupe_key` " +
                         "ON `background_tasks` (`dedupe_key`)"
+                )
+            }
+        }
+
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE word_pools ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0"
                 )
             }
         }

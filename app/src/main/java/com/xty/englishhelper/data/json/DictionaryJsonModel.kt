@@ -18,6 +18,8 @@ data class WordJsonModel(
     val spelling: String = "",
     val phonetic: String = "",
     val wordUid: String = "",
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
     val meanings: List<MeaningJsonModel> = emptyList(),
     val rootExplanation: String = "",
     val decomposition: List<DecompositionPartJsonModel> = emptyList(),
@@ -91,5 +93,6 @@ data class WordPoolJsonModel(
     val focusWordUid: String? = null,
     val memberWordUids: List<String> = emptyList(),
     val strategy: String = "",
-    val algorithmVersion: String = ""
+    val algorithmVersion: String = "",
+    val updatedAt: Long = 0
 )
