@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 
 enum class ArticleLengthFilter(
     val label: String,
@@ -199,7 +201,7 @@ fun ArticleFilterActionButton(
         Surface(
             color = containerColor,
             contentColor = contentColor,
-            shape = MaterialTheme.shapes.large
+            shape = ArticleShapes.Control
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
@@ -413,6 +415,7 @@ private fun <T> FilterSection(
                                 selected = item == selected,
                                 onClick = { onSelected(item) },
                                 label = { Text(labelOf(item)) },
+                                shape = ArticleShapes.Control,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }

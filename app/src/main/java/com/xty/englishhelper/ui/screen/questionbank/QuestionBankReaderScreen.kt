@@ -115,6 +115,7 @@ import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
 import com.xty.englishhelper.ui.components.reading.extractContextSentence
 import com.xty.englishhelper.ui.components.reading.extractWordAtOffset
 import com.xty.englishhelper.ui.components.reading.extractWordRangeAtOffset
+import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
 import com.xty.englishhelper.ui.designsystem.tokens.LocalEhSemanticColors
 import com.xty.englishhelper.ui.screen.article.CollectionNotebookSheet
 import kotlinx.coroutines.launch
@@ -956,7 +957,7 @@ private fun QuestionCard(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(end = 4.dp, top = 2.dp)
                     )
-                    Text(item.questionText, style = MaterialTheme.typography.bodyMedium)
+                    Text(item.questionText, style = ArticleTypography.QuestionStem)
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -1009,7 +1010,7 @@ private fun QuestionCard(
                             )
                             Text(
                                 "[$letter] $text",
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = ArticleTypography.QuestionOption,
                                 color = optionColors.content,
                                 modifier = Modifier.padding(start = 4.dp)
                             )
@@ -1367,7 +1368,7 @@ private fun ClozePassageText(
     val onPrimary = MaterialTheme.colorScheme.onPrimary
     val errorColor = MaterialTheme.colorScheme.error
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
-    val bodyStyle = MaterialTheme.typography.bodyMedium
+    val bodyStyle = ArticleTypography.ReaderBody
 
     val annotated = remember(text, itemByNumber, selectedAnswers, isSubmitted, showingAnswers, practiceResults) {
         buildAnnotatedString {
@@ -1498,7 +1499,7 @@ private fun ClozeOptionRow(
 
                 Text(
                     text = "$letter $text",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = ArticleTypography.QuestionOption,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                     color = optionColors.content,
                     modifier = Modifier
@@ -1730,7 +1731,7 @@ private fun SentenceInsertionPassageText(
     val onPrimary = MaterialTheme.colorScheme.onPrimary
     val errorColor = MaterialTheme.colorScheme.error
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
-    val bodyStyle = MaterialTheme.typography.bodyMedium
+    val bodyStyle = ArticleTypography.ReaderBody
     val flashColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f)
     val flashAlpha = remember { Animatable(0f) }
     var flashRange by remember(text) { mutableStateOf<IntRange?>(null) }
@@ -1920,7 +1921,7 @@ private fun SentenceInsertionAnswerPanel(
                         )
                     } else {
                         options.forEach { option ->
-                            Text(option, style = MaterialTheme.typography.bodySmall)
+                            Text(option, style = ArticleTypography.QuestionOption)
                         }
                     }
                 }
@@ -2000,7 +2001,7 @@ private fun SentenceInsertionQuestionCard(
                     )
                     Text(
                         item.questionText.ifBlank { "填空" },
-                        style = MaterialTheme.typography.bodyMedium
+                        style = ArticleTypography.QuestionStem
                     )
                 }
 
@@ -2195,7 +2196,7 @@ private fun CommentOpinionMatchContent(
                         )
                     } else {
                         options.take(7).forEach { option ->
-                            Text(option, style = MaterialTheme.typography.bodySmall)
+                            Text(option, style = ArticleTypography.QuestionOption)
                         }
                     }
                 }
@@ -2370,7 +2371,7 @@ private fun SubheadingMatchContent(
                         )
                     } else {
                         options.take(7).forEach { option ->
-                            Text(option, style = MaterialTheme.typography.bodySmall)
+                            Text(option, style = ArticleTypography.QuestionOption)
                         }
                     }
                 }
@@ -2535,7 +2536,7 @@ private fun InformationMatchContent(
                         } else {
                             options.forEachIndexed { index, option ->
                                 val label = optionLetters.getOrNull(index) ?: (index + 1).toString()
-                                Text("$label. $option", style = MaterialTheme.typography.bodySmall)
+                                Text("$label. $option", style = ArticleTypography.QuestionOption)
                             }
                         }
                     }
@@ -2604,7 +2605,7 @@ private fun InfoMatchQuestionCard(
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     "${item.questionNumber}. ${item.questionText}",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = ArticleTypography.QuestionStem,
                     fontWeight = FontWeight.Bold
                 )
 
@@ -2941,7 +2942,7 @@ private fun TranslationPassageText(
     items: List<QuestionItem>
 ) {
     val primary = MaterialTheme.colorScheme.primary
-    val bodyStyle = MaterialTheme.typography.bodyMedium
+    val bodyStyle = ArticleTypography.ReaderBody
 
     val matches = remember(text) { TranslationMarkerRegex.findAll(text).toList() }
     val hasMarkers = matches.isNotEmpty()
@@ -3501,7 +3502,7 @@ private fun ParagraphOrderQuestionCard(
                     )
                     Text(
                         item.questionText.ifBlank { "填空" },
-                        style = MaterialTheme.typography.bodyMedium
+                        style = ArticleTypography.QuestionStem
                     )
                 }
 
@@ -3676,7 +3677,7 @@ private fun WritingPassagePanel(
                     Text("题干", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Text(
                         item?.questionText.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium
+                        style = ArticleTypography.QuestionStem
                     )
                     if (!group.sourceUrl.isNullOrBlank()) {
                         val sourceUrl = group.sourceUrl!!.trim()
@@ -3724,7 +3725,7 @@ private fun WritingPassagePanel(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("背景材料", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text(group.passageText, style = MaterialTheme.typography.bodySmall)
+                        Text(group.passageText, style = ArticleTypography.QuestionSupport)
                     }
                 }
             }
@@ -3768,7 +3769,7 @@ private fun WritingPassagePanel(
                         )
                     }
                     if (!sampleText.isNullOrBlank()) {
-                        Text(sampleText, style = MaterialTheme.typography.bodySmall)
+                        Text(sampleText, style = ArticleTypography.QuestionSupport)
                     } else if (!state.writingSampleError.isNullOrBlank()) {
                         Text(
                             "检索失败：${state.writingSampleError}",

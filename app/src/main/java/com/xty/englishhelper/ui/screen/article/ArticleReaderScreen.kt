@@ -32,10 +32,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
@@ -49,7 +47,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
@@ -59,7 +56,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -102,6 +98,7 @@ import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TranslationBlock
 import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
+import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -120,7 +117,6 @@ fun ArticleReaderScreen(
     val notebookPulseTint = remember { Animatable(0f) }
     var followTts by rememberSaveable { mutableStateOf(true) }
     var showGenerateDialog by rememberSaveable { mutableStateOf(false) }
-    var showToolsSheet by rememberSaveable { mutableStateOf(false) }
     var draftPaperTitle by rememberSaveable { mutableStateOf("") }
     var selectedGenerateId by rememberSaveable { mutableStateOf("read") }
 
@@ -218,30 +214,17 @@ fun ArticleReaderScreen(
     val canSpeak = article != null &&
         (uiState.paragraphs?.isNotEmpty() == true) &&
         uiState.ttsState.isReady
-    val topBarSupportingText = article?.source?.takeIf { it.isNotBlank() }
-        ?: article?.domain?.takeIf { it.isNotBlank() }
     val topBarTitleText = article?.title?.takeIf { it.isNotBlank() } ?: "文章阅读"
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        if (!topBarSupportingText.isNullOrBlank()) {
-                            Text(
-                                text = topBarSupportingText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Text(
-                            text = topBarTitleText,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    Text(
+                        text = topBarTitleText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -259,39 +242,49 @@ fun ArticleReaderScreen(
                         MaterialTheme.colorScheme.primary,
                         notebookPulseTint.value
                     )
-                    IconButton(onClick = { viewModel.toggleNotebook() }) {
-                        if (uiState.collectedWords.isNotEmpty()) {
-                            BadgedBox(
-                                badge = {
-                                    Badge {
-                                        Text("${uiState.collectedWords.size}")
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.MenuBook,
-                                    contentDescription = "收纳本",
-                                    tint = notebookTint,
-                                    modifier = Modifier.graphicsLayer {
-                                        scaleX = notebookPulseScale.value
-                                        scaleY = notebookPulseScale.value
-                                    }
-                                )
-                            }
-                        } else {
-                            Icon(
-                                Icons.AutoMirrored.Filled.MenuBook,
-                                contentDescription = "收纳本",
-                                tint = notebookTint,
-                                modifier = Modifier.graphicsLayer {
-                                    scaleX = notebookPulseScale.value
-                                    scaleY = notebookPulseScale.value
-                                }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ReaderTopActionButton(
+                            icon = if (isArticleSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isArticleSpeaking) "暂停朗读" else "朗读全文",
+                            onClick = { viewModel.toggleSpeakArticle() },
+                            enabled = canSpeak,
+                            active = isArticleSpeaking
+                        )
+                        ReaderTopActionButton(
+                            icon = Icons.Default.Translate,
+                            contentDescription = if (uiState.translationEnabled) "关闭全文翻译" else "全文翻译",
+                            onClick = { viewModel.toggleTranslation() },
+                            active = uiState.translationEnabled
+                        )
+                        ReaderTopActionButton(
+                            icon = Icons.Default.AutoAwesome,
+                            contentDescription = if (uiState.isGeneratingQuestions) "后台出题中" else "文章出题",
+                            onClick = { showGenerateDialog = true },
+                            enabled = !uiState.isGeneratingQuestions,
+                            active = uiState.isGeneratingQuestions
+                        )
+                        if (article?.isSaved == false) {
+                            ReaderTopActionButton(
+                                icon = Icons.Default.Download,
+                                contentDescription = if (uiState.isSavingToLocal) "保存中" else "保存到本地",
+                                onClick = { viewModel.saveToLocal() },
+                                enabled = !uiState.isSavingToLocal,
+                                active = uiState.isSavingToLocal
                             )
                         }
-                    }
-                    IconButton(onClick = { showToolsSheet = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "阅读工具")
+                        ReaderTopActionButton(
+                            icon = Icons.AutoMirrored.Filled.MenuBook,
+                            contentDescription = "单词本",
+                            onClick = { viewModel.toggleNotebook() },
+                            tint = notebookTint,
+                            pulseScale = notebookPulseScale.value,
+                            badgeCount = uiState.collectedWords.size,
+                            active = uiState.collectedWords.isNotEmpty()
+                        )
                     }
                 }
             )
@@ -437,38 +430,6 @@ fun ArticleReaderScreen(
         )
     }
 
-    if (showToolsSheet && article != null) {
-        ReaderToolsSheet(
-            showSaveAction = article.isSaved == false,
-            canSpeak = canSpeak,
-            isArticleSpeaking = isArticleSpeaking,
-            translationEnabled = uiState.translationEnabled,
-            isSavingToLocal = uiState.isSavingToLocal,
-            isGeneratingQuestions = uiState.isGeneratingQuestions,
-            collectedCount = uiState.collectedWords.size,
-            onDismiss = { showToolsSheet = false },
-            onOpenNotebook = {
-                showToolsSheet = false
-                viewModel.toggleNotebook()
-            },
-            onToggleSpeak = {
-                showToolsSheet = false
-                viewModel.toggleSpeakArticle()
-            },
-            onToggleTranslation = {
-                showToolsSheet = false
-                viewModel.toggleTranslation()
-            },
-            onGenerateQuestions = {
-                showToolsSheet = false
-                showGenerateDialog = true
-            },
-            onSaveToLocal = {
-                showToolsSheet = false
-                viewModel.saveToLocal()
-            }
-        )
-    }
 
 }
 
@@ -562,7 +523,7 @@ private fun ArticleReaderContent(
         if (prewarmActive) {
             item(key = "tts_prewarm") {
                 Surface(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = ArticleShapes.Control,
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
                 ) {
                     Row(
@@ -627,7 +588,7 @@ private fun ReaderHeroCard(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(30.dp)
+        shape = ArticleShapes.Hero
     ) {
         Column(
             modifier = Modifier.fillMaxWidth()
@@ -733,7 +694,7 @@ private fun ReaderHeroCard(
 
                 if (hasSummary) {
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = ArticleShapes.Section,
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                     ) {
                         Column(
@@ -758,139 +719,60 @@ private fun ReaderHeroCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReaderToolsSheet(
-    showSaveAction: Boolean,
-    canSpeak: Boolean,
-    isArticleSpeaking: Boolean,
-    translationEnabled: Boolean,
-    isSavingToLocal: Boolean,
-    isGeneratingQuestions: Boolean,
-    collectedCount: Int,
-    onDismiss: () -> Unit,
-    onOpenNotebook: () -> Unit,
-    onToggleSpeak: () -> Unit,
-    onToggleTranslation: () -> Unit,
-    onGenerateQuestions: () -> Unit,
-    onSaveToLocal: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "阅读工具",
-                style = MaterialTheme.typography.headlineSmall
-            )
-            Text(
-                text = "把朗读、翻译、收纳本和出题都放到这里，正文区域保持安静。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            ReaderToolActionRow(
-                title = if (isArticleSpeaking) "暂停朗读" else "开始朗读",
-                description = if (canSpeak) "按段连续播放全文，可配合底部播放器跟读。" else "当前文章暂时无法朗读。",
-                icon = if (isArticleSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
-                onClick = onToggleSpeak,
-                enabled = canSpeak,
-                prominent = isArticleSpeaking
-            )
-            ReaderToolActionRow(
-                title = if (translationEnabled) "关闭段落翻译" else "显示段落翻译",
-                description = if (translationEnabled) "已显示中文辅助，适合精读核对。" else "保留原文界面，只在需要时显示翻译。",
-                icon = Icons.Default.Translate,
-                onClick = onToggleTranslation,
-                prominent = translationEnabled
-            )
-            ReaderToolActionRow(
-                title = "打开收纳本",
-                description = if (collectedCount > 0) "已收集 $collectedCount 个词，随时整理进辞书。" else "查看刚刚点击收集的单词，统一整理进辞书。",
-                icon = Icons.AutoMirrored.Filled.MenuBook,
-                onClick = onOpenNotebook
-            )
-            ReaderToolActionRow(
-                title = if (isGeneratingQuestions) "后台出题中" else "基于文章出题",
-                description = "在后台生成考研题型，不阻塞当前阅读。",
-                icon = Icons.Default.AutoAwesome,
-                onClick = onGenerateQuestions,
-                enabled = !isGeneratingQuestions
-            )
-            if (showSaveAction) {
-                ReaderToolActionRow(
-                    title = if (isSavingToLocal) "保存中…" else "保存到本地",
-                    description = "把在线文章转成本地材料，后续可继续解析、出题和同步。",
-                    icon = Icons.Default.Download,
-                    onClick = onSaveToLocal,
-                    enabled = !isSavingToLocal
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-        }
-    }
-}
-
-@Composable
-private fun ReaderToolActionRow(
-    title: String,
-    description: String,
+private fun ReaderTopActionButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    prominent: Boolean = false
+    active: Boolean = false,
+    tint: Color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+    pulseScale: Float = 1f,
+    badgeCount: Int = 0
 ) {
     val containerColor = when {
-        !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
-        prominent -> MaterialTheme.colorScheme.primaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
-    }
-    val titleColor = when {
-        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-        prominent -> MaterialTheme.colorScheme.onPrimaryContainer
-        else -> MaterialTheme.colorScheme.onSurface
+        !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.26f)
+        active -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        else -> Color.Transparent
     }
 
     Surface(
-        shape = RoundedCornerShape(22.dp),
+        modifier = modifier,
+        shape = ArticleShapes.Control,
         color = containerColor
     ) {
-        Row(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 15.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .size(38.dp)
+                .clickable(enabled = enabled, onClick = onClick),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = titleColor
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = titleColor
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = titleColor.copy(alpha = 0.78f)
+            val iconModifier = Modifier.graphicsLayer {
+                scaleX = pulseScale
+                scaleY = pulseScale
+            }
+            if (badgeCount > 0) {
+                BadgedBox(
+                    badge = {
+                        Badge {
+                            Text("$badgeCount")
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = contentDescription,
+                        tint = tint,
+                        modifier = iconModifier
+                    )
+                }
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = tint,
+                    modifier = iconModifier
                 )
             }
         }
@@ -913,7 +795,7 @@ private fun ReaderMetaPill(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        shape = RoundedCornerShape(999.dp)
+        shape = ArticleShapes.Chip
     ) {
         Text(
             text = text,

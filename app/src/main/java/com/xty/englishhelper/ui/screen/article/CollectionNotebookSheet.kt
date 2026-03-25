@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.CollectedWord
 import com.xty.englishhelper.domain.model.StudyUnit
+import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -135,7 +136,7 @@ private fun CollectedWordCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = ArticleShapes.Card
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             // Title row: word + remove button
@@ -222,7 +223,7 @@ private fun CollectedWordCard(
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant,
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            shape = RoundedCornerShape(999.dp),
+                            shape = ArticleShapes.Chip,
                             modifier = Modifier.height(24.dp)
                         ) {
                             Text(

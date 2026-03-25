@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
+import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 import com.xty.englishhelper.ui.screen.article.ArticleFilterActionButton
 import com.xty.englishhelper.ui.screen.article.EditorialActionButton
 import com.xty.englishhelper.ui.screen.article.EditorialPill
@@ -227,7 +228,7 @@ private fun OnlineBrowseOverviewCard(
     onRefresh: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(24.dp),
+        shape = ArticleShapes.Section,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
@@ -451,7 +452,7 @@ private fun ScopeSourceCard(
     }
 
     Surface(
-        shape = RoundedCornerShape(18.dp),
+        shape = ArticleShapes.Section,
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
@@ -507,7 +508,7 @@ private fun ScopeSectionGroup(
         ) {
             sections.forEach { section ->
                 Surface(
-                    shape = RoundedCornerShape(999.dp),
+                    shape = ArticleShapes.Chip,
                     color = if (section.key == selectedSection) {
                         MaterialTheme.colorScheme.primary
                     } else {
@@ -548,7 +549,7 @@ private fun EmptyOnlineArticleState(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = ArticleShapes.Section,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
@@ -584,7 +585,7 @@ private fun EmptyOnlineArticleState(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = ArticleShapes.Control,
                         color = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     ) {
@@ -597,7 +598,7 @@ private fun EmptyOnlineArticleState(
                         )
                     }
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = ArticleShapes.Control,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
                         contentColor = MaterialTheme.colorScheme.onSurface
                     ) {
@@ -677,7 +678,7 @@ private fun ArticlePreviewCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        shape = RoundedCornerShape(24.dp),
+        shape = ArticleShapes.Section,
         elevation = CardDefaults.cardElevation(3.dp)
     ) {
         Row(

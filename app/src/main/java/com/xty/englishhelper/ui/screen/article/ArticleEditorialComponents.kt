@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 import coil.compose.AsyncImage
 
 @Composable
@@ -49,7 +49,7 @@ fun EditorialPill(
         modifier = modifier,
         color = containerColor,
         contentColor = contentColor,
-        shape = RoundedCornerShape(999.dp)
+        shape = ArticleShapes.Chip
     ) {
         Text(
             text = text,
@@ -73,20 +73,20 @@ fun EditorialThumbnail(
         AsyncImage(
             model = imageModel,
             contentDescription = null,
-            modifier = modifier.clip(RoundedCornerShape(18.dp)),
+            modifier = modifier.clip(ArticleShapes.Thumbnail),
             contentScale = ContentScale.Crop
         )
     } else {
         Box(
             modifier = modifier
-                .clip(RoundedCornerShape(18.dp))
+                .clip(ArticleShapes.Thumbnail)
                 .background(brush = Brush.linearGradient(gradientColors)),
             contentAlignment = Alignment.Center
         ) {
             Surface(
                 color = Color.White.copy(alpha = 0.12f),
                 contentColor = Color.White,
-                shape = CircleShape
+                shape = ArticleShapes.Chip
             ) {
                 Text(
                     text = fallbackSeed,
@@ -124,7 +124,7 @@ fun EditorialActionButton(
         modifier = modifier,
         color = containerColor,
         contentColor = contentColor,
-        shape = RoundedCornerShape(18.dp)
+        shape = ArticleShapes.Control
     ) {
         Row(
             modifier = Modifier

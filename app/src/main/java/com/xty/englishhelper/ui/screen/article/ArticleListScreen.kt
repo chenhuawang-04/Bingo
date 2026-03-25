@@ -70,6 +70,7 @@ import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
+import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -262,7 +263,7 @@ private fun LibraryOverviewCard(
     onCreateCategory: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(24.dp),
+        shape = ArticleShapes.Section,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
@@ -458,7 +459,7 @@ private fun CategorySelectionSheet(
             }
 
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = ArticleShapes.Section,
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f)
             ) {
                 Column(
@@ -506,7 +507,7 @@ private fun CategorySheetRow(
     onClick: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = ArticleShapes.Control,
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
@@ -559,7 +560,7 @@ private fun EmptyArticleStateCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = ArticleShapes.Section,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
@@ -607,7 +608,7 @@ private fun EmptyArticleStateCard(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = ArticleShapes.Control,
                         color = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     ) {
@@ -621,7 +622,7 @@ private fun EmptyArticleStateCard(
                     }
                     if (hasSourceArticles && filterEnabled) {
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = ArticleShapes.Control,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
                             contentColor = MaterialTheme.colorScheme.onSurface
                         ) {
@@ -682,7 +683,7 @@ private fun ArticleCard(
     Card(
         onClick = onRead,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = ArticleShapes.Section,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),

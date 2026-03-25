@@ -59,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
+import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -374,7 +375,7 @@ private fun EditorSectionCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = ArticleShapes.Section,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
@@ -402,7 +403,7 @@ private fun EditorSectionActionsCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = ArticleShapes.Section,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
         )
@@ -452,7 +453,7 @@ private fun ParagraphEditorCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = ArticleShapes.Control
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
