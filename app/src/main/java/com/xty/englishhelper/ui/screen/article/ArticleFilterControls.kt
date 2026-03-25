@@ -3,8 +3,6 @@ package com.xty.englishhelper.ui.screen.article
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -267,7 +265,6 @@ fun ArticleFilterActionButton(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ArticleFilterMenuContent(
     filterEnabled: Boolean,
@@ -379,7 +376,6 @@ private fun ArticleFilterMenuContent(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun <T> FilterSection(
     title: String,
@@ -388,22 +384,34 @@ private fun <T> FilterSection(
     labelOf: (T) -> String,
     onSelected: (T) -> Unit
 ) {
+    val items = remember(values) { values.toList() }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = title,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            values.forEach { item ->
-                FilterChip(
-                    selected = item == selected,
-                    onClick = { onSelected(item) },
-                    label = { Text(labelOf(item)) }
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items.chunked(2).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowItems.forEach { item ->
+                        Box(modifier = Modifier.weight(1f)) {
+                            FilterChip(
+                                selected = item == selected,
+                                onClick = { onSelected(item) },
+                                label = { Text(labelOf(item)) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                    repeat(2 - rowItems.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
     }
