@@ -77,8 +77,20 @@ class BackgroundOrganizeManager @Inject constructor(
         }
     }
 
-    fun enqueue(wordId: Long, dictionaryId: Long, spelling: String, force: Boolean = false) {
-        backgroundTaskManager.enqueueWordOrganize(wordId, dictionaryId, spelling, force)
+    fun enqueue(
+        wordId: Long,
+        dictionaryId: Long,
+        spelling: String,
+        force: Boolean = false,
+        referenceHints: List<String> = emptyList()
+    ) {
+        backgroundTaskManager.enqueueWordOrganize(
+            wordId = wordId,
+            dictionaryId = dictionaryId,
+            spelling = spelling,
+            force = force,
+            referenceHints = referenceHints
+        )
     }
 
     fun dismissTask(wordId: Long) {

@@ -96,7 +96,13 @@ class BackgroundTaskManager @Inject constructor(
         }
     }
 
-    fun enqueueWordOrganize(wordId: Long, dictionaryId: Long, spelling: String, force: Boolean = false) {
+    fun enqueueWordOrganize(
+        wordId: Long,
+        dictionaryId: Long,
+        spelling: String,
+        force: Boolean = false,
+        referenceHints: List<String> = emptyList()
+    ) {
         scope.launch {
             val highQualityEnabled = settingsDataStore.getWordOrganizeHighQualityEnabled()
             val referenceSource = settingsDataStore.getWordOrganizeReferenceSource()
@@ -114,6 +120,11 @@ class BackgroundTaskManager @Inject constructor(
                 wordId = wordId,
                 dictionaryId = dictionaryId,
                 spelling = spelling,
+                referenceHints = referenceHints
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .take(6),
                 highQualityEnabled = highQualityEnabled,
                 referenceSource = referenceSource.name,
                 mainModelSnapshot = mainSnapshot,
@@ -402,6 +413,7 @@ class BackgroundTaskManager @Inject constructor(
             mainSnapshot.model,
             mainSnapshot.baseUrl,
             mainSnapshot.provider,
+            supplementalReferenceHints = payload.referenceHints,
             highQualityEnabledOverride = payload.highQualityEnabled,
             referenceSourceOverride = referenceSource,
             referenceModelSnapshotOverride = referenceSnapshot

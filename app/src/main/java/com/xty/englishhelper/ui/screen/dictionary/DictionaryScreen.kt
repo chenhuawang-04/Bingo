@@ -1,5 +1,7 @@
 package com.xty.englishhelper.ui.screen.dictionary
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,14 +19,17 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -120,6 +125,20 @@ fun DictionaryScreen(
                 },
                 actions = {
                     state.dictionary?.let { dict ->
+                        IconButton(onClick = viewModel::showFilterDialog) {
+                            Icon(
+                                Icons.Default.FilterList,
+                                contentDescription = "筛选",
+                                tint = if (state.hasActiveWordFilter) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                        TextButton(onClick = viewModel::toggleBatchMode) {
+                            Text(if (state.isBatchMode) "退出批量" else "批量")
+                        }
                         IconButton(onClick = { onStudy(dict.id) }) {
                             Icon(Icons.Default.School, contentDescription = "背单词")
                         }
@@ -301,6 +320,30 @@ fun DictionaryScreen(
         )
     }
 
+    if (state.showFilterDialog) {
+        DictionaryFilterDialog(
+            current = state.wordFilter,
+            onDismiss = viewModel::dismissFilterDialog,
+            onApply = {
+                viewModel.updateWordFilter(it)
+                viewModel.dismissFilterDialog()
+            },
+            onReset = {
+                viewModel.resetWordFilter()
+                viewModel.dismissFilterDialog()
+            }
+        )
+    }
+
+    if (state.showBatchDeleteConfirm) {
+        ConfirmDialog(
+            title = "批量删除单词",
+            message = "确定要删除已选的 ${state.selectedWordIds.size} 个单词吗？此操作不可撤销。",
+            onConfirm = viewModel::confirmDeleteSelectedWords,
+            onDismiss = viewModel::dismissBatchDeleteConfirm
+        )
+    }
+
     // Quality-First confirm dialog
     if (state.showQfConfirmDialog) {
         val estimatedTokens = state.qfWordCount * 600
@@ -443,10 +486,61 @@ private fun DictionaryListContent(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
     )
 
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = if (state.hasActiveWordFilter) {
+                "筛选后 ${state.filteredWords.size}/${state.words.size} 词"
+            } else {
+                "共 ${state.words.size} 词"
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (state.hasActiveWordFilter) {
+                TextButton(onClick = viewModel::resetWordFilter) { Text("清除筛选") }
+            }
+            if (state.isBatchMode) {
+                TextButton(onClick = viewModel::selectAllFilteredWords) { Text("全选筛选结果") }
+            }
+        }
+    }
+
+    if (state.isBatchMode) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "已选 ${state.selectedWordIds.size} 个",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            TextButton(onClick = viewModel::clearBatchSelection) { Text("清空") }
+            TextButton(
+                onClick = viewModel::deleteSelectedWords,
+                enabled = state.selectedWordIds.isNotEmpty()
+            ) { Text("删除") }
+            TextButton(
+                onClick = viewModel::reorganizeSelectedWords,
+                enabled = state.selectedWordIds.isNotEmpty()
+            ) { Text("重新整理") }
+        }
+    }
+
     when {
         state.isLoading -> LoadingIndicator()
         state.searchQuery.isNotEmpty() -> {
-            if (state.words.isEmpty()) {
+            if (state.filteredWords.isEmpty()) {
                 EmptyState(message = "未找到匹配的单词")
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {
@@ -455,15 +549,12 @@ private fun DictionaryListContent(
                         contentPadding = PaddingValues(bottom = 8.dp)
                     ) {
                         items(state.pagedWords, key = { it.id }) { word ->
-                            WordListItem(
+                            SelectableWordRow(
                                 word = word,
-                                onClick = {
-                                    state.dictionary?.let {
-                                        onWordClick(word.id, it.id)
-                                    }
-                                },
-                                isSelected = word.id == selectedWordId,
-                                isOrganizing = word.id in state.organizingWordIds
+                                state = state,
+                                selectedWordId = selectedWordId,
+                                onWordClick = onWordClick,
+                                onToggleWordSelection = viewModel::toggleWordSelection
                             )
                             HorizontalDivider()
                         }
@@ -637,36 +728,37 @@ private fun DictionaryListContent(
 
                     item {
                         Text(
-                            text = "全部单词 (${state.words.size})",
+                            text = "全部单词 (${state.filteredWords.size})",
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
 
-                    if (state.words.isEmpty()) {
+                    if (state.filteredWords.isEmpty()) {
                         item {
                             EmptyState(
-                                message = "辞书中还没有单词\n点击 + 添加一个吧"
+                                message = if (state.hasActiveWordFilter || state.searchQuery.isNotBlank()) {
+                                    "当前筛选下没有单词"
+                                } else {
+                                    "辞书中还没有单词\n点击 + 添加一个吧"
+                                }
                             )
                         }
                     } else {
                         items(state.pagedWords, key = { "word_${it.id}" }) { word ->
-                            WordListItem(
+                            SelectableWordRow(
                                 word = word,
-                                onClick = {
-                                    state.dictionary?.let {
-                                        onWordClick(word.id, it.id)
-                                    }
-                                },
-                                isSelected = word.id == selectedWordId,
-                                isOrganizing = word.id in state.organizingWordIds
+                                state = state,
+                                selectedWordId = selectedWordId,
+                                onWordClick = onWordClick,
+                                onToggleWordSelection = viewModel::toggleWordSelection
                             )
                             HorizontalDivider()
                         }
                     }
                 }
-                if (state.words.isNotEmpty() && state.totalPages > 1) {
+                if (state.filteredWords.isNotEmpty() && state.totalPages > 1) {
                     PaginationBar(
                         currentPage = state.currentPage,
                         totalPages = state.totalPages,
@@ -678,6 +770,179 @@ private fun DictionaryListContent(
             }
         }
     }
+}
+
+@Composable
+private fun SelectableWordRow(
+    word: com.xty.englishhelper.domain.model.WordDetails,
+    state: DictionaryUiState,
+    selectedWordId: Long?,
+    onWordClick: (Long, Long) -> Unit,
+    onToggleWordSelection: (Long) -> Unit
+) {
+    if (state.isBatchMode) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = word.id in state.selectedWordIds,
+                onCheckedChange = { onToggleWordSelection(word.id) }
+            )
+            WordListItem(
+                word = word,
+                onClick = { onToggleWordSelection(word.id) },
+                modifier = Modifier.weight(1f),
+                isSelected = word.id in state.selectedWordIds,
+                isOrganizing = word.id in state.organizingWordIds
+            )
+        }
+    } else {
+        WordListItem(
+            word = word,
+            onClick = {
+                state.dictionary?.let {
+                    onWordClick(word.id, it.id)
+                }
+            },
+            isSelected = word.id == selectedWordId,
+            isOrganizing = word.id in state.organizingWordIds
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DictionaryFilterDialog(
+    current: DictionaryWordFilter,
+    onDismiss: () -> Unit,
+    onApply: (DictionaryWordFilter) -> Unit,
+    onReset: () -> Unit
+) {
+    var minLen by remember(current.minLength) { mutableStateOf(current.minLength?.toString().orEmpty()) }
+    var maxLen by remember(current.maxLength) { mutableStateOf(current.maxLength?.toString().orEmpty()) }
+    var startsWith by remember(current.startsWith) { mutableStateOf(current.startsWith) }
+    var phonetic by remember(current.phonetic) { mutableStateOf(current.phonetic) }
+    var meanings by remember(current.meanings) { mutableStateOf(current.meanings) }
+    var rootExplanation by remember(current.rootExplanation) { mutableStateOf(current.rootExplanation) }
+    var decomposition by remember(current.decomposition) { mutableStateOf(current.decomposition) }
+    var synonyms by remember(current.synonyms) { mutableStateOf(current.synonyms) }
+    var similarWords by remember(current.similarWords) { mutableStateOf(current.similarWords) }
+    var cognates by remember(current.cognates) { mutableStateOf(current.cognates) }
+    var inflections by remember(current.inflections) { mutableStateOf(current.inflections) }
+
+    fun parseIntOrNull(raw: String): Int? = raw.trim().toIntOrNull()?.coerceAtLeast(1)
+    val parsedMin = parseIntOrNull(minLen)
+    val parsedMax = parseIntOrNull(maxLen)
+    val lengthValid = parsedMin == null || parsedMax == null || parsedMin <= parsedMax
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("筛选单词") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = startsWith,
+                    onValueChange = { startsWith = it.take(1) },
+                    label = { Text("首字母") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = minLen,
+                        onValueChange = { minLen = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("最短长度") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = maxLen,
+                        onValueChange = { maxLen = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("最长长度") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (!lengthValid) {
+                    Text(
+                        text = "长度区间无效：最短长度不能大于最长长度",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Text("词条存在情况", style = MaterialTheme.typography.labelMedium)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PresenceChip("音标", phonetic) { phonetic = it }
+                    PresenceChip("释义", meanings) { meanings = it }
+                    PresenceChip("词根解释", rootExplanation) { rootExplanation = it }
+                    PresenceChip("构词拆解", decomposition) { decomposition = it }
+                    PresenceChip("近义词", synonyms) { synonyms = it }
+                    PresenceChip("形近词", similarWords) { similarWords = it }
+                    PresenceChip("同根词", cognates) { cognates = it }
+                    PresenceChip("词形变化", inflections) { inflections = it }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onApply(
+                        DictionaryWordFilter(
+                            phonetic = phonetic,
+                            meanings = meanings,
+                            rootExplanation = rootExplanation,
+                            decomposition = decomposition,
+                            synonyms = synonyms,
+                            similarWords = similarWords,
+                            cognates = cognates,
+                            inflections = inflections,
+                            minLength = parseIntOrNull(minLen),
+                            maxLength = parseIntOrNull(maxLen),
+                            startsWith = startsWith.trim()
+                        )
+                    )
+                },
+                enabled = lengthValid
+            ) { Text("应用") }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onReset) { Text("重置") }
+                TextButton(onClick = onDismiss) { Text("取消") }
+            }
+        }
+    )
+}
+
+@Composable
+private fun PresenceChip(
+    label: String,
+    value: EntryPresenceFilter,
+    onChange: (EntryPresenceFilter) -> Unit
+) {
+    val text = when (value) {
+        EntryPresenceFilter.ANY -> "$label: 不限"
+        EntryPresenceFilter.PRESENT -> "$label: 有"
+        EntryPresenceFilter.MISSING -> "$label: 无"
+    }
+    FilterChip(
+        selected = value != EntryPresenceFilter.ANY,
+        onClick = {
+            val next = when (value) {
+                EntryPresenceFilter.ANY -> EntryPresenceFilter.PRESENT
+                EntryPresenceFilter.PRESENT -> EntryPresenceFilter.MISSING
+                EntryPresenceFilter.MISSING -> EntryPresenceFilter.ANY
+            }
+            onChange(next)
+        },
+        label = { Text(text) }
+    )
 }
 
 @Composable

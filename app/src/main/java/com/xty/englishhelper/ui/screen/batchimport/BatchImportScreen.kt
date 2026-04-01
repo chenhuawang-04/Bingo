@@ -132,11 +132,44 @@ fun BatchImportScreen(
             OutlinedTextField(
                 value = state.conditions,
                 onValueChange = viewModel::onConditionsChange,
-                label = { Text("提取条件") },
+                label = { Text("提取条件（识别单词模式必填）") },
                 placeholder = { Text("如：蓝色字体、黑体、标题中的") },
-                supportingText = { Text("描述需要提取的单词特征") },
+                supportingText = {
+                    Text(
+                        if (state.scanMode == BatchScanMode.FULL_SCAN) {
+                            "可选。留空时将扫描全部可见英文单词。"
+                        } else {
+                            "描述需要提取的单词特征。"
+                        }
+                    )
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = state.scanMode == BatchScanMode.WORD_LIST,
+                    onClick = { viewModel.onScanModeChange(BatchScanMode.WORD_LIST) },
+                    label = { Text("识别单词") }
+                )
+                FilterChip(
+                    selected = state.scanMode == BatchScanMode.FULL_SCAN,
+                    onClick = { viewModel.onScanModeChange(BatchScanMode.FULL_SCAN) },
+                    label = { Text("完全扫描") }
+                )
+            }
+            Text(
+                text = if (state.scanMode == BatchScanMode.FULL_SCAN) {
+                    "完全扫描会额外提取每个词在图片中的关联片段，并在后台整理时作为参考。"
+                } else {
+                    "识别单词仅返回词列表，速度更快。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             if (state.availableUnits.isNotEmpty()) {
@@ -154,7 +187,9 @@ fun BatchImportScreen(
                             ?: throw IllegalStateException("无法读取图片")
                     }
                 },
-                enabled = !state.isExtracting && state.imageUris.isNotEmpty() && state.conditions.isNotBlank(),
+                enabled = !state.isExtracting &&
+                    state.imageUris.isNotEmpty() &&
+                    (state.scanMode == BatchScanMode.FULL_SCAN || state.conditions.isNotBlank()),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (state.isExtracting) {
@@ -221,6 +256,14 @@ fun BatchImportScreen(
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                                 textStyle = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        if (word.references.isNotEmpty()) {
+                            Text(
+                                text = "参考：${word.references.joinToString("；")}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 48.dp, end = 4.dp, bottom = 6.dp)
                             )
                         }
                     }

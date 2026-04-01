@@ -25,12 +25,19 @@ import javax.inject.Inject
 
 data class ExtractedWord(
     val spelling: String,
-    val checked: Boolean = true
+    val checked: Boolean = true,
+    val references: List<String> = emptyList()
 )
+
+enum class BatchScanMode {
+    WORD_LIST,
+    FULL_SCAN
+}
 
 data class BatchImportUiState(
     val imageUris: List<Uri> = emptyList(),
     val conditions: String = "",
+    val scanMode: BatchScanMode = BatchScanMode.WORD_LIST,
     val isExtracting: Boolean = false,
     val isCompressing: Boolean = false,
     val extractedWords: List<ExtractedWord> = emptyList(),
@@ -92,13 +99,17 @@ class BatchImportViewModel @Inject constructor(
         _uiState.update { it.copy(conditions = value) }
     }
 
+    fun onScanModeChange(mode: BatchScanMode) {
+        _uiState.update { it.copy(scanMode = mode) }
+    }
+
     fun extractWords(readImageBytes: suspend (Uri) -> ByteArray) {
         val state = _uiState.value
         if (state.imageUris.isEmpty()) {
             _uiState.update { it.copy(error = "请先选择图片") }
             return
         }
-        if (state.conditions.isBlank()) {
+        if (state.scanMode == BatchScanMode.WORD_LIST && state.conditions.isBlank()) {
             _uiState.update { it.copy(error = "请输入提取条件") }
             return
         }
@@ -123,19 +134,47 @@ class BatchImportViewModel @Inject constructor(
                         _uiState.update { it.copy(isCompressing = false) }
                     }
                 }
-                val words = articleAiRepository.extractWordsFromImages(
-                    imageBytes = compressedBytes,
-                    conditions = state.conditions,
-                    apiKey = config.apiKey,
-                    model = config.model,
-                    baseUrl = config.baseUrl,
-                    provider = config.provider
-                )
+                val extracted = when (state.scanMode) {
+                    BatchScanMode.WORD_LIST -> {
+                        articleAiRepository.extractWordsFromImages(
+                            imageBytes = compressedBytes,
+                            conditions = state.conditions,
+                            apiKey = config.apiKey,
+                            model = config.model,
+                            baseUrl = config.baseUrl,
+                            provider = config.provider
+                        ).asSequence()
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .distinctBy { it.lowercase() }
+                            .map { ExtractedWord(spelling = it) }
+                            .toList()
+                    }
+                    BatchScanMode.FULL_SCAN -> {
+                        articleAiRepository.extractWordsWithContextFromImages(
+                            imageBytes = compressedBytes,
+                            conditions = state.conditions,
+                            apiKey = config.apiKey,
+                            model = config.model,
+                            baseUrl = config.baseUrl,
+                            provider = config.provider
+                        ).map { candidate ->
+                            ExtractedWord(
+                                spelling = candidate.spelling,
+                                references = candidate.references
+                            )
+                        }.asSequence()
+                            .map { it.copy(spelling = it.spelling.trim()) }
+                            .filter { it.spelling.isNotBlank() }
+                            .distinctBy { it.spelling.lowercase() }
+                            .toList()
+                    }
+                }
 
                 _uiState.update {
                     it.copy(
                         isExtracting = false,
-                        extractedWords = words.distinct().map { w -> ExtractedWord(w) }
+                        extractedWords = extracted
                     )
                 }
             } catch (e: Exception) {
@@ -195,7 +234,12 @@ class BatchImportViewModel @Inject constructor(
                             addWordsToUnit(unitId, listOf(savedId))
                         }
                     }
-                    backgroundOrganizeManager.enqueue(savedId, dictionaryId, word.spelling.trim())
+                    backgroundOrganizeManager.enqueue(
+                        wordId = savedId,
+                        dictionaryId = dictionaryId,
+                        spelling = word.spelling.trim(),
+                        referenceHints = word.references
+                    )
                     _uiState.update { it.copy(importProgress = (index + 1) to selected.size) }
                 }
                 settingsDataStore.setLastSelectedUnitIds(dictionaryId, _uiState.value.selectedUnitIds)

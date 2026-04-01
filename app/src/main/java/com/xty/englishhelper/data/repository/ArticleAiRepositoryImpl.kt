@@ -9,6 +9,7 @@ import com.xty.englishhelper.domain.model.ArticleOcrResult
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
+import com.xty.englishhelper.domain.model.WordOcrCandidate
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleSuitabilityResult
 import com.xty.englishhelper.util.AiResponseUnwrapper
@@ -140,6 +141,60 @@ class ArticleAiRepositoryImpl @Inject constructor(
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
         val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
         return parseStringArray(responseText, unwrapEnabled, repairEnabled)
+    }
+
+    override suspend fun extractWordsWithContextFromImages(
+        imageBytes: List<ByteArray>,
+        conditions: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): List<WordOcrCandidate> {
+        val prompt = buildString {
+            appendLine("请执行“完全扫描”模式。")
+            appendLine("目标：识别图片中符合筛选条件的英语单词，并提取每个单词附近可见的关键信息，作为后续整理参考。")
+            appendLine("注意：你现在只做 OCR 结构化提取，不要做词义分析，不要做词条整理。")
+            appendLine()
+            appendLine("筛选条件：${conditions.ifBlank { "无（提取所有可见英文单词）" }}")
+            appendLine()
+            appendLine("只允许返回如下 JSON 数组，每项格式：")
+            appendLine(
+                """
+                [
+                  {
+                    "word": "target",
+                    "references": [
+                      "图片中与该词直接相关的原文片段1",
+                      "图片中与该词直接相关的原文片段2"
+                    ]
+                  }
+                ]
+                """.trimIndent()
+            )
+            appendLine()
+            appendLine("约束：")
+            appendLine("1) word 必须是英文词形，去掉标点与多余符号。")
+            appendLine("2) references 仅保留图片中与该词直接相关的短片段，禁止编造，禁止外推。")
+            appendLine("3) 每个单词 references 最多 3 条，每条尽量不超过 80 字符。")
+            appendLine("4) 若无有效片段，references 返回空数组。")
+            appendLine("5) 只返回 JSON 数组，不要任何额外文本。")
+            appendLine(Constants.JSON_STRICT_RULES)
+        }
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMultimodalMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            imageBytes = imageBytes,
+            prompt = prompt,
+            maxTokens = 3072
+        )
+
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseWordCandidates(responseText, unwrapEnabled, repairEnabled)
     }
 
     override suspend fun analyzeParagraph(
@@ -344,7 +399,9 @@ class ArticleAiRepositoryImpl @Inject constructor(
     private fun normalizeResponse(text: String, unwrapEnabled: Boolean, repairEnabled: Boolean): String {
         val cleaned = stripCodeFence(text)
         val unwrapped = if (unwrapEnabled) {
-            val candidate = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+            val candidate = extractFirstJsonObject(cleaned)
+                ?: extractFirstJsonArray(cleaned)
+                ?: cleaned.trim()
             AiResponseUnwrapper.unwrapJsonEnvelope(candidate) ?: cleaned
         } else {
             cleaned
@@ -380,6 +437,33 @@ class ArticleAiRepositoryImpl @Inject constructor(
         return null
     }
 
+    private fun extractFirstJsonArray(text: String): String? {
+        val start = text.indexOf('[')
+        if (start < 0) return null
+
+        var depth = 0
+        var inString = false
+        var escaped = false
+
+        for (i in start until text.length) {
+            val ch = text[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            when (ch) {
+                '\\' -> escaped = true
+                '"' -> inString = !inString
+                '[' -> if (!inString) depth++
+                ']' -> if (!inString) {
+                    depth--
+                    if (depth == 0) return text.substring(start, i + 1)
+                }
+            }
+        }
+        return null
+    }
+
     private fun removeTrailingCommas(json: String): String {
         return json.replace(Regex(",\\s*([}\\]])"), "$1")
     }
@@ -391,6 +475,62 @@ class ArticleAiRepositoryImpl @Inject constructor(
         return Regex("\"([^\"]+)\"").findAll(arrayMatch.value)
             .map { it.groupValues[1].trim() }
             .filter { it.isNotBlank() }
+            .toList()
+    }
+
+    private fun parseWordCandidates(text: String, unwrapEnabled: Boolean, repairEnabled: Boolean): List<WordOcrCandidate> {
+        val cleaned = normalizeResponse(text, unwrapEnabled, repairEnabled)
+        val arrayText = extractFirstJsonArray(cleaned)
+        if (arrayText != null) {
+            return parseWordCandidatesFromArray(arrayText)
+        }
+
+        val objectText = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+        val objectAdapter = moshi.adapter(WordCandidateEnvelopeJson::class.java).lenient()
+        val envelope = runCatching { objectAdapter.fromJson(objectText) }.getOrNull()
+            ?: runCatching { objectAdapter.fromJson(removeTrailingCommas(objectText)) }.getOrNull()
+        if (envelope != null) {
+            val listFromEnvelope = when {
+                !envelope.items.isNullOrEmpty() -> envelope.items
+                !envelope.results.isNullOrEmpty() -> envelope.results
+                !envelope.candidates.isNullOrEmpty() -> envelope.candidates
+                envelope.word != null -> listOf(
+                    WordCandidateJson(
+                        word = envelope.word,
+                        references = envelope.references
+                    )
+                )
+                else -> emptyList()
+            }
+            return sanitizeWordCandidates(listFromEnvelope)
+        }
+
+        return emptyList()
+    }
+
+    private fun parseWordCandidatesFromArray(arrayText: String): List<WordOcrCandidate> {
+        val listType = com.squareup.moshi.Types.newParameterizedType(List::class.java, WordCandidateJson::class.java)
+        val adapter = moshi.adapter<List<WordCandidateJson>>(listType).lenient()
+        val parsed = runCatching { adapter.fromJson(arrayText) }.getOrNull()
+            ?: runCatching { adapter.fromJson(removeTrailingCommas(arrayText)) }.getOrNull()
+            ?: emptyList()
+        return sanitizeWordCandidates(parsed)
+    }
+
+    private fun sanitizeWordCandidates(parsed: List<WordCandidateJson>): List<WordOcrCandidate> {
+        return parsed.asSequence()
+            .map {
+                WordOcrCandidate(
+                    spelling = (it.word ?: "").trim(),
+                    references = (it.references ?: emptyList())
+                        .map { ref -> ref.trim() }
+                        .filter { ref -> ref.isNotBlank() }
+                        .distinct()
+                        .take(3)
+                )
+            }
+            .filter { it.spelling.isNotBlank() }
+            .distinctBy { it.spelling.lowercase() }
             .toList()
     }
 
@@ -441,4 +581,17 @@ private data class QuickWordAnalysisJson(
 private data class SuitabilityJson(
     val score: Double? = null,
     val reason: String? = null
+)
+
+private data class WordCandidateJson(
+    val word: String? = null,
+    val references: List<String>? = null
+)
+
+private data class WordCandidateEnvelopeJson(
+    val items: List<WordCandidateJson>? = null,
+    val results: List<WordCandidateJson>? = null,
+    val candidates: List<WordCandidateJson>? = null,
+    val word: String? = null,
+    val references: List<String>? = null
 )

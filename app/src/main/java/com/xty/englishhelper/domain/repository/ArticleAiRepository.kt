@@ -5,6 +5,7 @@ import com.xty.englishhelper.domain.model.ArticleOcrResult
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import com.xty.englishhelper.domain.model.SentenceAnalysisResult
+import com.xty.englishhelper.domain.model.WordOcrCandidate
 
 data class ArticleSuitabilityResult(
     val score: Int = 0,
@@ -45,6 +46,15 @@ interface ArticleAiRepository {
         baseUrl: String,
         provider: AiProvider
     ): List<String>
+
+    suspend fun extractWordsWithContextFromImages(
+        imageBytes: List<ByteArray>,
+        conditions: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): List<WordOcrCandidate>
 
     suspend fun translateParagraph(
         paragraphText: String,

@@ -19,14 +19,12 @@ import com.xty.englishhelper.domain.usecase.unit.CreateUnitUseCase
 import com.xty.englishhelper.domain.usecase.unit.GetUnitsWithWordCountUseCase
 import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
 import com.xty.englishhelper.domain.usecase.word.GetWordsByDictionaryUseCase
-import com.xty.englishhelper.domain.usecase.word.SearchWordsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -38,7 +36,6 @@ class DictionaryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val getDictionaryById: GetDictionaryByIdUseCase,
     private val getWordsByDictionary: GetWordsByDictionaryUseCase,
-    private val searchWords: SearchWordsUseCase,
     private val deleteWord: DeleteWordUseCase,
     private val getUnitsWithWordCount: GetUnitsWithWordCountUseCase,
     private val createUnit: CreateUnitUseCase,
@@ -53,8 +50,6 @@ class DictionaryViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(DictionaryUiState())
     val uiState: StateFlow<DictionaryUiState> = _uiState.asStateFlow()
-
-    private val _searchQuery = MutableStateFlow("")
 
     private var poolTaskId: Long? = null
     private var jumpToLastUnitPage = false
@@ -77,20 +72,22 @@ class DictionaryViewModel @Inject constructor(
 
     private fun observeWords() {
         viewModelScope.launch {
-            _searchQuery.flatMapLatest { query ->
-                if (query.isBlank()) {
-                    getWordsByDictionary(dictionaryId)
-                } else {
-                    searchWords(dictionaryId, query)
+            getWordsByDictionary(dictionaryId)
+                .catch { e ->
+                    _uiState.update { it.copy(error = e.message, isLoading = false) }
                 }
-            }.catch { e ->
-                _uiState.update { it.copy(error = e.message, isLoading = false) }
-            }.collect { words ->
-                _uiState.update {
-                    val maxPage = if (words.isEmpty()) 0 else (words.size + it.pageSize - 1) / it.pageSize - 1
-                    it.copy(words = words, isLoading = false, currentPage = it.currentPage.coerceAtMost(maxPage.coerceAtLeast(0)))
+                .collect { words ->
+                    _uiState.update {
+                        val cleanedSelection = it.selectedWordIds.filter { id -> words.any { w -> w.id == id } }.toSet()
+                        recomputeFiltered(
+                            it.copy(
+                                words = words,
+                                isLoading = false,
+                                selectedWordIds = cleanedSelection
+                            )
+                        )
+                    }
                 }
-            }
         }
     }
 
@@ -118,8 +115,7 @@ class DictionaryViewModel @Inject constructor(
     }
 
     fun onSearchQueryChange(query: String) {
-        _uiState.update { it.copy(searchQuery = query, currentPage = 0) }
-        _searchQuery.value = query
+        _uiState.update { recomputeFiltered(it.copy(searchQuery = query, currentPage = 0)) }
     }
 
     fun showDeleteConfirm(word: WordDetails) {
@@ -134,7 +130,114 @@ class DictionaryViewModel @Inject constructor(
         val target = _uiState.value.deleteTarget ?: return
         viewModelScope.launch {
             deleteWord(target.id, dictionaryId)
-            _uiState.update { it.copy(deleteTarget = null) }
+            _uiState.update {
+                it.copy(
+                    deleteTarget = null,
+                    selectedWordIds = it.selectedWordIds - target.id
+                )
+            }
+        }
+    }
+
+    fun showFilterDialog() {
+        _uiState.update { it.copy(showFilterDialog = true) }
+    }
+
+    fun dismissFilterDialog() {
+        _uiState.update { it.copy(showFilterDialog = false) }
+    }
+
+    fun updateWordFilter(filter: DictionaryWordFilter) {
+        _uiState.update { recomputeFiltered(it.copy(wordFilter = filter, currentPage = 0)) }
+    }
+
+    fun resetWordFilter() {
+        _uiState.update { recomputeFiltered(it.copy(wordFilter = DictionaryWordFilter(), currentPage = 0)) }
+    }
+
+    fun toggleBatchMode() {
+        _uiState.update {
+            if (it.isBatchMode) {
+                it.copy(isBatchMode = false, selectedWordIds = emptySet())
+            } else {
+                it.copy(isBatchMode = true)
+            }
+        }
+    }
+
+    fun clearBatchSelection() {
+        _uiState.update { it.copy(selectedWordIds = emptySet()) }
+    }
+
+    fun toggleWordSelection(wordId: Long) {
+        _uiState.update {
+            val next = it.selectedWordIds.toMutableSet()
+            if (wordId in next) next.remove(wordId) else next.add(wordId)
+            it.copy(selectedWordIds = next)
+        }
+    }
+
+    fun selectAllFilteredWords() {
+        _uiState.update { it.copy(selectedWordIds = it.filteredWords.map { w -> w.id }.toSet()) }
+    }
+
+    fun deleteSelectedWords() {
+        if (_uiState.value.selectedWordIds.isEmpty()) return
+        _uiState.update { it.copy(showBatchDeleteConfirm = true) }
+    }
+
+    fun dismissBatchDeleteConfirm() {
+        _uiState.update { it.copy(showBatchDeleteConfirm = false) }
+    }
+
+    fun confirmDeleteSelectedWords() {
+        val selected = _uiState.value.selectedWordIds.toList()
+        if (selected.isEmpty()) {
+            _uiState.update { it.copy(showBatchDeleteConfirm = false) }
+            return
+        }
+        viewModelScope.launch {
+            var success = 0
+            val failed = mutableSetOf<Long>()
+            var lastError: String? = null
+            selected.forEach { wordId ->
+                runCatching { deleteWord(wordId, dictionaryId) }
+                    .onSuccess { success++ }
+                    .onFailure {
+                        failed += wordId
+                        lastError = it.message
+                    }
+            }
+            _uiState.update {
+                val next = it.copy(
+                    showBatchDeleteConfirm = false,
+                    isBatchMode = failed.isNotEmpty(),
+                    selectedWordIds = failed
+                )
+                recomputeFiltered(
+                    if (failed.isEmpty()) {
+                        next
+                    } else {
+                        next.copy(
+                            error = "已删除 $success 个，失败 ${failed.size} 个${lastError?.let { msg -> "：$msg" } ?: ""}"
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    fun reorganizeSelectedWords() {
+        val state = _uiState.value
+        if (state.selectedWordIds.isEmpty()) return
+        val selectedWords = state.words.filter { it.id in state.selectedWordIds }
+        selectedWords.forEach { word ->
+            backgroundOrganizeManager.enqueue(
+                wordId = word.id,
+                dictionaryId = dictionaryId,
+                spelling = word.spelling,
+                force = true
+            )
         }
     }
 
@@ -333,5 +436,46 @@ class DictionaryViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    private fun recomputeFiltered(state: DictionaryUiState): DictionaryUiState {
+        val normalizedQuery = state.searchQuery.trim().lowercase()
+        val startsWithLower = state.wordFilter.startsWith.trim().lowercase()
+        val filtered = state.words.filter { word ->
+            val spelling = word.spelling.trim()
+            val spellingLower = spelling.lowercase()
+            if (normalizedQuery.isNotBlank()) {
+                val meaningHit = word.meanings.any { meaning ->
+                    (meaning.pos + " " + meaning.definition).lowercase().contains(normalizedQuery)
+                }
+                if (!spellingLower.contains(normalizedQuery) && !meaningHit) return@filter false
+            }
+            if (!matchesPresence(state.wordFilter.phonetic, word.phonetic.isNotBlank())) return@filter false
+            if (!matchesPresence(state.wordFilter.meanings, word.meanings.isNotEmpty())) return@filter false
+            if (!matchesPresence(state.wordFilter.rootExplanation, word.rootExplanation.isNotBlank())) return@filter false
+            if (!matchesPresence(state.wordFilter.decomposition, word.decomposition.isNotEmpty())) return@filter false
+            if (!matchesPresence(state.wordFilter.synonyms, word.synonyms.isNotEmpty())) return@filter false
+            if (!matchesPresence(state.wordFilter.similarWords, word.similarWords.isNotEmpty())) return@filter false
+            if (!matchesPresence(state.wordFilter.cognates, word.cognates.isNotEmpty())) return@filter false
+            if (!matchesPresence(state.wordFilter.inflections, word.inflections.isNotEmpty())) return@filter false
+            val len = spelling.length
+            if (state.wordFilter.minLength != null && len < state.wordFilter.minLength) return@filter false
+            if (state.wordFilter.maxLength != null && len > state.wordFilter.maxLength) return@filter false
+            if (startsWithLower.isNotBlank() && !spellingLower.startsWith(startsWithLower)) return@filter false
+            true
+        }
+        val maxPage = if (filtered.isEmpty()) 0 else (filtered.size + state.pageSize - 1) / state.pageSize - 1
+        return state.copy(
+            filteredWords = filtered,
+            currentPage = state.currentPage.coerceAtMost(maxPage.coerceAtLeast(0))
+        )
+    }
+
+    private fun matchesPresence(filter: EntryPresenceFilter, hasValue: Boolean): Boolean {
+        return when (filter) {
+            EntryPresenceFilter.ANY -> true
+            EntryPresenceFilter.PRESENT -> hasValue
+            EntryPresenceFilter.MISSING -> !hasValue
+        }
     }
 }

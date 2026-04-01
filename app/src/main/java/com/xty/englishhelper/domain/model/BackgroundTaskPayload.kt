@@ -17,6 +17,7 @@ data class WordOrganizePayload(
     val wordId: Long,
     val dictionaryId: Long,
     val spelling: String,
+    val referenceHints: List<String> = emptyList(),
     val highQualityEnabled: Boolean = false,
     val referenceSource: String = WordReferenceSource.FAST.name,
     val mainModelSnapshot: AiModelSnapshot? = null,

@@ -20,6 +20,7 @@ class OrganizeWordWithAiUseCase @Inject constructor(
         model: String,
         baseUrl: String,
         provider: AiProvider,
+        supplementalReferenceHints: List<String> = emptyList(),
         highQualityEnabledOverride: Boolean? = null,
         referenceSourceOverride: WordReferenceSource? = null,
         referenceModelSnapshotOverride: AiModelSnapshot? = null,
@@ -28,7 +29,14 @@ class OrganizeWordWithAiUseCase @Inject constructor(
         val highQualityEnabled = highQualityEnabledOverride ?: settingsDataStore.getWordOrganizeHighQualityEnabled()
         if (!highQualityEnabled) {
             onProgress?.invoke(WordOrganizeProgress(current = 0, total = 1, label = "正在使用主模型整理"))
-            val result = repository.organizeWord(word, apiKey, model, baseUrl, provider)
+            val result = repository.organizeWord(
+                word = word,
+                apiKey = apiKey,
+                model = model,
+                baseUrl = baseUrl,
+                provider = provider,
+                supplementalReferenceHints = supplementalReferenceHints
+            )
             onProgress?.invoke(WordOrganizeProgress(current = 1, total = 1, label = "整理完成"))
             return result
         }
@@ -86,7 +94,15 @@ class OrganizeWordWithAiUseCase @Inject constructor(
             "正在使用主模型整理"
         }
         onProgress?.invoke(WordOrganizeProgress(current = 1, total = total, label = organizeLabel))
-        val result = repository.organizeWord(word, apiKey, model, baseUrl, provider, reference)
+        val result = repository.organizeWord(
+            word = word,
+            apiKey = apiKey,
+            model = model,
+            baseUrl = baseUrl,
+            provider = provider,
+            reference = reference,
+            supplementalReferenceHints = supplementalReferenceHints
+        )
         onProgress?.invoke(WordOrganizeProgress(current = total, total = total, label = "整理完成"))
         return result
     }

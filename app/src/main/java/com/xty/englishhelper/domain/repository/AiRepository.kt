@@ -11,7 +11,8 @@ interface AiRepository {
         model: String,
         baseUrl: String,
         provider: AiProvider,
-        reference: WordResearchReference? = null
+        reference: WordResearchReference? = null,
+        supplementalReferenceHints: List<String> = emptyList()
     ): AiOrganizeResult
     suspend fun researchWord(
         word: String,
