@@ -17,6 +17,8 @@ data class DictionaryUiState(
     val error: String? = null,
     val currentPage: Int = 0,
     val pageSize: Int = 10,
+    val unitCurrentPage: Int = 0,
+    val unitPageSize: Int = 8,
     val poolCount: Int = 0,
     val isRebuildingPools: Boolean = false,
     val rebuildProgress: Pair<Int, Int>? = null,
@@ -30,5 +32,7 @@ data class DictionaryUiState(
 ) {
     val totalPages: Int get() = if (words.isEmpty()) 1 else (words.size + pageSize - 1) / pageSize
     val pagedWords: List<WordDetails> get() = words.drop(currentPage * pageSize).take(pageSize)
+    val totalUnitPages: Int get() = if (units.isEmpty()) 1 else (units.size + unitPageSize - 1) / unitPageSize
+    val pagedUnits: List<StudyUnit> get() = units.drop(unitCurrentPage * unitPageSize).take(unitPageSize)
     val organizingCount: Int get() = organizeTasks.count { it.value.status == com.xty.englishhelper.domain.organize.OrganizeTaskStatus.ORGANIZING }
 }

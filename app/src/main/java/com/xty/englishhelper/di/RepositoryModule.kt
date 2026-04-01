@@ -10,6 +10,7 @@ import com.xty.englishhelper.data.repository.BackgroundTaskRepositoryImpl
 import com.xty.englishhelper.data.repository.DictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.GitHubSyncRepositoryImpl
 import com.xty.englishhelper.data.repository.CsMonitorRepositoryImpl
+import com.xty.englishhelper.data.repository.CambridgeDictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.GuardianRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankAiRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankRepositoryImpl
@@ -26,6 +27,7 @@ import com.xty.englishhelper.domain.repository.AtlanticRepository
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
+import com.xty.englishhelper.domain.repository.CambridgeDictionaryRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
@@ -109,6 +111,12 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindAtlanticRepository(impl: AtlanticRepositoryImpl): AtlanticRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCambridgeDictionaryRepository(
+        impl: CambridgeDictionaryRepositoryImpl
+    ): CambridgeDictionaryRepository
 
     @Binds
     @Singleton

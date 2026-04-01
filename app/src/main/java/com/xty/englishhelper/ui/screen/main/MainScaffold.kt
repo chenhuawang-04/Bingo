@@ -1,24 +1,39 @@
 package com.xty.englishhelper.ui.screen.main
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Quiz
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.xty.englishhelper.ui.components.dictionary.QuickDictionarySheet
 import androidx.window.core.layout.WindowWidthSizeClass
 import com.xty.englishhelper.ui.navigation.ArticleEditorRoute
 import com.xty.englishhelper.ui.navigation.ArticleListRoute
@@ -34,6 +49,7 @@ import com.xty.englishhelper.ui.navigation.StudySetupRoute
 import com.xty.englishhelper.ui.navigation.UnitDetailRoute
 import com.xty.englishhelper.ui.navigation.WordDetailRoute
 import com.xty.englishhelper.ui.debug.AiDebugDialogHost
+import com.xty.englishhelper.ui.screen.dictionary.QuickDictionaryViewModel
 import kotlin.reflect.KClass
 
 private val DICTIONARY_TAB_ROUTES: Set<String> = setOf(
@@ -58,6 +74,13 @@ private val QUESTION_BANK_TAB_ROUTES: Set<String> = setOf(
     QuestionBankReaderRoute::class
 ).mapNotNull { it.qualifiedName }.toSet()
 
+private val PRIMARY_FAB_ROUTES: Set<String> = setOf(
+    HomeRoute::class,
+    DictionaryRoute::class,
+    ArticleListRoute::class,
+    QuestionBankListRoute::class
+).mapNotNull { it.qualifiedName }.toSet()
+
 private fun matchesTab(currentRoute: String?, prefixes: Set<String>): Boolean =
     currentRoute != null && prefixes.any { currentRoute.startsWith(it) }
 
@@ -66,12 +89,16 @@ fun MainScaffold(
     navController: NavController,
     content: @Composable (PaddingValues) -> Unit
 ) {
+    var showQuickDictionary by rememberSaveable { mutableStateOf(false) }
+    val quickDictionaryViewModel: QuickDictionaryViewModel = hiltViewModel()
+
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
 
     val isInDictionaryTab = matchesTab(currentRoute, DICTIONARY_TAB_ROUTES)
     val isInArticleTab = matchesTab(currentRoute, ARTICLE_TAB_ROUTES)
     val isInQuestionBankTab = matchesTab(currentRoute, QUESTION_BANK_TAB_ROUTES)
+    val hasPrimaryFab = matchesTab(currentRoute, PRIMARY_FAB_ROUTES)
     val showBottomBar = isInDictionaryTab || isInArticleTab || isInQuestionBankTab
 
     fun navigateToDictionaryTab() {
@@ -100,24 +127,76 @@ fun MainScaffold(
 
     val isCompact = currentWindowAdaptiveInfo().windowSizeClass.windowWidthSizeClass == WindowWidthSizeClass.COMPACT
 
+    QuickDictionarySheet(
+        visible = showQuickDictionary,
+        onDismiss = { showQuickDictionary = false },
+        viewModel = quickDictionaryViewModel
+    )
+
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val launcherBottomPadding = navBarBottom +
+        (if (showBottomBar) 72.dp else 16.dp) +
+        (if (hasPrimaryFab) 72.dp else 0.dp)
+
     if (isCompact) {
-        Scaffold(
-            bottomBar = {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Scaffold(
+                bottomBar = {
+                    if (showBottomBar) {
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = isInDictionaryTab,
+                                onClick = ::navigateToDictionaryTab,
+                                icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null) },
+                                label = { Text("辞书") }
+                            )
+                            NavigationBarItem(
+                                selected = isInArticleTab,
+                                onClick = ::navigateToArticleTab,
+                                icon = { Icon(Icons.AutoMirrored.Outlined.Article, null) },
+                                label = { Text("文章") }
+                            )
+                            NavigationBarItem(
+                                selected = isInQuestionBankTab,
+                                onClick = ::navigateToQuestionBankTab,
+                                icon = { Icon(Icons.Outlined.Quiz, null) },
+                                label = { Text("题库") }
+                            )
+                        }
+                    }
+                }
+            ) { innerPadding ->
+                content(innerPadding)
+                AiDebugDialogHost()
+            }
+
+            SmallFloatingActionButton(
+                onClick = { showQuickDictionary = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = launcherBottomPadding)
+            ) {
+                Icon(Icons.Default.Translate, contentDescription = "快捷词典")
+            }
+        }
+    } else {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Row {
                 if (showBottomBar) {
-                    NavigationBar {
-                        NavigationBarItem(
+                    NavigationRail {
+                        NavigationRailItem(
                             selected = isInDictionaryTab,
                             onClick = ::navigateToDictionaryTab,
                             icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null) },
                             label = { Text("辞书") }
                         )
-                        NavigationBarItem(
+                        NavigationRailItem(
                             selected = isInArticleTab,
                             onClick = ::navigateToArticleTab,
                             icon = { Icon(Icons.AutoMirrored.Outlined.Article, null) },
                             label = { Text("文章") }
                         )
-                        NavigationBarItem(
+                        NavigationRailItem(
                             selected = isInQuestionBankTab,
                             onClick = ::navigateToQuestionBankTab,
                             icon = { Icon(Icons.Outlined.Quiz, null) },
@@ -125,37 +204,19 @@ fun MainScaffold(
                         )
                     }
                 }
+                content(PaddingValues())
             }
-        ) { innerPadding ->
-            content(innerPadding)
-            AiDebugDialogHost()
-        }
-    } else {
-        Row {
-            if (showBottomBar) {
-                NavigationRail {
-                    NavigationRailItem(
-                        selected = isInDictionaryTab,
-                        onClick = ::navigateToDictionaryTab,
-                        icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null) },
-                        label = { Text("辞书") }
-                    )
-                    NavigationRailItem(
-                        selected = isInArticleTab,
-                        onClick = ::navigateToArticleTab,
-                        icon = { Icon(Icons.AutoMirrored.Outlined.Article, null) },
-                        label = { Text("文章") }
-                    )
-                    NavigationRailItem(
-                        selected = isInQuestionBankTab,
-                        onClick = ::navigateToQuestionBankTab,
-                        icon = { Icon(Icons.Outlined.Quiz, null) },
-                        label = { Text("题库") }
-                    )
-                }
+
+            SmallFloatingActionButton(
+                onClick = { showQuickDictionary = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 20.dp, bottom = launcherBottomPadding)
+            ) {
+                Icon(Icons.Default.Translate, contentDescription = "快捷词典")
             }
-            content(PaddingValues())
         }
+
         AiDebugDialogHost()
     }
 }

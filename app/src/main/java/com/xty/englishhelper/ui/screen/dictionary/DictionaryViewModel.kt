@@ -57,6 +57,7 @@ class DictionaryViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
 
     private var poolTaskId: Long? = null
+    private var jumpToLastUnitPage = false
 
     init {
         loadDictionary()
@@ -100,7 +101,18 @@ class DictionaryViewModel @Inject constructor(
                     _uiState.update { it.copy(error = e.message) }
                 }
                 .collect { units ->
-                    _uiState.update { it.copy(units = units) }
+                    _uiState.update {
+                        val maxUnitPage = if (units.isEmpty()) 0 else (units.size + it.unitPageSize - 1) / it.unitPageSize - 1
+                        it.copy(
+                            units = units,
+                            unitCurrentPage = if (jumpToLastUnitPage) {
+                                maxUnitPage.coerceAtLeast(0)
+                            } else {
+                                it.unitCurrentPage.coerceAtMost(maxUnitPage.coerceAtLeast(0))
+                            }
+                        )
+                    }
+                    jumpToLastUnitPage = false
                 }
         }
     }
@@ -142,6 +154,7 @@ class DictionaryViewModel @Inject constructor(
         val name = _uiState.value.newUnitName.trim()
         if (name.isBlank()) return
         viewModelScope.launch {
+            jumpToLastUnitPage = true
             createUnit(dictionaryId, name)
             _uiState.update { it.copy(showCreateUnitDialog = false, newUnitName = "") }
         }
@@ -156,6 +169,16 @@ class DictionaryViewModel @Inject constructor(
 
     fun nextPage() = goToPage(_uiState.value.currentPage + 1)
     fun previousPage() = goToPage(_uiState.value.currentPage - 1)
+
+    fun goToUnitPage(page: Int) {
+        _uiState.update {
+            val maxPage = (it.totalUnitPages - 1).coerceAtLeast(0)
+            it.copy(unitCurrentPage = page.coerceIn(0, maxPage))
+        }
+    }
+
+    fun nextUnitPage() = goToUnitPage(_uiState.value.unitCurrentPage + 1)
+    fun previousUnitPage() = goToUnitPage(_uiState.value.unitCurrentPage - 1)
 
     // ── Background organize observation ──
 

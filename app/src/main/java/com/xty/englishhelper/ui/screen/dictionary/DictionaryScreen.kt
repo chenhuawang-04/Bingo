@@ -473,7 +473,8 @@ private fun DictionaryListContent(
                             currentPage = state.currentPage,
                             totalPages = state.totalPages,
                             onPrevious = viewModel::previousPage,
-                            onNext = viewModel::nextPage
+                            onNext = viewModel::nextPage,
+                            sectionLabel = "单词"
                         )
                     }
                 }
@@ -495,7 +496,7 @@ private fun DictionaryListContent(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "单元",
+                                    text = "单元 (${state.units.size})",
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -516,7 +517,7 @@ private fun DictionaryListContent(
                             )
                         }
                     } else {
-                        items(state.units, key = { "unit_${it.id}" }) { unit ->
+                        items(state.pagedUnits, key = { "unit_${it.id}" }) { unit ->
                             UnitCard(
                                 unit = unit,
                                 onClick = {
@@ -526,6 +527,17 @@ private fun DictionaryListContent(
                                 },
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                             )
+                        }
+                        if (state.totalUnitPages > 1) {
+                            item {
+                                PaginationBar(
+                                    currentPage = state.unitCurrentPage,
+                                    totalPages = state.totalUnitPages,
+                                    onPrevious = viewModel::previousUnitPage,
+                                    onNext = viewModel::nextUnitPage,
+                                    sectionLabel = "单元"
+                                )
+                            }
                         }
                     }
 
@@ -659,7 +671,8 @@ private fun DictionaryListContent(
                         currentPage = state.currentPage,
                         totalPages = state.totalPages,
                         onPrevious = viewModel::previousPage,
-                        onNext = viewModel::nextPage
+                        onNext = viewModel::nextPage,
+                        sectionLabel = "单词"
                     )
                 }
             }
@@ -673,6 +686,7 @@ private fun PaginationBar(
     totalPages: Int,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    sectionLabel: String,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -686,7 +700,7 @@ private fun PaginationBar(
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "上一页")
         }
         Text(
-            text = "第 ${currentPage + 1}/$totalPages 页",
+            text = "$sectionLabel 第 ${currentPage + 1}/$totalPages 页",
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(horizontal = 16.dp)
         )

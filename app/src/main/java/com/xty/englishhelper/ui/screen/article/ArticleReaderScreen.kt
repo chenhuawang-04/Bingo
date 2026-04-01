@@ -218,6 +218,7 @@ fun ArticleReaderScreen(
 
     Scaffold(
         topBar = {
+        
             TopAppBar(
                 title = {
                     Text(
