@@ -1332,8 +1332,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
         if (cloud.isEmpty()) return local
 
-        val localVersionTime = maxOf(local.latestUpdatedAt, local.exportedAt)
-        val cloudVersionTime = maxOf(cloud.latestUpdatedAt, cloud.exportedAt)
+        // Use business-update timestamp as the primary version signal.
+        // `exportedAt` reflects export time and can be newer even when the data is older.
+        val localVersionTime = if (local.latestUpdatedAt > 0L) local.latestUpdatedAt else local.exportedAt
+        val cloudVersionTime = if (cloud.latestUpdatedAt > 0L) cloud.latestUpdatedAt else cloud.exportedAt
         return if (cloudVersionTime > localVersionTime) {
             planRepository.replaceFromBackup(cloud)
             cloud
