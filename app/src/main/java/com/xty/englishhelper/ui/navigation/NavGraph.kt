@@ -15,6 +15,7 @@ import com.xty.englishhelper.ui.screen.guardian.GuardianBrowseScreen
 import com.xty.englishhelper.ui.screen.questionbank.QuestionBankListScreen
 import com.xty.englishhelper.ui.screen.questionbank.QuestionBankScanScreen
 import com.xty.englishhelper.ui.screen.questionbank.QuestionBankReaderScreen
+import com.xty.englishhelper.ui.screen.plan.PlanScreen
 import com.xty.englishhelper.ui.screen.batchimport.BatchImportScreen
 import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
 import com.xty.englishhelper.ui.screen.home.HomeScreen
@@ -236,6 +237,17 @@ fun NavGraph(navController: NavHostController) {
                     },
                     onViewArticle = { articleId ->
                         navController.navigate(ArticleReaderRoute(articleId))
+                    }
+                )
+            }
+
+            composable<PlanRoute> {
+                PlanScreen(
+                    onOpenArticle = { articleId ->
+                        navController.navigate(ArticleReaderRoute(articleId))
+                    },
+                    onOpenQuestionGroup = { groupId ->
+                        navController.navigate(QuestionBankReaderRoute(groupId))
                     }
                 )
             }

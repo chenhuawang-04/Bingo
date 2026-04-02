@@ -14,6 +14,7 @@ import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
+import com.xty.englishhelper.data.local.dao.PlanDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
 import com.xty.englishhelper.data.local.entity.ArticleCategoryEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
@@ -31,6 +32,10 @@ import com.xty.englishhelper.data.local.entity.QuestionGroupEntity
 import com.xty.englishhelper.data.local.entity.QuestionGroupParagraphEntity
 import com.xty.englishhelper.data.local.entity.QuestionItemEntity
 import com.xty.englishhelper.data.local.entity.QuestionSourceArticleEntity
+import com.xty.englishhelper.data.local.entity.PlanDayRecordEntity
+import com.xty.englishhelper.data.local.entity.PlanEventLogEntity
+import com.xty.englishhelper.data.local.entity.PlanItemEntity
+import com.xty.englishhelper.data.local.entity.PlanTemplateEntity
 import com.xty.englishhelper.data.local.entity.SentenceAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.SimilarWordEntity
 import com.xty.englishhelper.data.local.entity.SynonymEntity
@@ -73,9 +78,13 @@ import java.util.UUID
         PracticeRecordEntity::class,
         QuestionSourceArticleEntity::class,
         BackgroundTaskEntity::class,
-        ArticleCategoryEntity::class
+        ArticleCategoryEntity::class,
+        PlanTemplateEntity::class,
+        PlanItemEntity::class,
+        PlanDayRecordEntity::class,
+        PlanEventLogEntity::class
     ],
-    version = 19,
+    version = 22,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -88,6 +97,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun questionBankDao(): QuestionBankDao
     abstract fun backgroundTaskDao(): BackgroundTaskDao
     abstract fun articleCategoryDao(): ArticleCategoryDao
+    abstract fun planDao(): PlanDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -784,6 +794,111 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "ALTER TABLE word_pools ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `plan_templates` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `is_active` INTEGER NOT NULL DEFAULT 0,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_plan_templates_is_active` ON `plan_templates` (`is_active`)"
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `plan_items` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `template_id` INTEGER NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `target_count` INTEGER NOT NULL DEFAULT 1,
+                        `order_index` INTEGER NOT NULL DEFAULT 0,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`template_id`) REFERENCES `plan_templates`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_plan_items_template_id` ON `plan_items` (`template_id`)")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_plan_items_template_id_order_index` ON `plan_items` (`template_id`, `order_index`)"
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `plan_day_records` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `day_start` INTEGER NOT NULL,
+                        `item_id` INTEGER NOT NULL,
+                        `done_count` INTEGER NOT NULL DEFAULT 0,
+                        `is_completed` INTEGER NOT NULL DEFAULT 0,
+                        `updated_at` INTEGER NOT NULL,
+                        `completed_at` INTEGER,
+                        FOREIGN KEY(`item_id`) REFERENCES `plan_items`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_plan_day_records_day_start` ON `plan_day_records` (`day_start`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_plan_day_records_item_id` ON `plan_day_records` (`item_id`)")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_plan_day_records_day_start_item_id` ON `plan_day_records` (`day_start`, `item_id`)"
+                )
+            }
+        }
+
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `plan_event_logs` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `day_start` INTEGER NOT NULL,
+                        `event_key` TEXT NOT NULL,
+                        `task_type` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_plan_event_logs_day_start_event_key` " +
+                        "ON `plan_event_logs` (`day_start`, `event_key`)"
+                )
+            }
+        }
+
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE plan_items ADD COLUMN auto_enabled INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE plan_items ADD COLUMN auto_source TEXT")
+                db.execSQL(
+                    """
+                    UPDATE plan_items
+                    SET auto_enabled = CASE type
+                        WHEN 'REVIEW_DUE_WORDS' THEN 1
+                        WHEN 'STUDY_NEW_WORDS' THEN 1
+                        WHEN 'READ_ARTICLE' THEN 1
+                        WHEN 'PRACTICE_QUESTIONS' THEN 1
+                        ELSE 0
+                    END,
+                    auto_source = CASE type
+                        WHEN 'REVIEW_DUE_WORDS' THEN 'STUDY_DUE_SESSION'
+                        WHEN 'STUDY_NEW_WORDS' THEN 'STUDY_NEW_SESSION'
+                        WHEN 'READ_ARTICLE' THEN 'ARTICLE_OPEN'
+                        WHEN 'PRACTICE_QUESTIONS' THEN 'QUESTION_SUBMIT'
+                        ELSE NULL
+                    END
+                    """.trimIndent()
                 )
             }
         }

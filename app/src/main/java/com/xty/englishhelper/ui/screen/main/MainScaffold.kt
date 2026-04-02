@@ -1,15 +1,19 @@
-package com.xty.englishhelper.ui.screen.main
+﻿package com.xty.englishhelper.ui.screen.main
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
-import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -18,29 +22,28 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.xty.englishhelper.ui.components.dictionary.QuickDictionarySheet
 import androidx.window.core.layout.WindowWidthSizeClass
+import com.xty.englishhelper.ui.components.dictionary.QuickDictionarySheet
+import com.xty.englishhelper.ui.debug.AiDebugDialogHost
+import com.xty.englishhelper.ui.navigation.AddWordRoute
 import com.xty.englishhelper.ui.navigation.ArticleEditorRoute
 import com.xty.englishhelper.ui.navigation.ArticleListRoute
 import com.xty.englishhelper.ui.navigation.ArticleReaderRoute
-import com.xty.englishhelper.ui.navigation.AddWordRoute
 import com.xty.englishhelper.ui.navigation.DictionaryRoute
 import com.xty.englishhelper.ui.navigation.HomeRoute
+import com.xty.englishhelper.ui.navigation.PlanRoute
 import com.xty.englishhelper.ui.navigation.QuestionBankListRoute
 import com.xty.englishhelper.ui.navigation.QuestionBankReaderRoute
 import com.xty.englishhelper.ui.navigation.QuestionBankScanRoute
@@ -48,9 +51,7 @@ import com.xty.englishhelper.ui.navigation.StudyRoute
 import com.xty.englishhelper.ui.navigation.StudySetupRoute
 import com.xty.englishhelper.ui.navigation.UnitDetailRoute
 import com.xty.englishhelper.ui.navigation.WordDetailRoute
-import com.xty.englishhelper.ui.debug.AiDebugDialogHost
 import com.xty.englishhelper.ui.screen.dictionary.QuickDictionaryViewModel
-import kotlin.reflect.KClass
 
 private val DICTIONARY_TAB_ROUTES: Set<String> = setOf(
     HomeRoute::class,
@@ -74,11 +75,16 @@ private val QUESTION_BANK_TAB_ROUTES: Set<String> = setOf(
     QuestionBankReaderRoute::class
 ).mapNotNull { it.qualifiedName }.toSet()
 
+private val PLAN_TAB_ROUTES: Set<String> = setOf(
+    PlanRoute::class
+).mapNotNull { it.qualifiedName }.toSet()
+
 private val PRIMARY_FAB_ROUTES: Set<String> = setOf(
     HomeRoute::class,
     DictionaryRoute::class,
     ArticleListRoute::class,
-    QuestionBankListRoute::class
+    QuestionBankListRoute::class,
+    PlanRoute::class
 ).mapNotNull { it.qualifiedName }.toSet()
 
 private fun matchesTab(currentRoute: String?, prefixes: Set<String>): Boolean =
@@ -98,8 +104,9 @@ fun MainScaffold(
     val isInDictionaryTab = matchesTab(currentRoute, DICTIONARY_TAB_ROUTES)
     val isInArticleTab = matchesTab(currentRoute, ARTICLE_TAB_ROUTES)
     val isInQuestionBankTab = matchesTab(currentRoute, QUESTION_BANK_TAB_ROUTES)
+    val isInPlanTab = matchesTab(currentRoute, PLAN_TAB_ROUTES)
     val hasPrimaryFab = matchesTab(currentRoute, PRIMARY_FAB_ROUTES)
-    val showBottomBar = isInDictionaryTab || isInArticleTab || isInQuestionBankTab
+    val showBottomBar = isInDictionaryTab || isInArticleTab || isInQuestionBankTab || isInPlanTab
 
     fun navigateToDictionaryTab() {
         navController.navigate(HomeRoute) {
@@ -119,6 +126,14 @@ fun MainScaffold(
 
     fun navigateToQuestionBankTab() {
         navController.navigate(QuestionBankListRoute) {
+            popUpTo<HomeRoute> { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    fun navigateToPlanTab() {
+        navController.navigate(PlanRoute) {
             popUpTo<HomeRoute> { saveState = true }
             launchSingleTop = true
             restoreState = true
@@ -162,6 +177,12 @@ fun MainScaffold(
                                 icon = { Icon(Icons.Outlined.Quiz, null) },
                                 label = { Text("题库") }
                             )
+                            NavigationBarItem(
+                                selected = isInPlanTab,
+                                onClick = ::navigateToPlanTab,
+                                icon = { Icon(Icons.Outlined.DateRange, null) },
+                                label = { Text("计划") }
+                            )
                         }
                     }
                 }
@@ -201,6 +222,12 @@ fun MainScaffold(
                             onClick = ::navigateToQuestionBankTab,
                             icon = { Icon(Icons.Outlined.Quiz, null) },
                             label = { Text("题库") }
+                        )
+                        NavigationRailItem(
+                            selected = isInPlanTab,
+                            onClick = ::navigateToPlanTab,
+                            icon = { Icon(Icons.Outlined.DateRange, null) },
+                            label = { Text("计划") }
                         )
                     }
                 }

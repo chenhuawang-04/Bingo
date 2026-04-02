@@ -7,6 +7,7 @@ import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.domain.usecase.study.GetDueWordsUseCase
@@ -41,7 +42,8 @@ class StudyViewModel @Inject constructor(
     private val previewIntervals: PreviewIntervalsUseCase,
     private val wordPoolRepository: WordPoolRepository,
     private val settingsDataStore: SettingsDataStore,
-    private val ttsManager: TtsManager
+    private val ttsManager: TtsManager,
+    private val planAutoProgressTracker: PlanAutoProgressTracker
 ) : ViewModel() {
 
     private val unitIdsStr: String = savedStateHandle["unitIds"] ?: ""
@@ -59,6 +61,9 @@ class StudyViewModel @Inject constructor(
     private var goodCount = 0
     private var easyCount = 0
     private var totalUniqueWords = 0
+    private var sessionHasDueWords = false
+    private var sessionHasNewWords = false
+    private var sessionProgressTracked = false
 
     // Brainstorm data: wordId -> set of related wordIds (via pool union)
     private var brainstormRelated: Map<Long, Set<Long>> = emptyMap()
@@ -77,6 +82,9 @@ class StudyViewModel @Inject constructor(
                 // Get due words (most overdue first) and new words
                 val dueWords = getDueWords(unitIds)
                 val newWords = getNewWords(unitIds)
+                sessionHasDueWords = dueWords.isNotEmpty()
+                sessionHasNewWords = newWords.isNotEmpty()
+                sessionProgressTracked = false
 
                 // Build queue: due words first, then new words
                 queue.clear()
@@ -182,6 +190,7 @@ class StudyViewModel @Inject constructor(
     private fun showNextWord() {
         if (queue.isEmpty()) {
             isProcessingRating = false
+            trackStudySessionProgressIfNeeded()
             _uiState.update {
                 it.copy(
                     phase = StudyPhase.Finished,
@@ -234,6 +243,21 @@ class StudyViewModel @Inject constructor(
                 if (enabled) {
                     ttsManager.speakWord(entry.word.id, entry.word.spelling)
                 }
+            }
+        }
+    }
+
+    private fun trackStudySessionProgressIfNeeded() {
+        if (sessionProgressTracked) return
+        sessionProgressTracked = true
+        viewModelScope.launch {
+            runCatching {
+                planAutoProgressTracker.onStudySessionCompleted(
+                    unitIds = unitIds,
+                    studyMode = studyMode,
+                    hasDueWords = sessionHasDueWords,
+                    hasNewWords = sessionHasNewWords
+                )
             }
         }
     }

@@ -15,6 +15,7 @@ import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
+import com.xty.englishhelper.data.local.dao.PlanDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -54,7 +55,10 @@ object AppModule {
                 AppDatabase.MIGRATION_15_16,
                 AppDatabase.MIGRATION_16_17,
                 AppDatabase.MIGRATION_17_18,
-                AppDatabase.MIGRATION_18_19
+                AppDatabase.MIGRATION_18_19,
+                AppDatabase.MIGRATION_19_20,
+                AppDatabase.MIGRATION_20_21,
+                AppDatabase.MIGRATION_21_22
             )
             .build()
     }
@@ -85,6 +89,9 @@ object AppModule {
 
     @Provides
     fun provideBackgroundTaskDao(db: AppDatabase): BackgroundTaskDao = db.backgroundTaskDao()
+
+    @Provides
+    fun providePlanDao(db: AppDatabase): PlanDao = db.planDao()
 
     @Provides
     @Singleton

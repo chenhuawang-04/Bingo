@@ -12,6 +12,9 @@ sealed class TopLevelRoute {
 
     @Serializable
     data object QuestionBank : TopLevelRoute()
+
+    @Serializable
+    data object Plan : TopLevelRoute()
 }
 
 @Serializable
@@ -73,3 +76,6 @@ data class QuestionBankScanRoute(val editMode: Boolean = false)
 
 @Serializable
 data class QuestionBankReaderRoute(val groupId: Long)
+
+@Serializable
+data object PlanRoute

@@ -27,6 +27,7 @@ import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
+import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import com.xty.englishhelper.domain.background.BackgroundTaskEnqueueResult
 import com.xty.englishhelper.domain.repository.ArticleRepository
@@ -107,7 +108,8 @@ class ArticleReaderViewModel @Inject constructor(
     private val repository: ArticleRepository,
     private val backgroundTaskRepository: BackgroundTaskRepository,
     private val ttsManager: TtsManager,
-    private val backgroundTaskManager: BackgroundTaskManager
+    private val backgroundTaskManager: BackgroundTaskManager,
+    private val planAutoProgressTracker: PlanAutoProgressTracker
 ) : ViewModel() {
 
     private val articleId: Long = savedStateHandle["articleId"] ?: 0L
@@ -137,6 +139,9 @@ class ArticleReaderViewModel @Inject constructor(
     private var parseRecoveryTriggered = false
     private val staleParseTimeoutMs = java.util.concurrent.TimeUnit.MINUTES.toMillis(3)
     private val observedQuestionTaskStatuses = mutableMapOf<Long, BackgroundTaskStatus>()
+    private var articleOpenTracked = false
+    private var wasArticleSpeaking = false
+    private var articleTtsFinishTracked = false
 
     init {
         observeTtsState()
@@ -151,6 +156,29 @@ class ArticleReaderViewModel @Inject constructor(
     private fun observeTtsState() {
         viewModelScope.launch {
             ttsManager.state.collect { tts ->
+                val article = _uiState.value.article
+                if (article != null) {
+                    val sessionId = ttsManager.articleSessionId(article.id)
+                    val isCurrentArticleSession = tts.sessionId == sessionId
+                    val reachedEnd = tts.total > 0 && tts.currentIndex >= (tts.total - 1)
+                    if (isCurrentArticleSession && tts.isSpeaking) {
+                        wasArticleSpeaking = true
+                        articleTtsFinishTracked = false
+                    } else if (
+                        isCurrentArticleSession &&
+                        wasArticleSpeaking &&
+                        !tts.isSpeaking &&
+                        reachedEnd &&
+                        !articleTtsFinishTracked
+                    ) {
+                        articleTtsFinishTracked = true
+                        viewModelScope.launch {
+                            runCatching {
+                                planAutoProgressTracker.onArticleTtsFinished(article.id)
+                            }
+                        }
+                    }
+                }
                 _uiState.update { it.copy(ttsState = tts) }
             }
         }
@@ -164,6 +192,15 @@ class ArticleReaderViewModel @Inject constructor(
                 if (article == null) {
                     _navigateBack.emit(Unit)
                     return@collect
+                }
+
+                if (!articleOpenTracked) {
+                    articleOpenTracked = true
+                    viewModelScope.launch {
+                        runCatching {
+                            planAutoProgressTracker.onArticleOpened(article.id)
+                        }
+                    }
                 }
 
                 // Only reload data when content actually changes

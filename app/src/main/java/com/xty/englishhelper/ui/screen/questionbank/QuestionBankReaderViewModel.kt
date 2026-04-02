@@ -30,6 +30,7 @@ import com.xty.englishhelper.domain.model.SourceVerifyStatus
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.TtsState
 import com.xty.englishhelper.domain.repository.DictionaryRepository
+import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
@@ -132,7 +133,8 @@ class QuestionBankReaderViewModel @Inject constructor(
     private val backgroundOrganizeManager: BackgroundOrganizeManager,
     private val backgroundTaskManager: BackgroundTaskManager,
     private val taskRepository: BackgroundTaskRepository,
-    private val imageCompressionManager: ImageCompressionManager
+    private val imageCompressionManager: ImageCompressionManager,
+    private val planAutoProgressTracker: PlanAutoProgressTracker
 ) : ViewModel() {
 
     private val groupId: Long = savedStateHandle["groupId"] ?: 0L
@@ -596,6 +598,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                 )
                 repository.insertPracticeRecords(records)
                 _uiState.update { it.copy(isSubmitted = true, isScoringWriting = true) }
+                trackQuestionPracticeProgress()
                 scoreWritingAnswers()
                 return@launch
             }
@@ -615,6 +618,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     repository.insertPracticeRecords(records)
                 }
                 _uiState.update { it.copy(isSubmitted = true, isScoringTranslation = true) }
+                trackQuestionPracticeProgress()
                 scoreTranslationAnswers()
                 return@launch
             }
@@ -666,6 +670,15 @@ class QuestionBankReaderViewModel @Inject constructor(
                     wrongItemIds = wrongIds,
                     items = refreshedItems
                 )
+            }
+            trackQuestionPracticeProgress()
+        }
+    }
+
+    private fun trackQuestionPracticeProgress() {
+        viewModelScope.launch {
+            runCatching {
+                planAutoProgressTracker.onQuestionSubmitted(groupId)
             }
         }
     }
