@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.screen.importexport
+﻿package com.xty.englishhelper.ui.screen.importexport
 
 import android.content.Context
 import android.net.Uri
@@ -7,7 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.usecase.dictionary.GetAllDictionariesUseCase
 import com.xty.englishhelper.domain.usecase.importexport.ExportDictionaryUseCase
+import com.xty.englishhelper.domain.usecase.importexport.ExportPlanUseCase
 import com.xty.englishhelper.domain.usecase.importexport.ImportDictionaryUseCase
+import com.xty.englishhelper.domain.usecase.importexport.ImportPlanUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +22,9 @@ import javax.inject.Inject
 class ImportExportViewModel @Inject constructor(
     private val getAllDictionaries: GetAllDictionariesUseCase,
     private val importDictionaryUseCase: ImportDictionaryUseCase,
-    private val exportDictionaryUseCase: ExportDictionaryUseCase
+    private val exportDictionaryUseCase: ExportDictionaryUseCase,
+    private val importPlanUseCase: ImportPlanUseCase,
+    private val exportPlanUseCase: ExportPlanUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ImportExportUiState())
@@ -66,6 +70,35 @@ class ImportExportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, message = "导出成功") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = "导出失败：${e.message}") }
+            }
+        }
+    }
+
+    fun importPlanFromUri(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val json = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
+                    ?: throw IllegalStateException("无法读取文件")
+                val message = importPlanUseCase(json)
+                _uiState.update { it.copy(isLoading = false, message = message) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "计划导入失败：${e.message}") }
+            }
+        }
+    }
+
+    fun exportPlanToUri(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val json = exportPlanUseCase()
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
+                    it.write(json)
+                } ?: throw IllegalStateException("无法写入文件")
+                _uiState.update { it.copy(isLoading = false, message = "计划导出成功") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "计划导出失败：${e.message}") }
             }
         }
     }

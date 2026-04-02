@@ -8,12 +8,17 @@ import com.xty.englishhelper.data.local.entity.PlanTemplateEntity
 import com.xty.englishhelper.domain.model.PlanDayRecord
 import com.xty.englishhelper.domain.model.PlanDaySummary
 import com.xty.englishhelper.domain.model.PlanAutoEventLog
+import com.xty.englishhelper.domain.model.PlanBackup
+import com.xty.englishhelper.domain.model.PlanDayRecordBackup
 import com.xty.englishhelper.domain.model.PlanItem
+import com.xty.englishhelper.domain.model.PlanItemBackup
+import com.xty.englishhelper.domain.model.PlanEventLogBackup
 import com.xty.englishhelper.domain.model.PlanAutoSource
 import com.xty.englishhelper.domain.model.PlanTaskProgress
 import com.xty.englishhelper.domain.model.PlanStatsMode
 import com.xty.englishhelper.domain.model.PlanTaskType
 import com.xty.englishhelper.domain.model.PlanTemplate
+import com.xty.englishhelper.domain.model.PlanTemplateBackup
 import com.xty.englishhelper.domain.model.PlanTypeSummary
 import com.xty.englishhelper.domain.plan.PlanProgressRules
 import com.xty.englishhelper.domain.repository.PlanRepository
@@ -381,6 +386,131 @@ class PlanRepositoryImpl @Inject constructor(
             )
         }
         return true
+    }
+
+    override suspend fun exportBackup(): PlanBackup {
+        val templates = dao.getAllTemplatesOnce()
+        val items = templates.flatMap { dao.getItemsByTemplate(it.id) }
+        val records = dao.getAllDayRecordsOnce()
+        val events = dao.getAllEventLogsOnce()
+        return PlanBackup(
+            schemaVersion = 1,
+            exportedAt = System.currentTimeMillis(),
+            templates = templates.map {
+                PlanTemplateBackup(
+                    id = it.id,
+                    name = it.name,
+                    isActive = it.isActive == 1,
+                    createdAt = it.createdAt,
+                    updatedAt = it.updatedAt
+                )
+            },
+            items = items.map {
+                PlanItemBackup(
+                    id = it.id,
+                    templateId = it.templateId,
+                    taskType = it.type,
+                    title = it.title,
+                    targetCount = it.targetCount,
+                    autoEnabled = it.autoEnabled == 1,
+                    autoSource = it.autoSource,
+                    orderIndex = it.orderIndex,
+                    createdAt = it.createdAt,
+                    updatedAt = it.updatedAt
+                )
+            },
+            dayRecords = records.map {
+                PlanDayRecordBackup(
+                    id = it.id,
+                    dayStart = it.dayStart,
+                    itemId = it.itemId,
+                    doneCount = it.doneCount,
+                    isCompleted = it.isCompleted == 1,
+                    updatedAt = it.updatedAt,
+                    completedAt = it.completedAt
+                )
+            },
+            eventLogs = events.map {
+                PlanEventLogBackup(
+                    id = it.id,
+                    dayStart = it.dayStart,
+                    eventKey = it.eventKey,
+                    source = it.taskType,
+                    createdAt = it.createdAt
+                )
+            }
+        )
+    }
+
+    override suspend fun replaceFromBackup(backup: PlanBackup) {
+        dao.deleteAllEventLogs()
+        dao.deleteAllTemplates()
+
+        val templateIdMap = linkedMapOf<Long, Long>()
+        backup.templates.sortedBy { it.id }.forEach { template ->
+            val insertedId = dao.insertTemplate(
+                PlanTemplateEntity(
+                    name = template.name,
+                    isActive = if (template.isActive) 1 else 0,
+                    createdAt = template.createdAt,
+                    updatedAt = template.updatedAt
+                )
+            )
+            templateIdMap[template.id] = insertedId
+        }
+
+        val itemIdMap = linkedMapOf<Long, Long>()
+        backup.items.sortedBy { it.id }.forEach { item ->
+            val mappedTemplateId = templateIdMap[item.templateId] ?: return@forEach
+            val insertedId = dao.insertItem(
+                PlanItemEntity(
+                    templateId = mappedTemplateId,
+                    type = item.taskType,
+                    title = item.title,
+                    targetCount = item.targetCount,
+                    autoEnabled = if (item.autoEnabled) 1 else 0,
+                    autoSource = item.autoSource,
+                    orderIndex = item.orderIndex,
+                    createdAt = item.createdAt,
+                    updatedAt = item.updatedAt
+                )
+            )
+            itemIdMap[item.id] = insertedId
+        }
+
+        val records = backup.dayRecords.mapNotNull { record ->
+            val mappedItemId = itemIdMap[record.itemId] ?: return@mapNotNull null
+            PlanDayRecordEntity(
+                dayStart = record.dayStart,
+                itemId = mappedItemId,
+                doneCount = record.doneCount,
+                isCompleted = if (record.isCompleted) 1 else 0,
+                updatedAt = record.updatedAt,
+                completedAt = record.completedAt
+            )
+        }
+        if (records.isNotEmpty()) {
+            dao.insertDayRecords(records)
+        }
+
+        backup.eventLogs.forEach { event ->
+            dao.insertEventLog(
+                PlanEventLogEntity(
+                    dayStart = event.dayStart,
+                    eventKey = event.eventKey,
+                    taskType = event.source,
+                    createdAt = event.createdAt
+                )
+            )
+        }
+
+        if (dao.countTemplates() == 0) {
+            ensureDefaultTemplate()
+        } else if (dao.getActiveTemplateId() == null) {
+            dao.getLatestTemplateId()?.let { fallbackId ->
+                dao.activateTemplate(fallbackId, System.currentTimeMillis())
+            }
+        }
     }
 
     private fun startOfDay(timestamp: Long): Long {

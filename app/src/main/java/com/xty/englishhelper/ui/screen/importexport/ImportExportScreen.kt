@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.screen.importexport
+﻿package com.xty.englishhelper.ui.screen.importexport
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -55,13 +55,13 @@ fun ImportExportScreen(
 
     var exportTarget by remember { mutableStateOf<Dictionary?>(null) }
 
-    val importLauncher = rememberLauncherForActivityResult(
+    val importDictionaryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { viewModel.importFromUri(context, it) }
     }
 
-    val exportLauncher = rememberLauncherForActivityResult(
+    val exportDictionaryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
         uri?.let { target ->
@@ -70,6 +70,18 @@ fun ImportExportScreen(
                 exportTarget = null
             }
         }
+    }
+
+    val importPlanLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.importPlanFromUri(context, it) }
+    }
+
+    val exportPlanLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        uri?.let { viewModel.exportPlanToUri(context, it) }
     }
 
     LaunchedEffect(state.message, state.error) {
@@ -98,9 +110,7 @@ fun ImportExportScreen(
                 .padding(padding),
             maxWidth = 560.dp
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 if (state.isLoading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
@@ -111,29 +121,55 @@ fun ImportExportScreen(
                 ) {
                     item {
                         Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Text("导入辞书", style = MaterialTheme.typography.titleMedium)
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text("导入词书", style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "从 JSON 文件导入辞书和单词数据",
+                                    "从 JSON 文件导入词书和单词数据",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 OutlinedButton(
-                                    onClick = { importLauncher.launch("application/json") },
+                                    onClick = { importDictionaryLauncher.launch("application/json") },
                                     enabled = !state.isLoading
                                 ) {
                                     Icon(Icons.Default.Upload, contentDescription = null)
-                                    Text("  选择 JSON 文件")
+                                    Text("  选择词书 JSON")
                                 }
                             }
                         }
                     }
 
                     item {
-                        Text("导出辞书", style = MaterialTheme.typography.titleMedium)
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text("导入计划", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "从 JSON 文件导入计划模板、任务进度和自动记录",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                OutlinedButton(
+                                    onClick = { importPlanLauncher.launch("application/json") },
+                                    enabled = !state.isLoading
+                                ) {
+                                    Icon(Icons.Default.Upload, contentDescription = null)
+                                    Text("  选择计划 JSON")
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Text("导出词书", style = MaterialTheme.typography.titleMedium)
                         if (state.dictionaries.isEmpty()) {
                             Text(
-                                "没有可导出的辞书",
+                                "没有可导出的词书",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -148,7 +184,7 @@ fun ImportExportScreen(
                                 IconButton(
                                     onClick = {
                                         exportTarget = dict
-                                        exportLauncher.launch("${dict.name}.json")
+                                        exportDictionaryLauncher.launch("${dict.name}.json")
                                     },
                                     enabled = !state.isLoading
                                 ) {
@@ -157,9 +193,32 @@ fun ImportExportScreen(
                             },
                             modifier = Modifier.clickable(enabled = !state.isLoading) {
                                 exportTarget = dict
-                                exportLauncher.launch("${dict.name}.json")
+                                exportDictionaryLauncher.launch("${dict.name}.json")
                             }
                         )
+                    }
+
+                    item {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text("导出计划", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "导出当前计划模板、任务进度和自动打卡日志",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                OutlinedButton(
+                                    onClick = { exportPlanLauncher.launch("plan_backup.json") },
+                                    enabled = !state.isLoading
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null)
+                                    Text("  导出计划 JSON")
+                                }
+                            }
+                        }
                     }
                 }
             }

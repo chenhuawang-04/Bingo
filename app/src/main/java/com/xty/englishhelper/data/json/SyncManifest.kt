@@ -12,7 +12,8 @@ data class SyncManifest(
     val dictionaryEntries: List<DictionaryCloudEntryJsonModel> = emptyList(),
     val hasArticles: Boolean = false,
     val hasQuestionBank: Boolean = false,
-    val hasWordExamples: Boolean = false
+    val hasWordExamples: Boolean = false,
+    val hasPlan: Boolean = false
 ) {
     val dictionaryCount: Int
         get() = if (dictionaryEntries.isNotEmpty()) dictionaryEntries.size else dictionaries.size

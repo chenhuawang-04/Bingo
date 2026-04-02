@@ -2,6 +2,7 @@
 
 import com.xty.englishhelper.domain.model.PlanAutoEventLog
 import com.xty.englishhelper.domain.model.PlanAutoSource
+import com.xty.englishhelper.domain.model.PlanBackup
 import com.xty.englishhelper.domain.model.PlanDayRecord
 import com.xty.englishhelper.domain.model.PlanDaySummary
 import com.xty.englishhelper.domain.model.PlanItem
@@ -147,5 +148,9 @@ class PlanViewModelStatsModeTest {
         override suspend fun setTaskCompleted(dayStart: Long, itemId: Long, completed: Boolean) = Unit
 
         override suspend fun consumeAutoProgress(source: PlanAutoSource, eventKey: String, delta: Int): Boolean = true
+
+        override suspend fun exportBackup(): PlanBackup = PlanBackup()
+
+        override suspend fun replaceFromBackup(backup: PlanBackup) = Unit
     }
 }

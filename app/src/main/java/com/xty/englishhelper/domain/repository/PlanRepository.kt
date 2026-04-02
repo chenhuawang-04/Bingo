@@ -9,6 +9,7 @@ import com.xty.englishhelper.domain.model.PlanStatsMode
 import com.xty.englishhelper.domain.model.PlanTaskType
 import com.xty.englishhelper.domain.model.PlanTemplate
 import com.xty.englishhelper.domain.model.PlanTypeSummary
+import com.xty.englishhelper.domain.model.PlanBackup
 import kotlinx.coroutines.flow.Flow
 
 interface PlanRepository {
@@ -34,4 +35,6 @@ interface PlanRepository {
     suspend fun updateTaskProgress(dayStart: Long, itemId: Long, doneCount: Int)
     suspend fun setTaskCompleted(dayStart: Long, itemId: Long, completed: Boolean)
     suspend fun consumeAutoProgress(source: PlanAutoSource, eventKey: String, delta: Int = 1): Boolean
+    suspend fun exportBackup(): PlanBackup
+    suspend fun replaceFromBackup(backup: PlanBackup)
 }

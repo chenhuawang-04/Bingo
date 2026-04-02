@@ -1,16 +1,27 @@
-package com.xty.englishhelper.domain.usecase.importexport
+﻿package com.xty.englishhelper.domain.usecase.importexport
 
+import com.squareup.moshi.Moshi
+import com.xty.englishhelper.data.json.PlanDayRecordJsonModel
+import com.xty.englishhelper.data.json.PlanEventLogJsonModel
+import com.xty.englishhelper.data.json.PlanExportJsonModel
+import com.xty.englishhelper.data.json.PlanItemJsonModel
+import com.xty.englishhelper.data.json.PlanTemplateJsonModel
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.domain.model.PlanBackup
+import com.xty.englishhelper.domain.model.PlanDayRecordBackup
+import com.xty.englishhelper.domain.model.PlanEventLogBackup
+import com.xty.englishhelper.domain.model.PlanItemBackup
+import com.xty.englishhelper.domain.model.PlanTemplateBackup
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.repository.DictionaryImportExporter
 import com.xty.englishhelper.domain.repository.DictionaryRepository
+import com.xty.englishhelper.domain.repository.PlanRepository
 import com.xty.englishhelper.domain.repository.StudyRepository
 import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.usecase.word.EnsureDictionaryWordUidsUseCase
-import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 class ImportDictionaryUseCase @Inject constructor(
@@ -27,7 +38,6 @@ class ImportDictionaryUseCase @Inject constructor(
         return transactionRunner.runInTransaction {
             val dictId = dictionaryRepository.insertDictionary(result.dictionary)
 
-            // Insert words and build wordUid -> wordId map
             val wordUidToId = mutableMapOf<String, Long>()
             result.words.forEach { word ->
                 val wordWithDict = word.copy(
@@ -40,7 +50,6 @@ class ImportDictionaryUseCase @Inject constructor(
             }
             dictionaryRepository.updateWordCount(dictId)
 
-            // Import units
             result.units.forEach { unitData ->
                 val unitId = unitRepository.insertUnit(
                     StudyUnit(
@@ -55,7 +64,6 @@ class ImportDictionaryUseCase @Inject constructor(
                 }
             }
 
-            // Import study states
             result.studyStates.forEach { stateData ->
                 val wordId = wordUidToId[stateData.wordUid] ?: return@forEach
                 studyRepository.upsertStudyState(
@@ -73,7 +81,6 @@ class ImportDictionaryUseCase @Inject constructor(
                 )
             }
 
-            // Recompute word associations for the entire dictionary
             wordRepository.recomputeAllAssociationsForDictionary(dictId)
 
             "导入成功：${result.dictionary.name}（${result.words.size} 个单词）"
@@ -93,10 +100,8 @@ class ExportDictionaryUseCase @Inject constructor(
         val units = unitRepository.getUnitsByDictionary(dictionaryId)
         val studyStates = studyRepository.getStudyStatesForDictionary(dictionaryId)
 
-        // Build wordId -> wordUid map
         val wordIdToUid = words.associate { it.id to it.wordUid }
 
-        // Build unitId -> list of wordUids
         val unitWordMap = mutableMapOf<Long, List<String>>()
         for (unit in units) {
             val wordIds = unitRepository.getWordIdsInUnit(unit.id)
@@ -115,4 +120,133 @@ class ExportDictionaryUseCase @Inject constructor(
             wordIdToUid = wordIdToUid
         )
     }
+}
+
+class ExportPlanUseCase @Inject constructor(
+    private val planRepository: PlanRepository,
+    moshi: Moshi
+) {
+    private val planAdapter = moshi.adapter(PlanExportJsonModel::class.java).indent("  ")
+
+    suspend operator fun invoke(): String {
+        val backup = planRepository.exportBackup()
+        return planAdapter.toJson(backup.toJsonModel())
+    }
+}
+
+class ImportPlanUseCase @Inject constructor(
+    private val planRepository: PlanRepository,
+    moshi: Moshi
+) {
+    private val planAdapter = moshi.adapter(PlanExportJsonModel::class.java)
+
+    suspend operator fun invoke(json: String): String {
+        val model = planAdapter.fromJson(json)
+            ?: throw IllegalStateException("计划导入失败：JSON 为空")
+        if (model.schemaVersion > 1) {
+            throw IllegalStateException("计划导入失败：不支持的数据版本 ${model.schemaVersion}")
+        }
+        planRepository.replaceFromBackup(model.toDomainBackup())
+        return "计划导入成功"
+    }
+}
+
+private fun PlanBackup.toJsonModel(): PlanExportJsonModel {
+    return PlanExportJsonModel(
+        schemaVersion = schemaVersion,
+        exportedAt = exportedAt,
+        templates = templates.map {
+            PlanTemplateJsonModel(
+                id = it.id,
+                name = it.name,
+                isActive = it.isActive,
+                createdAt = it.createdAt,
+                updatedAt = it.updatedAt
+            )
+        },
+        items = items.map {
+            PlanItemJsonModel(
+                id = it.id,
+                templateId = it.templateId,
+                taskType = it.taskType,
+                title = it.title,
+                targetCount = it.targetCount,
+                autoEnabled = it.autoEnabled,
+                autoSource = it.autoSource,
+                orderIndex = it.orderIndex,
+                createdAt = it.createdAt,
+                updatedAt = it.updatedAt
+            )
+        },
+        dayRecords = dayRecords.map {
+            PlanDayRecordJsonModel(
+                id = it.id,
+                dayStart = it.dayStart,
+                itemId = it.itemId,
+                doneCount = it.doneCount,
+                isCompleted = it.isCompleted,
+                updatedAt = it.updatedAt,
+                completedAt = it.completedAt
+            )
+        },
+        eventLogs = eventLogs.map {
+            PlanEventLogJsonModel(
+                id = it.id,
+                dayStart = it.dayStart,
+                eventKey = it.eventKey,
+                source = it.source,
+                createdAt = it.createdAt
+            )
+        }
+    )
+}
+
+private fun PlanExportJsonModel.toDomainBackup(): PlanBackup {
+    return PlanBackup(
+        schemaVersion = schemaVersion,
+        exportedAt = exportedAt,
+        templates = templates.map {
+            PlanTemplateBackup(
+                id = it.id,
+                name = it.name,
+                isActive = it.isActive,
+                createdAt = it.createdAt,
+                updatedAt = it.updatedAt
+            )
+        },
+        items = items.map {
+            PlanItemBackup(
+                id = it.id,
+                templateId = it.templateId,
+                taskType = it.taskType,
+                title = it.title,
+                targetCount = it.targetCount,
+                autoEnabled = it.autoEnabled,
+                autoSource = it.autoSource,
+                orderIndex = it.orderIndex,
+                createdAt = it.createdAt,
+                updatedAt = it.updatedAt
+            )
+        },
+        dayRecords = dayRecords.map {
+            PlanDayRecordBackup(
+                id = it.id,
+                dayStart = it.dayStart,
+                itemId = it.itemId,
+                doneCount = it.doneCount,
+                isCompleted = it.isCompleted,
+                updatedAt = it.updatedAt,
+                completedAt = it.completedAt
+            )
+        },
+        eventLogs = eventLogs.map {
+            PlanEventLogBackup(
+                id = it.id,
+                dayStart = it.dayStart,
+                eventKey = it.eventKey,
+                source = it.source,
+                createdAt = it.createdAt
+            )
+        }
+    )
 }

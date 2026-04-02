@@ -18,6 +18,9 @@ interface PlanDao {
     @Query("SELECT * FROM plan_templates ORDER BY updated_at DESC, id DESC")
     fun observeTemplates(): Flow<List<PlanTemplateEntity>>
 
+    @Query("SELECT * FROM plan_templates ORDER BY id ASC")
+    suspend fun getAllTemplatesOnce(): List<PlanTemplateEntity>
+
     @Query("SELECT * FROM plan_templates WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1")
     fun observeActiveTemplate(): Flow<PlanTemplateEntity?>
 
@@ -74,11 +77,17 @@ interface PlanDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEventLog(entity: PlanEventLogEntity): Long
 
+    @Query("SELECT * FROM plan_event_logs ORDER BY id ASC")
+    suspend fun getAllEventLogsOnce(): List<PlanEventLogEntity>
+
     @Query("SELECT * FROM plan_event_logs WHERE day_start = :dayStart ORDER BY created_at DESC LIMIT :limit")
     fun observeEventLogs(dayStart: Long, limit: Int): Flow<List<PlanEventLogEntity>>
 
     @Query("SELECT * FROM plan_day_records WHERE day_start = :dayStart ORDER BY id ASC")
     fun observeDayRecords(dayStart: Long): Flow<List<PlanDayRecordEntity>>
+
+    @Query("SELECT * FROM plan_day_records ORDER BY id ASC")
+    suspend fun getAllDayRecordsOnce(): List<PlanDayRecordEntity>
 
     @Query("SELECT * FROM plan_day_records WHERE day_start = :dayStart AND item_id = :itemId LIMIT 1")
     suspend fun getDayRecord(dayStart: Long, itemId: Long): PlanDayRecordEntity?
@@ -144,6 +153,12 @@ interface PlanDao {
 
     @Query("SELECT id FROM plan_templates WHERE is_active = 1 LIMIT 1")
     suspend fun getActiveTemplateId(): Long?
+
+    @Query("DELETE FROM plan_event_logs")
+    suspend fun deleteAllEventLogs()
+
+    @Query("DELETE FROM plan_templates")
+    suspend fun deleteAllTemplates()
 
     @Transaction
     suspend fun activateTemplate(templateId: Long, updatedAt: Long) {

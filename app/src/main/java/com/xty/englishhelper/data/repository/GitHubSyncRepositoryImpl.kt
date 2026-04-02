@@ -17,6 +17,11 @@ import com.xty.englishhelper.data.json.DictionaryShardIndexJsonModel
 import com.xty.englishhelper.data.json.ExamPaperJson
 import com.xty.englishhelper.data.json.InflectionJsonModel
 import com.xty.englishhelper.data.json.ParagraphJson
+import com.xty.englishhelper.data.json.PlanDayRecordJsonModel
+import com.xty.englishhelper.data.json.PlanEventLogJsonModel
+import com.xty.englishhelper.data.json.PlanExportJsonModel
+import com.xty.englishhelper.data.json.PlanItemJsonModel
+import com.xty.englishhelper.data.json.PlanTemplateJsonModel
 import com.xty.englishhelper.data.json.PracticeRecordJson
 import com.xty.englishhelper.data.json.QuestionBankExportModel
 import com.xty.englishhelper.data.json.QuestionGroupJson
@@ -64,6 +69,11 @@ import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordStudyState
+import com.xty.englishhelper.domain.model.PlanBackup
+import com.xty.englishhelper.domain.model.PlanDayRecordBackup
+import com.xty.englishhelper.domain.model.PlanEventLogBackup
+import com.xty.englishhelper.domain.model.PlanItemBackup
+import com.xty.englishhelper.domain.model.PlanTemplateBackup
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.WordExample
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
@@ -75,6 +85,7 @@ import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
+import com.xty.englishhelper.domain.repository.PlanRepository
 import com.xty.englishhelper.domain.usecase.importexport.ExportDictionaryUseCase
 import com.xty.englishhelper.domain.usecase.word.EnsureDictionaryWordUidsUseCase
 import kotlinx.coroutines.flow.first
@@ -95,6 +106,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val wordPoolRepository: WordPoolRepository,
     private val wordPoolDao: WordPoolDao,
     private val questionBankDao: QuestionBankDao,
+    private val planRepository: PlanRepository,
     private val importExporter: DictionaryImportExporter,
     private val exportDictionary: ExportDictionaryUseCase,
     private val transactionRunner: TransactionRunner,
@@ -115,6 +127,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val questionBankAdapter = moshi.adapter(QuestionBankExportModel::class.java).indent("  ")
     private val articleCategoriesAdapter = moshi.adapter(ArticleCategoriesExportModel::class.java).indent("  ")
     private val wordExamplesAdapter = moshi.adapter(WordExamplesExportModel::class.java).indent("  ")
+    private val planAdapter = moshi.adapter(PlanExportJsonModel::class.java).indent("  ")
 
     private fun authHeader(): String {
         val pat = settingsDataStore.getGitHubPat()
@@ -166,12 +179,14 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
         val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
+        val cloudPlan = downloadJson("plan.json", planAdapter)
 
         // 2. Read local data
         onProgress(SyncProgress("读取中", "正在读取本地数据...", 1, 4))
         val localDicts = dictionaryRepository.getAllDictionaries().first()
         applyCloudCategoriesOnSync(cloudCategories)
         val localArticles = articleRepository.getAllArticles().first()
+        val localPlanBackup = planRepository.exportBackup()
 
         // 3. Smart merge
         onProgress(SyncProgress("合并中", "正在合并辞书...", 2, 4))
@@ -207,6 +222,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         mergeQuestionBank(cloudQuestionBank, articleUidToId)
         val wordUidToId = buildWordUidToIdMap()
         importWordExamples(cloudWordExamples, wordUidToId, articleUidToId)
+        val mergedPlanBackup = mergePlanBackup(localPlanBackup, cloudPlan?.toDomainBackup())
 
         // Re-export local dicts that were merged (to pick up cloud-only words)
         val finalDictJsons = mutableListOf<DictionaryJsonModel>()
@@ -246,6 +262,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val wordExamplesExport = exportWordExamples()
         uploadJson("word_examples.json", wordExamplesExport, wordExamplesAdapter)
 
+        // Upload plan
+        val planExport = mergedPlanBackup.toJsonModel()
+        uploadJson("plan.json", planExport, planAdapter)
+
         // Upload manifest
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
@@ -256,7 +276,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             dictionaryEntries = dictionaryUpload.entries,
             hasArticles = allArticles.isNotEmpty(),
             hasQuestionBank = questionBankExport.papers.isNotEmpty(),
-            hasWordExamples = wordExamplesExport.examples.isNotEmpty()
+            hasWordExamples = wordExamplesExport.examples.isNotEmpty(),
+            hasPlan = mergedPlanBackup.isEmpty().not()
         )
         uploadJson("manifest.json", manifest, manifestAdapter)
 
@@ -302,6 +323,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val wordExamplesExport = exportWordExamples()
         uploadJson("word_examples.json", wordExamplesExport, wordExamplesAdapter)
 
+        // Upload plan
+        val planExport = planRepository.exportBackup().toJsonModel()
+        uploadJson("plan.json", planExport, planAdapter)
+
         // Upload manifest
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
@@ -312,7 +337,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             dictionaryEntries = dictionaryUpload.entries,
             hasArticles = allArticles.isNotEmpty(),
             hasQuestionBank = questionBankExport.papers.isNotEmpty(),
-            hasWordExamples = wordExamplesExport.examples.isNotEmpty()
+            hasWordExamples = wordExamplesExport.examples.isNotEmpty(),
+            hasPlan = planExport.templates.isNotEmpty() || planExport.items.isNotEmpty()
         )
         uploadJson("manifest.json", manifest, manifestAdapter)
 
@@ -342,6 +368,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
         val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
         val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
+        val cloudPlan = downloadJson("plan.json", planAdapter)
 
         // Clear local data
         onProgress(SyncProgress("导入中", "正在清空本地数据...", 1, 3))
@@ -358,6 +385,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         for (paper in localPapers) {
             questionBankDao.deleteExamPaper(paper.id)
         }
+        planRepository.replaceFromBackup(PlanBackup())
 
         replaceCategoriesFromCloud(cloudCategories)
 
@@ -384,6 +412,9 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val wordUidToId = buildWordUidToIdMap()
         val articleUidToId = buildArticleUidToIdMap()
         importWordExamples(cloudWordExamples, wordUidToId, articleUidToId)
+        if (cloudPlan != null) {
+            planRepository.replaceFromBackup(cloudPlan.toDomainBackup())
+        }
 
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
         onProgress(SyncProgress("完成", "下载完成", 3, 3))
@@ -1287,6 +1318,128 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             throw IllegalStateException("导入辞书 ${cloudDict.name} 失败: ${e.message}", e)
         }
+    }
+
+    private suspend fun mergePlanBackup(local: PlanBackup, cloud: PlanBackup?): PlanBackup {
+        if (cloud == null) return local
+        if (cloud.schemaVersion > 1) {
+            throw IllegalStateException("Unsupported plan schema version: ${cloud.schemaVersion}")
+        }
+        if (local.isEmpty() && cloud.isEmpty()) return local
+        if (local.isEmpty()) {
+            planRepository.replaceFromBackup(cloud)
+            return cloud
+        }
+        if (cloud.isEmpty()) return local
+
+        val localVersionTime = maxOf(local.latestUpdatedAt, local.exportedAt)
+        val cloudVersionTime = maxOf(cloud.latestUpdatedAt, cloud.exportedAt)
+        return if (cloudVersionTime > localVersionTime) {
+            planRepository.replaceFromBackup(cloud)
+            cloud
+        } else {
+            local
+        }
+    }
+
+    private fun PlanBackup.toJsonModel(): PlanExportJsonModel {
+        return PlanExportJsonModel(
+            schemaVersion = schemaVersion,
+            exportedAt = exportedAt,
+            templates = templates.map {
+                PlanTemplateJsonModel(
+                    id = it.id,
+                    name = it.name,
+                    isActive = it.isActive,
+                    createdAt = it.createdAt,
+                    updatedAt = it.updatedAt
+                )
+            },
+            items = items.map {
+                PlanItemJsonModel(
+                    id = it.id,
+                    templateId = it.templateId,
+                    taskType = it.taskType,
+                    title = it.title,
+                    targetCount = it.targetCount,
+                    autoEnabled = it.autoEnabled,
+                    autoSource = it.autoSource,
+                    orderIndex = it.orderIndex,
+                    createdAt = it.createdAt,
+                    updatedAt = it.updatedAt
+                )
+            },
+            dayRecords = dayRecords.map {
+                PlanDayRecordJsonModel(
+                    id = it.id,
+                    dayStart = it.dayStart,
+                    itemId = it.itemId,
+                    doneCount = it.doneCount,
+                    isCompleted = it.isCompleted,
+                    updatedAt = it.updatedAt,
+                    completedAt = it.completedAt
+                )
+            },
+            eventLogs = eventLogs.map {
+                PlanEventLogJsonModel(
+                    id = it.id,
+                    dayStart = it.dayStart,
+                    eventKey = it.eventKey,
+                    source = it.source,
+                    createdAt = it.createdAt
+                )
+            }
+        )
+    }
+
+    private fun PlanExportJsonModel.toDomainBackup(): PlanBackup {
+        return PlanBackup(
+            schemaVersion = schemaVersion,
+            exportedAt = exportedAt,
+            templates = templates.map {
+                PlanTemplateBackup(
+                    id = it.id,
+                    name = it.name,
+                    isActive = it.isActive,
+                    createdAt = it.createdAt,
+                    updatedAt = it.updatedAt
+                )
+            },
+            items = items.map {
+                PlanItemBackup(
+                    id = it.id,
+                    templateId = it.templateId,
+                    taskType = it.taskType,
+                    title = it.title,
+                    targetCount = it.targetCount,
+                    autoEnabled = it.autoEnabled,
+                    autoSource = it.autoSource,
+                    orderIndex = it.orderIndex,
+                    createdAt = it.createdAt,
+                    updatedAt = it.updatedAt
+                )
+            },
+            dayRecords = dayRecords.map {
+                PlanDayRecordBackup(
+                    id = it.id,
+                    dayStart = it.dayStart,
+                    itemId = it.itemId,
+                    doneCount = it.doneCount,
+                    isCompleted = it.isCompleted,
+                    updatedAt = it.updatedAt,
+                    completedAt = it.completedAt
+                )
+            },
+            eventLogs = eventLogs.map {
+                PlanEventLogBackup(
+                    id = it.id,
+                    dayStart = it.dayStart,
+                    eventKey = it.eventKey,
+                    source = it.source,
+                    createdAt = it.createdAt
+                )
+            }
+        )
     }
 
     // Question Bank Export/Import/Merge
