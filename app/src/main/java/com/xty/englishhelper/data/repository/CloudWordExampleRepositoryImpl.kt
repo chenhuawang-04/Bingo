@@ -50,7 +50,7 @@ class CloudWordExampleRepositoryImpl @Inject constructor(
     private suspend fun fetchFromCambridge(word: String, limit: Int): List<CloudWordExample> {
         val slug = buildEntrySlug(word)
         val html = cambridgeService.fetchEntryHtml(slug)
-        val sourceUrl = "https://dictionary.cambridge.org/dictionary/english/$slug"
+        val sourceUrl = "https://dictionary.cambridge.org/dictionary/english-chinese-simplified/$slug"
         return cambridgeParser.parseExamples(html, limit).map { sentence ->
             CloudWordExample(
                 sentence = sentence,

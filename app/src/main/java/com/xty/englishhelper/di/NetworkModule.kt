@@ -15,6 +15,7 @@ import com.xty.englishhelper.data.remote.cambridge.CambridgeHtmlParser
 import com.xty.englishhelper.data.remote.cambridge.CambridgeService
 import com.xty.englishhelper.data.remote.cambridge.CambridgeServiceImpl
 import com.xty.englishhelper.data.remote.oed.OedHtmlParser
+import com.xty.englishhelper.data.remote.oed.OedAwsWafWebViewSolver
 import com.xty.englishhelper.data.remote.oed.OedService
 import com.xty.englishhelper.data.remote.oed.OedServiceImpl
 import com.xty.englishhelper.data.remote.csmonitor.CsMonitorHtmlParser
@@ -28,7 +29,9 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -341,11 +344,15 @@ object NetworkModule {
                     )
                     .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                     .header("Accept-Language", "en-US,en;q=0.9")
+                    .header("Referer", "https://www.oed.com/")
                     .build()
                 chain.proceed(request)
             }
+            .protocols(listOf(Protocol.HTTP_1_1))
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
 
         if (BuildConfig.DEBUG) {
             builder.addInterceptor(createLoggingInterceptor())
@@ -360,7 +367,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOedService(@Named("oed") client: OkHttpClient): OedService {
-        return OedServiceImpl(client)
+    fun provideOedService(
+        @Named("oed") client: OkHttpClient,
+        wafSolver: OedAwsWafWebViewSolver
+    ): OedService {
+        return OedServiceImpl(client, wafSolver)
     }
 }

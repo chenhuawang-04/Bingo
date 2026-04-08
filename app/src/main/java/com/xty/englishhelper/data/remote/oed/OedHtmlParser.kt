@@ -1,6 +1,8 @@
 package com.xty.englishhelper.data.remote.oed
 
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import java.util.Locale
 
 data class OedSearchItem(
     val headword: String,
@@ -100,14 +102,30 @@ class OedHtmlParser {
     fun parseExamples(html: String, limit: Int = 8): List<String> {
         val doc = Jsoup.parse(html)
         val root = doc.selectFirst("main#maincontainer, .entryPage, .entryMainContent, .main") ?: doc
-        return root.select(
-            ".quotation .quote, .quotation .quoteText, .quotation .quotationText, .sense .example, .examples li, .quote"
+        val nodes = root.select(
+            "blockquote.quotation-text, .quotation .quotation-text, .quotation .quote, .quotation .quoteText, " +
+                ".quotation .quotationText, .sense .example, .examples li, .quote"
         )
-            .map { it.text().trim() }
-            .map { it.replace(Regex("\\s+"), " ") }
-            .filter { it.length >= 8 }
-            .distinct()
-            .take(limit)
+        val out = linkedMapOf<String, String>()
+        for (node in nodes) {
+            val sentence = normalizeSentence(node) ?: continue
+            val key = sentence.lowercase(Locale.US)
+                .replace(Regex("[\\p{Punct}]"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            if (key.isBlank()) continue
+            out.putIfAbsent(key, sentence)
+            if (out.size >= limit) break
+        }
+        return out.values.toList()
+    }
+
+    private fun normalizeSentence(node: Element): String? {
+        val clone = node.clone()
+        clone.select("mark.quotation-keyword, .quotation-keyword, i, em, sup, sub").unwrap()
+        val text = clone.text().replace(Regex("\\s+"), " ").trim()
+        if (text.length < 8) return null
+        return text
     }
 
     private fun extractHeadword(text: String): String {

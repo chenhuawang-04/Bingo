@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.screen.dictionary
+﻿package com.xty.englishhelper.ui.screen.dictionary
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -155,6 +155,7 @@ class QuickDictionaryViewModel @Inject constructor(
                             )
                         )
                     }
+
                     QuickLookupMode.ZH_TO_EN -> {
                         val candidates = findEnglishCandidates(requested)
                         supervisorScope {
@@ -189,7 +190,7 @@ class QuickDictionaryViewModel @Inject constructor(
                     it.copy(
                         isLoading = false,
                         groups = groups,
-                        error = if (groups.isEmpty()) "未找到可用词条，请尝试更换词典源或关键词" else null
+                        error = if (groups.isEmpty()) "未找到可用词条，请尝试更换词典来源或关键词" else null
                     )
                 }
             } catch (ce: CancellationException) {
@@ -264,17 +265,17 @@ class QuickDictionaryViewModel @Inject constructor(
         }
 
         val prompt = """
-            你是英汉词汇助手。请根据用户提供的中文含义，给出最相关的英语单词候选。
+            你是英汉词汇助手。请根据用户提供的中文含义，给出最相关的英语候选词。
             只输出 JSON，不要输出任何额外文本。
             JSON 格式：
             {
               "candidates": [
-                { "word": "single english word", "note": "简短说明，不超过20字" }
+                { "word": "single english word", "note": "简短说明，不超过 20 字" }
               ]
             }
             约束：
             - 返回 3-8 个候选
-            - 每个 word 必须是英文单词或常见短语（<= 3 词）
+            - 每个 word 必须是英文单词或常见短语（不超过 3 个词）
             - 按最常用、最贴切优先排序
             用户输入：$queryZh
         """.trimIndent()

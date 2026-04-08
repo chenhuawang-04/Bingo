@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.components.dictionary
+﻿package com.xty.englishhelper.ui.components.dictionary
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable

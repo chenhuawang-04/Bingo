@@ -4,6 +4,8 @@ import com.xty.englishhelper.domain.model.CambridgeEntry
 import com.xty.englishhelper.domain.model.CambridgeSense
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import java.util.Locale
 
 class CambridgeHtmlParser {
 
@@ -38,7 +40,7 @@ class CambridgeHtmlParser {
             .distinct()
 
         val pronunciation = ipaTexts.joinToString(" ").ifBlank { null }
-        val senses = extractSenses(doc)
+        val senses = extractSenses(entryRoot ?: doc)
 
         return CambridgeEntry(
             headword = headword,
@@ -49,9 +51,9 @@ class CambridgeHtmlParser {
         )
     }
 
-    private fun extractSenses(doc: Document): List<CambridgeSense> {
+    private fun extractSenses(root: Element): List<CambridgeSense> {
         val senses = mutableListOf<CambridgeSense>()
-        val blocks = doc.select("div.def-block, div.def-block.ddef_block")
+        val blocks = root.select("div.def-block, div.def-block.ddef_block")
         for (block in blocks) {
             val definition = block.selectFirst(".def, .ddef_d")?.text()?.trim()
             val translation = block.selectFirst(".trans, .dtrans")?.text()?.trim()
@@ -62,7 +64,7 @@ class CambridgeHtmlParser {
         }
 
         if (senses.isEmpty()) {
-            val defs = doc.select(".def, .ddef_d")
+            val defs = root.select(".def, .ddef_d")
             for (def in defs) {
                 val definition = def.text().trim()
                 if (definition.isBlank()) continue
@@ -77,13 +79,49 @@ class CambridgeHtmlParser {
 
     fun parseExamples(html: String, limit: Int = 8): List<String> {
         val doc = Jsoup.parse(html)
-        return doc.select(
-            ".def-block .examp, .def-block .dexamp, .eg, .examp, .dexamp, .x-h .x"
+        val entryRoot = doc.selectFirst(".entry-body, .entry-body__el, .pr.entry-body__el") ?: doc
+        val candidates = entryRoot.select(
+            ".def-block .examp, .def-block .dexamp, .examp.dexamp, .examp, .dexamp, .eg, .x-h .x, .examples li"
         )
-            .map { it.text().trim() }
-            .map { it.replace(Regex("\\s+"), " ") }
-            .filter { it.length >= 8 }
-            .distinct()
-            .take(limit)
+
+        val dedup = linkedMapOf<String, String>()
+        for (node in candidates) {
+            val sentence = extractEnglishExample(node) ?: continue
+            val key = normalizeForDedup(sentence)
+            if (key.isBlank()) continue
+            dedup.putIfAbsent(key, sentence)
+            if (dedup.size >= limit) break
+        }
+        return dedup.values.toList()
+    }
+
+    private fun extractEnglishExample(node: Element): String? {
+        val clone = node.clone()
+        clone.select(
+            ".trans, .dtrans, .trans.dtrans, .trans-dtrans, .x-h .trans, .x-h .dtrans, .lab, .dlab"
+        ).remove()
+        val raw = normalizeWhitespace(clone.text())
+        if (!looksLikeSentence(raw)) return null
+        return raw
+    }
+
+    private fun looksLikeSentence(text: String): Boolean {
+        if (text.length < 8 || text.length > 240) return false
+        val asciiLetters = text.count { it.isLetter() && it.code < 128 }
+        if (asciiLetters < 6) return false
+        val zhChars = text.count { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.HAN }
+        if (zhChars > 4) return false
+        return true
+    }
+
+    private fun normalizeForDedup(text: String): String {
+        return text.lowercase(Locale.US)
+            .replace(Regex("[\\p{Punct}]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun normalizeWhitespace(text: String): String {
+        return text.replace(Regex("\\s+"), " ").trim()
     }
 }
