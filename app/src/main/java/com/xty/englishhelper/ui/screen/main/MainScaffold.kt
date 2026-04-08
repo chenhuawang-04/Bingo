@@ -197,7 +197,7 @@ fun MainScaffold(
                     .align(Alignment.BottomEnd)
                     .padding(end = 16.dp, bottom = launcherBottomPadding)
             ) {
-                Icon(Icons.Default.Translate, contentDescription = "快捷词典")
+                Icon(Icons.Default.Translate, contentDescription = "快捷查词")
             }
         }
     } else {
@@ -240,7 +240,7 @@ fun MainScaffold(
                     .align(Alignment.BottomEnd)
                     .padding(end = 20.dp, bottom = launcherBottomPadding)
             ) {
-                Icon(Icons.Default.Translate, contentDescription = "快捷词典")
+                Icon(Icons.Default.Translate, contentDescription = "快捷查词")
             }
         }
 

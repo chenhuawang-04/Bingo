@@ -14,6 +14,9 @@ import com.xty.englishhelper.data.remote.atlantic.AtlanticServiceImpl
 import com.xty.englishhelper.data.remote.cambridge.CambridgeHtmlParser
 import com.xty.englishhelper.data.remote.cambridge.CambridgeService
 import com.xty.englishhelper.data.remote.cambridge.CambridgeServiceImpl
+import com.xty.englishhelper.data.remote.oed.OedHtmlParser
+import com.xty.englishhelper.data.remote.oed.OedService
+import com.xty.englishhelper.data.remote.oed.OedServiceImpl
 import com.xty.englishhelper.data.remote.csmonitor.CsMonitorHtmlParser
 import com.xty.englishhelper.data.remote.csmonitor.CsMonitorService
 import com.xty.englishhelper.data.remote.csmonitor.CsMonitorServiceImpl
@@ -322,5 +325,42 @@ object NetworkModule {
     @Singleton
     fun provideCambridgeService(@Named("cambridge") client: OkHttpClient): CambridgeService {
         return CambridgeServiceImpl(client)
+    }
+
+    // Oxford English Dictionary
+    @Provides
+    @Singleton
+    @Named("oed")
+    fun provideOedOkHttpClient(): OkHttpClient {
+        val builder = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header(
+                        "User-Agent",
+                        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36"
+                    )
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .build()
+                chain.proceed(request)
+            }
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+
+        if (BuildConfig.DEBUG) {
+            builder.addInterceptor(createLoggingInterceptor())
+        }
+
+        return builder.build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideOedHtmlParser(): OedHtmlParser = OedHtmlParser()
+
+    @Provides
+    @Singleton
+    fun provideOedService(@Named("oed") client: OkHttpClient): OedService {
+        return OedServiceImpl(client)
     }
 }

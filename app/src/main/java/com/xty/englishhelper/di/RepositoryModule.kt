@@ -15,6 +15,7 @@ import com.xty.englishhelper.data.repository.GuardianRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankAiRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankRepositoryImpl
 import com.xty.englishhelper.data.repository.PlanRepositoryImpl
+import com.xty.englishhelper.data.repository.OedDictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.RoomTransactionRunner
 import com.xty.englishhelper.data.repository.StudyRepositoryImpl
 import com.xty.englishhelper.data.repository.UnitRepositoryImpl
@@ -29,6 +30,7 @@ import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.CambridgeDictionaryRepository
+import com.xty.englishhelper.domain.repository.OedDictionaryRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
@@ -119,6 +121,12 @@ abstract class RepositoryModule {
     abstract fun bindCambridgeDictionaryRepository(
         impl: CambridgeDictionaryRepositoryImpl
     ): CambridgeDictionaryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindOedDictionaryRepository(
+        impl: OedDictionaryRepositoryImpl
+    ): OedDictionaryRepository
 
     @Binds
     @Singleton
