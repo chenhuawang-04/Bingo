@@ -1,4 +1,4 @@
-package com.xty.englishhelper.data.repository
+﻿package com.xty.englishhelper.data.repository
 
 import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.ArticleCategoryDao
@@ -352,6 +352,9 @@ class ArticleRepositoryImpl @Inject constructor(
         return articleDao.getSavedArticles().map { list -> list.map { it.toDomain() } }
     }
 
+    override fun getTopScoredOnlineArticles(limit: Int): Flow<List<Article>> {
+        return articleDao.getTopScoredOnlineArticles(limit).map { list -> list.map { it.toDomain() } }
+    }
     override suspend fun updateSuitabilityById(
         articleId: Long,
         score: Int?,
@@ -555,3 +558,5 @@ class ArticleRepositoryImpl @Inject constructor(
         createdAt = createdAt
     )
 }
+
+

@@ -1,4 +1,4 @@
-package com.xty.englishhelper.data.repository
+﻿package com.xty.englishhelper.data.repository
 
 import com.xty.englishhelper.data.local.dao.BackgroundTaskDao
 import com.xty.englishhelper.data.local.entity.BackgroundTaskEntity
@@ -10,6 +10,7 @@ import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
+import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
@@ -75,7 +76,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
                 dao.updateStatus(
                     entity.id,
                     BackgroundTaskStatus.FAILED.name,
-                    "任务参数缺失",
+                    "浠诲姟鍙傛暟缂哄け",
                     System.currentTimeMillis()
                 )
                 continue
@@ -124,6 +125,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> json.encodeToString(payload as QuestionAnswerGeneratePayload)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.encodeToString(payload as QuestionSourceVerifyPayload)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.encodeToString(payload as QuestionWritingSamplePayload)
+            BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> json.encodeToString(payload as OnlineArticleScanScorePayload)
             BackgroundTaskType.UNKNOWN -> "{}"
         }
     }
@@ -137,6 +139,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
                 BackgroundTaskType.QUESTION_ANSWER_GENERATE -> json.decodeFromString<QuestionAnswerGeneratePayload>(raw)
                 BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.decodeFromString<QuestionSourceVerifyPayload>(raw)
                 BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.decodeFromString<QuestionWritingSamplePayload>(raw)
+                BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> json.decodeFromString<OnlineArticleScanScorePayload>(raw)
                 BackgroundTaskType.UNKNOWN -> null
             }
         }.getOrNull()
@@ -160,3 +163,8 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
         )
     }
 }
+
+
+
+
+

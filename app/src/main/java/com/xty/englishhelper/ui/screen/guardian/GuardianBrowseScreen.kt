@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.screen.guardian
+﻿package com.xty.englishhelper.ui.screen.guardian
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -74,8 +74,13 @@ fun GuardianBrowseScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val visibleEvaluatingCount = uiState.articles.count { it.isEvaluating }
-    val currentSectionLabel = uiState.sections.firstOrNull { it.key == uiState.selectedSection }?.label ?: "首页"
+    val displayArticles = if (uiState.isHomePage) uiState.topArticles else uiState.articles
+    val visibleEvaluatingCount = displayArticles.count { it.isEvaluating }
+    val currentSectionLabel = if (uiState.isHomePage) {
+        "精选首页"
+    } else {
+        uiState.sections.firstOrNull { it.key == uiState.selectedSection }?.label ?: "首页"
+    }
     var showScopeSheet by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
@@ -127,29 +132,32 @@ fun GuardianBrowseScreen(
                 OnlineBrowseOverviewCard(
                     selectedSource = uiState.selectedSource,
                     sectionLabel = currentSectionLabel,
+                    isHomePage = uiState.isHomePage,
                     filterEnabled = uiState.filterEnabled,
                     visibleEvaluatingCount = visibleEvaluatingCount,
-                    totalVisibleCount = uiState.articles.size,
+                    totalVisibleCount = displayArticles.size,
                     onOpenScopeSheet = { showScopeSheet = true },
                     onRefresh = { viewModel.refresh() }
                 )
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     when {
-                        uiState.isLoading -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.align(Alignment.Center)
-                            )
+                        (!uiState.isHomePage && uiState.isLoading) || (uiState.isHomePage && uiState.isHomeLoading) -> {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                         }
-                        uiState.articles.isEmpty() && uiState.error == null -> {
+                        displayArticles.isEmpty() && uiState.error == null -> {
                             EmptyOnlineArticleState(
                                 modifier = Modifier.align(Alignment.Center),
-                                hasSourceArticles = uiState.allArticles.isNotEmpty(),
+                                hasSourceArticles = if (uiState.isHomePage) {
+                                    uiState.topArticles.isNotEmpty()
+                                } else {
+                                    uiState.allArticles.isNotEmpty()
+                                },
                                 onAdjustScope = { showScopeSheet = true },
                                 onRetry = { viewModel.refresh() }
                             )
                         }
-                        uiState.error != null && uiState.articles.isEmpty() -> {
+                        uiState.error != null && displayArticles.isEmpty() -> {
                             EmptyOnlineArticleState(
                                 modifier = Modifier.align(Alignment.Center),
                                 hasSourceArticles = false,
@@ -162,12 +170,10 @@ fun GuardianBrowseScreen(
                         }
                         else -> {
                             ArticleList(
-                                articles = uiState.articles,
+                                articles = displayArticles,
                                 isLoadingArticle = uiState.isLoadingArticle,
-                                sourceLabel = uiState.selectedSource.label,
-                                sectionLabel = currentSectionLabel,
-                                onArticleClick = { url ->
-                                    viewModel.openArticle(url, onArticleClick)
+                                onArticleClick = { article ->
+                                    viewModel.openArticle(article, onArticleClick)
                                 },
                                 onReevaluate = viewModel::reEvaluate
                             )
@@ -221,6 +227,7 @@ fun GuardianBrowseScreen(
 private fun OnlineBrowseOverviewCard(
     selectedSource: OnlineReadingSource,
     sectionLabel: String,
+    isHomePage: Boolean,
     filterEnabled: Boolean,
     visibleEvaluatingCount: Int,
     totalVisibleCount: Int,
@@ -252,7 +259,7 @@ private fun OnlineBrowseOverviewCard(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "在线题源",
+                        text = if (isHomePage) "首页推荐" else "在线题源",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -262,7 +269,9 @@ private fun OnlineBrowseOverviewCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (filterEnabled) {
+                        text = if (isHomePage) {
+                            "展示三个来源中评分最高的前 5 篇文章。进入“更改范围”可切换到任一来源栏目。"
+                        } else if (filterEnabled) {
                             "当前列表只保留符合筛选条件的文章，自动评估也会限定在这一批内容里。"
                         } else {
                             "先收窄来源与栏目，再决定是否用筛选与评分排序继续精修题源。"
@@ -276,7 +285,10 @@ private fun OnlineBrowseOverviewCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    EditorialPill(text = selectedSource.label, emphasized = true)
+                    EditorialPill(
+                        text = if (isHomePage) "跨来源 Top 5" else selectedSource.label,
+                        emphasized = true
+                    )
                     if (visibleEvaluatingCount > 0) {
                         EditorialPill(
                             text = "评估中 $visibleEvaluatingCount/$totalVisibleCount",
@@ -318,12 +330,14 @@ private fun OnlineBrowseOverviewCard(
                                     icon = Icons.Default.Edit,
                                     onClick = onOpenScopeSheet
                                 )
-                                EditorialActionButton(
-                                    text = "刷新",
-                                    icon = Icons.Default.Refresh,
-                                    onClick = onRefresh,
-                                    prominent = true
-                                )
+                                if (!isHomePage) {
+                                    EditorialActionButton(
+                                        text = "刷新",
+                                        icon = Icons.Default.Refresh,
+                                        onClick = onRefresh,
+                                        prominent = true
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -355,12 +369,14 @@ private fun OnlineBrowseOverviewCard(
                                     icon = Icons.Default.Edit,
                                     onClick = onOpenScopeSheet
                                 )
-                                EditorialActionButton(
-                                    text = "刷新",
-                                    icon = Icons.Default.Refresh,
-                                    onClick = onRefresh,
-                                    prominent = true
-                                )
+                                if (!isHomePage) {
+                                    EditorialActionButton(
+                                        text = "刷新",
+                                        icon = Icons.Default.Refresh,
+                                        onClick = onRefresh,
+                                        prominent = true
+                                    )
+                                }
                             }
                         }
                     }
@@ -619,9 +635,7 @@ private fun EmptyOnlineArticleState(
 private fun ArticleList(
     articles: List<GuardianBrowseItem>,
     isLoadingArticle: Boolean,
-    sourceLabel: String,
-    sectionLabel: String,
-    onArticleClick: (url: String) -> Unit,
+    onArticleClick: (article: GuardianBrowseItem) -> Unit,
     onReevaluate: (url: String) -> Unit
 ) {
     LazyColumn(
@@ -631,11 +645,9 @@ private fun ArticleList(
         items(articles, key = { it.url }) { article ->
             ArticlePreviewCard(
                 article = article,
-                sourceLabel = sourceLabel,
-                sectionLabel = sectionLabel,
                 onClick = {
                     if (!isLoadingArticle) {
-                        onArticleClick(article.url)
+                        onArticleClick(article)
                     }
                 },
                 onReevaluate = { onReevaluate(article.url) }
@@ -648,8 +660,6 @@ private fun ArticleList(
 @Composable
 private fun ArticlePreviewCard(
     article: GuardianBrowseItem,
-    sourceLabel: String,
-    sectionLabel: String,
     onClick: () -> Unit,
     onReevaluate: () -> Unit
 ) {
@@ -665,8 +675,8 @@ private fun ArticlePreviewCard(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val supportingLine = buildList {
-        add(sourceLabel)
-        if (sectionLabel.isNotBlank()) add(sectionLabel)
+        add(article.source?.label ?: "Online")
+        article.sectionLabel?.takeIf { it.isNotBlank() }?.let { add(it) }
         if (!article.author.isNullOrBlank()) add(article.author)
     }.joinToString(" · ")
     val placeholderSeed = article.title.firstOrNull()?.uppercase() ?: "A"

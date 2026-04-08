@@ -47,6 +47,7 @@ import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
@@ -348,6 +349,7 @@ private fun taskTitle(task: BackgroundTask): String {
         BackgroundTaskType.QUESTION_ANSWER_GENERATE -> "题库答案生成"
         BackgroundTaskType.QUESTION_SOURCE_VERIFY -> "题库来源验证"
         BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> "作文范文检索"
+        BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> "在线文章批量评分"
         BackgroundTaskType.UNKNOWN -> "未知任务"
     }
 }
@@ -406,6 +408,9 @@ private fun taskSubtitle(task: BackgroundTask): String {
                 append(snippet)
             }
             if (isEmpty()) append("题组 ${payload.groupId}")
+        }
+        is OnlineArticleScanScorePayload -> {
+            "全来源全栏目扫描，分栏最多 ${payload.maxPerSection} 篇，重评间隔 ${payload.rescoreAfterHours}h"
         }
         else -> "任务 ${task.id}"
     }

@@ -1,4 +1,4 @@
-package com.xty.englishhelper.data.local.dao
+﻿package com.xty.englishhelper.data.local.dao
 
 import androidx.room.ColumnInfo
 import androidx.room.Dao
@@ -225,6 +225,15 @@ interface ArticleDao {
     // Guardian: get all saved articles only
     @Query("SELECT * FROM articles WHERE is_saved = 1 ORDER BY updated_at DESC")
     fun getSavedArticles(): Flow<List<ArticleEntity>>
+    @Query(
+        """
+        SELECT * FROM articles
+        WHERE source_type_v2 = 'ONLINE' AND suitability_score IS NOT NULL
+        ORDER BY suitability_score DESC, suitability_updated_at DESC, updated_at DESC
+        LIMIT :limit
+        """
+    )
+    fun getTopScoredOnlineArticles(limit: Int): Flow<List<ArticleEntity>>
 }
 
 data class WordMatchProjection(
@@ -233,3 +242,8 @@ data class WordMatchProjection(
     @ColumnInfo(name = "normalized_spelling") val normalizedSpelling: String,
     @ColumnInfo(name = "inflections_json") val inflectionsJson: String
 )
+
+
+
+
+

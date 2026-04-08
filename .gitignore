@@ -16,3 +16,6 @@ local.properties
 *.dex
 *.jks
 *.keystore
+
+# Project documents (local only, do not commit/push)
+docs/

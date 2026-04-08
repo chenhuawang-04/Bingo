@@ -1,4 +1,4 @@
-package com.xty.englishhelper
+﻿package com.xty.englishhelper
 
 import android.app.Application
 import com.xty.englishhelper.data.debug.AiDebugManager
@@ -42,6 +42,9 @@ class EnglishHelperApp : Application() {
         }
         appScope.launch {
             backgroundTaskManager.start()
+            backgroundTaskManager.enqueueOnlineArticleScanScore()
         }
     }
 }
+
+

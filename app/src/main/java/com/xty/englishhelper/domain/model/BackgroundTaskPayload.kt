@@ -1,4 +1,4 @@
-package com.xty.englishhelper.domain.model
+﻿package com.xty.englishhelper.domain.model
 
 import kotlinx.serialization.Serializable
 
@@ -59,3 +59,12 @@ data class QuestionWritingSamplePayload(
     val paperTitle: String = "",
     val questionSnippet: String = ""
 ) : BackgroundTaskPayload
+@Serializable
+data class OnlineArticleScanScorePayload(
+    val startedAt: Long,
+    val maxPerSection: Int = 8,
+    val rescoreAfterHours: Int = 24,
+    val forceRefresh: Boolean = false
+) : BackgroundTaskPayload
+
+

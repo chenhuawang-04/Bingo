@@ -1,4 +1,4 @@
-package com.xty.englishhelper.domain.background
+﻿package com.xty.englishhelper.domain.background
 
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.AiModelSnapshot
@@ -11,6 +11,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.ExamPaper
+import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
@@ -18,14 +19,23 @@ import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.QuestionType
+import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
+import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
+import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.repository.ArticleAiRepository
+import com.xty.englishhelper.domain.repository.AtlanticRepository
+import com.xty.englishhelper.domain.repository.CsMonitorRepository
+import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.WordRepository
+import com.xty.englishhelper.domain.article.OnlineReadingCatalog
+import com.xty.englishhelper.domain.article.OnlineArticleSourceUrl
 import com.xty.englishhelper.domain.usecase.ai.OrganizeWordWithAiUseCase
 import com.xty.englishhelper.domain.usecase.article.CreateArticleUseCase
 import com.xty.englishhelper.domain.usecase.article.ParseArticleUseCase
@@ -41,6 +51,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.first
+import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
 import javax.inject.Inject
@@ -60,6 +71,10 @@ class BackgroundTaskManager @Inject constructor(
     private val questionBankRepository: QuestionBankRepository,
     private val questionBankAiRepository: QuestionBankAiRepository,
     private val articleRepository: ArticleRepository,
+    private val articleAiRepository: ArticleAiRepository,
+    private val guardianRepository: GuardianRepository,
+    private val csMonitorRepository: CsMonitorRepository,
+    private val atlanticRepository: AtlanticRepository,
     private val wordRepository: WordRepository,
     private val organizeWordWithAi: OrganizeWordWithAiUseCase,
     private val rebuildWordPools: RebuildWordPoolsUseCase,
@@ -190,6 +205,26 @@ class BackgroundTaskManager @Inject constructor(
     ) {
         val payload = QuestionWritingSamplePayload(groupId, paperTitle, questionSnippet)
         enqueueTaskAsync(BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH, payload, "writing_sample:$groupId", force)
+    }
+
+    fun enqueueOnlineArticleScanScore(
+        force: Boolean = false,
+        maxPerSection: Int = 5,
+        rescoreAfterHours: Int = 24,
+        forceRefresh: Boolean = false
+    ) {
+        val payload = OnlineArticleScanScorePayload(
+            startedAt = System.currentTimeMillis(),
+            maxPerSection = maxPerSection.coerceIn(1, 20),
+            rescoreAfterHours = rescoreAfterHours.coerceIn(1, 24 * 30),
+            forceRefresh = forceRefresh
+        )
+        enqueueTaskAsync(
+            type = BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE,
+            payload = payload,
+            dedupeKey = "online:scan_score",
+            force = force
+        )
     }
 
     fun pauseTask(taskId: Long) {
@@ -387,6 +422,7 @@ class BackgroundTaskManager @Inject constructor(
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> executeAnswerGenerate(task)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> executeSourceVerify(task)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> executeWritingSampleSearch(task)
+            BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> executeOnlineArticleScanScore(task)
             BackgroundTaskType.UNKNOWN -> throw IllegalStateException("未知任务类型")
         }
     }
@@ -809,6 +845,185 @@ class BackgroundTaskManager @Inject constructor(
         )
         questionBankRepository.markHasAiAnswer(group.id)
         repository.updateProgress(task.id, 1, 1)
+    }
+
+    private suspend fun executeOnlineArticleScanScore(task: BackgroundTask) {
+        val payload = task.payload as? OnlineArticleScanScorePayload
+            ?: throw IllegalStateException("任务参数缺失")
+        val config = settingsDataStore.getFastAiConfig()
+        if (config.apiKey.isBlank() || config.model.isBlank()) {
+            throw IllegalStateException("快速模型未配置，无法执行在线文章评分")
+        }
+
+        val modelKey = "${config.providerName}|${config.baseUrl.trimEnd('/')}|${config.model}"
+        val sectionPlan = OnlineReadingSource.entries.flatMap { source ->
+            OnlineReadingCatalog.sectionsFor(source).map { section -> source to section }
+        }
+        val total = (sectionPlan.size * payload.maxPerSection).coerceAtLeast(1)
+        var progress = 0
+        val recentThreshold = payload.rescoreAfterHours.toLong() * 60L * 60L * 1000L
+        val scannedUrls = mutableSetOf<String>()
+
+        repository.updateProgress(task.id, progress, total)
+
+        for ((source, section) in sectionPlan) {
+            val candidates = runCatching {
+                fetchOnlineScanCandidates(source, section.key).take(payload.maxPerSection)
+            }.getOrElse { e ->
+                Log.w("BackgroundTaskManager", "Scan section failed: ${source.key}/${section.key}", e)
+                emptyList()
+            }
+
+            for (candidate in candidates) {
+                progress += 1
+                repository.updateProgress(task.id, progress.coerceAtMost(total), total)
+
+                val normalizedUrl = OnlineArticleSourceUrl.normalize(candidate.url).ifBlank { candidate.url }
+                if (!scannedUrls.add(normalizedUrl)) continue
+
+                try {
+                    val now = System.currentTimeMillis()
+                    val existing = articleRepository.getArticleBySourceUrl(candidate.url)
+                    val isRecent = existing?.suitabilityUpdatedAt?.let { now - it < recentThreshold } == true
+                    if (!payload.forceRefresh && existing?.suitabilityScore != null && isRecent) {
+                        continue
+                    }
+
+                    val detail = fetchOnlineArticleDetail(source, candidate.url)
+                    val excerpt = buildOnlineEvaluationExcerpt(detail.paragraphs)
+                    if (excerpt.isBlank()) continue
+                    val wordCount = countOnlineWords(detail.paragraphs)
+
+                    val result = articleAiRepository.evaluateArticleSuitability(
+                        title = candidate.title,
+                        excerpt = excerpt,
+                        trailText = candidate.trailText,
+                        source = source.label,
+                        section = section.label,
+                        wordCount = wordCount,
+                        url = candidate.url,
+                        apiKey = config.apiKey,
+                        model = config.model,
+                        baseUrl = config.baseUrl,
+                        provider = config.provider
+                    )
+
+                    val updated = articleRepository.updateSuitabilityBySourceUrl(
+                        sourceUrl = candidate.url,
+                        score = result.score,
+                        reason = result.reason,
+                        evaluatedAt = now,
+                        modelKey = modelKey
+                    )
+
+                    if (updated == 0) {
+                        articleRepository.upsertArticle(
+                            com.xty.englishhelper.domain.model.Article(
+                                title = candidate.title,
+                                content = "",
+                                articleUid = UUID.randomUUID().toString(),
+                                sourceType = ArticleSourceType.MANUAL,
+                                sourceTypeV2 = ArticleSourceTypeV2.ONLINE,
+                                parseStatus = ArticleParseStatus.DONE,
+                                summary = candidate.trailText.orEmpty(),
+                                author = detail.author.ifBlank { candidate.author.orEmpty() },
+                                source = source.label,
+                                coverImageUrl = detail.coverImageUrl ?: candidate.thumbnailUrl,
+                                domain = normalizedUrl,
+                                isSaved = false,
+                                wordCount = wordCount,
+                                suitabilityScore = result.score,
+                                suitabilityReason = result.reason,
+                                suitabilityUpdatedAt = now,
+                                suitabilityModel = modelKey
+                            )
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w("BackgroundTaskManager", "Scan article failed: ${candidate.url}", e)
+                }
+            }
+        }
+
+        repository.updateProgress(task.id, total, total)
+    }
+
+    private data class OnlineScanCandidate(
+        val title: String,
+        val url: String,
+        val trailText: String?,
+        val thumbnailUrl: String?,
+        val author: String?
+    )
+
+    private data class OnlineScanDetail(
+        val author: String,
+        val coverImageUrl: String?,
+        val paragraphs: List<ArticleParagraph>
+    )
+
+    private suspend fun fetchOnlineScanCandidates(
+        source: OnlineReadingSource,
+        sectionKey: String
+    ): List<OnlineScanCandidate> {
+        return when (source) {
+            OnlineReadingSource.GUARDIAN -> guardianRepository.getSectionArticles(sectionKey).map {
+                OnlineScanCandidate(it.title, it.url, it.trailText, it.thumbnailUrl, it.author)
+            }
+            OnlineReadingSource.CSMONITOR -> csMonitorRepository.getSectionArticles(sectionKey).map {
+                OnlineScanCandidate(it.title, it.url, it.trailText, it.thumbnailUrl, it.author)
+            }
+            OnlineReadingSource.ATLANTIC -> atlanticRepository.getSectionArticles(sectionKey).map {
+                OnlineScanCandidate(it.title, it.url, it.trailText, it.thumbnailUrl, it.author)
+            }
+        }
+    }
+
+    private suspend fun fetchOnlineArticleDetail(
+        source: OnlineReadingSource,
+        articleUrl: String
+    ): OnlineScanDetail {
+        return when (source) {
+            OnlineReadingSource.GUARDIAN -> {
+                val detail = guardianRepository.getArticleDetail(articleUrl)
+                OnlineScanDetail(
+                    author = detail.author,
+                    coverImageUrl = detail.coverImageUrl,
+                    paragraphs = detail.paragraphs
+                )
+            }
+            OnlineReadingSource.CSMONITOR -> {
+                val detail = csMonitorRepository.getArticleDetail(articleUrl)
+                OnlineScanDetail(
+                    author = detail.author,
+                    coverImageUrl = detail.coverImageUrl,
+                    paragraphs = detail.paragraphs
+                )
+            }
+            OnlineReadingSource.ATLANTIC -> {
+                val detail = atlanticRepository.getArticleDetail(articleUrl)
+                OnlineScanDetail(
+                    author = detail.author,
+                    coverImageUrl = detail.coverImageUrl,
+                    paragraphs = detail.paragraphs
+                )
+            }
+        }
+    }
+
+    private fun buildOnlineEvaluationExcerpt(paragraphs: List<ArticleParagraph>): String {
+        if (paragraphs.isEmpty()) return ""
+        val selected = if (paragraphs.size <= 3) paragraphs else paragraphs.take(3)
+        val text = selected.joinToString("\n\n") { it.text.trim() }.trim()
+        return if (text.length > 2200) text.take(2200) else text
+    }
+
+    private fun countOnlineWords(paragraphs: List<ArticleParagraph>): Int {
+        if (paragraphs.isEmpty()) return 0
+        return paragraphs
+            .asSequence()
+            .flatMap { it.text.split(Regex("\\s+")).asSequence() }
+            .count { it.isNotBlank() }
     }
 
     private fun buildArticleText(article: com.xty.englishhelper.domain.model.Article, paragraphs: List<ArticleParagraph>): String {

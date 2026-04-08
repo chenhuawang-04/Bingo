@@ -1,4 +1,4 @@
-package com.xty.englishhelper.domain.repository
+﻿package com.xty.englishhelper.domain.repository
 
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
@@ -108,6 +108,7 @@ interface ArticleRepository {
     suspend fun markArticleSaved(articleId: Long)
     suspend fun deleteUnsavedArticlesBefore(cutoff: Long)
     fun getSavedArticles(): Flow<List<Article>>
+    fun getTopScoredOnlineArticles(limit: Int): Flow<List<Article>>
 
     suspend fun updateSuitabilityById(
         articleId: Long,
@@ -125,3 +126,5 @@ interface ArticleRepository {
         modelKey: String?
     ): Int
 }
+
+

@@ -1,6 +1,7 @@
-package com.xty.englishhelper.ui.screen.guardian
+﻿package com.xty.englishhelper.ui.screen.guardian
 
 import android.util.Log
+import com.xty.englishhelper.domain.article.OnlineReadingCatalog
 import com.xty.englishhelper.domain.article.OnlineArticleSourceUrl
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -53,7 +54,9 @@ data class GuardianBrowseItem(
     val suitabilityReason: String? = null,
     val suitabilityEvaluatedAt: Long? = null,
     val isEvaluating: Boolean = false,
-    val evaluationExcerpt: String? = null
+    val evaluationExcerpt: String? = null,
+    val source: OnlineReadingSource? = null,
+    val sectionLabel: String? = null
 )
 
 val guardianSections = listOf(
@@ -133,6 +136,9 @@ data class GuardianBrowseUiState(
     val selectedSource: OnlineReadingSource = OnlineReadingSource.GUARDIAN,
     val sections: List<GuardianSection> = guardianSections,
     val selectedSection: String = "international",
+    val isHomePage: Boolean = true,
+    val topArticles: List<GuardianBrowseItem> = emptyList(),
+    val isHomeLoading: Boolean = true,
     val allArticles: List<GuardianBrowseItem> = emptyList(),
     val articles: List<GuardianBrowseItem> = emptyList(),
     val isLoading: Boolean = false,
@@ -171,6 +177,40 @@ class GuardianBrowseViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            articleRepository.getTopScoredOnlineArticles(5).collectLatest { articles ->
+                val topItems = articles.mapNotNull { article ->
+                    val source = OnlineReadingCatalog.resolveSourceFromLabelOrUrl(
+                        sourceLabel = article.source,
+                        sourceUrl = article.domain
+                    )
+                    source?.let {
+                        GuardianBrowseItem(
+                            title = article.title,
+                            url = article.domain,
+                            trailText = article.summary.takeIf { text -> text.isNotBlank() },
+                            thumbnailUrl = article.coverImageUrl,
+                            author = article.author.takeIf { text -> text.isNotBlank() },
+                            coverImageUrl = article.coverImageUrl,
+                            wordCount = article.wordCount.takeIf { count -> count > 0 },
+                            suitabilityScore = article.suitabilityScore,
+                            suitabilityReason = article.suitabilityReason.takeIf { text -> text.isNotBlank() },
+                            suitabilityEvaluatedAt = article.suitabilityUpdatedAt,
+                            isAuthorLoading = false,
+                            isWordCountLoading = false,
+                            source = it,
+                            sectionLabel = "Top Rated"
+                        )
+                    }
+                }
+                _uiState.update { state ->
+                    state.copy(
+                        topArticles = topItems,
+                        isHomeLoading = false
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.onlineReadingSource.collectLatest { key ->
                 val source = OnlineReadingSource.fromKey(key)
                 if (!sourceInitialized || _uiState.value.selectedSource != source) {
@@ -186,7 +226,14 @@ class GuardianBrowseViewModel @Inject constructor(
         detailJob?.cancel()
         detailJob = null
         cancelAutoEvaluationJobsExcept(emptySet())
-        _uiState.update { it.copy(selectedSection = section, isLoading = true, error = null) }
+        _uiState.update {
+            it.copy(
+                selectedSection = section,
+                isLoading = true,
+                error = null,
+                isHomePage = false
+            )
+        }
         lastSectionBySource[source] = section
 
         viewModelScope.launch {
@@ -201,7 +248,9 @@ class GuardianBrowseViewModel @Inject constructor(
                                 thumbnailUrl = preview.thumbnailUrl,
                                 author = preview.author,
                                 isAuthorLoading = true,
-                                isWordCountLoading = true
+                                isWordCountLoading = true,
+                                source = source,
+                                sectionLabel = resolveSectionLabel(source, section)
                             )
                         }
                     }
@@ -214,7 +263,9 @@ class GuardianBrowseViewModel @Inject constructor(
                                 thumbnailUrl = preview.thumbnailUrl,
                                 author = preview.author,
                                 isAuthorLoading = true,
-                                isWordCountLoading = true
+                                isWordCountLoading = true,
+                                source = source,
+                                sectionLabel = resolveSectionLabel(source, section)
                             )
                         }
                     }
@@ -227,7 +278,9 @@ class GuardianBrowseViewModel @Inject constructor(
                                 thumbnailUrl = preview.thumbnailUrl,
                                 author = preview.author,
                                 isAuthorLoading = true,
-                                isWordCountLoading = true
+                                isWordCountLoading = true,
+                                source = source,
+                                sectionLabel = resolveSectionLabel(source, section)
                             )
                         }
                     }
@@ -317,6 +370,7 @@ class GuardianBrowseViewModel @Inject constructor(
     }
 
     fun refresh() {
+        if (_uiState.value.isHomePage) return
         loadSection(_uiState.value.selectedSection)
     }
 
@@ -416,34 +470,33 @@ class GuardianBrowseViewModel @Inject constructor(
         }
     }
 
-    fun openArticle(
-        articleUrl: String,
-        onNavigate: (Long) -> Unit
-    ) {
+    fun openArticle(article: GuardianBrowseItem, onNavigate: (Long) -> Unit) {
         if (_uiState.value.isLoadingArticle) return
         _uiState.update { it.copy(isLoadingArticle = true, error = null) }
-        val source = _uiState.value.selectedSource
+        val source = article.source
+            ?: OnlineReadingCatalog.resolveSourceFromLabelOrUrl(null, article.url)
+            ?: _uiState.value.selectedSource
 
         viewModelScope.launch {
             try {
                 val articleId = when (source) {
                     OnlineReadingSource.GUARDIAN -> {
-                        val detail = guardianRepository.getArticleDetail(articleUrl)
+                        val detail = guardianRepository.getArticleDetail(article.url)
                         guardianRepository.createTemporaryArticle(detail)
                     }
                     OnlineReadingSource.CSMONITOR -> {
-                        val detail = csMonitorRepository.getArticleDetail(articleUrl)
+                        val detail = csMonitorRepository.getArticleDetail(article.url)
                         csMonitorRepository.createTemporaryArticle(detail)
                     }
                     OnlineReadingSource.ATLANTIC -> {
-                        val detail = atlanticRepository.getArticleDetail(articleUrl)
+                        val detail = atlanticRepository.getArticleDetail(article.url)
                         atlanticRepository.createTemporaryArticle(detail)
                     }
                 }
                 _uiState.update { it.copy(isLoadingArticle = false) }
                 onNavigate(articleId)
             } catch (e: Exception) {
-                Log.e("GuardianBrowseVM", "Failed to open article: $articleUrl", e)
+                Log.e("GuardianBrowseVM", "Failed to open article: ${article.url}", e)
                 _uiState.update { it.copy(isLoadingArticle = false, error = "文章加载失败：${e.message}") }
             }
         }
@@ -471,13 +524,13 @@ class GuardianBrowseViewModel @Inject constructor(
                 selectedSource = source,
                 sections = sections,
                 selectedSection = preferred,
+                isHomePage = true,
                 allArticles = emptyList(),
                 articles = emptyList(),
-                isLoading = true,
+                isLoading = false,
                 error = null
             )
         }
-        loadSection(preferred)
     }
 
     private suspend fun maybeEvaluateSuitability(
@@ -583,6 +636,10 @@ class GuardianBrowseViewModel @Inject constructor(
         source: OnlineReadingSource,
         sectionKey: String
     ) {
+        if (_uiState.value.isHomePage) {
+            cancelAutoEvaluationJobsExcept(emptySet())
+            return
+        }
         val visibleUrls = _uiState.value.articles.map { it.url }.toSet()
         cancelAutoEvaluationJobsExcept(visibleUrls)
         visibleUrls.forEach { url ->
