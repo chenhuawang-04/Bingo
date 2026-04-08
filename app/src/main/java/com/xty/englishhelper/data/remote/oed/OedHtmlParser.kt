@@ -97,6 +97,19 @@ class OedHtmlParser {
         )
     }
 
+    fun parseExamples(html: String, limit: Int = 8): List<String> {
+        val doc = Jsoup.parse(html)
+        val root = doc.selectFirst("main#maincontainer, .entryPage, .entryMainContent, .main") ?: doc
+        return root.select(
+            ".quotation .quote, .quotation .quoteText, .quotation .quotationText, .sense .example, .examples li, .quote"
+        )
+            .map { it.text().trim() }
+            .map { it.replace(Regex("\\s+"), " ") }
+            .filter { it.length >= 8 }
+            .distinct()
+            .take(limit)
+    }
+
     private fun extractHeadword(text: String): String {
         val clean = text.replace(Regex("\\s+"), " ").trim()
         return clean.substringBefore(",").trim().ifBlank { clean }

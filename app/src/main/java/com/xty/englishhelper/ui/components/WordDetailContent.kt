@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.components
+﻿package com.xty.englishhelper.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,11 +26,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.xty.englishhelper.domain.model.AssociatedWordInfo
+import com.xty.englishhelper.domain.model.CloudExampleSource
+import com.xty.englishhelper.domain.model.CloudWordExample
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordPool
+import com.xty.englishhelper.domain.repository.WordExample
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
 import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
 
@@ -41,476 +45,250 @@ fun WordDetailContent(
     linkedWordIds: Map<String, Long>,
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
     modifier: Modifier = Modifier,
-    examples: List<com.xty.englishhelper.domain.repository.WordExample> = emptyList(),
+    examples: List<WordExample> = emptyList(),
     onArticleClick: (articleId: Long, sentenceId: Long) -> Unit = { _, _ -> },
-    pools: List<WordPool> = emptyList()
+    pools: List<WordPool> = emptyList(),
+    cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
+    cloudExamples: List<CloudWordExample> = emptyList(),
+    cloudExamplesLoading: Boolean = false,
+    cloudExamplesError: String? = null,
+    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit = {}
 ) {
     val windowWidthClass = currentWindowWidthClass()
     val isWide = windowWidthClass.isExpandedOrMedium()
 
     if (isWide) {
-        // Two-column layout on large screens
         Row(modifier = modifier.fillMaxSize()) {
-            // Left column: basic info
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (word.phonetic.isNotBlank()) {
-                    item {
-                        Text(
-                            text = word.phonetic,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                if (word.meanings.isNotEmpty()) {
-                    item {
-                        WordDetailSection(title = "词性与词义") {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                word.meanings.forEach { meaning ->
-                                    DetailRow(label = meaning.pos, value = meaning.definition)
-                                }
-                            }
-                        }
-                    }
-                }
-                if (word.decomposition.isNotEmpty() || word.rootExplanation.isNotBlank()) {
-                    item {
-                        WordDetailSection(title = "词根解释") {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (word.decomposition.isNotEmpty()) {
-                                    DecompositionDisplay(parts = word.decomposition)
-                                }
-                                if (word.rootExplanation.isNotBlank()) {
-                                    if (word.decomposition.isNotEmpty()) {
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(vertical = 4.dp),
-                                            color = MaterialTheme.colorScheme.outlineVariant
-                                        )
-                                    }
-                                    Text(
-                                        text = word.rootExplanation,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                if (word.inflections.isNotEmpty()) {
-                    item {
-                        WordDetailSection(title = "词形变化") {
-                            InflectionsDisplay(inflections = word.inflections)
-                        }
-                    }
-                }
+                basicWordItems(word)
             }
-            // Right column: related words
+
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (word.synonyms.isNotEmpty()) {
-                    item {
-                        WordDetailSection(title = "近义词") {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                word.synonyms.forEach { syn ->
-                                    ClickableWordRow(
-                                        word = syn.word,
-                                        detail = syn.explanation,
-                                        linkedWordIds = linkedWordIds,
-                                        dictionaryId = word.dictionaryId,
-                                        onWordClick = onWordClick
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                if (word.similarWords.isNotEmpty()) {
-                    item {
-                        WordDetailSection(title = "形近词") {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                word.similarWords.forEach { sim ->
-                                    Column {
-                                        ClickableWordRow(
-                                            word = sim.word,
-                                            detail = sim.meaning,
-                                            linkedWordIds = linkedWordIds,
-                                            dictionaryId = word.dictionaryId,
-                                            onWordClick = onWordClick
-                                        )
-                                        if (sim.explanation.isNotBlank()) {
-                                            Text(
-                                                text = "区分：${sim.explanation}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(start = 8.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (word.cognates.isNotEmpty()) {
-                    item {
-                        WordDetailSection(title = "同根词") {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                word.cognates.forEach { cog ->
-                                    Column {
-                                        ClickableWordRow(
-                                            word = cog.word,
-                                            detail = cog.meaning,
-                                            linkedWordIds = linkedWordIds,
-                                            dictionaryId = word.dictionaryId,
-                                            onWordClick = onWordClick
-                                        )
-                                        if (cog.sharedRoot.isNotBlank()) {
-                                            Text(
-                                                text = "词根：${cog.sharedRoot}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(start = 8.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (associatedWords.isNotEmpty()) {
-                    item {
-                        WordDetailSection(title = "联想词") {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                associatedWords.forEach { assoc ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = assoc.spelling,
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                color = MaterialTheme.colorScheme.primary,
-                                                textDecoration = TextDecoration.Underline
-                                            ),
-                                            modifier = Modifier
-                                                .clickable {
-                                                    onWordClick(assoc.wordId, word.dictionaryId)
-                                                }
-                                                .padding(top = 2.dp)
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            assoc.commonSegments.forEach { seg ->
-                                                Surface(
-                                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    shape = MaterialTheme.shapes.small
-                                                ) {
-                                                    Text(
-                                                        seg,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                pools.forEach { pool ->
-                    item {
-                        val label = if (pool.strategy == "QUALITY_FIRST") "精准池" else "关联池"
-                        WordDetailSection(title = label) {
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                pool.members.forEach { member ->
-                                    AssistChip(
-                                        onClick = { onWordClick(member.id, word.dictionaryId) },
-                                        label = {
-                                            Text(
-                                                member.spelling,
-                                                style = MaterialTheme.typography.labelSmall
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                if (examples.isNotEmpty()) {
-                    item {
-                        WordDetailSection(title = "文章例句") {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                examples.forEach { example ->
-                                    androidx.compose.material3.Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                onArticleClick(
-                                                    example.sourceArticleId ?: 0L,
-                                                    example.sourceSentenceId ?: 0L
-                                                )
-                                            }
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            if (!example.sourceLabel.isNullOrBlank()) {
-                                                Text(
-                                                    example.sourceLabel,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                            Text(
-                                                example.sentence,
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                relatedWordItems(
+                    word = word,
+                    linkedWordIds = linkedWordIds,
+                    associatedWords = associatedWords,
+                    pools = pools,
+                    examples = examples,
+                    onWordClick = onWordClick,
+                    onArticleClick = onArticleClick,
+                    cloudExampleSource = cloudExampleSource,
+                    cloudExamples = cloudExamples,
+                    cloudExamplesLoading = cloudExamplesLoading,
+                    cloudExamplesError = cloudExamplesError,
+                    onCloudExampleSourceSelected = onCloudExampleSourceSelected
+                )
             }
         }
     } else {
-        // Single-column layout (compact)
         LazyColumn(
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (word.phonetic.isNotBlank()) {
-                item {
-                    Text(
-                        text = word.phonetic,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            if (word.meanings.isNotEmpty()) {
-                item {
-                    WordDetailSection(title = "词性与词义") {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            word.meanings.forEach { meaning ->
-                                DetailRow(label = meaning.pos, value = meaning.definition)
-                            }
-                        }
+            basicWordItems(word)
+            relatedWordItems(
+                word = word,
+                linkedWordIds = linkedWordIds,
+                associatedWords = associatedWords,
+                pools = pools,
+                examples = examples,
+                onWordClick = onWordClick,
+                onArticleClick = onArticleClick,
+                cloudExampleSource = cloudExampleSource,
+                cloudExamples = cloudExamples,
+                cloudExamplesLoading = cloudExamplesLoading,
+                cloudExamplesError = cloudExamplesError,
+                onCloudExampleSourceSelected = onCloudExampleSourceSelected
+            )
+        }
+    }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.basicWordItems(word: WordDetails) {
+    if (word.phonetic.isNotBlank()) {
+        item {
+            Text(
+                text = word.phonetic,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+
+    if (word.meanings.isNotEmpty()) {
+        item {
+            WordDetailSection(title = "词性与词义") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    word.meanings.forEach { meaning ->
+                        DetailRow(label = meaning.pos, value = meaning.definition)
                     }
                 }
             }
-            if (word.decomposition.isNotEmpty() || word.rootExplanation.isNotBlank()) {
-                item {
-                    WordDetailSection(title = "词根解释") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (word.decomposition.isNotEmpty()) {
-                                DecompositionDisplay(parts = word.decomposition)
-                            }
-                            if (word.rootExplanation.isNotBlank()) {
-                                if (word.decomposition.isNotEmpty()) {
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(vertical = 4.dp),
-                                        color = MaterialTheme.colorScheme.outlineVariant
-                                    )
-                                }
+        }
+    }
+
+    if (word.decomposition.isNotEmpty() || word.rootExplanation.isNotBlank()) {
+        item {
+            WordDetailSection(title = "词根解释") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (word.decomposition.isNotEmpty()) {
+                        DecompositionDisplay(parts = word.decomposition)
+                    }
+                    if (word.rootExplanation.isNotBlank()) {
+                        if (word.decomposition.isNotEmpty()) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
+                        }
+                        Text(
+                            text = word.rootExplanation,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (word.inflections.isNotEmpty()) {
+        item {
+            WordDetailSection(title = "词形变化") {
+                InflectionsDisplay(inflections = word.inflections)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
+    word: WordDetails,
+    linkedWordIds: Map<String, Long>,
+    associatedWords: List<AssociatedWordInfo>,
+    pools: List<WordPool>,
+    examples: List<WordExample>,
+    onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
+    onArticleClick: (articleId: Long, sentenceId: Long) -> Unit,
+    cloudExampleSource: CloudExampleSource,
+    cloudExamples: List<CloudWordExample>,
+    cloudExamplesLoading: Boolean,
+    cloudExamplesError: String?,
+    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit
+) {
+    if (word.synonyms.isNotEmpty()) {
+        item {
+            WordDetailSection(title = "近义词") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    word.synonyms.forEach { syn ->
+                        ClickableWordRow(
+                            word = syn.word,
+                            detail = syn.explanation,
+                            linkedWordIds = linkedWordIds,
+                            dictionaryId = word.dictionaryId,
+                            onWordClick = onWordClick
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (word.similarWords.isNotEmpty()) {
+        item {
+            WordDetailSection(title = "形近词") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    word.similarWords.forEach { sim ->
+                        Column {
+                            ClickableWordRow(
+                                word = sim.word,
+                                detail = sim.meaning,
+                                linkedWordIds = linkedWordIds,
+                                dictionaryId = word.dictionaryId,
+                                onWordClick = onWordClick
+                            )
+                            if (sim.explanation.isNotBlank()) {
                                 Text(
-                                    text = word.rootExplanation,
-                                    style = MaterialTheme.typography.bodyMedium
+                                    text = "区分：${sim.explanation}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 8.dp)
                                 )
                             }
                         }
                     }
                 }
             }
-            if (word.inflections.isNotEmpty()) {
-                item {
-                    WordDetailSection(title = "词形变化") {
-                        InflectionsDisplay(inflections = word.inflections)
-                    }
-                }
-            }
-            if (word.synonyms.isNotEmpty()) {
-                item {
-                    WordDetailSection(title = "近义词") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            word.synonyms.forEach { syn ->
-                                ClickableWordRow(
-                                    word = syn.word,
-                                    detail = syn.explanation,
-                                    linkedWordIds = linkedWordIds,
-                                    dictionaryId = word.dictionaryId,
-                                    onWordClick = onWordClick
+        }
+    }
+
+    if (word.cognates.isNotEmpty()) {
+        item {
+            WordDetailSection(title = "同根词") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    word.cognates.forEach { cog ->
+                        Column {
+                            ClickableWordRow(
+                                word = cog.word,
+                                detail = cog.meaning,
+                                linkedWordIds = linkedWordIds,
+                                dictionaryId = word.dictionaryId,
+                                onWordClick = onWordClick
+                            )
+                            if (cog.sharedRoot.isNotBlank()) {
+                                Text(
+                                    text = "词根：${cog.sharedRoot}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 8.dp)
                                 )
                             }
                         }
                     }
                 }
             }
-            if (word.similarWords.isNotEmpty()) {
-                item {
-                    WordDetailSection(title = "形近词") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            word.similarWords.forEach { sim ->
-                                Column {
-                                    ClickableWordRow(
-                                        word = sim.word,
-                                        detail = sim.meaning,
-                                        linkedWordIds = linkedWordIds,
-                                        dictionaryId = word.dictionaryId,
-                                        onWordClick = onWordClick
-                                    )
-                                    if (sim.explanation.isNotBlank()) {
-                                        Text(
-                                            text = "区分：${sim.explanation}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(start = 8.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (word.cognates.isNotEmpty()) {
-                item {
-                    WordDetailSection(title = "同根词") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            word.cognates.forEach { cog ->
-                                Column {
-                                    ClickableWordRow(
-                                        word = cog.word,
-                                        detail = cog.meaning,
-                                        linkedWordIds = linkedWordIds,
-                                        dictionaryId = word.dictionaryId,
-                                        onWordClick = onWordClick
-                                    )
-                                    if (cog.sharedRoot.isNotBlank()) {
-                                        Text(
-                                            text = "词根：${cog.sharedRoot}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(start = 8.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (associatedWords.isNotEmpty()) {
-                item {
-                    WordDetailSection(title = "联想词") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            associatedWords.forEach { assoc ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = assoc.spelling,
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            color = MaterialTheme.colorScheme.primary,
-                                            textDecoration = TextDecoration.Underline
-                                        ),
-                                        modifier = Modifier
-                                            .clickable {
-                                                onWordClick(assoc.wordId, word.dictionaryId)
-                                            }
-                                            .padding(top = 2.dp)
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    FlowRow(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        assoc.commonSegments.forEach { seg ->
-                                            Surface(
-                                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                shape = MaterialTheme.shapes.small
-                                            ) {
-                                                Text(
-                                                    seg,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            pools.forEach { pool ->
-                item {
-                    val label = if (pool.strategy == "QUALITY_FIRST") "精准池" else "关联池"
-                    WordDetailSection(title = label) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+        }
+    }
+
+    if (associatedWords.isNotEmpty()) {
+        item {
+            WordDetailSection(title = "联想词") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    associatedWords.forEach { assoc ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            pool.members.forEach { member ->
-                                AssistChip(
-                                    onClick = { onWordClick(member.id, word.dictionaryId) },
-                                    label = {
+                            Text(
+                                text = assoc.spelling,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textDecoration = TextDecoration.Underline
+                                ),
+                                modifier = Modifier
+                                    .clickable { onWordClick(assoc.wordId, word.dictionaryId) }
+                                    .padding(top = 2.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                assoc.commonSegments.forEach { seg ->
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        shape = MaterialTheme.shapes.small
+                                    ) {
                                         Text(
-                                            member.spelling,
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            if (examples.isNotEmpty()) {
-                item {
-                    WordDetailSection(title = "文章例句") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            examples.forEach { example ->
-                                androidx.compose.material3.Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            onArticleClick(
-                                                example.sourceArticleId ?: 0L,
-                                                example.sourceSentenceId ?: 0L
-                                            )
-                                        }
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        if (!example.sourceLabel.isNullOrBlank()) {
-                                            Text(
-                                                example.sourceLabel,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                        Text(
-                                            example.sentence,
-                                            style = MaterialTheme.typography.bodySmall
+                                            seg,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                         )
                                     }
                                 }
@@ -520,6 +298,75 @@ fun WordDetailContent(
                 }
             }
         }
+    }
+
+    pools.forEach { pool ->
+        item {
+            val label = if (pool.strategy == "QUALITY_FIRST") "精准词池" else "关联词池"
+            WordDetailSection(title = label) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    pool.members.forEach { member ->
+                        AssistChip(
+                            onClick = { onWordClick(member.id, word.dictionaryId) },
+                            label = {
+                                Text(
+                                    member.spelling,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (examples.isNotEmpty()) {
+        item {
+            WordDetailSection(title = "文章例句") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    examples.forEach { example ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onArticleClick(
+                                        example.sourceArticleId ?: 0L,
+                                        example.sourceSentenceId ?: 0L
+                                    )
+                                }
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                if (!example.sourceLabel.isNullOrBlank()) {
+                                    Text(
+                                        example.sourceLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Text(
+                                    example.sentence,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    item {
+        CloudExamplesSection(
+            selectedSource = cloudExampleSource,
+            examples = cloudExamples,
+            isLoading = cloudExamplesLoading,
+            error = cloudExamplesError,
+            onSourceSelected = onCloudExampleSourceSelected
+        )
     }
 }
 

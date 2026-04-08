@@ -7,14 +7,17 @@ import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.study.Rating
+import com.xty.englishhelper.domain.usecase.dictionary.GetCloudWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.study.GetDueWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.GetNewWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.PreviewIntervalsUseCase
 import com.xty.englishhelper.domain.usecase.study.ReviewWordUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +44,7 @@ class StudyViewModel @Inject constructor(
     private val reviewWord: ReviewWordUseCase,
     private val previewIntervals: PreviewIntervalsUseCase,
     private val wordPoolRepository: WordPoolRepository,
+    private val getCloudWordExamples: GetCloudWordExamplesUseCase,
     private val settingsDataStore: SettingsDataStore,
     private val ttsManager: TtsManager,
     private val planAutoProgressTracker: PlanAutoProgressTracker
@@ -71,6 +75,8 @@ class StudyViewModel @Inject constructor(
     private var wordIdToSpelling: Map<Long, String> = emptyMap()
     // Guard against re-rating during wait or while reviewWord is in-flight
     private var isProcessingRating = false
+    private var cloudExamplesJob: Job? = null
+    private var cloudExamplesRequestVersion: Long = 0L
 
     init {
         loadSession()
@@ -233,9 +239,13 @@ class StudyViewModel @Inject constructor(
                     progress = processedWordIds.size,
                     total = totalUniqueWords,
                     stats = buildStats(),
-                    currentWordRelatedSpellings = relatedSpellings
+                    currentWordRelatedSpellings = relatedSpellings,
+                    cloudExamplesLoading = false,
+                    cloudExamples = emptyList(),
+                    cloudExamplesError = null
                 )
             }
+            cloudExamplesJob?.cancel()
 
             // Auto-speak the word when it appears
             viewModelScope.launch {
@@ -272,6 +282,9 @@ class StudyViewModel @Inject constructor(
                     showAnswer = true,
                     previewIntervals = intervals
                 )
+            }
+            if (_uiState.value.cloudExamples.isEmpty() && !_uiState.value.cloudExamplesLoading) {
+                loadCloudExamples(word.spelling, _uiState.value.cloudExampleSource)
             }
         }
     }
@@ -319,5 +332,62 @@ class StudyViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    fun selectCloudExampleSource(source: CloudExampleSource) {
+        val state = _uiState.value
+        if (state.cloudExampleSource == source) return
+        _uiState.update {
+            it.copy(
+                cloudExampleSource = source,
+                cloudExamples = emptyList(),
+                cloudExamplesError = null
+            )
+        }
+        val currentWord = state.currentWord ?: return
+        if (state.showAnswer) {
+            loadCloudExamples(currentWord.spelling, source)
+        }
+    }
+
+    private fun loadCloudExamples(word: String, source: CloudExampleSource) {
+        cloudExamplesJob?.cancel()
+        val requestVersion = ++cloudExamplesRequestVersion
+        cloudExamplesJob = viewModelScope.launch {
+            _uiState.update { it.copy(cloudExamplesLoading = true, cloudExamplesError = null) }
+            runCatching {
+                getCloudWordExamples(word = word, source = source)
+            }.onSuccess { examples ->
+                val currentState = _uiState.value
+                if (requestVersion != cloudExamplesRequestVersion ||
+                    currentState.currentWord?.spelling != word ||
+                    currentState.cloudExampleSource != source
+                ) {
+                    return@onSuccess
+                }
+                _uiState.update {
+                    it.copy(
+                        cloudExamples = examples,
+                        cloudExamplesLoading = false,
+                        cloudExamplesError = null
+                    )
+                }
+            }.onFailure { error ->
+                val currentState = _uiState.value
+                if (requestVersion != cloudExamplesRequestVersion ||
+                    currentState.currentWord?.spelling != word ||
+                    currentState.cloudExampleSource != source
+                ) {
+                    return@onFailure
+                }
+                _uiState.update {
+                    it.copy(
+                        cloudExamples = emptyList(),
+                        cloudExamplesLoading = false,
+                        cloudExamplesError = error.message
+                    )
+                }
+            }
+        }
     }
 }

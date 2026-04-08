@@ -1,12 +1,12 @@
-package com.xty.englishhelper.ui.screen.word
+﻿package com.xty.englishhelper.ui.screen.word
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,8 +105,11 @@ fun WordDetailScreen(
             state.isLoading -> LoadingIndicator(Modifier.padding(padding))
             word == null -> Text(
                 "单词不存在",
-                modifier = Modifier.padding(padding).padding(16.dp)
+                modifier = Modifier
+                    .padding(padding)
+                    .padding(16.dp)
             )
+
             else -> {
                 WordDetailContent(
                     word = word,
@@ -116,7 +119,12 @@ fun WordDetailScreen(
                     modifier = Modifier.padding(padding),
                     examples = state.examples,
                     onArticleClick = onArticleClick,
-                    pools = state.pools
+                    pools = state.pools,
+                    cloudExamples = state.cloudExamples,
+                    cloudExamplesLoading = state.cloudExamplesLoading,
+                    cloudExamplesError = state.cloudExamplesError,
+                    cloudExampleSource = state.cloudExampleSource,
+                    onCloudExampleSourceSelected = viewModel::selectCloudExampleSource
                 )
             }
         }

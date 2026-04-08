@@ -11,6 +11,7 @@ import com.xty.englishhelper.data.repository.DictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.GitHubSyncRepositoryImpl
 import com.xty.englishhelper.data.repository.CsMonitorRepositoryImpl
 import com.xty.englishhelper.data.repository.CambridgeDictionaryRepositoryImpl
+import com.xty.englishhelper.data.repository.CloudWordExampleRepositoryImpl
 import com.xty.englishhelper.data.repository.GuardianRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankAiRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankRepositoryImpl
@@ -30,6 +31,7 @@ import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.CambridgeDictionaryRepository
+import com.xty.englishhelper.domain.repository.CloudWordExampleRepository
 import com.xty.englishhelper.domain.repository.OedDictionaryRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
@@ -121,6 +123,12 @@ abstract class RepositoryModule {
     abstract fun bindCambridgeDictionaryRepository(
         impl: CambridgeDictionaryRepositoryImpl
     ): CambridgeDictionaryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCloudWordExampleRepository(
+        impl: CloudWordExampleRepositoryImpl
+    ): CloudWordExampleRepository
 
     @Binds
     @Singleton

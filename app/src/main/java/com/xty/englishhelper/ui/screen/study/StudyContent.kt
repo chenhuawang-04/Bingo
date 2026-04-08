@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.screen.study
+﻿package com.xty.englishhelper.ui.screen.study
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.domain.study.formatInterval
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
@@ -40,6 +41,7 @@ internal fun StudyingContent(
     state: StudyUiState,
     onRevealAnswer: () -> Unit,
     onRate: (Rating) -> Unit,
+    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val word = state.currentWord ?: return
@@ -74,7 +76,6 @@ internal fun StudyingContent(
 
     if (isWide) {
         Row(modifier = modifier.fillMaxSize()) {
-            // Main pane
             Column(
                 modifier = Modifier
                     .weight(0.6f)
@@ -98,7 +99,14 @@ internal fun StudyingContent(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        wordDetailItems(word)
+                        wordDetailItems(
+                            word = word,
+                            cloudExampleSource = state.cloudExampleSource,
+                            cloudExamples = state.cloudExamples,
+                            cloudExamplesLoading = state.cloudExamplesLoading,
+                            cloudExamplesError = state.cloudExamplesError,
+                            onCloudExampleSourceSelected = onCloudExampleSourceSelected
+                        )
                     }
 
                     EhStudyRatingBar(
@@ -113,7 +121,6 @@ internal fun StudyingContent(
 
             VerticalDivider()
 
-            // Side panel
             StudySidePanel(
                 state = state,
                 modifier = Modifier
@@ -122,7 +129,6 @@ internal fun StudyingContent(
             )
         }
     } else {
-        // Compact layout
         Column(modifier = modifier.fillMaxSize()) {
             ProgressBar(state)
             BrainstormTag(state)
@@ -142,7 +148,14 @@ internal fun StudyingContent(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    wordDetailItems(word)
+                    wordDetailItems(
+                        word = word,
+                        cloudExampleSource = state.cloudExampleSource,
+                        cloudExamples = state.cloudExamples,
+                        cloudExamplesLoading = state.cloudExamplesLoading,
+                        cloudExamplesError = state.cloudExamplesError,
+                        onCloudExampleSourceSelected = onCloudExampleSourceSelected
+                    )
                 }
 
                 EhStudyRatingBar(
@@ -177,7 +190,7 @@ private fun BrainstormTag(state: StudyUiState) {
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "关联词：",

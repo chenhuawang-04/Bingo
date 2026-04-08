@@ -1,4 +1,4 @@
-package com.xty.englishhelper.ui.screen.study
+﻿package com.xty.englishhelper.ui.screen.study
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,7 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.domain.model.CloudExampleSource
+import com.xty.englishhelper.domain.model.CloudWordExample
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.ui.components.CloudExamplesSection
 import com.xty.englishhelper.ui.components.DetailRow
 import com.xty.englishhelper.ui.components.WordDetailSection
 
@@ -37,7 +40,14 @@ internal fun StatRow(
     }
 }
 
-internal fun LazyListScope.wordDetailItems(word: WordDetails) {
+internal fun LazyListScope.wordDetailItems(
+    word: WordDetails,
+    cloudExampleSource: CloudExampleSource,
+    cloudExamples: List<CloudWordExample>,
+    cloudExamplesLoading: Boolean,
+    cloudExamplesError: String?,
+    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit
+) {
     item {
         Text(
             text = word.spelling,
@@ -126,5 +136,14 @@ internal fun LazyListScope.wordDetailItems(word: WordDetails) {
                 }
             }
         }
+    }
+    item {
+        CloudExamplesSection(
+            selectedSource = cloudExampleSource,
+            examples = cloudExamples,
+            isLoading = cloudExamplesLoading,
+            error = cloudExamplesError,
+            onSourceSelected = onCloudExampleSourceSelected
+        )
     }
 }

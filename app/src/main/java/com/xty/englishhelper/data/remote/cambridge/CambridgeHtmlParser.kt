@@ -74,4 +74,16 @@ class CambridgeHtmlParser {
 
         return senses
     }
+
+    fun parseExamples(html: String, limit: Int = 8): List<String> {
+        val doc = Jsoup.parse(html)
+        return doc.select(
+            ".def-block .examp, .def-block .dexamp, .eg, .examp, .dexamp, .x-h .x"
+        )
+            .map { it.text().trim() }
+            .map { it.replace(Regex("\\s+"), " ") }
+            .filter { it.length >= 8 }
+            .distinct()
+            .take(limit)
+    }
 }

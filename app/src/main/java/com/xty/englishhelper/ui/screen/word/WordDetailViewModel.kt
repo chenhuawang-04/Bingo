@@ -5,13 +5,16 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.tts.TtsManager
+import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
+import com.xty.englishhelper.domain.usecase.dictionary.GetCloudWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetWordPoolsUseCase
 import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
 import com.xty.englishhelper.domain.usecase.word.GetAssociatedWordsUseCase
 import com.xty.englishhelper.domain.usecase.word.GetWordByIdUseCase
 import com.xty.englishhelper.domain.usecase.word.ResolveLinkedWordsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,12 +30,15 @@ class WordDetailViewModel @Inject constructor(
     private val resolveLinkedWords: ResolveLinkedWordsUseCase,
     private val getAssociatedWords: GetAssociatedWordsUseCase,
     private val getWordExamples: GetWordExamplesUseCase,
+    private val getCloudWordExamples: GetCloudWordExamplesUseCase,
     private val getWordPools: GetWordPoolsUseCase,
     private val ttsManager: TtsManager
 ) : ViewModel() {
 
     private var wordId: Long = savedStateHandle["wordId"] ?: 0L
     private var dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
+    private var cloudExamplesJob: Job? = null
+    private var cloudExamplesRequestVersion: Long = 0L
 
     private val _uiState = MutableStateFlow(WordDetailUiState())
     val uiState: StateFlow<WordDetailUiState> = _uiState.asStateFlow()
@@ -98,6 +104,17 @@ class WordDetailViewModel @Inject constructor(
                     } catch (e: Exception) {
                         Log.w("WordDetailVM", "Pools loading failed for wordId=$wordId", e)
                     }
+
+                    loadCloudExamples(word.spelling, _uiState.value.cloudExampleSource)
+                } else {
+                    cloudExamplesJob?.cancel()
+                    _uiState.update {
+                        it.copy(
+                            cloudExamplesLoading = false,
+                            cloudExamples = emptyList(),
+                            cloudExamplesError = null
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, isLoading = false) }
@@ -151,5 +168,65 @@ class WordDetailViewModel @Inject constructor(
 
     fun clearTtsError() {
         ttsManager.clearError()
+    }
+
+    fun selectCloudExampleSource(source: CloudExampleSource) {
+        val state = _uiState.value
+        if (state.cloudExampleSource == source) return
+        _uiState.update {
+            it.copy(
+                cloudExampleSource = source,
+                cloudExamples = emptyList(),
+                cloudExamplesError = null
+            )
+        }
+        val spelling = state.word?.spelling ?: return
+        loadCloudExamples(spelling, source)
+    }
+
+    private fun loadCloudExamples(word: String, source: CloudExampleSource) {
+        cloudExamplesJob?.cancel()
+        val requestVersion = ++cloudExamplesRequestVersion
+        cloudExamplesJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    cloudExamplesLoading = true,
+                    cloudExamplesError = null
+                )
+            }
+            runCatching {
+                getCloudWordExamples(word = word, source = source)
+            }.onSuccess { examples ->
+                val currentState = _uiState.value
+                if (requestVersion != cloudExamplesRequestVersion ||
+                    currentState.word?.spelling != word ||
+                    currentState.cloudExampleSource != source
+                ) {
+                    return@onSuccess
+                }
+                _uiState.update {
+                    it.copy(
+                        cloudExamples = examples,
+                        cloudExamplesLoading = false,
+                        cloudExamplesError = null
+                    )
+                }
+            }.onFailure { error ->
+                val currentState = _uiState.value
+                if (requestVersion != cloudExamplesRequestVersion ||
+                    currentState.word?.spelling != word ||
+                    currentState.cloudExampleSource != source
+                ) {
+                    return@onFailure
+                }
+                _uiState.update {
+                    it.copy(
+                        cloudExamples = emptyList(),
+                        cloudExamplesLoading = false,
+                        cloudExamplesError = error.message
+                    )
+                }
+            }
+        }
     }
 }

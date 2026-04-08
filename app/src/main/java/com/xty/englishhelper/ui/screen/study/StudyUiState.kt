@@ -2,6 +2,8 @@ package com.xty.englishhelper.ui.screen.study
 
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.CloudExampleSource
+import com.xty.englishhelper.domain.model.CloudWordExample
 import com.xty.englishhelper.domain.study.Rating
 
 data class StudyUiState(
@@ -14,7 +16,11 @@ data class StudyUiState(
     val stats: StudyStats = StudyStats(),
     val error: String? = null,
     val studyMode: StudyMode = StudyMode.NORMAL,
-    val currentWordRelatedSpellings: List<String> = emptyList()
+    val currentWordRelatedSpellings: List<String> = emptyList(),
+    val cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
+    val cloudExamples: List<CloudWordExample> = emptyList(),
+    val cloudExamplesLoading: Boolean = false,
+    val cloudExamplesError: String? = null
 )
 
 enum class StudyPhase {
