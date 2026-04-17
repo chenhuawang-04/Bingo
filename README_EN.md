@@ -123,7 +123,7 @@ Select images or PDF → AI auto-recognizes question types/passages/questions/op
 
 ### Settings
 
-- **Multi-provider** — Anthropic Claude / OpenAI-compatible, custom providers with name/URL/key
+- **Multi-provider** — Messages API / Completions API compatible, custom providers with name/URL/key
 - **Scoped AI** — MAIN / FAST / POOL / OCR / ARTICLE / SEARCH — 6 independent model configurations
 - **Encrypted API keys** — AndroidX Security Crypto
 - **Connection testing** — Per-scope one-click test
@@ -144,7 +144,7 @@ Select images or PDF → AI auto-recognizes question types/passages/questions/op
 | **Images** | Coil |
 | **HTML** | Jsoup |
 | **Navigation** | Navigation Compose (type-safe routes) |
-| **AI** | Anthropic Claude API / OpenAI-compatible API |
+| **AI** | Messages API / Completions API |
 | **Security** | AndroidX Security Crypto |
 | **Async** | Coroutines + Flow |
 | **Spaced Repetition** | FSRS-5 |

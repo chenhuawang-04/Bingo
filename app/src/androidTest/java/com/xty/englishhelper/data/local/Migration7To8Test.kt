@@ -107,7 +107,7 @@ class Migration7To8Test {
         migratedDb.execSQL(
             """INSERT INTO sentence_analysis_cache
                (article_id, sentence_id, sentence_hash, model_key, meaning_zh, grammar_json, keywords_json, created_at)
-               VALUES (1, 1, 'hash1', 'claude|v1', '含义B', '[]', '[]', 0)"""
+               VALUES (1, 1, 'hash1', 'messages|v1', '含义B', '[]', '[]', 0)"""
         )
 
         val cursor = migratedDb.query("SELECT COUNT(*) FROM sentence_analysis_cache")

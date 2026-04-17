@@ -3,14 +3,14 @@ package com.xty.englishhelper.util
 object Constants {
     const val ANTHROPIC_BASE_URL = "https://api.anthropic.com/"
     const val ANTHROPIC_API_VERSION = "2023-06-01"
-    const val ANTHROPIC_USER_AGENT = "claude-cli/2.1.50 (external, cli)"
+    const val ANTHROPIC_USER_AGENT = "messages-cli/2.1.50 (external, cli)"
 
     const val OPENAI_BASE_URL = "https://api.openai.com/"
 
     val ANTHROPIC_AVAILABLE_MODELS = listOf(
-        "claude-haiku-4-5-20251001" to "Claude Haiku 4.5",
-        "claude-sonnet-4-6" to "Claude Sonnet 4.6",
-        "claude-opus-4-6" to "Claude Opus 4.6",
+        "messages-haiku-4-5-20251001" to "Messages Haiku 4.5",
+        "messages-sonnet-4-6" to "Messages Sonnet 4.6",
+        "messages-opus-4-6" to "Messages Opus 4.6",
     )
 
     val OPENAI_AVAILABLE_MODELS = listOf(
@@ -22,7 +22,7 @@ object Constants {
         "o3" to "o3",
     )
 
-    const val DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+    const val DEFAULT_MODEL = "messages-haiku-4-5-20251001"
     const val DEFAULT_OPENAI_MODEL = "gpt-4.1-nano"
 
     const val AI_WORD_PROMPT_RULES = """【最高优先级指令 / 必须严格执行】

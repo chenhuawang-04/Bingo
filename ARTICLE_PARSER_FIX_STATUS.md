@@ -545,7 +545,6 @@ git commit -m "fix: Article Parser 稳定性与性能改进
 - 修复例句标签格式为 '{文章名} 例句'
 - OCR 识别的难度值落库
 
-Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
 
 # 第二次：UI 功能集成（待完成）
 git commit -m "feat: 完整集成 Article Reader UI 数据库渲染
@@ -555,7 +554,6 @@ git commit -m "feat: 完整集成 Article Reader UI 数据库渲染
 - 修复句子 ID 为数据库 ID
 - 词高亮与点击跳转完整实现
 
-Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
 
 # 第三次：词详情集成（待完成）
 git commit -m "feat: 词详情页集成文章例句展示
@@ -565,7 +563,6 @@ git commit -m "feat: 词详情页集成文章例句展示
 - 防止轮询协程重复启动
 - 添加数据库索引优化查询性能
 
-Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
 ```
 
 ---
