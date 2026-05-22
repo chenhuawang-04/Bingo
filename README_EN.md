@@ -23,7 +23,6 @@ Bingo is a native Android app designed for **postgraduate English exam (考研�
 | Dictionary | Articles | Question Bank |
 |:---:|:---:|:---:|
 | Add words · AI organize · Root decomposition · Word pools · FSRS review | Local articles · Online reading · Paragraph translation/analysis · Word collection · TTS | Paper scanning · 10 question types · AI answers/grading · Source verification · Wrong tracking |
-
 ---
 
 ## Features
@@ -109,10 +108,18 @@ Select images or PDF → AI auto-recognizes question types/passages/questions/op
 - **Sample search** — Search model finds real sample essays with links
 - **Wrong tracking** — Auto-increments wrong count; orange (1×) / red (2×+) border highlighting
 
+### Study Planning
+
+- **Plan templates** — Create custom study plan templates with day-by-day task allocation
+- **Day records** — Log daily study events and completion status
+- **Cloud sync** — Plan data synced to GitHub via `plan.json` with incremental merge
+- **Local import/export** — Plans exported/imported independently, consistent schema with dictionary and question bank
+
 ### Import/Export & Sync
 
-- **JSON import/export** — Full dictionary (words + units + study state), Schema v3
-- **GitHub cloud sync** — Question bank data via `questionbank.json` with incremental merge
+- **JSON import/export** — Full dictionary (words + units + study state), Schema v3; plans exported independently
+- **GitHub cloud sync** — Question bank via `questionbank.json`, plans via `plan.json`, both with incremental merge
+- **Conflict resolution** — Real data update time (`latestUpdatedAt`) as primary signal; prevents false wins by freshly-exported local snapshots
 
 ### Adaptive UI
 
@@ -159,7 +166,84 @@ Select images or PDF → AI auto-recognizes question types/passages/questions/op
 ```bash
 ./gradlew assembleDebug          # Build Debug APK
 ./gradlew testDebugUnitTest      # Unit tests
+./gradlew connectedDebugAndroidTest  # Instrumentation tests
+./gradlew lintDebug              # Lint checks
 ```
+
+Release signing uses environment variables: `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+
+---
+
+## Project Structure
+
+```
+com.xty.englishhelper/
+├── data/
+│   ├── local/                  # Room database (DAOs, entities, converters)
+│   ├── remote/                 # AI clients + Guardian/Atlantic/CSMonitor scrapers
+│   ├── repository/             # Repository implementations (18+)
+│   ├── sync/                   # GitHub sync and merge logic
+│   ├── preferences/            # DataStore + encrypted storage
+│   ├── json/                   # JSON import/export
+│   ├── image/                  # Image compression
+│   ├── tts/                    # TTS management
+│   └── debug/                  # AI debug event tracking
+├── di/                         # Hilt modules
+├── domain/
+│   ├── model/                  # Domain models (45+ types)
+│   ├── usecase/                # Use cases (organized by domain)
+│   ├── study/                  # FSRS-5 scheduling engine
+│   ├── pool/                   # Word pool clustering engine
+│   ├── organize/               # AI vocabulary organization engine
+│   ├── article/                # Tokenization / sentence splitting / dictionary matching
+│   ├── background/             # Background task management
+│   └── repository/             # Repository interfaces
+├── ui/
+│   ├── screen/                 # 15 functional modules
+│   │   ├── addword/            #   Add/edit word
+│   │   ├── article/            #   Article list/edit/read
+│   │   ├── backgroundtask/     #   Background task monitor
+│   │   ├── batchimport/        #   Batch photo import
+│   │   ├── dictionary/         #   Dictionary browsing
+│   │   ├── guardian/           #   Online reading
+│   │   ├── home/               #   Home dashboard
+│   │   ├── importexport/       #   Import/export
+│   │   ├── main/               #   Main frame + navigation
+│   │   ├── plan/               #   Study planning
+│   │   ├── questionbank/       #   Question bank (list/scan/practice)
+│   │   ├── settings/           #   Settings + TTS diagnostics
+│   │   ├── study/              #   Study/review mode
+│   │   ├── unitdetail/         #   Unit details
+│   │   └── word/               #   Word details
+│   ├── components/reading/     # Shared reading components
+│   ├── designsystem/           # Design tokens + common components
+│   ├── navigation/             # Routing + navigation graph
+│   ├── adaptive/               # WindowSizeClass utilities
+│   ├── debug/                  # AI debug dialogs
+│   └── theme/                  # Material 3 theming
+└── util/                       # Utility classes
+```
+
+---
+
+## Database Schema
+
+| Version | Changes |
+|:-------:|---------|
+| 1 | Initial schema: dictionaries, words, synonyms, similar_words, cognates |
+| 2 | units, unit_word_cross_ref, word_study_state |
+| 3 | normalized_spelling, word_uid + unique index |
+| 4 | decomposition_json; word_associations table |
+| 5 | FSRS-5 fields (stability/difficulty/due/reps/lapses) |
+| 6 | inflections_json; 7 article module tables |
+| 7 | normalized_token index |
+| 8 | model_key + composite unique index |
+| 9 | word_pools, word_pool_members |
+| 10 | Paragraph-level storage, paragraph analysis cache |
+| 11 | Guardian online reading, temporary articles |
+| 12 | Question bank module (6 tables) |
+| 13 | linkedArticleUid column |
+| 14–19 | Question type extensions, writing module, article categories, suitability scoring, background task expansion |
 
 ---
 
@@ -174,6 +258,7 @@ Select images or PDF → AI auto-recognizes question types/passages/questions/op
 7. **Online reading** — Articles tab → online reading → browse Guardian/Atlantic/CSMonitor
 8. **Scan papers** — Question Bank tab → scan → select images/PDF → AI recognition → save
 9. **Practice** — Tap question group → answer → submit → view results/AI scoring/explanations
+10. **Study planning** — Plan tab → create template → assign tasks → log daily progress
 
 ---
 
