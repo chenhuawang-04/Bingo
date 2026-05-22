@@ -271,8 +271,29 @@ com.xty.englishhelper/
 | 13 | linkedArticleUid 列 |
 | 14–19 | 题型扩展、写作模块、文章分类、适配度评分、后台任务扩展 |
 
+## 效果展示
+<img width="1080" height="2412" alt="Screenshot_2026-04-16-23-28-39-96_73853985f12a74a" src="https://github.com/user-attachments/assets/e6c87392-f28f-4785-95d0-c0650bf1edbd" /><img width="1080" height="2412" alt="Screenshot_2026-04-16-23-28-51-83_73853985f12a74a" src="https://github.com/user-attachments/assets/3fb53442-4a27-4dd5-9112-6d83750fb87b" />
+<img width="1080" height="2412" alt="Screenshot_2026-04-16-23-28-44-66_73853985f12a74a" src="https://github.com/user-attachments/assets/b76ec6b5-d5fa-41a5-a2f5-53579413e9fb" />
+<img width="1080" height="2412" alt="Screenshot_2026-04-16-23-28-43-07_73853985f12a74a" src="https://github.com/user-<img width="1440" height="2200" alt="Screenshot_20260408_175023_com xty englishhelper" src="https://github.com/user-attachments/assets/8ce186d1-8a22-4be1-9506-6e634babe037" />
+<img width="1440" height="2200" alt="Screenshot_20260408_175019_com xty englishhelper" src="https://github.com/user-attachments/assets/15283ce6-fcd7-4117-833d-dc108badac69" />
+<img width="1440" height="2200" alt="Screenshot_20260408_175008_com xty englishhelper" src="https://github.com/user-attachments/assets/1b59493b-b156-4a1c-b9b5-35398ed67abe" />
+<img width="1080" height="2412" alt="Screenshot_2026-04-16-23-29-05-92_73853985f12a74a" src="https://github.com/user-attachments/assets/83bb1af5-79cd-4e3e-b50e-fcfd897dfa5e" />
+attachments/assets/1ee3c052-0f4d-4595-bad8-afbec0b2d82f" />
+
+
+
 ---
 
 ## 许可证
+<img width="1080" height="2412" alt="Screenshot_2026-04-16-23-28-35-84_73853985f12a74a" src="https://github.com/user-attachments/assets/16fde003-5a33-48c3-9e0c-3496fe9d1710" />
+<img width="1080" height="2412" alt="Screenshot_2026-04-16-23-28-32-73_73853985f12a74a" src="https://github.com/user-attachments/assets/e5afa637-e766-49a8-85f3-db8f9a7308bb" />
+<img width="1080" height="2412" alt="Screenshot_2026-04-16-23-06-14-59_bac3ad8ab1bdcd5" src="https://github.com/user-attachments/assets/fc15406e-1ac1-48b3-98e8-ec157e6b8346" />
+<img width="2200" height="1440" alt="Screenshot_20260416_231242_com xty englishhelper" src="https://github.com/user-attachments/assets/fae31c7e-5d29-45cf-a659-e099c558148d" />
+<img width="2200" height="1440" alt="Screenshot_20260416_230949_com xty englishhelper" src="https://github.com/user-attachments/assets/fd3f1bf2-f627-47a2-8765-b1d075d2b00a" />
+<img width="2200" height="1440" alt="Screenshot_20260416_230926_com xty englishhelper" src="https://github.com/user-attachments/assets/51097471-d43a-4679-bc5f-691c29f0f2b0" />
+<img width="2200" height="1440" alt="Screenshot_20260416_230900_com xty englishhelper" src="https://github.com/user-attachments/assets/4a41561f-548a-435a-a12a-73b963e427e8" />
+<img width="2200" height="1440" alt="Screenshot_20260416_230846_com xty englishhelper" src="https://github.com/user-attachments/assets/88883c52-5354-46e1-bba7-8a7a6ef9f9d5" />
+<img width="2200" height="1440" alt="Screenshot_20260416_230836_com xty englishhelper" src="https://github.com/user-attachments/assets/82ff1303-8445-40e1-b3f4-c89068d928c8" />
+<img width="2200" height="1440" alt="Screenshot_20260416_230813_com xty englishhelper" src="https://github.com/user-attachments/assets/2cc1e82a-d181-40f5-81a9-f2968f9ad388" />
 
 [AGPL-3.0](LICENSE)
