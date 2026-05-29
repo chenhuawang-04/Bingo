@@ -66,6 +66,8 @@ class SettingsDataStore @Inject constructor(
         val TTS_PREWARM_CONCURRENCY = intPreferencesKey("tts_prewarm_concurrency")
         val TTS_PREWARM_RETRY = intPreferencesKey("tts_prewarm_retry")
         val POOL_WINDOW_SIZE = intPreferencesKey("pool_window_size")
+        val POOL_MAX_CONCURRENT = intPreferencesKey("pool_max_concurrent")
+        val POOL_REQUESTS_PER_MINUTE = intPreferencesKey("pool_requests_per_minute")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -190,6 +192,14 @@ class SettingsDataStore @Inject constructor(
         prefs[POOL_WINDOW_SIZE] ?: 50
     }
 
+    val poolMaxConcurrent: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[POOL_MAX_CONCURRENT] ?: 3
+    }
+
+    val poolRequestsPerMinute: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[POOL_REQUESTS_PER_MINUTE] ?: 30
+    }
+
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
@@ -269,6 +279,24 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setPoolWindowSize(value: Int) {
         dataStore.edit { prefs -> prefs[POOL_WINDOW_SIZE] = value.coerceIn(10, 200) }
+    }
+
+    suspend fun getPoolMaxConcurrent(): Int {
+        val prefs = dataStore.data.first()
+        return (prefs[POOL_MAX_CONCURRENT] ?: 3).coerceIn(1, 10)
+    }
+
+    suspend fun setPoolMaxConcurrent(value: Int) {
+        dataStore.edit { prefs -> prefs[POOL_MAX_CONCURRENT] = value.coerceIn(1, 10) }
+    }
+
+    suspend fun getPoolRequestsPerMinute(): Int {
+        val prefs = dataStore.data.first()
+        return (prefs[POOL_REQUESTS_PER_MINUTE] ?: 30).coerceIn(1, 120)
+    }
+
+    suspend fun setPoolRequestsPerMinute(value: Int) {
+        dataStore.edit { prefs -> prefs[POOL_REQUESTS_PER_MINUTE] = value.coerceIn(1, 120) }
     }
 
     suspend fun getProviders(): List<AiProviderProfile> {

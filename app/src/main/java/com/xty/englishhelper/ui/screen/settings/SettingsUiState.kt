@@ -33,6 +33,9 @@ data class SettingsUiState(
     val imageCompressionEnabled: Boolean = true,
     val imageCompressionTargetBytes: Int = 1_000_000,
     val backgroundTaskConcurrency: Int = 2,
+    val poolWindowSize: Int = 50,
+    val poolMaxConcurrent: Int = 3,
+    val poolRequestsPerMinute: Int = 30,
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
     val cloudSync: CloudSyncState = CloudSyncState()

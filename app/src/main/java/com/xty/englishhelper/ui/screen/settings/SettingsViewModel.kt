@@ -143,6 +143,21 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.poolWindowSize.collect { value ->
+                _uiState.update { it.copy(poolWindowSize = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.poolMaxConcurrent.collect { value ->
+                _uiState.update { it.copy(poolMaxConcurrent = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.poolRequestsPerMinute.collect { value ->
+                _uiState.update { it.copy(poolRequestsPerMinute = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.ttsPrewarmConcurrency.collect { value ->
                 _uiState.update { it.copy(ttsPrewarmConcurrency = value) }
             }
@@ -441,6 +456,21 @@ class SettingsViewModel @Inject constructor(
     fun onWordOrganizeReferenceSourceChange(value: WordReferenceSource) {
         _uiState.update { it.copy(wordOrganizeReferenceSource = value) }
         viewModelScope.launch { settingsDataStore.setWordOrganizeReferenceSource(value) }
+    }
+
+    fun onPoolWindowSizeChange(value: Int) {
+        _uiState.update { it.copy(poolWindowSize = value) }
+        viewModelScope.launch { settingsDataStore.setPoolWindowSize(value) }
+    }
+
+    fun onPoolMaxConcurrentChange(value: Int) {
+        _uiState.update { it.copy(poolMaxConcurrent = value) }
+        viewModelScope.launch { settingsDataStore.setPoolMaxConcurrent(value) }
+    }
+
+    fun onPoolRequestsPerMinuteChange(value: Int) {
+        _uiState.update { it.copy(poolRequestsPerMinute = value) }
+        viewModelScope.launch { settingsDataStore.setPoolRequestsPerMinute(value) }
     }
 
     fun onImageCompressionEnabledChange(value: Boolean) {

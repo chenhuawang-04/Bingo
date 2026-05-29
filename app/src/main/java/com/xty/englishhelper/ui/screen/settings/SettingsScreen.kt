@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -150,6 +151,17 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                PoolSettingsSection(
+                    windowSize = state.poolWindowSize,
+                    maxConcurrent = state.poolMaxConcurrent,
+                    requestsPerMinute = state.poolRequestsPerMinute,
+                    onWindowSizeChange = viewModel::onPoolWindowSizeChange,
+                    onMaxConcurrentChange = viewModel::onPoolMaxConcurrentChange,
+                    onRequestsPerMinuteChange = viewModel::onPoolRequestsPerMinuteChange
+                )
+
+                HorizontalDivider()
+
                 ModelAdvancedSection(state, viewModel)
 
                 HorizontalDivider()
@@ -261,6 +273,105 @@ private fun WordOrganizeSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun PoolSettingsSection(
+    windowSize: Int,
+    maxConcurrent: Int,
+    requestsPerMinute: Int,
+    onWindowSizeChange: (Int) -> Unit,
+    onMaxConcurrentChange: (Int) -> Unit,
+    onRequestsPerMinuteChange: (Int) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("词池整理", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "质量优先模式的词池构建参数。窗口大小决定每个词与前面多少个词分批比较；并发和速率控制影响后台整理速度与 API 压力。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        // Window size
+        Text("窗口大小：$windowSize", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "每个词与前面的词比较时，每批发送的候选词数量。越大单次 AI 调用越慢但覆盖更广。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Slider(
+                value = windowSize.toFloat(),
+                onValueChange = { onWindowSizeChange(it.toInt()) },
+                valueRange = 10f..200f,
+                steps = 18,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "$windowSize",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.width(36.dp)
+            )
+        }
+
+        HorizontalDivider()
+
+        // Max concurrent requests
+        Text("最大并发请求数：$maxConcurrent", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "同时发起的 AI 请求数上限。增大可加速整理，但会占用更多网络和 API 配额。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Slider(
+                value = maxConcurrent.toFloat(),
+                onValueChange = { onMaxConcurrentChange(it.toInt()) },
+                valueRange = 1f..10f,
+                steps = 8,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "$maxConcurrent",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.width(36.dp)
+            )
+        }
+
+        // Requests per minute
+        Text("每分钟请求数上限：$requestsPerMinute", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "限制每分钟提交的 AI 请求数量，避免触发 API 速率限制。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Slider(
+                value = requestsPerMinute.toFloat(),
+                onValueChange = { onRequestsPerMinuteChange(it.toInt()) },
+                valueRange = 5f..120f,
+                steps = 22,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "$requestsPerMinute",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.width(36.dp)
+            )
+        }
     }
 }
 

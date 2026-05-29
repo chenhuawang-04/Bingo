@@ -27,7 +27,12 @@ import com.xty.englishhelper.util.AiResponseUnwrapper
 import com.xty.englishhelper.util.AiJsonRepairer
 import com.xty.englishhelper.util.Constants
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
@@ -36,6 +41,36 @@ private data class BuiltPoolWithWordIds(
     val focusWordId: Long?,
     val memberWordIds: List<Long>
 )
+
+/**
+ * Simple token-bucket rate limiter.
+ * @param maxPerMinute maximum requests per minute; 0 = unlimited
+ */
+private class RateLimiter(maxPerMinute: Int) {
+    private val minIntervalMs = if (maxPerMinute > 0) 60_000L / maxPerMinute else 0L
+    private var lastAcquireMs = 0L
+    private val lock = Any()
+
+    suspend fun acquire() {
+        if (minIntervalMs <= 0) return
+        val waitMs = synchronized(lock) {
+            val now = System.currentTimeMillis()
+            val elapsed = now - lastAcquireMs
+            if (elapsed >= minIntervalMs) {
+                lastAcquireMs = now
+                0L
+            } else {
+                val nextAvailable = lastAcquireMs + minIntervalMs
+                val delay = nextAvailable - now
+                lastAcquireMs = nextAvailable
+                delay
+            }
+        }
+        if (waitMs > 0) {
+            kotlinx.coroutines.delay(waitMs)
+        }
+    }
+}
 
 @Singleton
 class WordPoolRepositoryImpl @Inject constructor(
@@ -52,6 +87,7 @@ class WordPoolRepositoryImpl @Inject constructor(
     companion object {
         private val EDGE_RESPONSE_PATTERN_I_T = Regex("""\{\s*"i"\s*:\s*(\d+)\s*,\s*"t"\s*:\s*"(\w+)"\s*\}""")
         private val EDGE_RESPONSE_PATTERN_T_I = Regex("""\{\s*"t"\s*:\s*"(\w+)"\s*,\s*"i"\s*:\s*(\d+)\s*\}""")
+        private val INT_ARRAY_PATTERN = Regex("""\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]""")
     }
 
     override suspend fun getPoolsForWord(wordId: Long): List<WordPool> {
@@ -235,6 +271,8 @@ class WordPoolRepositoryImpl @Inject constructor(
     ): List<BuiltPoolWithWordIds> {
         val domains = words.map { it.toDomain() }
         val windowSize = settingsDataStore.getPoolWindowSize()
+        val maxConcurrent = settingsDataStore.getPoolMaxConcurrent()
+        val requestsPerMinute = settingsDataStore.getPoolRequestsPerMinute()
 
         // For FULL mode, clear existing edges upfront
         if (rebuildMode == RebuildMode.FULL) {
@@ -248,47 +286,75 @@ class WordPoolRepositoryImpl @Inject constructor(
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
         val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
 
-        // Sliding window: iterate from resumeIndex down to 0
+        // Concurrency controls
+        val semaphore = Semaphore(maxConcurrent)
+        val rateLimiter = RateLimiter(requestsPerMinute)
+
+        // Total AI calls: sum of ceil(i/windowSize) for i in 1..resumeIndex
+        val totalAiCalls = (1..resumeIndex).sumOf { i ->
+            (i + windowSize - 1) / windowSize
+        }
+        val completedCalls = java.util.concurrent.atomic.AtomicInteger(0)
+
+        // For each word, slide window across ALL previous words
         for (i in resumeIndex.downTo(0)) {
-            // Cooperative cancel check (pause is handled by coroutine job cancel)
+            // Cooperative cancel check
             if (isCancelled()) {
                 Log.d("WordPoolRepo", "QualityFirst build cancelled at index $i")
                 break
             }
 
-            onProgress(total - i, total)
-
             val currentWord = domains[i]
-            val windowStart = maxOf(0, i - windowSize)
-            val window = domains.subList(windowStart, i)
+            if (i == 0) continue  // first word has nothing to compare
 
-            if (window.isEmpty()) continue
-
-            val prompt = buildEdgePrompt(currentWord, window)
-            val aiResult = callAiForEdges(prompt, window.size, unwrapEnabled, repairEnabled)
-
-            // Batch-write edges to DB periodically (every 10 words)
-            val newEdges = mutableListOf<WordEdgeEntity>()
-            for ((j, typeStr) in aiResult) {
-                if (j !in window.indices) continue
-                val otherWord = window[j]
-                val edgeType = parseEdgeType(typeStr)
-                val (idA, idB) = if (currentWord.id < otherWord.id) {
-                    currentWord.id to otherWord.id
-                } else {
-                    otherWord.id to currentWord.id
-                }
-                newEdges.add(
-                    WordEdgeEntity(
-                        wordIdA = idA,
-                        wordIdB = idB,
-                        edgeType = edgeType.dbValue,
-                        dictionaryId = dictionaryId
-                    )
-                )
+            // Build window tasks for this word
+            data class WindowTask(val windowStart: Int, val windowEnd: Int)
+            val windowTasks = mutableListOf<WindowTask>()
+            var windowEnd = i
+            while (windowEnd > 0) {
+                val windowStart = maxOf(0, windowEnd - windowSize)
+                windowTasks.add(WindowTask(windowStart, windowEnd))
+                windowEnd = windowStart
             }
 
-            // Persist edges immediately (IGNORE on conflict handles duplicates)
+            // Process windows concurrently with semaphore + rate limiter
+            val windowResults = windowTasks.map { task ->
+                coroutineScope {
+                    async {
+                        semaphore.withPermit {
+                            rateLimiter.acquire()
+                            if (isCancelled()) return@withPermit emptyList()
+
+                            val window = domains.subList(task.windowStart, task.windowEnd)
+                            val prompt = buildEdgePrompt(currentWord, window)
+                            val aiResult = callAiForEdges(prompt, window.size, unwrapEnabled, repairEnabled)
+
+                            val count = completedCalls.incrementAndGet()
+                            onProgress(count, totalAiCalls)
+
+                            aiResult.mapNotNull { (j, typeStr) ->
+                                if (j !in window.indices) return@mapNotNull null
+                                val otherWord = window[j]
+                                val edgeType = parseEdgeType(typeStr)
+                                val (idA, idB) = if (currentWord.id < otherWord.id) {
+                                    currentWord.id to otherWord.id
+                                } else {
+                                    otherWord.id to currentWord.id
+                                }
+                                WordEdgeEntity(
+                                    wordIdA = idA,
+                                    wordIdB = idB,
+                                    edgeType = edgeType.dbValue,
+                                    dictionaryId = dictionaryId
+                                )
+                            }
+                        }
+                    }
+                }
+            }.awaitAll()
+
+            // Collect and persist edges for this word
+            val newEdges = windowResults.flatten()
             if (newEdges.isNotEmpty()) {
                 wordEdgeDao.insertEdges(newEdges)
             }
@@ -383,7 +449,7 @@ class WordPoolRepositoryImpl @Inject constructor(
      */
     private fun rebuildPoolsFromEdges(
         edges: List<WordEdgeEntity>,
-        @Suppress("UNUSED_PARAMETER") wordIds: Set<Long>
+        wordIds: Set<Long>
     ): List<BuiltPoolWithWordIds> {
         if (edges.isEmpty()) return emptyList()
 
@@ -481,24 +547,6 @@ class WordPoolRepositoryImpl @Inject constructor(
         else engine.mergeAiGroups(candidates, existingPools, allAiGroups)
     }
 
-    private suspend fun callAiForIndices(prompt: String, listSize: Int, retryCount: Int = 0): List<Int> {
-        return try {
-            val response = callAi(prompt)
-            val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-            val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
-            val normalized = normalizeResponse(response, unwrapEnabled, repairEnabled)
-            parseJsonIntArray(normalized, listSize)
-        } catch (e: Exception) {
-            if (retryCount < 1) {
-                Log.w("WordPoolRepo", "AI call failed, retrying", e)
-                callAiForIndices(prompt, listSize, retryCount + 1)
-            } else {
-                Log.w("WordPoolRepo", "AI call failed after retry", e)
-                emptyList()
-            }
-        }
-    }
-
     private suspend fun callAiForGroups(prompt: String, listSize: Int, retryCount: Int = 0): List<List<Int>> {
         return try {
             val response = callAi(prompt)
@@ -531,24 +579,10 @@ class WordPoolRepositoryImpl @Inject constructor(
         )
     }
 
-    private fun parseJsonIntArray(text: String, maxValue: Int): List<Int> {
-        // Try JSON parse first
-        val trimmed = text.trim()
-        val arrayMatch = Regex("\\[([\\d,\\s]*)\\]").find(trimmed)
-        if (arrayMatch != null) {
-            return arrayMatch.groupValues[1]
-                .split(",")
-                .mapNotNull { it.trim().toIntOrNull() }
-                .filter { it in 0 until maxValue }
-        }
-        return emptyList()
-    }
-
     private fun parseJsonIntArrayOfArrays(text: String, maxValue: Int): List<List<Int>> {
         val result = mutableListOf<List<Int>>()
         // Match each inner array
-        val pattern = Regex("\\[\\s*(\\d+(?:\\s*,\\s*\\d+)*)\\s*\\]")
-        pattern.findAll(text).forEach { match ->
+        INT_ARRAY_PATTERN.findAll(text).forEach { match ->
             val indices = match.groupValues[1]
                 .split(",")
                 .mapNotNull { it.trim().toIntOrNull() }
