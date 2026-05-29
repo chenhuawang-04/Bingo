@@ -1,6 +1,7 @@
 package com.xty.englishhelper.domain.usecase.pool
 
 import com.xty.englishhelper.domain.model.PoolStrategy
+import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import javax.inject.Inject
@@ -18,8 +19,12 @@ class RebuildWordPoolsUseCase @Inject constructor(
     suspend operator fun invoke(
         dictionaryId: Long,
         strategy: PoolStrategy,
+        startIndex: Int = -1,
+        rebuildMode: RebuildMode = RebuildMode.INCREMENTAL,
+        isCancelled: () -> Boolean = { false },
+        isPaused: () -> Boolean = { false },
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ) = repo.rebuildPools(dictionaryId, strategy, onProgress)
+    ) = repo.rebuildPools(dictionaryId, strategy, startIndex, rebuildMode, isCancelled, isPaused, onProgress)
 }
 
 class GetPoolCountUseCase @Inject constructor(

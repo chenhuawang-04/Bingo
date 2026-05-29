@@ -34,5 +34,10 @@ enum class BackgroundTaskStatus {
     CANCELED
 }
 
+enum class RebuildMode {
+    FULL,        // Delete all existing data, rebuild from scratch
+    INCREMENTAL  // Resume from last progress, keep existing pools during rebuild
+}
+
 
 

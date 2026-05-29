@@ -7,6 +7,7 @@ import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.PoolStrategy
+import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import com.xty.englishhelper.domain.organize.OrganizeTaskStatus
@@ -412,16 +413,26 @@ class DictionaryViewModel @Inject constructor(
 
     fun confirmQfRebuild() {
         _uiState.update { it.copy(showQfConfirmDialog = false) }
-        startRebuild(PoolStrategy.QUALITY_FIRST)
+        startRebuild(PoolStrategy.QUALITY_FIRST, RebuildMode.INCREMENTAL)
+    }
+
+    fun confirmQfFullRebuild() {
+        _uiState.update { it.copy(showQfConfirmDialog = false) }
+        startRebuild(PoolStrategy.QUALITY_FIRST, RebuildMode.FULL)
     }
 
     fun dismissQfConfirmDialog() {
         _uiState.update { it.copy(showQfConfirmDialog = false) }
     }
 
-    private fun startRebuild(strategy: PoolStrategy) {
+    private fun startRebuild(strategy: PoolStrategy, rebuildMode: RebuildMode = RebuildMode.INCREMENTAL) {
         _uiState.update { it.copy(isRebuildingPools = true, rebuildProgress = null, rebuildError = null) }
-        backgroundTaskManager.enqueueWordPoolRebuild(dictionaryId, strategy, force = true)
+        backgroundTaskManager.enqueueWordPoolRebuild(dictionaryId, strategy, force = rebuildMode == RebuildMode.FULL, rebuildMode = rebuildMode)
+    }
+
+    fun pauseRebuild() {
+        val taskId = poolTaskId ?: return
+        backgroundTaskManager.pauseTask(taskId)
     }
 
     fun cancelRebuild() {

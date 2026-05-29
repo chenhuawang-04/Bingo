@@ -357,15 +357,26 @@ fun DictionaryScreen(
                     Text("预计消耗约 ${state.qfWordCount} x 600 = $estimatedTokens tokens")
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "此操作费用较高，建议先尝试均衡策略",
+                        "增量构建：从上次中断处继续，保留已有进度。支持暂停/恢复。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "完全重建：清除所有已有边数据，从头开始。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             },
             confirmButton = {
-                TextButton(onClick = viewModel::confirmQfRebuild) {
-                    Text("确认并开始")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = viewModel::confirmQfFullRebuild) {
+                        Text("完全重建")
+                    }
+                    TextButton(onClick = viewModel::confirmQfRebuild) {
+                        Text("增量构建")
+                    }
                 }
             },
             dismissButton = {
@@ -674,8 +685,13 @@ private fun DictionaryListContent(
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
-                                        TextButton(onClick = viewModel::cancelRebuild) {
-                                            Text("取消")
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            TextButton(onClick = viewModel::pauseRebuild) {
+                                                Text("暂停")
+                                            }
+                                            TextButton(onClick = viewModel::cancelRebuild) {
+                                                Text("取消")
+                                            }
                                         }
                                     }
                                 } else {

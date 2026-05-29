@@ -13,6 +13,7 @@ import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
+import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.dao.PlanDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
@@ -42,6 +43,7 @@ import com.xty.englishhelper.data.local.entity.SynonymEntity
 import com.xty.englishhelper.data.local.entity.UnitEntity
 import com.xty.englishhelper.data.local.entity.UnitWordCrossRef
 import com.xty.englishhelper.data.local.entity.WordAssociationEntity
+import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.local.entity.WordEntity
 import com.xty.englishhelper.data.local.entity.WordExampleEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
@@ -82,9 +84,10 @@ import java.util.UUID
         PlanTemplateEntity::class,
         PlanItemEntity::class,
         PlanDayRecordEntity::class,
-        PlanEventLogEntity::class
+        PlanEventLogEntity::class,
+        WordEdgeEntity::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -98,6 +101,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun backgroundTaskDao(): BackgroundTaskDao
     abstract fun articleCategoryDao(): ArticleCategoryDao
     abstract fun planDao(): PlanDao
+    abstract fun wordEdgeDao(): WordEdgeDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -900,6 +904,27 @@ abstract class AppDatabase : RoomDatabase() {
                     END
                     """.trimIndent()
                 )
+            }
+        }
+
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_edges` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `word_id_a` INTEGER NOT NULL,
+                        `word_id_b` INTEGER NOT NULL,
+                        `edge_type` TEXT NOT NULL,
+                        `dictionary_id` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_word_edges_word_id_a_word_id_b_edge_type` ON `word_edges` (`word_id_a`, `word_id_b`, `edge_type`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_dictionary_id` ON `word_edges` (`dictionary_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_word_id_a` ON `word_edges` (`word_id_a`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_word_id_b` ON `word_edges` (`word_id_b`)")
             }
         }
     }

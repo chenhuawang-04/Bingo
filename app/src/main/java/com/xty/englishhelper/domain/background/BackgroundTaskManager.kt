@@ -10,6 +10,7 @@ import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.ExamPaper
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
 import com.xty.englishhelper.domain.model.QuestionGroup
@@ -149,8 +150,17 @@ class BackgroundTaskManager @Inject constructor(
         }
     }
 
-    fun enqueueWordPoolRebuild(dictionaryId: Long, strategy: PoolStrategy, force: Boolean = false) {
-        val payload = WordPoolRebuildPayload(dictionaryId = dictionaryId, strategy = strategy.name)
+    fun enqueueWordPoolRebuild(
+        dictionaryId: Long,
+        strategy: PoolStrategy,
+        force: Boolean = false,
+        rebuildMode: RebuildMode = RebuildMode.INCREMENTAL
+    ) {
+        val payload = WordPoolRebuildPayload(
+            dictionaryId = dictionaryId,
+            strategy = strategy.name,
+            rebuildMode = rebuildMode.name
+        )
         enqueueTaskAsync(BackgroundTaskType.WORD_POOL_REBUILD, payload, "pool:$dictionaryId:${strategy.name}", force)
     }
 
@@ -236,14 +246,22 @@ class BackgroundTaskManager @Inject constructor(
 
     fun resumeTask(taskId: Long) {
         scope.launch {
+            val task = repository.getTaskById(taskId)
             repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
-            repository.updateProgress(taskId, 0, 0)
+            // For pool rebuild, preserve progress so the task can resume from last index
+            if (task?.type != BackgroundTaskType.WORD_POOL_REBUILD) {
+                repository.updateProgress(taskId, 0, 0)
+            }
             schedule()
         }
     }
 
     fun restartTask(taskId: Long) {
-        resumeTask(taskId)
+        scope.launch {
+            repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
+            repository.updateProgress(taskId, 0, 0)
+            schedule()
+        }
     }
 
     fun cancelTask(taskId: Long) {
@@ -724,16 +742,43 @@ class BackgroundTaskManager @Inject constructor(
         val strategy = runCatching { PoolStrategy.valueOf(payload.strategy) }.getOrElse {
             throw IllegalStateException("词池策略无效")
         }
-        repository.updateProgress(task.id, 0, 0)
+        val rebuildMode = runCatching { RebuildMode.valueOf(payload.rebuildMode) }
+            .getOrDefault(RebuildMode.INCREMENTAL)
+
+        // Read resume point: for INCREMENTAL mode, use saved progress as start index
+        val startIndex = if (rebuildMode == RebuildMode.INCREMENTAL && task.progressCurrent > 0) {
+            task.progressCurrent
+        } else {
+            -1  // -1 means start from end
+        }
+
         var lastCurrent = 0
         var lastTotal = 0
-        rebuildWordPools(payload.dictionaryId, strategy) { current, total ->
-            lastCurrent = current
-            lastTotal = total
-            scope.launch {
-                repository.updateProgress(task.id, current, total)
+
+        try {
+            rebuildWordPools(
+                dictionaryId = payload.dictionaryId,
+                strategy = strategy,
+                startIndex = startIndex,
+                rebuildMode = rebuildMode,
+                isCancelled = { false },  // cancellation handled by coroutine job cancel
+                isPaused = { false },      // pause handled by coroutine job cancel (pauseTask cancels the job)
+                onProgress = { current, total ->
+                    lastCurrent = current
+                    lastTotal = total
+                    scope.launch {
+                        repository.updateProgress(task.id, current, total)
+                    }
+                }
+            )
+        } catch (e: CancellationException) {
+            // Pause/cancel detected — save progress for resume
+            if (lastTotal > 0) {
+                repository.updateProgress(task.id, lastCurrent, lastTotal)
             }
+            throw e  // re-throw so launchTask handles status update
         }
+
         if (lastTotal > 0) {
             repository.updateProgress(task.id, lastTotal.coerceAtLeast(lastCurrent), lastTotal)
         }

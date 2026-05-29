@@ -14,6 +14,7 @@ import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
+import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.dao.PlanDao
 import dagger.Module
@@ -58,7 +59,8 @@ object AppModule {
                 AppDatabase.MIGRATION_18_19,
                 AppDatabase.MIGRATION_19_20,
                 AppDatabase.MIGRATION_20_21,
-                AppDatabase.MIGRATION_21_22
+                AppDatabase.MIGRATION_21_22,
+                AppDatabase.MIGRATION_22_23
             )
             .build()
     }
@@ -83,6 +85,9 @@ object AppModule {
 
     @Provides
     fun provideWordPoolDao(db: AppDatabase): WordPoolDao = db.wordPoolDao()
+
+    @Provides
+    fun provideWordEdgeDao(db: AppDatabase): WordEdgeDao = db.wordEdgeDao()
 
     @Provides
     fun provideQuestionBankDao(db: AppDatabase): QuestionBankDao = db.questionBankDao()

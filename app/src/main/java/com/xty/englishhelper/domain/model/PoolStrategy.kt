@@ -11,6 +11,6 @@ enum class PoolStrategy {
     }
     val algorithmVersion get() = when (this) {
         BALANCED, BALANCED_WITH_AI -> "BALANCED_v1"
-        QUALITY_FIRST -> "QF_v1"
+        QUALITY_FIRST -> "QF_v2"
     }
 }

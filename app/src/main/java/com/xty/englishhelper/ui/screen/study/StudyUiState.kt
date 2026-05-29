@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.study
 
+import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.CloudExampleSource
@@ -17,10 +18,16 @@ data class StudyUiState(
     val error: String? = null,
     val studyMode: StudyMode = StudyMode.NORMAL,
     val currentWordRelatedSpellings: List<String> = emptyList(),
+    val currentWordEdges: List<WordEdgePreview> = emptyList(),
     val cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
     val cloudExamples: List<CloudWordExample> = emptyList(),
     val cloudExamplesLoading: Boolean = false,
     val cloudExamplesError: String? = null
+)
+
+data class WordEdgePreview(
+    val spelling: String,
+    val edgeType: EdgeType
 )
 
 enum class StudyPhase {

@@ -27,7 +27,8 @@ data class WordOrganizePayload(
 @Serializable
 data class WordPoolRebuildPayload(
     val dictionaryId: Long,
-    val strategy: String
+    val strategy: String,
+    val rebuildMode: String = "INCREMENTAL"  // "FULL" or "INCREMENTAL"
 ) : BackgroundTaskPayload
 
 @Serializable

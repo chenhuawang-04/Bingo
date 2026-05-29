@@ -4,7 +4,9 @@ import android.util.Log
 import androidx.room.withTransaction
 import com.xty.englishhelper.data.local.AppDatabase
 import com.xty.englishhelper.data.local.dao.WordDao
+import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
+import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
 import com.xty.englishhelper.data.local.relation.WordWithDetails
@@ -13,7 +15,9 @@ import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.AiApiClientProvider
 import com.xty.englishhelper.data.remote.ChatMessage
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolStrategy
+import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.pool.BuiltPool
 import com.xty.englishhelper.domain.pool.PoolCandidate
@@ -22,11 +26,11 @@ import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.util.AiResponseUnwrapper
 import com.xty.englishhelper.util.AiJsonRepairer
 import com.xty.englishhelper.util.Constants
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
-import kotlin.random.Random
 
 private data class BuiltPoolWithWordIds(
     val focusWordId: Long?,
@@ -37,12 +41,18 @@ private data class BuiltPoolWithWordIds(
 class WordPoolRepositoryImpl @Inject constructor(
     private val db: AppDatabase,
     private val wordPoolDao: WordPoolDao,
+    private val wordEdgeDao: WordEdgeDao,
     private val wordDao: WordDao,
     private val aiApiClientProvider: AiApiClientProvider,
     private val settingsDataStore: SettingsDataStore
 ) : WordPoolRepository {
 
     private val engine = WordPoolEngine()
+
+    companion object {
+        private val EDGE_RESPONSE_PATTERN_I_T = Regex("""\{\s*"i"\s*:\s*(\d+)\s*,\s*"t"\s*:\s*"(\w+)"\s*\}""")
+        private val EDGE_RESPONSE_PATTERN_T_I = Regex("""\{\s*"t"\s*:\s*"(\w+)"\s*,\s*"i"\s*:\s*(\d+)\s*\}""")
+    }
 
     override suspend fun getPoolsForWord(wordId: Long): List<WordPool> {
         val poolIds = wordPoolDao.getPoolIdsForWord(wordId)
@@ -78,6 +88,10 @@ class WordPoolRepositoryImpl @Inject constructor(
     override suspend fun rebuildPools(
         dictionaryId: Long,
         strategy: PoolStrategy,
+        startIndex: Int,
+        rebuildMode: RebuildMode,
+        isCancelled: () -> Boolean,
+        isPaused: () -> Boolean,
         onProgress: (Int, Int) -> Unit
     ) {
         val words = wordDao.getWordsByDictionaryOnce(dictionaryId)
@@ -88,7 +102,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             PoolStrategy.BALANCED, PoolStrategy.BALANCED_WITH_AI ->
                 buildBalanced(words, dictionaryId, strategy, onProgress, total)
             PoolStrategy.QUALITY_FIRST ->
-                buildQualityFirst(words, dictionaryId, onProgress, total)
+                buildQualityFirst(words, dictionaryId, startIndex, rebuildMode, isCancelled, isPaused, onProgress, total)
         }
 
         // Ensure not cancelled before writing
@@ -142,6 +156,21 @@ class WordPoolRepositoryImpl @Inject constructor(
         return wordPoolDao.getPoolVersionInfo(dictionaryId).map { it.strategy to it.algorithmVersion }
     }
 
+    override suspend fun getWordEdgeAdjacency(dictionaryId: Long): Map<Long, Map<Long, Set<EdgeType>>> {
+        val edges = wordEdgeDao.getAllEdges(dictionaryId)
+        val adj = mutableMapOf<Long, MutableMap<Long, MutableSet<EdgeType>>>()
+        edges.forEach { e ->
+            val type = EdgeType.fromDbValue(e.edgeType)
+            adj.getOrPut(e.wordIdA) { mutableMapOf() }
+                .getOrPut(e.wordIdB) { mutableSetOf() }
+                .add(type)
+            adj.getOrPut(e.wordIdB) { mutableMapOf() }
+                .getOrPut(e.wordIdA) { mutableSetOf() }
+                .add(type)
+        }
+        return adj
+    }
+
     // ── BALANCED build ──
 
     private suspend fun buildBalanced(
@@ -192,63 +221,221 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
     }
 
-    // ── QUALITY_FIRST build ──
+    // ── QUALITY_FIRST build (sliding window + edge graph, incremental) ──
 
     private suspend fun buildQualityFirst(
         words: List<WordWithDetails>,
         dictionaryId: Long,
+        startIndex: Int,
+        rebuildMode: RebuildMode,
+        isCancelled: () -> Boolean,
+        isPaused: () -> Boolean,
         onProgress: (Int, Int) -> Unit,
         total: Int
     ): List<BuiltPoolWithWordIds> {
-        val result = mutableListOf<BuiltPoolWithWordIds>()
         val domains = words.map { it.toDomain() }
+        val windowSize = settingsDataStore.getPoolWindowSize()
 
-        for ((index, targetWord) in domains.withIndex()) {
-            coroutineContext.ensureActive()
-            onProgress(index, total)
+        // For FULL mode, clear existing edges upfront
+        if (rebuildMode == RebuildMode.FULL) {
+            wordEdgeDao.deleteByDictionary(dictionaryId)
+        }
 
-            // Pick 49 random other words with fixed seed for reproducibility
-            val others = domains.filter { it.id != targetWord.id }
-            val rng = Random(targetWord.id)
-            val sampled = if (others.size <= 49) others else others.shuffled(rng).take(49)
+        // Determine resume index: startIndex if >= 0, otherwise start from end
+        val resumeIndex = if (startIndex >= 0) startIndex else domains.size - 1
 
-            val candidateList = listOf(targetWord) + sampled
+        // Cache settings for the loop
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
 
-            // Build prompt
-            val prompt = buildString {
-                appendLine("你是词汇学习助手。下面是词库中${candidateList.size}个单词（index. spelling: 首条中文释义）。")
-                appendLine("目标词是 #0（${targetWord.spelling}）。请找出其中与 #0 形近（拼写相似）或意近（语义相关）的词。")
-                appendLine("只列出相关词的序号，不相关的忽略，不含 #0 自身。")
-                appendLine("返回严格JSON数组，如 [1,5,12]，若无相关词返回 []。")
-                appendLine(Constants.JSON_STRICT_RULES)
-                appendLine()
-                candidateList.forEachIndexed { i, w ->
-                    val firstMeaning = w.meanings.firstOrNull()?.definition ?: ""
-                    appendLine("$i. ${w.spelling}: $firstMeaning")
-                }
+        // Sliding window: iterate from resumeIndex down to 0
+        for (i in resumeIndex.downTo(0)) {
+            // Cooperative cancel check (pause is handled by coroutine job cancel)
+            if (isCancelled()) {
+                Log.d("WordPoolRepo", "QualityFirst build cancelled at index $i")
+                break
             }
 
-            val relatedIndices = callAiForIndices(prompt, candidateList.size)
+            onProgress(total - i, total)
 
-            if (relatedIndices.isNotEmpty()) {
-                val memberIds = mutableListOf(targetWord.id)
-                relatedIndices.forEach { idx ->
-                    if (idx in candidateList.indices && idx != 0) {
-                        memberIds.add(candidateList[idx].id)
-                    }
+            val currentWord = domains[i]
+            val windowStart = maxOf(0, i - windowSize)
+            val window = domains.subList(windowStart, i)
+
+            if (window.isEmpty()) continue
+
+            val prompt = buildEdgePrompt(currentWord, window)
+            val aiResult = callAiForEdges(prompt, window.size, unwrapEnabled, repairEnabled)
+
+            // Batch-write edges to DB periodically (every 10 words)
+            val newEdges = mutableListOf<WordEdgeEntity>()
+            for ((j, typeStr) in aiResult) {
+                if (j !in window.indices) continue
+                val otherWord = window[j]
+                val edgeType = parseEdgeType(typeStr)
+                val (idA, idB) = if (currentWord.id < otherWord.id) {
+                    currentWord.id to otherWord.id
+                } else {
+                    otherWord.id to currentWord.id
                 }
-                if (memberIds.size >= 2) {
-                    result.add(
-                        BuiltPoolWithWordIds(
-                            focusWordId = targetWord.id,
-                            memberWordIds = memberIds.distinct()
-                        )
+                newEdges.add(
+                    WordEdgeEntity(
+                        wordIdA = idA,
+                        wordIdB = idB,
+                        edgeType = edgeType.dbValue,
+                        dictionaryId = dictionaryId
                     )
-                }
+                )
+            }
+
+            // Persist edges immediately (IGNORE on conflict handles duplicates)
+            if (newEdges.isNotEmpty()) {
+                wordEdgeDao.insertEdges(newEdges)
             }
         }
 
-        onProgress(total, total)
+        // Build pools from ALL edges in DB (including previously persisted ones)
+        coroutineContext.ensureActive()
+        val allEdgeProjections = wordEdgeDao.getAllEdges(dictionaryId)
+        val allEdges = allEdgeProjections.map {
+            WordEdgeEntity(wordIdA = it.wordIdA, wordIdB = it.wordIdB, edgeType = it.edgeType, dictionaryId = dictionaryId)
+        }
+        val wordIds = domains.map { it.id }.toSet()
+        return rebuildPoolsFromEdges(allEdges, wordIds)
+    }
+
+    private fun buildEdgePrompt(
+        target: com.xty.englishhelper.domain.model.WordDetails,
+        window: List<com.xty.englishhelper.domain.model.WordDetails>
+    ): String {
+        return buildString {
+            appendLine("你是词汇学习助手。下面是1个目标词和${window.size}个候选词（index. spelling: 首条中文释义）。")
+            appendLine("目标词：${target.spelling}（${target.meanings.firstOrNull()?.definition ?: ""}）")
+            appendLine("请找出目标词与候选词之间的关系，返回JSON数组，每个元素包含候选词序号和关系类型。")
+            appendLine("关系类型：S=形近(拼写相似), M=意近(语义相似), R=词根相似, P=发音相似")
+            appendLine("返回格式：[{\"i\":1,\"t\":\"S\"},{\"i\":5,\"t\":\"M\"}]，若无相关词返回 []。")
+            appendLine(Constants.JSON_STRICT_RULES)
+            appendLine()
+            window.forEachIndexed { idx, w ->
+                val firstMeaning = w.meanings.firstOrNull()?.definition ?: ""
+                appendLine("$idx. ${w.spelling}: $firstMeaning")
+            }
+        }
+    }
+
+    private suspend fun callAiForEdges(
+        prompt: String,
+        windowSize: Int,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean,
+        retryCount: Int = 0
+    ): List<Pair<Int, String>> {
+        return try {
+            val response = callAi(prompt)
+            val normalized = normalizeResponse(response, unwrapEnabled, repairEnabled)
+            parseEdgeResponse(normalized, windowSize)
+        } catch (e: Exception) {
+            if (retryCount < 1) {
+                Log.w("WordPoolRepo", "AI edge call failed, retrying", e)
+                callAiForEdges(prompt, windowSize, unwrapEnabled, repairEnabled, retryCount + 1)
+            } else {
+                Log.w("WordPoolRepo", "AI edge call failed after retry", e)
+                emptyList()
+            }
+        }
+    }
+
+    private fun parseEdgeResponse(text: String, maxValue: Int): List<Pair<Int, String>> {
+        val result = mutableListOf<Pair<Int, String>>()
+        // Try {"i":N,"t":"X"} pattern first
+        EDGE_RESPONSE_PATTERN_I_T.findAll(text).forEach { match ->
+            val index = match.groupValues[1].toIntOrNull()
+            val type = match.groupValues[2]
+            if (index != null && index in 0 until maxValue) {
+                result.add(index to type)
+            }
+        }
+        if (result.isNotEmpty()) return result
+        // Fallback: {"t":"X","i":N} pattern
+        EDGE_RESPONSE_PATTERN_T_I.findAll(text).forEach { match ->
+            val type = match.groupValues[1]
+            val index = match.groupValues[2].toIntOrNull()
+            if (index != null && index in 0 until maxValue) {
+                result.add(index to type)
+            }
+        }
+        return result
+    }
+
+    private fun parseEdgeType(typeStr: String): EdgeType {
+        return when (typeStr.uppercase()) {
+            "S" -> EdgeType.SPELLING
+            "M" -> EdgeType.MEANING
+            "R" -> EdgeType.ROOT
+            "P" -> EdgeType.PRONUNCIATION
+            else -> EdgeType.AI_GENERAL
+        }
+    }
+
+    /**
+     * Union-Find based pool extraction from edge graph.
+     * Splits oversized components (>MAX_POOL_SIZE).
+     */
+    private fun rebuildPoolsFromEdges(
+        edges: List<WordEdgeEntity>,
+        @Suppress("UNUSED_PARAMETER") wordIds: Set<Long>
+    ): List<BuiltPoolWithWordIds> {
+        if (edges.isEmpty()) return emptyList()
+
+        // Union-Find: only include words that appear in edges
+        val parent = mutableMapOf<Long, Long>()
+        edges.forEach { e ->
+            parent.putIfAbsent(e.wordIdA, e.wordIdA)
+            parent.putIfAbsent(e.wordIdB, e.wordIdB)
+        }
+        fun find(x: Long): Long {
+            var r = x
+            while (parent[r] != r) r = parent[r]!!
+            var c = x
+            while (c != r) {
+                val next = parent[c]!!
+                parent[c] = r
+                c = next
+            }
+            return r
+        }
+        fun union(a: Long, b: Long) {
+            val ra = find(a)
+            val rb = find(b)
+            if (ra != rb) parent[ra] = rb
+        }
+
+        edges.forEach { union(it.wordIdA, it.wordIdB) }
+
+        // Group by root
+        val components = mutableMapOf<Long, MutableList<Long>>()
+        wordIds.forEach { id ->
+            val root = find(id)
+            if (root !in components) components[root] = mutableListOf()
+            components[root]!!.add(id)
+        }
+
+        // Build pools from components with >=2 members, split large ones
+        val maxPoolSize = 15
+        val result = mutableListOf<BuiltPoolWithWordIds>()
+        components.values.forEach { members ->
+            if (members.size < 2) return@forEach
+            if (members.size <= maxPoolSize) {
+                result.add(BuiltPoolWithWordIds(focusWordId = null, memberWordIds = members))
+            } else {
+                // Split into chunks
+                members.chunked(maxPoolSize).forEach { chunk ->
+                    if (chunk.size >= 2) {
+                        result.add(BuiltPoolWithWordIds(focusWordId = null, memberWordIds = chunk))
+                    }
+                }
+            }
+        }
         return result
     }
 

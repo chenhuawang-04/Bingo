@@ -65,6 +65,7 @@ class SettingsDataStore @Inject constructor(
         val TTS_AUTO_STUDY = booleanPreferencesKey("tts_auto_study")
         val TTS_PREWARM_CONCURRENCY = intPreferencesKey("tts_prewarm_concurrency")
         val TTS_PREWARM_RETRY = intPreferencesKey("tts_prewarm_retry")
+        val POOL_WINDOW_SIZE = intPreferencesKey("pool_window_size")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -185,6 +186,10 @@ class SettingsDataStore @Inject constructor(
         prefs[TTS_PREWARM_RETRY] ?: 2
     }
 
+    val poolWindowSize: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[POOL_WINDOW_SIZE] ?: 50
+    }
+
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
@@ -255,6 +260,15 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setTtsPrewarmRetry(value: Int) {
         dataStore.edit { prefs -> prefs[TTS_PREWARM_RETRY] = value }
+    }
+
+    suspend fun getPoolWindowSize(): Int {
+        val prefs = dataStore.data.first()
+        return prefs[POOL_WINDOW_SIZE] ?: 50
+    }
+
+    suspend fun setPoolWindowSize(value: Int) {
+        dataStore.edit { prefs -> prefs[POOL_WINDOW_SIZE] = value.coerceIn(10, 200) }
     }
 
     suspend fun getProviders(): List<AiProviderProfile> {

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
+import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.CloudExampleSource
@@ -71,6 +72,8 @@ class StudyViewModel @Inject constructor(
 
     // Brainstorm data: wordId -> set of related wordIds (via pool union)
     private var brainstormRelated: Map<Long, Set<Long>> = emptyMap()
+    // Brainstorm edge graph: wordId -> Map<neighborId, Set<EdgeType>>
+    private var brainstormEdgeMap: Map<Long, Map<Long, Set<EdgeType>>> = emptyMap()
     // wordId -> spelling for displaying related words tag
     private var wordIdToSpelling: Map<Long, String> = emptyMap()
     // Guard against re-rating during wait or while reviewWord is in-flight
@@ -146,49 +149,63 @@ class StudyViewModel @Inject constructor(
         dictionaryId: Long
     ): List<WordDetails> {
         return try {
-            val wordToPoolsMap = wordPoolRepository.getWordToPoolsMap(dictionaryId)
-            val poolToMembersMap = wordPoolRepository.getPoolToMembersMap(dictionaryId)
+            // Load edge adjacency from word_edges table
+            val edgeMap = wordPoolRepository.getWordEdgeAdjacency(dictionaryId)
+            brainstormEdgeMap = edgeMap
 
-            // Build wordId -> set of all related wordIds (union of all pools)
+            // Build relatedMap from edges for tag display
             val relatedMap = mutableMapOf<Long, MutableSet<Long>>()
-            wordToPoolsMap.forEach { (wordId, poolIds) ->
-                val related = mutableSetOf<Long>()
-                poolIds.forEach { poolId ->
-                    poolToMembersMap[poolId]?.forEach { memberId ->
-                        if (memberId != wordId) related.add(memberId)
-                    }
-                }
-                relatedMap[wordId] = related
+            edgeMap.forEach { (wordId, neighbors) ->
+                relatedMap[wordId] = neighbors.keys.toMutableSet()
             }
             brainstormRelated = relatedMap
 
-            // Stable insertion algorithm
+            // BFS layer-order traversal with priority sorting
             val wordMap = words.associateBy { it.id }
-            val remainingIds = words.map { it.id }
-            val emittedIds = mutableSetOf<Long>()
+            val wordIds = words.map { it.id }.toSet()
+            val visited = mutableSetOf<Long>()
             val output = mutableListOf<WordDetails>()
 
-            for (wId in remainingIds) {
-                if (wId in emittedIds) continue
-                val word = wordMap[wId] ?: continue
-                output.add(word)
-                emittedIds.add(wId)
+            for (startId in words.map { it.id }) {
+                if (startId in visited) continue
 
-                // Insert related words that are in the queue, maintaining their original relative order
-                val related = relatedMap[wId] ?: emptySet()
-                for (rId in remainingIds) {
-                    if (rId in emittedIds) continue
-                    if (rId in related) {
-                        val rWord = wordMap[rId] ?: continue
-                        output.add(rWord)
-                        emittedIds.add(rId)
+                var currentLevel = listOf(startId)
+                visited.add(startId)
+
+                while (currentLevel.isNotEmpty()) {
+                    // Output current level
+                    for (id in currentLevel) {
+                        wordMap[id]?.let { output.add(it) }
                     }
+
+                    // Collect next-level candidates
+                    val nextCandidates = mutableSetOf<Long>()
+                    for (id in currentLevel) {
+                        val neighbors = edgeMap[id]?.keys ?: emptySet()
+                        for (neighborId in neighbors) {
+                            if (neighborId in wordIds && neighborId !in visited) {
+                                nextCandidates.add(neighborId)
+                            }
+                        }
+                    }
+
+                    // Sort candidates by priority
+                    currentLevel = nextCandidates.sortedByDescending { candidateId ->
+                        val candidateNeighbors = edgeMap[candidateId]?.keys ?: emptySet()
+                        // Priority 1: overlap with other candidates in this level
+                        val overlap = candidateNeighbors.intersect(nextCandidates).size
+                        // Priority 2: fewer total neighbors = higher priority (rarer connections)
+                        val totalNeighbors = candidateNeighbors.size
+                        overlap * 10000 - totalNeighbors
+                    }
+
+                    currentLevel.forEach { visited.add(it) }
                 }
             }
 
             output
         } catch (e: Exception) {
-            // Fall back to original order if pool data unavailable
+            // Fall back to original order if edge data unavailable
             words
         }
     }
@@ -230,6 +247,20 @@ class StudyViewModel @Inject constructor(
                 emptyList()
             }
 
+            // Compute edge previews for enhanced brainstorm tag
+            val edgePreviews = if (studyMode == StudyMode.BRAINSTORM) {
+                val neighbors = brainstormEdgeMap[entry.word.id] ?: emptyMap()
+                neighbors.entries
+                    .sortedByDescending { it.value.size }
+                    .take(5)
+                    .mapNotNull { (neighborId, edgeTypes) ->
+                        val spelling = wordIdToSpelling[neighborId] ?: return@mapNotNull null
+                        WordEdgePreview(spelling, edgeTypes.first())
+                    }
+            } else {
+                emptyList()
+            }
+
             _uiState.update {
                 it.copy(
                     phase = StudyPhase.Studying,
@@ -240,6 +271,7 @@ class StudyViewModel @Inject constructor(
                     total = totalUniqueWords,
                     stats = buildStats(),
                     currentWordRelatedSpellings = relatedSpellings,
+                    currentWordEdges = edgePreviews,
                     cloudExamplesLoading = false,
                     cloudExamples = emptyList(),
                     cloudExamplesError = null
