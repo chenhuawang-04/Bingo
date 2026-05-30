@@ -54,7 +54,7 @@ internal object PoolQualityScorer {
 
         // 6. Dedup (0-5): fewer near-duplicate edges = better
         val uniquePairs = edgeList.map { minOf(it.wordIdA, it.wordIdB) to maxOf(it.wordIdA, it.wordIdB) }.distinct().size
-        val dedup = if (edgeList.isEmpty()) 0 else (uniquePairs.toDouble() / edgeList.size * 5).toInt().coerceIn(0, 5)
+        val dedup = (uniquePairs.toDouble() / size * 5).toInt().coerceIn(0, 5)
 
         // 7. Noise control (0-5): fewer optional edges = better
         val optionalRatio = edgeList.count { it.status == "optional" }.toDouble() / size
@@ -69,8 +69,7 @@ internal object PoolQualityScorer {
             val r = it.reason?.lowercase() ?: ""
             r.contains("语域") || r.contains("正式") || r.contains("口语") || r.contains("学术") || r.contains("register")
         }
-        val registerFit = if (edgeList.isEmpty()) 0
-        else (registerAware.toDouble() / size * 5).toInt().coerceIn(0, 5)
+        val registerFit = (registerAware.toDouble() / size * 5).toInt().coerceIn(0, 5)
 
         // 10. Evidence (0-5): proportion with evidence_source
         val evidenceRatio = edgeList.count { !it.evidenceSource.isNullOrBlank() }.toDouble() / size

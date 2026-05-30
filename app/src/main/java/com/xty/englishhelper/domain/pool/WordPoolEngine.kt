@@ -312,14 +312,17 @@ class WordPoolEngine {
         }
 
         // N10 fix: reassign dropped singletons to the existing pool sharing the most edges
+        // Issue A fix: only reassign if target pool has room (< MAX_POOL_SIZE)
         if (dropped.isNotEmpty() && result.isNotEmpty()) {
             val mutableResult = result.toMutableList()
             dropped.forEach { orphan ->
                 val orphanNeighbors = adjacency[orphan] ?: emptySet()
-                // Find pool whose members share the most edges with this orphan
-                val bestPoolIdx = mutableResult.indices.maxByOrNull { poolIdx ->
-                    mutableResult[poolIdx].memberIndices.count { it in orphanNeighbors }
-                }
+                // Find pool with room that shares the most edges with this orphan
+                val bestPoolIdx = mutableResult.indices
+                    .filter { mutableResult[it].memberIndices.size < MAX_POOL_SIZE }
+                    .maxByOrNull { poolIdx ->
+                        mutableResult[poolIdx].memberIndices.count { it in orphanNeighbors }
+                    }
                 if (bestPoolIdx != null) {
                     val updatedMembers = (mutableResult[bestPoolIdx].memberIndices + orphan).sorted()
                     mutableResult[bestPoolIdx] = BuiltPool(
