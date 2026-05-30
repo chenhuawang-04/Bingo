@@ -1084,16 +1084,17 @@ class WordPoolRepositoryImpl @Inject constructor(
         isCancelled: () -> Boolean,
         onProgress: (classified: Int, total: Int) -> Unit
     ): Int {
-        val totalUnclassified = wordDao.countWordsWithoutEntryType(dictionaryId)
-        if (totalUnclassified == 0) return 0
+        val totalWords = wordDao.countWordsWithoutEntryType(dictionaryId)
+        if (totalWords == 0) return 0
 
         var totalClassified = 0
+        var lastId = 0L
         val batchSize = 50
 
         while (true) {
             if (isCancelled()) break
 
-            val batch = wordDao.getWordsWithoutEntryType(dictionaryId, batchSize)
+            val batch = wordDao.getWordsForClassification(dictionaryId, lastId, batchSize)
             if (batch.isEmpty()) break
 
             val prompt = buildEntryTypePrompt(batch)
@@ -1121,7 +1122,8 @@ class WordPoolRepositoryImpl @Inject constructor(
                 }
             }
 
-            onProgress(totalClassified, totalUnclassified)
+            lastId = batch.last().id
+            onProgress(totalClassified, totalWords)
         }
 
         return totalClassified
