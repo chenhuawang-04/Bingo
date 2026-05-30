@@ -111,6 +111,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         private val INT_ARRAY_PATTERN = Regex("""\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]""")
         private val VALID_STATUSES = setOf("core", "support", "warning", "optional")
         private const val MAX_EDGE_RETRIES = 4
+        private val ENTRY_TYPE_PATTERN = Regex(""""entry_type"\s*:\s*"(word|root|phrase)"""")
     }
 
     override suspend fun getPoolsForWord(wordId: Long): List<WordPool> {
@@ -1072,5 +1073,120 @@ class WordPoolRepositoryImpl @Inject constructor(
             }
         }
         return null
+    }
+
+    // ── TEMPORARY: Entry Type Classification ──
+    // THIS ENTIRE SECTION SHOULD BE REMOVED after all dictionaries are classified.
+    // See: docs/entry-type-classification-temp.md
+
+    override suspend fun classifyEntryTypes(
+        dictionaryId: Long,
+        isCancelled: () -> Boolean,
+        onProgress: (classified: Int, total: Int) -> Unit
+    ): Int {
+        val totalUnclassified = wordDao.countWordsWithoutEntryType(dictionaryId)
+        if (totalUnclassified == 0) return 0
+
+        var totalClassified = 0
+        val batchSize = 50
+
+        while (true) {
+            if (isCancelled()) break
+
+            val batch = wordDao.getWordsWithoutEntryType(dictionaryId, batchSize)
+            if (batch.isEmpty()) break
+
+            val prompt = buildEntryTypePrompt(batch)
+            val response = try {
+                callAi(prompt)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("WordPoolRepo", "Entry type classification batch failed", e)
+                break
+            }
+
+            val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+            val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+            val normalized = normalizeResponse(response, unwrapEnabled, repairEnabled)
+
+            val results = parseEntryTypeResponse(normalized)
+            val resultMap = results.associateBy { it.first }
+
+            batch.forEach { word ->
+                val entryType = resultMap[word.id]
+                if (entryType != null) {
+                    wordDao.updateEntryType(word.id, entryType.second)
+                    totalClassified++
+                }
+            }
+
+            onProgress(totalClassified, totalUnclassified)
+        }
+
+        return totalClassified
+    }
+
+    private fun buildEntryTypePrompt(words: List<com.xty.englishhelper.data.local.dao.EntryTypeClassificationInput>): String {
+        return buildString {
+            appendLine("你是英语构词学与词典学专家。下面有 ${words.size} 个词条，请根据你的语言学知识判断每个词条属于哪一类。")
+            appendLine()
+            appendLine("【三类词条的定义与特征】")
+            appendLine()
+            appendLine("1. word — 普通英语单词")
+            appendLine("   特征：在现代英语中是独立使用的词汇单位，有明确的词性（名词/动词/形容词/副词等），")
+            appendLine("   有完整的词义定义，可以独立出现在句子中。")
+            appendLine("   例子：affect（动词，影响）、resilient（形容词，有韧性的）、make（动词，做）、happy、run、computer")
+            appendLine()
+            appendLine("2. root — 拉丁/希腊词根")
+            appendLine("   特征：来自拉丁语或希腊语的构词成分，在现代英语中不能独立使用，")
+            appendLine("   但作为核心语素派生出一组有规律的同族词。词根的含义需要通过它所派生的词来理解。")
+            appendLine("   关键判断标准：这个形式本身是否是现代英语中可以独立使用的词？如果不是，而是作为构词成分存在于一串派生词中，它就是 root。")
+            appendLine("   例子：")
+            appendLine("   - spect（拉丁语\"看\"）→ spectator, inspect, spectacle, respect, suspect")
+            appendLine("   - port（拉丁语\"携带\"）→ transport, export, import, portable")
+            appendLine("   - duct（拉丁语\"引导\"）→ conduct, produce, reduce, deduct")
+            appendLine("   - ceive/cept（拉丁语\"拿取\"）→ receive, accept, concept, deceive")
+            appendLine("   - graph/gram（希腊语\"写\"）→ photograph, diagram, telegram")
+            appendLine("   注意：如果一个形式既是词根又恰好是现代英语中的独立单词（如 port 作为\"港口\"），应归类为 word。只有当它纯粹作为构词成分存在时才是 root。")
+            appendLine()
+            appendLine("3. phrase — 多词表达 / 短语动词")
+            appendLine("   特征：由两个或多个词组合而成的固定表达，整体的语义不等于各组成部分的字面意思之和。")
+            appendLine("   通常包含介词或副词，与动词组合后产生全新的含义。")
+            appendLine("   例子：make up（编造/化妆）、take care of（照顾）、give in（屈服）、look forward to（期待）、break down（崩溃/分解）")
+            appendLine()
+            appendLine("【返回格式】")
+            appendLine("返回JSON数组，每个元素包含 id 和 entry_type：")
+            appendLine("""[{"id":1,"entry_type":"word"},{"id":2,"entry_type":"root"},{"id":3,"entry_type":"phrase"}]""")
+            appendLine()
+            appendLine("entry_type 只能是 word、root、phrase 三者之一。")
+            appendLine(Constants.JSON_STRICT_RULES)
+            appendLine()
+            appendLine("待分类词条：")
+            words.forEach { w ->
+                appendLine("${w.id}. ${w.spelling}")
+            }
+        }
+    }
+
+    private fun parseEntryTypeResponse(text: String): List<Pair<Long, String>> {
+        val results = mutableListOf<Pair<Long, String>>()
+        val arrayStart = text.indexOf('[')
+        val arrayEnd = text.lastIndexOf(']')
+        if (arrayStart < 0 || arrayEnd < 0) return results
+        val arrayText = text.substring(arrayStart, arrayEnd + 1)
+
+        val objPattern = Regex("""\{[^{}]+\}""")
+        objPattern.findAll(arrayText).forEach { match ->
+            val obj = match.value
+            try {
+                val id = extractJsonInt(obj, "id")?.toLong() ?: return@forEach
+                val entryType = extractJsonString(obj, "entry_type") ?: return@forEach
+                if (entryType in setOf("word", "root", "phrase")) {
+                    results.add(id to entryType)
+                }
+            } catch (_: Exception) {}
+        }
+        return results
     }
 }

@@ -89,7 +89,7 @@ import java.util.UUID
         WordEdgeEntity::class,
         WordEdgeExcludedEntity::class
     ],
-    version = 26,
+    version = 27,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -985,6 +985,15 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE word_edges ADD COLUMN example_sentence TEXT")
                 db.execSQL("ALTER TABLE word_edges ADD COLUMN difficulty_cefr TEXT")
                 db.execSQL("ALTER TABLE word_edge_excluded ADD COLUMN edge_type TEXT")
+            }
+        }
+
+        val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE words ADD COLUMN entry_type TEXT NOT NULL DEFAULT 'word'")
+                // Auto-classify: phrases (multi-word) and roots (have root_explanation)
+                db.execSQL("UPDATE words SET entry_type = 'phrase' WHERE spelling LIKE '% %'")
+                db.execSQL("UPDATE words SET entry_type = 'root' WHERE root_explanation IS NOT NULL AND root_explanation != '' AND entry_type = 'word'")
             }
         }
     }

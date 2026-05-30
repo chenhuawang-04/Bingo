@@ -31,4 +31,15 @@ interface WordPoolRepository {
 
     /** Graph adjacency: wordId -> Map<neighborId, Set<EdgeType>> */
     suspend fun getWordEdgeAdjacency(dictionaryId: Long): Map<Long, Map<Long, Set<EdgeType>>>
+
+    /**
+     * TEMPORARY: Classify words into entry_type (word/root/phrase) using AI.
+     * Processes batches of 50 words. Returns total classified count.
+     * THIS FEATURE SHOULD BE REMOVED after all dictionaries are classified.
+     */
+    suspend fun classifyEntryTypes(
+        dictionaryId: Long,
+        isCancelled: () -> Boolean,
+        onProgress: (classified: Int, total: Int) -> Unit
+    ): Int
 }

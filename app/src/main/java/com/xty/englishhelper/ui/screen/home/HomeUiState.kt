@@ -20,5 +20,8 @@ data class HomeUiState(
     val newDictDesc: String = "",
     val selectedColorIndex: Int = 0,
     val error: String? = null,
-    val dashboard: DashboardStats = DashboardStats()
+    val dashboard: DashboardStats = DashboardStats(),
+    // TEMPORARY: entry_type classification state
+    val isClassifying: Boolean = false,
+    val classificationProgress: String? = null
 )

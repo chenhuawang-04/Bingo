@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.repository.StudyRepository
+import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.study.FsrsConstants
 import com.xty.englishhelper.domain.usecase.dictionary.CreateDictionaryUseCase
 import com.xty.englishhelper.domain.usecase.dictionary.DeleteDictionaryUseCase
@@ -26,7 +27,8 @@ class HomeViewModel @Inject constructor(
     private val getAllDictionaries: GetAllDictionariesUseCase,
     private val createDictionary: CreateDictionaryUseCase,
     private val deleteDictionary: DeleteDictionaryUseCase,
-    private val studyRepository: StudyRepository
+    private val studyRepository: StudyRepository,
+    private val wordPoolRepository: WordPoolRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -162,5 +164,48 @@ class HomeViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    // ── TEMPORARY: Entry Type Classification ──
+    // THIS FUNCTION SHOULD BE REMOVED after all dictionaries are classified.
+
+    fun startEntryTypeClassification() {
+        val dict = _uiState.value.dictionaries.firstOrNull()
+        if (dict == null) {
+            _uiState.update { it.copy(error = "没有辞书，请先创建或导入一个辞书") }
+            return
+        }
+        if (_uiState.value.isClassifying) return
+
+        _uiState.update { it.copy(isClassifying = true, classificationProgress = "正在分类...") }
+
+        viewModelScope.launch {
+            try {
+                val classified = wordPoolRepository.classifyEntryTypes(
+                    dictionaryId = dict.id,
+                    isCancelled = { false },
+                    onProgress = { done, total ->
+                        _uiState.update {
+                            it.copy(classificationProgress = "已分类 $done / $total")
+                        }
+                    }
+                )
+                _uiState.update {
+                    it.copy(
+                        isClassifying = false,
+                        classificationProgress = "分类完成，共处理 $classified 个词条"
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w("HomeViewModel", "Entry type classification failed", e)
+                _uiState.update {
+                    it.copy(
+                        isClassifying = false,
+                        classificationProgress = null,
+                        error = "分类失败: ${e.message}"
+                    )
+                }
+            }
+        }
     }
 }

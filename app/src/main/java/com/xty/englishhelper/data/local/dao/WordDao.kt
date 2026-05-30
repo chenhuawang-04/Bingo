@@ -103,8 +103,29 @@ interface WordDao {
     // For article matching: load all words' id, dictionaryId, normalizedSpelling, inflectionsJson
     @Query("SELECT id, dictionary_id, normalized_spelling, inflections_json FROM words")
     suspend fun getAllWordsForMatching(): List<WordMatchProjection>
+
+    // ── Entry Type Classification ──
+
+    @Query("SELECT id, spelling, meanings_json, root_explanation FROM words WHERE dictionary_id = :dictionaryId AND entry_type IS NULL LIMIT :limit")
+    suspend fun getWordsWithoutEntryType(dictionaryId: Long, limit: Int): List<EntryTypeClassificationInput>
+
+    @Query("UPDATE words SET entry_type = :entryType WHERE id = :wordId")
+    suspend fun updateEntryType(wordId: Long, entryType: String)
+
+    @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId AND entry_type IS NULL")
+    suspend fun countWordsWithoutEntryType(dictionaryId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId AND entry_type = :entryType")
+    suspend fun countByEntryType(dictionaryId: Long, entryType: String): Int
 }
 
 data class WordIdSpelling(val id: Long, @ColumnInfo(name = "normalized_spelling") val normalizedSpelling: String)
 data class AssociationWithSpelling(val wordId: Long, val spelling: String, val similarity: Float, val commonSegmentsJson: String)
 data class WordDecompositionProjection(val id: Long, val decompositionJson: String)
+
+data class EntryTypeClassificationInput(
+    val id: Long,
+    val spelling: String,
+    @ColumnInfo(name = "meanings_json") val meaningsJson: String,
+    @ColumnInfo(name = "root_explanation") val rootExplanation: String
+)
