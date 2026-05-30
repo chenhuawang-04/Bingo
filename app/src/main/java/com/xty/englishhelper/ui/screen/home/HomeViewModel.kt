@@ -169,6 +169,13 @@ class HomeViewModel @Inject constructor(
     // ── TEMPORARY: Entry Type Classification ──
     // THIS FUNCTION SHOULD BE REMOVED after all dictionaries are classified.
 
+    @Volatile
+    private var classificationCancellationFlag = false
+
+    fun cancelEntryTypeClassification() {
+        classificationCancellationFlag = true
+    }
+
     fun startEntryTypeClassification() {
         val dictionaries = _uiState.value.dictionaries
         if (dictionaries.isEmpty()) {
@@ -177,30 +184,54 @@ class HomeViewModel @Inject constructor(
         }
         if (_uiState.value.isClassifying) return
 
+        classificationCancellationFlag = false
         _uiState.update { it.copy(isClassifying = true, classificationProgress = "正在分类...") }
 
         viewModelScope.launch {
+            val failedDictionaries = mutableListOf<String>()
+            var totalClassified = 0
+
             try {
-                var totalClassified = 0
                 for ((index, dict) in dictionaries.withIndex()) {
+                    if (classificationCancellationFlag) {
+                        _uiState.update {
+                            it.copy(
+                                isClassifying = false,
+                                classificationProgress = "已取消分类，已完成 $totalClassified 个词条"
+                            )
+                        }
+                        return@launch
+                    }
+
                     _uiState.update {
                         it.copy(classificationProgress = "正在分类第 ${index + 1}/${dictionaries.size} 本辞书: ${dict.name}")
                     }
-                    val classified = wordPoolRepository.classifyEntryTypes(
-                        dictionaryId = dict.id,
-                        isCancelled = { false },
-                        onProgress = { done, total ->
-                            _uiState.update {
-                                it.copy(classificationProgress = "正在分类 ${dict.name}: $done / $total")
+
+                    try {
+                        val classified = wordPoolRepository.classifyEntryTypes(
+                            dictionaryId = dict.id,
+                            isCancelled = { classificationCancellationFlag },
+                            onProgress = { done, total ->
+                                _uiState.update {
+                                    it.copy(classificationProgress = "正在分类 ${dict.name}: $done / $total")
+                                }
                             }
-                        }
-                    )
-                    totalClassified += classified
+                        )
+                        totalClassified += classified
+                    } catch (e: Exception) {
+                        Log.w("HomeViewModel", "Failed to classify dictionary: ${dict.name}", e)
+                        failedDictionaries.add(dict.name)
+                    }
+                }
+
+                val message = when {
+                    failedDictionaries.isEmpty() -> "分类完成，共处理 $totalClassified 个词条"
+                    else -> "分类完成，共处理 $totalClassified 个词条，失败: ${failedDictionaries.joinToString(", ")}"
                 }
                 _uiState.update {
                     it.copy(
                         isClassifying = false,
-                        classificationProgress = "分类完成，共处理 $totalClassified 个词条"
+                        classificationProgress = message
                     )
                 }
             } catch (e: Exception) {
