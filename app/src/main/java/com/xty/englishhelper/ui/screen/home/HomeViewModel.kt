@@ -170,8 +170,8 @@ class HomeViewModel @Inject constructor(
     // THIS FUNCTION SHOULD BE REMOVED after all dictionaries are classified.
 
     fun startEntryTypeClassification() {
-        val dict = _uiState.value.dictionaries.firstOrNull()
-        if (dict == null) {
+        val dictionaries = _uiState.value.dictionaries
+        if (dictionaries.isEmpty()) {
             _uiState.update { it.copy(error = "没有辞书，请先创建或导入一个辞书") }
             return
         }
@@ -181,19 +181,26 @@ class HomeViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val classified = wordPoolRepository.classifyEntryTypes(
-                    dictionaryId = dict.id,
-                    isCancelled = { false },
-                    onProgress = { done, total ->
-                        _uiState.update {
-                            it.copy(classificationProgress = "已分类 $done / $total")
-                        }
+                var totalClassified = 0
+                for ((index, dict) in dictionaries.withIndex()) {
+                    _uiState.update {
+                        it.copy(classificationProgress = "正在分类第 ${index + 1}/${dictionaries.size} 本辞书: ${dict.name}")
                     }
-                )
+                    val classified = wordPoolRepository.classifyEntryTypes(
+                        dictionaryId = dict.id,
+                        isCancelled = { false },
+                        onProgress = { done, total ->
+                            _uiState.update {
+                                it.copy(classificationProgress = "正在分类 ${dict.name}: $done / $total")
+                            }
+                        }
+                    )
+                    totalClassified += classified
+                }
                 _uiState.update {
                     it.copy(
                         isClassifying = false,
-                        classificationProgress = "分类完成，共处理 $classified 个词条"
+                        classificationProgress = "分类完成，共处理 $totalClassified 个词条"
                     )
                 }
             } catch (e: Exception) {
