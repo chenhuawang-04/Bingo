@@ -346,11 +346,15 @@ class WordPoolRepositoryImpl @Inject constructor(
         // Review low-confidence edges with REVIEWER model
         coroutineContext.ensureActive()
         val allEdgesForReview = wordEdgeDao.getAllEdgesFull(dictionaryId)
-        edgeReviewer.reviewEdgesWithAi(allEdgesForReview, domains, dictionaryId)
+        val reviewModified = edgeReviewer.reviewEdgesWithAi(allEdgesForReview, domains, dictionaryId)
 
-        // Build pools from ALL edges in DB
+        // Build pools from edges in DB; re-fetch only if reviewer modified any edges
         coroutineContext.ensureActive()
-        val allEdges = wordEdgeDao.getAllEdgesFull(dictionaryId)
+        val allEdges = if (reviewModified) {
+            wordEdgeDao.getAllEdgesFull(dictionaryId)
+        } else {
+            allEdgesForReview
+        }
         val wordIds = domains.map { it.id }.toSet()
         return rebuildPoolsFromEdges(allEdges, wordIds)
     }
@@ -467,7 +471,13 @@ class WordPoolRepositoryImpl @Inject constructor(
                 val score = PoolQualityScorer.computePoolQualityScore(members, edgesByWordId)
                 result.add(BuiltPoolWithWordIds(focusWordId = null, memberWordIds = members, qualityScore = score))
             } else {
-                members.chunked(maxPoolSize).forEach { chunk ->
+                // Sort members by edge connectivity so connected words stay in same chunk
+                val degreeMap = mutableMapOf<Long, Int>()
+                members.forEach { wordId ->
+                    degreeMap[wordId] = significantEdges.count { it.wordIdA == wordId || it.wordIdB == wordId }
+                }
+                val sortedMembers = members.sortedByDescending { degreeMap[it] ?: 0 }
+                sortedMembers.chunked(maxPoolSize).forEach { chunk ->
                     if (chunk.size >= 2) {
                         val score = PoolQualityScorer.computePoolQualityScore(chunk, edgesByWordId)
                         result.add(BuiltPoolWithWordIds(focusWordId = null, memberWordIds = chunk, qualityScore = score))

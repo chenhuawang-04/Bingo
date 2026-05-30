@@ -29,16 +29,18 @@ class EdgeReviewer @javax.inject.Inject constructor(
 ) {
     /**
      * Review edges with confidence < 0.6 or status == "warning" using the REVIEWER AI model.
+     * @return true if any edges were modified (removed or adjusted), false otherwise.
      */
     suspend fun reviewEdgesWithAi(
         edges: List<WordEdgeEntity>,
         domains: List<WordDetails>,
         dictionaryId: Long
-    ) {
+    ): Boolean {
         val needsReview = edges.filter { it.confidence < 0.6 || it.status == "warning" }
-        if (needsReview.isEmpty()) return
+        if (needsReview.isEmpty()) return false
 
         val wordMap = domains.associateBy { it.id }
+        var modified = false
 
         needsReview.chunked(20).forEach { batch ->
             coroutineContext.ensureActive()
@@ -48,23 +50,27 @@ class EdgeReviewer @javax.inject.Inject constructor(
                 val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
                 val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
                 val normalized = EdgeParser.normalizeResponse(response, unwrapEnabled, repairEnabled)
-                parseAndApplyReview(normalized, batch)
+                if (parseAndApplyReview(normalized, batch)) {
+                    modified = true
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w("EdgeReviewer", "Edge review batch failed, keeping original edges", e)
             }
         }
+        return modified
     }
 
     /**
      * Parse the reviewer AI response and apply verdicts to the DB.
      * BUG 8 fix: wraps delete+insert in a single transaction for atomicity.
+     * @return true if any edges were removed or adjusted.
      */
-    private suspend fun parseAndApplyReview(text: String, batch: List<WordEdgeEntity>) {
+    private suspend fun parseAndApplyReview(text: String, batch: List<WordEdgeEntity>): Boolean {
         val arrayStart = text.indexOf('[')
         val arrayEnd = text.lastIndexOf(']')
-        if (arrayStart < 0 || arrayEnd < 0) return
+        if (arrayStart < 0 || arrayEnd < 0) return false
         val arrayText = text.substring(arrayStart, arrayEnd + 1)
 
         // Collect all operations first, then apply in a transaction
@@ -121,7 +127,9 @@ class EdgeReviewer @javax.inject.Inject constructor(
                     wordEdgeDao.updateEdgeStatus(op.edgeId, op.newStatus, op.newConfidence)
                 }
             }
+            return true
         }
+        return false
     }
 
     private suspend fun callAiForReviewer(prompt: String): String {

@@ -189,27 +189,35 @@ internal object EdgeParser {
 
             // Gate 1: sense_match -- SEMANTIC cluster edges must bind to a specific sense
             // BUG 4 fix: added the missing sense_match gate
+            // N6 fix: use more specific word-boundary patterns to reduce false positives
             if (edge.edgeType.cluster == EdgeCluster.SEMANTIC) {
                 val reasonLower = edge.reason?.lowercase() ?: ""
-                // The reason should reference a specific sense/meaning/definition
-                // Check if it mentions specific sense indicators or just generic "related"
-                val hasSenseBinding = reasonLower.contains("义") ||
-                        reasonLower.contains("sense") ||
-                        reasonLower.contains("meaning") ||
-                        reasonLower.contains("定义") ||
-                        reasonLower.contains("释义") ||
-                        reasonLower.contains("含义") ||
-                        reasonLower.contains("表示") ||
-                        reasonLower.contains("意为") ||
-                        reasonLower.contains("指") ||
-                        reasonLower.contains("同义") ||
-                        reasonLower.contains("近义") ||
-                        reasonLower.contains("反义") ||
-                        reasonLower.contains("上下位") ||
-                        reasonLower.contains("synonym") ||
-                        reasonLower.contains("antonym") ||
-                        reasonLower.contains("hypernym") ||
-                        reasonLower.contains("hyponym")
+                // The reason should reference a specific sense/meaning/definition.
+                // Use longer, more specific Chinese phrases (>=2 chars) and word-boundary
+                // English terms to avoid false positives from single characters like "指".
+                val hasSenseBinding =
+                    // Chinese multi-char sense indicators (2+ chars to avoid single-char false matches)
+                    reasonLower.contains("释义") ||
+                    reasonLower.contains("含义") ||
+                    reasonLower.contains("定义") ||
+                    reasonLower.contains("意为") ||
+                    reasonLower.contains("表示") ||
+                    reasonLower.contains("同义词") ||
+                    reasonLower.contains("近义词") ||
+                    reasonLower.contains("反义词") ||
+                    reasonLower.contains("上下位") ||
+                    reasonLower.contains("词义") ||
+                    reasonLower.contains("语义") ||
+                    reasonLower.contains("指代") ||
+                    // English sense-related terms (word-boundary matching)
+                    Regex("\\bsynonym\\b").containsMatchIn(reasonLower) ||
+                    Regex("\\bantonym\\b").containsMatchIn(reasonLower) ||
+                    Regex("\\bhypernym\\b").containsMatchIn(reasonLower) ||
+                    Regex("\\bhyponym\\b").containsMatchIn(reasonLower) ||
+                    Regex("\\bsense\\b").containsMatchIn(reasonLower) ||
+                    Regex("\\bmeaning\\b").containsMatchIn(reasonLower) ||
+                    Regex("\\bdefinition\\b").containsMatchIn(reasonLower) ||
+                    Regex("\\brefers?\\s+to\\b").containsMatchIn(reasonLower)
                 if (!hasSenseBinding) return@filter false
             }
 

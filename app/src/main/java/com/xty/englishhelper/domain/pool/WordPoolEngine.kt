@@ -245,6 +245,7 @@ class WordPoolEngine {
     ): List<BuiltPool> {
         val remaining = component.toMutableSet()
         val result = mutableListOf<BuiltPool>()
+        val dropped = mutableListOf<Int>()
 
         // Build adjacency in component
         val adjacency = mutableMapOf<Int, MutableSet<Int>>()
@@ -259,7 +260,7 @@ class WordPoolEngine {
         }
 
         while (remaining.isNotEmpty()) {
-            // Calculate connection strength: directRef × 2, editDist × 1
+            // Calculate connection strength: directRef x 2, editDist x 1
             val strength = mutableMapOf<Int, Int>()
             remaining.forEach { idx ->
                 var s = 0
@@ -293,7 +294,7 @@ class WordPoolEngine {
             if (poolMembers.size >= 2) {
                 result.add(BuiltPool(memberIndices = poolMembers.sorted(), coreIndex = core))
             } else {
-                // No neighbors via edges — fallback: grab closest nodes by wordId
+                // No neighbors via edges -- fallback: grab closest nodes by wordId
                 val fallbackNeighbors = remaining
                     .filter { it != core }
                     .sortedBy { candidates[it].wordId }
@@ -301,19 +302,43 @@ class WordPoolEngine {
                 poolMembers.addAll(fallbackNeighbors)
                 if (poolMembers.size >= 2) {
                     result.add(BuiltPool(memberIndices = poolMembers.sorted(), coreIndex = core))
+                } else {
+                    // N10 fix: singletons that cannot form a pool are tracked for reassignment
+                    dropped.addAll(poolMembers)
                 }
             }
 
             remaining.removeAll(poolMembers.toSet())
         }
 
+        // N10 fix: reassign dropped singletons to the existing pool sharing the most edges
+        if (dropped.isNotEmpty() && result.isNotEmpty()) {
+            val mutableResult = result.toMutableList()
+            dropped.forEach { orphan ->
+                val orphanNeighbors = adjacency[orphan] ?: emptySet()
+                // Find pool whose members share the most edges with this orphan
+                val bestPoolIdx = mutableResult.indices.maxByOrNull { poolIdx ->
+                    mutableResult[poolIdx].memberIndices.count { it in orphanNeighbors }
+                }
+                if (bestPoolIdx != null) {
+                    val updatedMembers = (mutableResult[bestPoolIdx].memberIndices + orphan).sorted()
+                    mutableResult[bestPoolIdx] = BuiltPool(
+                        memberIndices = updatedMembers,
+                        coreIndex = mutableResult[bestPoolIdx].coreIndex
+                    )
+                }
+            }
+            return mutableResult
+        }
+
         return result
     }
 
     private fun extractChineseSubstrings(text: String, minLength: Int): List<String> {
-        val result = mutableListOf<String>()
+        val seen = linkedSetOf<String>()
         // Extract contiguous Chinese character sequences
         // BUG 7 fix: cap at max 3 substrings per run to avoid O(n^3) performance
+        // N5 fix: use LinkedHashSet for O(1) dedup instead of O(n) List.contains
         val chineseRuns = Regex("[\\u4e00-\\u9fff]+").findAll(text)
         chineseRuns.forEach { match ->
             val run = match.value
@@ -325,15 +350,14 @@ class WordPoolEngine {
                     for (start in 0..run.length - len) {
                         if (count >= 3) break
                         val substr = run.substring(start, start + len)
-                        if (substr !in result) {
-                            result.add(substr)
+                        if (seen.add(substr)) {
                             count++
                         }
                     }
                 }
             }
         }
-        return result
+        return seen.toList()
     }
 
     private fun levenshtein(a: String, b: String): Int {
