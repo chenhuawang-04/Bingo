@@ -30,8 +30,7 @@ class EntryTypeClassifier @javax.inject.Inject constructor(
     }
 
     /**
-     * Classify all words in the dictionary.
-     * First resets all entry_type to NULL, then reclassifies using AI.
+     * Classify all unclassified words in the dictionary.
      * @return total number of words classified in this run
      */
     suspend fun classify(
@@ -39,11 +38,8 @@ class EntryTypeClassifier @javax.inject.Inject constructor(
         isCancelled: () -> Boolean,
         onProgress: (classified: Int, total: Int) -> Unit
     ): Int {
-        // Reset all entry_type to NULL for reclassification
-        wordDao.resetEntryTypes(dictionaryId)
-
-        // Count all words in dictionary
-        val totalWords = wordDao.countAllWords(dictionaryId)
+        // BUG 3 fix: count only words with entry_type IS NULL
+        val totalWords = wordDao.countWordsWithoutEntryType(dictionaryId)
         if (totalWords == 0) return 0
 
         var totalClassified = 0
@@ -53,7 +49,7 @@ class EntryTypeClassifier @javax.inject.Inject constructor(
         while (true) {
             if (isCancelled()) break
 
-            // Query all words for classification
+            // BUG 3 fix: query only unclassified words (WHERE entry_type IS NULL)
             val batch = wordDao.getWordsForClassification(dictionaryId, lastId, batchSize)
             if (batch.isEmpty()) break
 
