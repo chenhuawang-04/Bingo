@@ -30,7 +30,7 @@ class EntryTypeClassifier @javax.inject.Inject constructor(
     }
 
     /**
-     * Classify all unclassified words in the dictionary.
+     * Classify ALL words in the dictionary.
      * @return total number of words classified in this run
      */
     suspend fun classify(
@@ -38,8 +38,8 @@ class EntryTypeClassifier @javax.inject.Inject constructor(
         isCancelled: () -> Boolean,
         onProgress: (classified: Int, total: Int) -> Unit
     ): Int {
-        // BUG 3 fix: count only words with entry_type IS NULL
-        val totalWords = wordDao.countWordsWithoutEntryType(dictionaryId)
+        // Count ALL words in dictionary
+        val totalWords = wordDao.countAllWords(dictionaryId)
         if (totalWords == 0) return 0
 
         var totalClassified = 0
@@ -49,7 +49,7 @@ class EntryTypeClassifier @javax.inject.Inject constructor(
         while (true) {
             if (isCancelled()) break
 
-            // BUG 3 fix: query only unclassified words (WHERE entry_type IS NULL)
+            // Query ALL words for classification
             val batch = wordDao.getWordsForClassification(dictionaryId, lastId, batchSize)
             if (batch.isEmpty()) break
 
