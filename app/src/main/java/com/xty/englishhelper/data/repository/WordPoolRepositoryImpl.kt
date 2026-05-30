@@ -291,8 +291,9 @@ class WordPoolRepositoryImpl @Inject constructor(
 
             // BUG 1 fix: collect all edges from concurrent async calls,
             // then do a single batch insert after all window tasks complete.
-            val windowResults = windowTasks.map { task ->
-                coroutineScope {
+            // N1 fix: use single coroutineScope wrapping all async for true concurrency.
+            val windowResults = coroutineScope {
+                windowTasks.map { task ->
                     async {
                         semaphore.withPermit {
                             rateLimiter.acquire()
@@ -332,8 +333,8 @@ class WordPoolRepositoryImpl @Inject constructor(
                             }
                         }
                     }
-                }
-            }.awaitAll()
+                }.awaitAll()
+            }
 
             // BUG 1 fix: batch insert after all concurrent work is done
             val newEdges = windowResults.flatten()
@@ -392,18 +393,24 @@ class WordPoolRepositoryImpl @Inject constructor(
     /**
      * BUG 9 fix: 429 rate-limit errors are retryable with exponential backoff.
      * Network timeouts and connection errors are explicitly handled.
+     * N7 fix: default to false, only retry known transient errors.
      */
     private fun isRetryableError(e: Exception): Boolean {
         val msg = e.message?.lowercase() ?: ""
+        // Non-retryable: auth errors
         if (msg.contains("401") || msg.contains("403") || msg.contains("unauthorized") || msg.contains("invalid api key")) {
             return false
         }
-        // BUG 9 fix: 429 is now retryable (handled with longer backoff in caller)
-        // Explicit handling of network errors
+        // Retryable: rate limit (handled with longer backoff in caller)
+        if (isRateLimitError(e)) return true
+        // Retryable: network timeouts and connection errors
         if (e is SocketTimeoutException || e is java.net.ConnectException) return true
         if (e is IOException && (msg.contains("timeout") || msg.contains("connect"))) return true
         if (e is kotlinx.coroutines.TimeoutCancellationException) return true
-        return true
+        // Retryable: server errors (5xx)
+        if (msg.contains("500") || msg.contains("502") || msg.contains("503") || msg.contains("504")) return true
+        // Default: do not retry unknown errors (programming errors, etc.)
+        return false
     }
 
     private fun isRateLimitError(e: Exception): Boolean {
@@ -412,14 +419,6 @@ class WordPoolRepositoryImpl @Inject constructor(
     }
 
     // ── Reviewer ──
-
-    private suspend fun reviewEdgesWithAi(
-        edges: List<WordEdgeEntity>,
-        domains: List<WordDetails>,
-        dictionaryId: Long
-    ) {
-        edgeReviewer.reviewEdgesWithAi(edges, domains, dictionaryId)
-    }
 
     /**
      * Union-Find based pool extraction from edge graph.
