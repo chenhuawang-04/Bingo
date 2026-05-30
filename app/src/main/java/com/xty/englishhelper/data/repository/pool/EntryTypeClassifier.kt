@@ -68,12 +68,11 @@ class EntryTypeClassifier @javax.inject.Inject constructor(
                 if (entryType != null) {
                     wordDao.updateEntryType(word.id, entryType.second)
                     totalClassified++
-                    // Update progress after each word for better UX
-                    onProgress(totalClassified, totalWords)
                 }
             }
 
             lastId = batch.last().id
+            onProgress(totalClassified, totalWords)
         }
 
         return totalClassified
