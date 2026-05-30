@@ -7,6 +7,7 @@ import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
+import com.xty.englishhelper.data.local.entity.WordEdgeExcludedEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
 import com.xty.englishhelper.data.local.relation.WordWithDetails
@@ -18,6 +19,7 @@ import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
+import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.pool.BuiltPool
 import com.xty.englishhelper.domain.pool.PoolCandidate
@@ -30,6 +32,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -39,8 +42,24 @@ import kotlin.coroutines.coroutineContext
 
 private data class BuiltPoolWithWordIds(
     val focusWordId: Long?,
-    val memberWordIds: List<Long>
+    val memberWordIds: List<Long>,
+    val qualityScore: Int? = null
 )
+
+private data class ParsedEdge(
+    val index: Int,
+    val edgeType: EdgeType,
+    val status: String,
+    val learningValue: Int,
+    val relationStrength: Int,
+    val confidence: Double,
+    val reason: String?,
+    val warningNote: String?,
+    val evidenceSource: String? = null
+)
+
+private class RetryableEdgeException(message: String, cause: Throwable? = null) : Exception(message, cause)
+private class NonRetryableEdgeException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 /**
  * Simple token-bucket rate limiter.
@@ -85,9 +104,9 @@ class WordPoolRepositoryImpl @Inject constructor(
     private val engine = WordPoolEngine()
 
     companion object {
-        private val EDGE_RESPONSE_PATTERN_I_T = Regex("""\{\s*"i"\s*:\s*(\d+)\s*,\s*"t"\s*:\s*"(\w+)"\s*\}""")
-        private val EDGE_RESPONSE_PATTERN_T_I = Regex("""\{\s*"t"\s*:\s*"(\w+)"\s*,\s*"i"\s*:\s*(\d+)\s*\}""")
         private val INT_ARRAY_PATTERN = Regex("""\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]""")
+        private val VALID_STATUSES = setOf("core", "support", "warning", "optional")
+        private const val MAX_EDGE_RETRIES = 4
     }
 
     override suspend fun getPoolsForWord(wordId: Long): List<WordPool> {
@@ -155,7 +174,8 @@ class WordPoolRepositoryImpl @Inject constructor(
                         focusWordId = builtPool.focusWordId,
                         strategy = strategy.dbValue,
                         algorithmVersion = strategy.algorithmVersion,
-                        updatedAt = now
+                        updatedAt = now,
+                        qualityScore = builtPool.qualityScore
                     )
                 )
                 wordPoolDao.insertMembers(
@@ -196,7 +216,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         val edges = wordEdgeDao.getAllEdges(dictionaryId)
         val adj = mutableMapOf<Long, MutableMap<Long, MutableSet<EdgeType>>>()
         edges.forEach { e ->
-            val type = EdgeType.fromDbValue(e.edgeType)
+            val type = EdgeType.fromDbValue(e.edgeType) ?: return@forEach
             adj.getOrPut(e.wordIdA) { mutableMapOf() }
                 .getOrPut(e.wordIdB) { mutableSetOf() }
                 .add(type)
@@ -332,10 +352,9 @@ class WordPoolRepositoryImpl @Inject constructor(
                             val count = completedCalls.incrementAndGet()
                             onProgress(count, totalAiCalls)
 
-                            aiResult.mapNotNull { (j, typeStr) ->
-                                if (j !in window.indices) return@mapNotNull null
-                                val otherWord = window[j]
-                                val edgeType = parseEdgeType(typeStr)
+                            aiResult.mapNotNull { edge ->
+                                if (edge.index !in window.indices) return@mapNotNull null
+                                val otherWord = window[edge.index]
                                 val (idA, idB) = if (currentWord.id < otherWord.id) {
                                     currentWord.id to otherWord.id
                                 } else {
@@ -344,8 +363,15 @@ class WordPoolRepositoryImpl @Inject constructor(
                                 WordEdgeEntity(
                                     wordIdA = idA,
                                     wordIdB = idB,
-                                    edgeType = edgeType.dbValue,
-                                    dictionaryId = dictionaryId
+                                    edgeType = edge.edgeType.dbValue,
+                                    dictionaryId = dictionaryId,
+                                    status = edge.status,
+                                    learningValue = edge.learningValue,
+                                    relationStrength = edge.relationStrength,
+                                    confidence = edge.confidence,
+                                    reason = edge.reason,
+                                    warningNote = edge.warningNote,
+                                    evidenceSource = edge.evidenceSource
                                 )
                             }
                         }
@@ -360,26 +386,86 @@ class WordPoolRepositoryImpl @Inject constructor(
             }
         }
 
+        // Review low-confidence edges with REVIEWER model
+        coroutineContext.ensureActive()
+        val allEdgesForReview = wordEdgeDao.getAllEdgesFull(dictionaryId)
+        reviewEdgesWithAi(allEdgesForReview, domains, dictionaryId)
+
         // Build pools from ALL edges in DB (including previously persisted ones)
         coroutineContext.ensureActive()
-        val allEdgeProjections = wordEdgeDao.getAllEdges(dictionaryId)
-        val allEdges = allEdgeProjections.map {
-            WordEdgeEntity(wordIdA = it.wordIdA, wordIdB = it.wordIdB, edgeType = it.edgeType, dictionaryId = dictionaryId)
-        }
+        val allEdges = wordEdgeDao.getAllEdgesFull(dictionaryId)
         val wordIds = domains.map { it.id }.toSet()
         return rebuildPoolsFromEdges(allEdges, wordIds)
     }
 
     private fun buildEdgePrompt(
-        target: com.xty.englishhelper.domain.model.WordDetails,
-        window: List<com.xty.englishhelper.domain.model.WordDetails>
+        target: WordDetails,
+        window: List<WordDetails>
     ): String {
         return buildString {
-            appendLine("你是词汇学习助手。下面是1个目标词和${window.size}个候选词（index. spelling: 首条中文释义）。")
+            appendLine("你是英语词汇学习专家。下面是1个目标词和${window.size}个候选词（index. spelling: 首条中文释义）。")
+            appendLine()
             appendLine("目标词：${target.spelling}（${target.meanings.firstOrNull()?.definition ?: ""}）")
-            appendLine("请找出目标词与候选词之间的关系，返回JSON数组，每个元素包含候选词序号和关系类型。")
-            appendLine("关系类型：S=形近(拼写相似), M=意近(语义相似), R=词根相似, P=发音相似")
-            appendLine("返回格式：[{\"i\":1,\"t\":\"S\"},{\"i\":5,\"t\":\"M\"}]，若无相关词返回 []。")
+            appendLine()
+            appendLine("请分析目标词与每个候选词之间的学习关联。返回JSON数组，每个元素是一个关联对象。")
+            appendLine()
+            appendLine("【核心原则】")
+            appendLine("- 必须先区分词性，再区分义项。")
+            appendLine("- 先区分目标词的义项，再判断候选词与哪个义项相关。")
+            appendLine("- 不同义项的关联应独立判断，不要混在一起。")
+            appendLine("- 如果候选词与目标词的某个义项强相关但与其他义项无关，标注到具体义项。")
+            appendLine("- \"语言学相关\"不等于\"值得加入\"；对每个候选都判断学习价值。")
+            appendLine("- 不得把罕见、古旧、不自然、牵强附会的词当作高优先级。")
+            appendLine()
+            appendLine("【允许的 edge_type 值及含义】")
+            appendLine("SEMANTIC_SYNONYM — 同义/近义词（如 big/large）")
+            appendLine("SEMANTIC_ANTONYM — 反义词（如 hot/cold）")
+            appendLine("SEMANTIC_OVERLAP — 语义有重叠但非严格同义（如 job/task）")
+            appendLine("SEMANTIC_HYPERNYM — 目标词是候选词的上位词（如 animal > dog）")
+            appendLine("SEMANTIC_HYPONYM — 目标词是候选词的下位词（如 dog < animal）")
+            appendLine("FORM_SPELLING — 拼写形近易混淆（如 affect/effect）")
+            appendLine("FORM_HOMOPHONE — 同音词（如 their/there）")
+            appendLine("FORM_PRONUNCIATION — 发音相似但拼写不同（如 desert/dessert）")
+            appendLine("FORM_MINIMAL_PAIR — 最小对立体（如 ship/sheep）")
+            appendLine("FAMILY_INFLECTION — 同一词的不同屈折形式（如 run/running）")
+            appendLine("FAMILY_DERIVATION — 派生词（如 happy/happiness）")
+            appendLine("FAMILY_SAME_ROOT — 共享词根（如 port/transport/export）")
+            appendLine("USAGE_COLLOCATION — 常见搭配（如 make/mistake）")
+            appendLine("USAGE_PHRASE — 固定短语组成（如 take/care）")
+            appendLine("USAGE_PATTERN — 句型模式相关（如 suggest/suggest that）")
+            appendLine("LEARNING_CONFUSABLE — 学习者常混淆的词对（如 lie/lay）")
+            appendLine("LEARNING_MISUSE_PAIR — 常见误用配对（如 borrow/lend）")
+            appendLine()
+            appendLine("【status 取值】")
+            appendLine("core — 核心关联，必须掌握")
+            appendLine("support — 辅助关联，有助于理解")
+            appendLine("warning — 存在混淆风险，需特别注意")
+            appendLine("optional — 可选了解")
+            appendLine()
+            appendLine("【返回JSON格式】")
+            appendLine("""[{"i":1,"edge_type":"SEMANTIC_SYNONYM","relation_strength":4,"learning_value":5,"status":"core","register":"neutral","reason":"两词都表示'大的'，高频同义替换","warning_note":"","confidence":0.9,"evidence_source":"高频同义替换"}]""")
+            appendLine()
+            appendLine("字段说明：")
+            appendLine("- i: 候选词序号（从0开始）")
+            appendLine("- edge_type: 上述16种之一")
+            appendLine("- relation_strength: 1-5，关系紧密程度")
+            appendLine("- learning_value: 1-5，学习价值")
+            appendLine("- status: core/support/warning/optional")
+            appendLine("- register: 语域（neutral/formal/informal/academic/technical，无法判断填 neutral）")
+            appendLine("- reason: 一句话说明为什么有关系（中文）")
+            appendLine("- warning_note: 如有混淆风险给出警示（中文，无则空字符串）")
+            appendLine("- confidence: 0.0-1.0，你对这个判断的自信程度")
+            appendLine("- evidence_source: 证据来源简述（如\"拼写相似+高频词\"、\"常见搭配\"、\"词典标注易混\"，不超过10字）")
+            appendLine()
+            appendLine("【自检要求】")
+            appendLine("输出结果前请自查：")
+            appendLine("1. 是否有边只因拼写/词根相近就纳入，但实际学习价值很低？")
+            appendLine("2. 是否有边的关系类型标注错误？（如把易混淆词标为同义词）")
+            appendLine("3. status=core 的边是否确实应为核心？")
+            appendLine("4. 是否有重复或近重复的边？")
+            appendLine("如发现问题请自行修正后再输出。")
+            appendLine()
+            appendLine("只返回确实存在关联的词对。无关联则返回 []。")
             appendLine(Constants.JSON_STRICT_RULES)
             appendLine()
             window.forEachIndexed { idx, w ->
@@ -393,53 +479,220 @@ class WordPoolRepositoryImpl @Inject constructor(
         prompt: String,
         windowSize: Int,
         unwrapEnabled: Boolean,
-        repairEnabled: Boolean,
-        retryCount: Int = 0
-    ): List<Pair<Int, String>> {
-        return try {
-            val response = callAi(prompt)
-            val normalized = normalizeResponse(response, unwrapEnabled, repairEnabled)
-            parseEdgeResponse(normalized, windowSize)
-        } catch (e: Exception) {
-            if (retryCount < 1) {
-                Log.w("WordPoolRepo", "AI edge call failed, retrying", e)
-                callAiForEdges(prompt, windowSize, unwrapEnabled, repairEnabled, retryCount + 1)
-            } else {
-                Log.w("WordPoolRepo", "AI edge call failed after retry", e)
-                emptyList()
+        repairEnabled: Boolean
+    ): List<ParsedEdge> {
+        var lastException: Exception? = null
+        for (attempt in 0 until MAX_EDGE_RETRIES) {
+            try {
+                val response = callAi(prompt)
+                val normalized = normalizeResponse(response, unwrapEnabled, repairEnabled)
+                return parseAndValidateEdgeResponse(normalized, windowSize)
+            } catch (e: NonRetryableEdgeException) {
+                Log.w("WordPoolRepo", "Non-retryable error on attempt ${attempt + 1}", e)
+                return emptyList()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastException = e
+                val retryable = isRetryableError(e)
+                Log.w("WordPoolRepo", "AI edge call attempt ${attempt + 1}/$MAX_EDGE_RETRIES failed (retryable=$retryable)", e)
+                if (!retryable) return emptyList()
+                if (attempt < MAX_EDGE_RETRIES - 1) {
+                    delay(1000L * (attempt + 1))
+                }
+            }
+        }
+        Log.w("WordPoolRepo", "AI edge call failed after $MAX_EDGE_RETRIES attempts", lastException)
+        return emptyList()
+    }
+
+    private fun isRetryableError(e: Exception): Boolean {
+        val msg = e.message?.lowercase() ?: ""
+        if (msg.contains("401") || msg.contains("403") || msg.contains("unauthorized") || msg.contains("invalid api key")) {
+            return false
+        }
+        if (msg.contains("429") || msg.contains("rate limit")) {
+            return false
+        }
+        return true
+    }
+
+    private fun parseAndValidateEdgeResponse(text: String, maxValue: Int): List<ParsedEdge> {
+        val arrayStart = text.indexOf('[')
+        val arrayEnd = text.lastIndexOf(']')
+        if (arrayStart < 0 || arrayEnd < 0 || arrayEnd <= arrayStart) {
+            throw RetryableEdgeException("No JSON array found in response")
+        }
+        val arrayText = text.substring(arrayStart, arrayEnd + 1)
+
+        // Empty array is valid
+        val content = arrayText.removePrefix("[").removeSuffix("]").trim()
+        if (content.isEmpty()) return emptyList()
+
+        val results = mutableListOf<ParsedEdge>()
+        val objPattern = Regex("""\{[^{}]+\}""")
+        objPattern.findAll(arrayText).forEach { match ->
+            val obj = match.value
+            try {
+                val index = extractJsonInt(obj, "i")
+                    ?: throw RetryableEdgeException("Missing 'i' field")
+                if (index !in 0 until maxValue) return@forEach
+
+                val edgeTypeStr = extractJsonString(obj, "edge_type")
+                    ?: throw RetryableEdgeException("Missing edge_type field")
+                val edgeType = EdgeType.entries.firstOrNull { it.dbValue == edgeTypeStr }
+                    ?: throw RetryableEdgeException("Unknown edge_type: $edgeTypeStr")
+
+                val relStrength = extractJsonInt(obj, "relation_strength")?.coerceIn(1, 5) ?: 3
+                val learnValue = extractJsonInt(obj, "learning_value")?.coerceIn(1, 5) ?: 3
+                val status = extractJsonString(obj, "status")?.let { s ->
+                    VALID_STATUSES.firstOrNull { it == s }
+                } ?: "core"
+                val confidence = extractJsonDouble(obj, "confidence")?.coerceIn(0.0, 1.0) ?: 0.5
+                val reason = extractJsonString(obj, "reason")
+                val warningNote = extractJsonString(obj, "warning_note")
+                val evidenceSource = extractJsonString(obj, "evidence_source")
+
+                results.add(ParsedEdge(index, edgeType, status, learnValue, relStrength, confidence, reason, warningNote, evidenceSource))
+            } catch (e: RetryableEdgeException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("WordPoolRepo", "Failed to parse edge object: $obj", e)
+            }
+        }
+        return results
+    }
+
+    private fun extractJsonInt(json: String, key: String): Int? {
+        val match = Regex(""""$key"\s*:\s*(-?\d+)""").find(json) ?: return null
+        return match.groupValues[1].toIntOrNull()
+    }
+
+    private fun extractJsonString(json: String, key: String): String? {
+        val match = Regex(""""$key"\s*:\s*"([^"]*?)"""").find(json) ?: return null
+        return match.groupValues[1]
+    }
+
+    private fun extractJsonDouble(json: String, key: String): Double? {
+        val match = Regex(""""$key"\s*:\s*([\d.]+)""").find(json) ?: return null
+        return match.groupValues[1].toDoubleOrNull()
+    }
+
+    // ── Reviewer ──
+
+    private suspend fun reviewEdgesWithAi(
+        edges: List<WordEdgeEntity>,
+        domains: List<WordDetails>,
+        dictionaryId: Long
+    ) {
+        val needsReview = edges.filter { it.confidence < 0.6 || it.status == "warning" }
+        if (needsReview.isEmpty()) return
+
+        val wordMap = domains.associateBy { it.id }
+
+        needsReview.chunked(20).forEach { batch ->
+            coroutineContext.ensureActive()
+            val prompt = buildReviewPrompt(batch, wordMap)
+            try {
+                val response = callAiForReviewer(prompt)
+                val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+                val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+                val normalized = normalizeResponse(response, unwrapEnabled, repairEnabled)
+                parseAndApplyReview(normalized, batch)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("WordPoolRepo", "Edge review batch failed, keeping original edges", e)
             }
         }
     }
 
-    private fun parseEdgeResponse(text: String, maxValue: Int): List<Pair<Int, String>> {
-        val result = mutableListOf<Pair<Int, String>>()
-        // Try {"i":N,"t":"X"} pattern first
-        EDGE_RESPONSE_PATTERN_I_T.findAll(text).forEach { match ->
-            val index = match.groupValues[1].toIntOrNull()
-            val type = match.groupValues[2]
-            if (index != null && index in 0 until maxValue) {
-                result.add(index to type)
+    private fun buildReviewPrompt(
+        edges: List<WordEdgeEntity>,
+        wordMap: Map<Long, WordDetails>
+    ): String {
+        return buildString {
+            appendLine("你是英语词池质量审核员。请逐条审核以下 ${edges.size} 条边：")
+            appendLine()
+            edges.forEachIndexed { idx, edge ->
+                val wordA = wordMap[edge.wordIdA]?.spelling ?: "?"
+                val wordB = wordMap[edge.wordIdB]?.spelling ?: "?"
+                appendLine("$idx. $wordA ↔ $wordB | 类型:${edge.edgeType} | 状态:${edge.status} | 置信度:${edge.confidence} | 理由:${edge.reason ?: "无"}")
             }
+            appendLine()
+            appendLine("审核标准：")
+            appendLine("1. 关系类型(edge_type)是否准确？（如易混淆词不应标为同义词）")
+            appendLine("2. status 是否合理？（core=核心/support=辅助/warning=易混/optional=可选）")
+            appendLine("3. confidence 是否恰当？（低置信度边应降级或移除）")
+            appendLine("4. 是否混入了仅\"相关\"但学习价值低的词？（如仅词根相关但现代意义差异大）")
+            appendLine("5. 是否混入了罕见、古旧或证据薄弱的边？")
+            appendLine("6. 是否遗漏了高价值的易混词或核心搭配？")
+            appendLine("7. reason 是否充分解释了纳入原因？")
+            appendLine("8. 是否存在重复或近重复的边？")
+            appendLine("9. 难度与语域是否匹配目标学习者？（如低频学术词不应标为A1核心）")
+            appendLine("10. excluded_candidates 是否合理？是否有本应排除但漏掉的候选？")
+            appendLine()
+            appendLine("返回JSON数组，每个元素：")
+            appendLine("""[{"i":0,"verdict":"keep","new_status":"core","new_confidence":0.8,"note":"调整原因"}]""")
+            appendLine("verdict: keep=保留原样 / adjust=调整status或confidence / remove=移除此边")
+            appendLine("adjust 时必须提供 new_status 和 new_confidence；keep/remove 时可省略。")
+            appendLine("note: 简要说明审核意见（中文）。")
+            appendLine(Constants.JSON_STRICT_RULES)
         }
-        if (result.isNotEmpty()) return result
-        // Fallback: {"t":"X","i":N} pattern
-        EDGE_RESPONSE_PATTERN_T_I.findAll(text).forEach { match ->
-            val type = match.groupValues[1]
-            val index = match.groupValues[2].toIntOrNull()
-            if (index != null && index in 0 until maxValue) {
-                result.add(index to type)
-            }
-        }
-        return result
     }
 
-    private fun parseEdgeType(typeStr: String): EdgeType {
-        return when (typeStr.uppercase()) {
-            "S" -> EdgeType.SPELLING
-            "M" -> EdgeType.MEANING
-            "R" -> EdgeType.ROOT
-            "P" -> EdgeType.PRONUNCIATION
-            else -> EdgeType.AI_GENERAL
+    private suspend fun callAiForReviewer(prompt: String): String {
+        val config = settingsDataStore.getAiConfig(AiSettingsScope.REVIEWER)
+        val client = aiApiClientProvider.getClient(config.provider)
+        return client.sendMessage(
+            url = config.baseUrl,
+            apiKey = config.apiKey,
+            model = config.model,
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = prompt)),
+            maxTokens = 2048
+        )
+    }
+
+    private suspend fun parseAndApplyReview(text: String, batch: List<WordEdgeEntity>) {
+        val arrayStart = text.indexOf('[')
+        val arrayEnd = text.lastIndexOf(']')
+        if (arrayStart < 0 || arrayEnd < 0) return
+        val arrayText = text.substring(arrayStart, arrayEnd + 1)
+
+        val objPattern = Regex("""\{[^{}]+\}""")
+        objPattern.findAll(arrayText).forEach { match ->
+            val obj = match.value
+            try {
+                val idx = extractJsonInt(obj, "i") ?: return@forEach
+                if (idx !in batch.indices) return@forEach
+                val edge = batch[idx]
+
+                val verdict = extractJsonString(obj, "verdict") ?: return@forEach
+                when (verdict) {
+                    "remove" -> {
+                        wordEdgeDao.deleteEdgeById(edge.id)
+                        wordEdgeDao.insertExcluded(listOf(
+                            WordEdgeExcludedEntity(
+                                wordIdA = edge.wordIdA,
+                                wordIdB = edge.wordIdB,
+                                dictionaryId = edge.dictionaryId,
+                                reason = extractJsonString(obj, "note") ?: "审核移除"
+                            )
+                        ))
+                    }
+                    "adjust" -> {
+                        val newStatus = extractJsonString(obj, "new_status")?.let { s ->
+                            VALID_STATUSES.firstOrNull { it == s }
+                        } ?: edge.status
+                        val newConfidence = extractJsonDouble(obj, "new_confidence")?.coerceIn(0.0, 1.0) ?: edge.confidence
+                        wordEdgeDao.updateEdgeStatus(edge.id, newStatus, newConfidence)
+                    }
+                    // "keep" → no-op
+                }
+            } catch (e: Exception) {
+                Log.w("WordPoolRepo", "Failed to parse review item: $obj", e)
+            }
         }
     }
 
@@ -451,11 +704,15 @@ class WordPoolRepositoryImpl @Inject constructor(
         edges: List<WordEdgeEntity>,
         wordIds: Set<Long>
     ): List<BuiltPoolWithWordIds> {
-        if (edges.isEmpty()) return emptyList()
+        // Filter: only use edges with confidence >= 0.3 and status != "optional"
+        val significantEdges = edges.filter {
+            it.confidence >= 0.3 && it.status != "optional"
+        }
+        if (significantEdges.isEmpty()) return emptyList()
 
         // Union-Find: only include words that appear in edges
         val parent = mutableMapOf<Long, Long>()
-        edges.forEach { e ->
+        significantEdges.forEach { e ->
             parent.putIfAbsent(e.wordIdA, e.wordIdA)
             parent.putIfAbsent(e.wordIdB, e.wordIdB)
         }
@@ -476,7 +733,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             if (ra != rb) parent[ra] = rb
         }
 
-        edges.forEach { union(it.wordIdA, it.wordIdB) }
+        significantEdges.forEach { union(it.wordIdA, it.wordIdB) }
 
         // Group by root
         val components = mutableMapOf<Long, MutableList<Long>>()
@@ -489,20 +746,102 @@ class WordPoolRepositoryImpl @Inject constructor(
         // Build pools from components with >=2 members, split large ones
         val maxPoolSize = 15
         val result = mutableListOf<BuiltPoolWithWordIds>()
+        // Build wordId→edges map for quality scoring
+        val edgesByWordId = mutableMapOf<Long, MutableList<WordEdgeEntity>>()
+        significantEdges.forEach { e ->
+            edgesByWordId.getOrPut(e.wordIdA) { mutableListOf() }.add(e)
+            edgesByWordId.getOrPut(e.wordIdB) { mutableListOf() }.add(e)
+        }
+
         components.values.forEach { members ->
             if (members.size < 2) return@forEach
             if (members.size <= maxPoolSize) {
-                result.add(BuiltPoolWithWordIds(focusWordId = null, memberWordIds = members))
+                val score = computePoolQualityScore(members, edgesByWordId)
+                result.add(BuiltPoolWithWordIds(focusWordId = null, memberWordIds = members, qualityScore = score))
             } else {
                 // Split into chunks
                 members.chunked(maxPoolSize).forEach { chunk ->
                     if (chunk.size >= 2) {
-                        result.add(BuiltPoolWithWordIds(focusWordId = null, memberWordIds = chunk))
+                        val score = computePoolQualityScore(chunk, edgesByWordId)
+                        result.add(BuiltPoolWithWordIds(focusWordId = null, memberWordIds = chunk, qualityScore = score))
                     }
                 }
             }
         }
         return result
+    }
+
+    /**
+     * Compute pool quality score (max 50).
+     * 10 dimensions per research report: relevance, accuracy, learningValue,
+     * explainability, coverage, dedup, noiseControl, difficultyFit, registerFit, evidence.
+     * Thresholds: 42-50 可上线; 35-41 需审查; 34 以下低质量.
+     */
+    private fun computePoolQualityScore(
+        memberWordIds: List<Long>,
+        edgesByWordId: Map<Long, List<WordEdgeEntity>>
+    ): Int {
+        val memberIdSet = memberWordIds.toSet()
+        // Collect edges within this pool
+        val poolEdges = mutableSetOf<WordEdgeEntity>()
+        memberWordIds.forEach { wid ->
+            edgesByWordId[wid]?.forEach { e ->
+                if (e.wordIdA in memberIdSet && e.wordIdB in memberIdSet) {
+                    poolEdges.add(e)
+                }
+            }
+        }
+        if (poolEdges.isEmpty()) return 0
+
+        val edgeList = poolEdges.toList()
+        val size = edgeList.size.toDouble()
+
+        // 1. Relevance (0-5): average confidence mapped to 0-5
+        val avgConfidence = edgeList.map { it.confidence }.average()
+        val relevance = (avgConfidence * 5).toInt().coerceIn(0, 5)
+
+        // 2. Accuracy (0-5): proportion of edges with status core/support (not warning/optional)
+        val accurateCount = edgeList.count { it.status == "core" || it.status == "support" }
+        val accuracy = (accurateCount / size * 5).toInt().coerceIn(0, 5)
+
+        // 3. Learning value (0-5): average learning_value
+        val avgLearningValue = edgeList.map { it.learningValue }.average()
+        val learningScore = avgLearningValue.toInt().coerceIn(0, 5)
+
+        // 4. Explainability (0-5): proportion with non-blank reason
+        val reasonRatio = edgeList.count { !it.reason.isNullOrBlank() }.toDouble() / size
+        val explainability = (reasonRatio * 5).toInt().coerceIn(0, 5)
+
+        // 5. Coverage / diversity (0-5): number of distinct EdgeClusters involved
+        val clusterCount = edgeList.mapNotNull { e ->
+            EdgeType.fromDbValue(e.edgeType)?.cluster
+        }.distinct().size
+        val coverage = clusterCount.coerceIn(0, 5)
+
+        // 6. Dedup (0-5): fewer near-duplicate edges = better (unique word pairs ratio)
+        val uniquePairs = edgeList.map { minOf(it.wordIdA, it.wordIdB) to maxOf(it.wordIdA, it.wordIdB) }.distinct().size
+        val dedup = if (edgeList.isEmpty()) 0 else (uniquePairs.toDouble() / edgeList.size * 5).toInt().coerceIn(0, 5)
+
+        // 7. Noise control (0-5): fewer optional edges = better
+        val optionalRatio = edgeList.count { it.status == "optional" }.toDouble() / size
+        val noiseControl = ((1.0 - optionalRatio) * 5).toInt().coerceIn(0, 5)
+
+        // 8. Difficulty fit (0-5): average confidence as proxy (high confidence = well-understood = good fit)
+        val difficultyFit = (avgConfidence * 5).toInt().coerceIn(0, 5)
+
+        // 9. Register fit (0-5): proportion of edges with reason indicating register awareness
+        val registerAware = edgeList.count {
+            val r = it.reason?.lowercase() ?: ""
+            r.contains("语域") || r.contains("正式") || r.contains("口语") || r.contains("学术") || r.contains("register")
+        }
+        val registerFit = if (edgeList.isEmpty()) 0
+        else (registerAware.toDouble() / size * 5).toInt().coerceIn(0, 5).coerceAtLeast(3) // baseline 3 if edges exist
+
+        // 10. Evidence (0-5): proportion with evidence_source
+        val evidenceRatio = edgeList.count { !it.evidenceSource.isNullOrBlank() }.toDouble() / size
+        val evidence = (evidenceRatio * 5).toInt().coerceIn(0, 5)
+
+        return relevance + accuracy + learningScore + explainability + coverage + dedup + noiseControl + difficultyFit + registerFit + evidence
     }
 
     // ── AI helpers ──
@@ -547,22 +886,29 @@ class WordPoolRepositoryImpl @Inject constructor(
         else engine.mergeAiGroups(candidates, existingPools, allAiGroups)
     }
 
-    private suspend fun callAiForGroups(prompt: String, listSize: Int, retryCount: Int = 0): List<List<Int>> {
-        return try {
-            val response = callAi(prompt)
-            val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-            val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
-            val normalized = normalizeResponse(response, unwrapEnabled, repairEnabled)
-            parseJsonIntArrayOfArrays(normalized, listSize)
-        } catch (e: Exception) {
-            if (retryCount < 1) {
-                Log.w("WordPoolRepo", "AI batch call failed, retrying", e)
-                callAiForGroups(prompt, listSize, retryCount + 1)
-            } else {
-                Log.w("WordPoolRepo", "AI batch call failed after retry", e)
-                emptyList()
+    private suspend fun callAiForGroups(prompt: String, listSize: Int): List<List<Int>> {
+        var lastException: Exception? = null
+        for (attempt in 0 until MAX_EDGE_RETRIES) {
+            try {
+                val response = callAi(prompt)
+                val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+                val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+                val normalized = normalizeResponse(response, unwrapEnabled, repairEnabled)
+                return parseJsonIntArrayOfArrays(normalized, listSize)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastException = e
+                val retryable = isRetryableError(e)
+                Log.w("WordPoolRepo", "AI batch call attempt ${attempt + 1}/$MAX_EDGE_RETRIES failed (retryable=$retryable)", e)
+                if (!retryable) return emptyList()
+                if (attempt < MAX_EDGE_RETRIES - 1) {
+                    delay(1000L * (attempt + 1))
+                }
             }
         }
+        Log.w("WordPoolRepo", "AI batch call failed after $MAX_EDGE_RETRIES attempts", lastException)
+        return emptyList()
     }
 
     private suspend fun callAi(prompt: String): String {
@@ -575,7 +921,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             model = config.model,
             systemPrompt = null,
             messages = listOf(ChatMessage(role = "user", content = prompt)),
-            maxTokens = 1024
+            maxTokens = 4096
         )
     }
 

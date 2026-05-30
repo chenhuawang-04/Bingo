@@ -44,6 +44,7 @@ import com.xty.englishhelper.data.local.entity.UnitEntity
 import com.xty.englishhelper.data.local.entity.UnitWordCrossRef
 import com.xty.englishhelper.data.local.entity.WordAssociationEntity
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
+import com.xty.englishhelper.data.local.entity.WordEdgeExcludedEntity
 import com.xty.englishhelper.data.local.entity.WordEntity
 import com.xty.englishhelper.data.local.entity.WordExampleEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
@@ -85,9 +86,10 @@ import java.util.UUID
         PlanItemEntity::class,
         PlanDayRecordEntity::class,
         PlanEventLogEntity::class,
-        WordEdgeEntity::class
+        WordEdgeEntity::class,
+        WordEdgeExcludedEntity::class
     ],
-    version = 23,
+    version = 25,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -925,6 +927,55 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_dictionary_id` ON `word_edges` (`dictionary_id`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_word_id_a` ON `word_edges` (`word_id_a`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_word_id_b` ON `word_edges` (`word_id_b`)")
+            }
+        }
+
+        val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `word_edges`")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_edges` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `word_id_a` INTEGER NOT NULL,
+                        `word_id_b` INTEGER NOT NULL,
+                        `edge_type` TEXT NOT NULL,
+                        `dictionary_id` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `status` TEXT NOT NULL DEFAULT 'core',
+                        `learning_value` INTEGER NOT NULL DEFAULT 3,
+                        `relation_strength` INTEGER NOT NULL DEFAULT 3,
+                        `confidence` REAL NOT NULL DEFAULT 0.5,
+                        `reason` TEXT,
+                        `warning_note` TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_word_edges_word_id_a_word_id_b_edge_type` ON `word_edges` (`word_id_a`, `word_id_b`, `edge_type`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_dictionary_id` ON `word_edges` (`dictionary_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_word_id_a` ON `word_edges` (`word_id_a`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_word_id_b` ON `word_edges` (`word_id_b`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edges_dictionary_id_status` ON `word_edges` (`dictionary_id`, `status`)")
+            }
+        }
+
+        val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE word_edges ADD COLUMN evidence_source TEXT")
+                db.execSQL("ALTER TABLE word_pools ADD COLUMN quality_score INTEGER")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_edge_excluded` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `word_id_a` INTEGER NOT NULL,
+                        `word_id_b` INTEGER NOT NULL,
+                        `dictionary_id` INTEGER NOT NULL,
+                        `reason` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edge_excluded_dictionary_id` ON `word_edge_excluded` (`dictionary_id`)")
             }
         }
     }

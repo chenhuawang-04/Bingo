@@ -11,7 +11,8 @@ import androidx.room.PrimaryKey
         Index(value = ["word_id_a", "word_id_b", "edge_type"], unique = true),
         Index(value = ["dictionary_id"]),
         Index(value = ["word_id_a"]),
-        Index(value = ["word_id_b"])
+        Index(value = ["word_id_b"]),
+        Index(value = ["dictionary_id", "status"])
     ]
 )
 data class WordEdgeEntity(
@@ -20,5 +21,12 @@ data class WordEdgeEntity(
     @ColumnInfo(name = "word_id_b") val wordIdB: Long,
     @ColumnInfo(name = "edge_type") val edgeType: String,
     @ColumnInfo(name = "dictionary_id") val dictionaryId: Long,
-    @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis()
+    @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "status", defaultValue = "core") val status: String = "core",
+    @ColumnInfo(name = "learning_value", defaultValue = "3") val learningValue: Int = 3,
+    @ColumnInfo(name = "relation_strength", defaultValue = "3") val relationStrength: Int = 3,
+    @ColumnInfo(name = "confidence", defaultValue = "0.5") val confidence: Double = 0.5,
+    @ColumnInfo(name = "reason") val reason: String? = null,
+    @ColumnInfo(name = "warning_note") val warningNote: String? = null,
+    @ColumnInfo(name = "evidence_source") val evidenceSource: String? = null
 )
