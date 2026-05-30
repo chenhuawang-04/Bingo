@@ -19,3 +19,12 @@ local.properties
 
 # Project documents (local only, do not commit/push)
 docs/
+
+# Claude Code local settings
+.claude/
+
+# Build artifacts
+.gradle-test/
+.gradle-test2/
+.kotlin/
+output/
