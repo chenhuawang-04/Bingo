@@ -106,16 +106,20 @@ interface WordDao {
 
     // ── Entry Type Classification ──
 
-    // BUG 3 fix: only select words that have not been classified yet (entry_type IS NULL)
-    @Query("SELECT id, spelling, meanings_json, root_explanation FROM words WHERE dictionary_id = :dictionaryId AND entry_type IS NULL AND id > :lastId ORDER BY id ASC LIMIT :limit")
+    // Select all words for classification (regardless of current entry_type)
+    @Query("SELECT id, spelling, meanings_json, root_explanation FROM words WHERE dictionary_id = :dictionaryId AND id > :lastId ORDER BY id ASC LIMIT :limit")
     suspend fun getWordsForClassification(dictionaryId: Long, lastId: Long, limit: Int): List<EntryTypeClassificationInput>
 
     @Query("UPDATE words SET entry_type = :entryType WHERE id = :wordId")
     suspend fun updateEntryType(wordId: Long, entryType: String)
 
-    // BUG 3 fix: only count words that have not been classified yet
-    @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId AND entry_type IS NULL")
-    suspend fun countWordsWithoutEntryType(dictionaryId: Long): Int
+    // Reset all entry_type to NULL for reclassification
+    @Query("UPDATE words SET entry_type = NULL WHERE dictionary_id = :dictionaryId")
+    suspend fun resetEntryTypes(dictionaryId: Long)
+
+    // Count all words in dictionary
+    @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId")
+    suspend fun countAllWords(dictionaryId: Long): Int
 
     @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId AND entry_type = :entryType")
     suspend fun countByEntryType(dictionaryId: Long, entryType: String): Int
