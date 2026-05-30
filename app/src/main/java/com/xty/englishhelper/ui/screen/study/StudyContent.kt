@@ -251,11 +251,28 @@ private fun BrainstormTag(state: StudyUiState) {
 }
 
 private fun edgeTypeColor(edgeType: EdgeType): Color = when (edgeType) {
-    EdgeType.SPELLING -> Color(0xFF1976D2)       // Blue
-    EdgeType.MEANING -> Color(0xFF388E3C)         // Green
-    EdgeType.ROOT -> Color(0xFFE64A19)            // Orange
-    EdgeType.PRONUNCIATION -> Color(0xFF7B1FA2)   // Purple
-    EdgeType.AI_GENERAL -> Color(0xFF757575)      // Gray
+    // Semantic cluster - Green family
+    EdgeType.SEMANTIC_SYNONYM -> Color(0xFF388E3C)
+    EdgeType.SEMANTIC_ANTONYM -> Color(0xFFD32F2F)
+    EdgeType.SEMANTIC_OVERLAP -> Color(0xFF66BB6A)
+    EdgeType.SEMANTIC_HYPERNYM -> Color(0xFF2E7D32)
+    EdgeType.SEMANTIC_HYPONYM -> Color(0xFF81C784)
+    // Form cluster - Blue family
+    EdgeType.FORM_SPELLING -> Color(0xFF1976D2)
+    EdgeType.FORM_HOMOPHONE -> Color(0xFF42A5F5)
+    EdgeType.FORM_PRONUNCIATION -> Color(0xFF7B1FA2)
+    EdgeType.FORM_MINIMAL_PAIR -> Color(0xFF5C6BC0)
+    // Family cluster - Orange family
+    EdgeType.FAMILY_INFLECTION -> Color(0xFFE64A19)
+    EdgeType.FAMILY_DERIVATION -> Color(0xFFFF7043)
+    EdgeType.FAMILY_SAME_ROOT -> Color(0xFFEF6C00)
+    // Usage cluster - Teal family
+    EdgeType.USAGE_COLLOCATION -> Color(0xFF00897B)
+    EdgeType.USAGE_PHRASE -> Color(0xFF26A69A)
+    EdgeType.USAGE_PATTERN -> Color(0xFF00695C)
+    // Learning cluster - Pink family
+    EdgeType.LEARNING_CONFUSABLE -> Color(0xFFC2185B)
+    EdgeType.LEARNING_MISUSE_PAIR -> Color(0xFFE91E63)
 }
 
 @Composable

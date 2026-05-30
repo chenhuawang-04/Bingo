@@ -255,7 +255,7 @@ class StudyViewModel @Inject constructor(
                     .take(5)
                     .mapNotNull { (neighborId, edgeTypes) ->
                         val spelling = wordIdToSpelling[neighborId] ?: return@mapNotNull null
-                        WordEdgePreview(spelling, edgeTypes.first())
+                        WordEdgePreview(spelling, selectDisplayEdgeType(edgeTypes))
                     }
             } else {
                 emptyList()
@@ -350,6 +350,17 @@ class StudyViewModel @Inject constructor(
                 _uiState.update { it.copy(error = e.message) }
             }
         }
+    }
+
+    private fun selectDisplayEdgeType(types: Set<EdgeType>): EdgeType {
+        val priority = listOf(
+            EdgeType.LEARNING_CONFUSABLE,
+            EdgeType.FORM_SPELLING,
+            EdgeType.SEMANTIC_SYNONYM,
+            EdgeType.SEMANTIC_ANTONYM,
+            EdgeType.FAMILY_SAME_ROOT
+        )
+        return priority.firstOrNull { it in types } ?: types.first()
     }
 
     private fun buildStats(): StudyStats {

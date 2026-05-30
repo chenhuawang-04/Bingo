@@ -1,10 +1,8 @@
 package com.xty.englishhelper.ui.screen.article
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -25,6 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
@@ -37,11 +37,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -59,18 +61,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
-import com.xty.englishhelper.domain.model.ArticleParseStatus
+import com.xty.englishhelper.domain.model.BackgroundTask
+import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -157,6 +159,21 @@ fun ArticleListScreen(
                     hasFilterConfig = hasFilterConfig,
                     onOpenCategories = { showCategorySheet = true },
                     onCreateCategory = { showCreateCategoryDialog = true }
+                )
+
+                OnlineScanStatusCard(
+                    scanTask = uiState.scanTask,
+                    maxPerSection = uiState.scanMaxPerSection,
+                    rescoreAfterHours = uiState.scanRescoreAfterHours,
+                    isConfigExpanded = uiState.isScanConfigExpanded,
+                    onToggleConfig = viewModel::toggleScanConfig,
+                    onMaxPerSectionChange = viewModel::setScanMaxPerSection,
+                    onRescoreAfterHoursChange = viewModel::setScanRescoreAfterHours,
+                    onStartScan = viewModel::triggerScan,
+                    onCancelScan = viewModel::cancelScan,
+                    onPauseScan = viewModel::pauseScan,
+                    onResumeScan = viewModel::resumeScan,
+                    onDeleteScanTask = viewModel::deleteScanTask
                 )
 
                 if (articles.isEmpty()) {
@@ -251,7 +268,6 @@ fun ArticleListScreen(
         )
     }
 }
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LibraryOverviewCard(
     selectedCategoryName: String,
@@ -268,132 +284,46 @@ private fun LibraryOverviewCard(
             containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
-                            MaterialTheme.colorScheme.surface,
-                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.28f)
-                        )
-                    )
-                )
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "本地文章库",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = selectedCategoryName,
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = when {
-                            filterEnabled -> "当前展示 $visibleCount / $totalCount 篇文章，筛选结果已生效。"
-                            hasFilterConfig -> "已保存筛选条件，目前仍在查看全部 $totalCount 篇文章。"
-                            else -> "当前共整理 $totalCount 篇文章，按分类安静浏览。"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "本地文章库",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = selectedCategoryName,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = when {
+                        filterEnabled -> "当前展示 $visibleCount / $totalCount 篇，筛选已生效。"
+                        hasFilterConfig -> "已保存筛选条件，查看全部 $totalCount 篇。"
+                        else -> "共 $totalCount 篇文章"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    EditorialPill(text = "可见 $visibleCount 篇", emphasized = true)
-                    EditorialPill(text = "总计 $totalCount 篇")
-                    if (filterEnabled) {
-                        EditorialPill(
-                            text = "筛选开启",
-                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
-                    } else if (hasFilterConfig) {
-                        EditorialPill(text = "条件待启用")
-                    }
-                }
-
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val stackedLayout = maxWidth < 560.dp
-                    if (stackedLayout) {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    text = "当前分类",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = selectedCategoryName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                EditorialActionButton(
-                                    text = "切换分类",
-                                    icon = Icons.Default.Edit,
-                                    onClick = onOpenCategories
-                                )
-                                EditorialActionButton(
-                                    text = "新建",
-                                    icon = Icons.Default.Add,
-                                    onClick = onCreateCategory,
-                                    prominent = true
-                                )
-                            }
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Bottom
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "当前分类",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = selectedCategoryName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                EditorialActionButton(
-                                    text = "切换分类",
-                                    icon = Icons.Default.Edit,
-                                    onClick = onOpenCategories
-                                )
-                                EditorialActionButton(
-                                    text = "新建",
-                                    icon = Icons.Default.Add,
-                                    onClick = onCreateCategory,
-                                    prominent = true
-                                )
-                            }
-                        }
-                    }
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                EditorialActionButton(
+                    text = "切换分类",
+                    icon = Icons.Default.Edit,
+                    onClick = onOpenCategories
+                )
+                EditorialActionButton(
+                    text = "新建",
+                    icon = Icons.Default.Add,
+                    onClick = onCreateCategory,
+                    prominent = true
+                )
             }
         }
     }
@@ -565,81 +495,304 @@ private fun EmptyArticleStateCard(
             containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.42f),
-                            MaterialTheme.colorScheme.surface,
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
-                        )
-                    )
-                )
-                .padding(horizontal = 22.dp, vertical = 26.dp)
+                .padding(horizontal = 22.dp, vertical = 26.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                EditorialPill(
-                    text = if (filterEnabled) "筛选结果为空" else "等待内容进入分类",
-                    emphasized = true
-                )
-                Text(
-                    text = when {
-                        hasSourceArticles -> "当前分类下暂时没有符合条件的文章"
-                        else -> "还没有文章进入这个分类"
-                    },
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                Text(
-                    text = when {
-                        hasSourceArticles && filterEnabled ->
-                            "可以先调整分类或重置筛选条件，再决定保留哪些文章继续阅读。"
-                        hasSourceArticles ->
-                            "文章仍在库中，只是当前分类里没有内容。可以切换分类继续浏览。"
-                        else ->
-                            "你可以新建一篇本地文章，或者先在右上角进入在线阅读，把合适的文章保存回来。"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Text(
+                text = when {
+                    hasSourceArticles -> "当前分类下暂时没有符合条件的文章"
+                    else -> "还没有文章进入这个分类"
+                },
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                text = when {
+                    hasSourceArticles && filterEnabled ->
+                        "可以先调整分类或重置筛选条件，再决定保留哪些文章继续阅读。"
+                    hasSourceArticles ->
+                        "文章仍在库中，只是当前分类里没有内容。可以切换分类继续浏览。"
+                    else ->
+                        "你可以新建一篇本地文章，或者先在右上角进入在线阅读，把合适的文章保存回来。"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    shape = ArticleShapes.Control,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Text(
+                        text = if (hasSourceArticles) "切换分类" else "新建文章",
+                        modifier = Modifier
+                            .clickable(onClick = if (hasSourceArticles) onOpenCategories else onCreateArticle)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+                if (hasSourceArticles && filterEnabled) {
                     Surface(
                         shape = ArticleShapes.Control,
-                        color = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                        contentColor = MaterialTheme.colorScheme.onSurface
                     ) {
                         Text(
-                            text = if (hasSourceArticles) "切换分类" else "新建文章",
+                            text = "重置筛选",
                             modifier = Modifier
-                                .clickable(onClick = if (hasSourceArticles) onOpenCategories else onCreateArticle)
+                                .clickable(onClick = onResetFilters)
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             style = MaterialTheme.typography.labelLarge
                         )
-                    }
-                    if (hasSourceArticles && filterEnabled) {
-                        Surface(
-                            shape = ArticleShapes.Control,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                            contentColor = MaterialTheme.colorScheme.onSurface
-                        ) {
-                            Text(
-                                text = "重置筛选",
-                                modifier = Modifier
-                                    .clickable(onClick = onResetFilters)
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                        }
                     }
                 }
             }
         }
     }
 }
+@Composable
+private fun OnlineScanStatusCard(
+    scanTask: BackgroundTask?,
+    maxPerSection: Int,
+    rescoreAfterHours: Int,
+    isConfigExpanded: Boolean,
+    onToggleConfig: () -> Unit,
+    onMaxPerSectionChange: (Int) -> Unit,
+    onRescoreAfterHoursChange: (Int) -> Unit,
+    onStartScan: () -> Unit,
+    onCancelScan: () -> Unit,
+    onPauseScan: () -> Unit,
+    onResumeScan: () -> Unit,
+    onDeleteScanTask: () -> Unit
+) {
+    val status = scanTask?.status
+    val (statusLabel, statusColor) = when (status) {
+        null -> "未运行" to MaterialTheme.colorScheme.onSurfaceVariant
+        BackgroundTaskStatus.PENDING -> "等待中" to MaterialTheme.colorScheme.secondary
+        BackgroundTaskStatus.RUNNING -> "扫描中" to MaterialTheme.colorScheme.primary
+        BackgroundTaskStatus.PAUSED -> "已暂停" to MaterialTheme.colorScheme.tertiary
+        BackgroundTaskStatus.SUCCESS -> "已完成" to MaterialTheme.colorScheme.primary
+        BackgroundTaskStatus.FAILED -> "失败" to MaterialTheme.colorScheme.error
+        BackgroundTaskStatus.CANCELED -> "已停止" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val isActive = status == BackgroundTaskStatus.PENDING || status == BackgroundTaskStatus.RUNNING
+    val isPaused = status == BackgroundTaskStatus.PAUSED
+    val isTerminal = status == BackgroundTaskStatus.SUCCESS ||
+        status == BackgroundTaskStatus.FAILED ||
+        status == BackgroundTaskStatus.CANCELED
+
+    Card(
+        shape = ArticleShapes.Section,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Header row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = statusColor.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = statusLabel,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = statusColor
+                        )
+                    }
+                    Text(
+                        text = "在线文章扫描",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(onClick = onToggleConfig) {
+                    Icon(
+                        imageVector = if (isConfigExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (isConfigExpanded) "收起配置" else "展开配置"
+                    )
+                }
+            }
+
+            // Progress bar when running
+            if (isActive) {
+                val task = scanTask!!
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        progress = {
+                            if (task.progressTotal > 0) {
+                                task.progressCurrent.toFloat() / task.progressTotal
+                            } else 0f
+                        }
+                    )
+                    Text(
+                        text = "进度 ${task.progressCurrent}/${task.progressTotal}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Error message when failed
+            val errorMsg = scanTask?.errorMessage
+            if (status == BackgroundTaskStatus.FAILED && errorMsg != null) {
+                Text(
+                    text = errorMsg,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Config panel
+            if (isConfigExpanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "每栏目最多 $maxPerSection 篇",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Slider(
+                            value = maxPerSection.toFloat(),
+                            onValueChange = { onMaxPerSectionChange(it.roundToInt()) },
+                            valueRange = 1f..20f,
+                            steps = 18
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "重评间隔 $rescoreAfterHours 小时",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Slider(
+                            value = rescoreAfterHours.toFloat(),
+                            onValueChange = { onRescoreAfterHoursChange(it.roundToInt()) },
+                            valueRange = 1f..720f,
+                            steps = 0
+                        )
+                    }
+                }
+            }
+
+            // Action buttons
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (status == null || isTerminal) {
+                    Surface(
+                        shape = ArticleShapes.Control,
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Text(
+                            text = "开始扫描",
+                            modifier = Modifier
+                                .clickable(onClick = onStartScan)
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+                if (isActive) {
+                    Surface(
+                        shape = ArticleShapes.Control,
+                        color = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    ) {
+                        Text(
+                            text = "停止",
+                            modifier = Modifier
+                                .clickable(onClick = onCancelScan)
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+                if (isPaused) {
+                    Surface(
+                        shape = ArticleShapes.Control,
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Text(
+                            text = "继续",
+                            modifier = Modifier
+                                .clickable(onClick = onResumeScan)
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                    Surface(
+                        shape = ArticleShapes.Control,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    ) {
+                        Text(
+                            text = "清除",
+                            modifier = Modifier
+                                .clickable(onClick = onDeleteScanTask)
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+                if (isPaused || isActive) {
+                    if (!isPaused) {
+                        Surface(
+                            shape = ArticleShapes.Control,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ) {
+                            Text(
+                                text = "暂停",
+                                modifier = Modifier
+                                    .clickable(onClick = onPauseScan)
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                    }
+                }
+                if (status == BackgroundTaskStatus.FAILED || status == BackgroundTaskStatus.CANCELED) {
+                    Surface(
+                        shape = ArticleShapes.Control,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    ) {
+                        Text(
+                            text = "清除",
+                            modifier = Modifier
+                                .clickable(onClick = onDeleteScanTask)
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ArticleCard(
@@ -671,12 +824,6 @@ private fun ArticleCard(
         article.suitabilityScore != null -> "评分 ${article.suitabilityScore}"
         else -> "未评分"
     }
-    val scoreColor = when {
-        isEvaluating -> MaterialTheme.colorScheme.primary
-        article.suitabilityScore != null -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val parseStatusText = parseStatusText(article.parseStatus)
     val coverModel = article.coverImageUri ?: article.coverImageUrl
     val placeholderSeed = article.title.firstOrNull()?.uppercase() ?: "A"
 
@@ -686,8 +833,7 @@ private fun ArticleCard(
         shape = ArticleShapes.Section,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        )
     ) {
         Row(
             modifier = Modifier
@@ -754,38 +900,28 @@ private fun ArticleCard(
                     )
                 }
 
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (article.wordCount > 0) {
-                        EditorialPill(text = "${article.wordCount} 词")
-                    }
-                    if (!categoryName.isNullOrBlank()) {
-                        EditorialPill(
-                            text = categoryName,
-                            containerColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
-                            contentColor = MaterialTheme.colorScheme.tertiary
+                        Text(
+                            text = "${article.wordCount}词",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    EditorialPill(
-                        text = scoreText,
-                        containerColor = scoreColor.copy(alpha = 0.12f),
-                        contentColor = scoreColor
-                    )
-                    if (parseStatusText != null) {
-                        EditorialPill(text = parseStatusText)
-                    }
-                }
-
-                if (!article.suitabilityReason.isNullOrBlank()) {
                     Text(
-                        text = article.suitabilityReason,
+                        text = scoreText,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        color = MaterialTheme.colorScheme.primary
                     )
+                    if (!categoryName.isNullOrBlank()) {
+                        Text(
+                            text = categoryName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -908,12 +1044,4 @@ private fun buildArticleSnippet(summary: String, content: String): String {
         .replace(Regex("\\s+"), " ")
         .trim()
         .take(170)
-}
-
-private fun parseStatusText(status: ArticleParseStatus): String? {
-    return when (status) {
-        ArticleParseStatus.PROCESSING -> "解析中"
-        ArticleParseStatus.FAILED -> "解析失败"
-        else -> null
-    }
 }

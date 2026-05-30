@@ -4,9 +4,13 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
+import com.xty.englishhelper.domain.model.BackgroundTask
+import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.usecase.article.DeleteArticleUseCase
 import com.xty.englishhelper.domain.usecase.article.GetArticleListUseCase
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
@@ -36,7 +40,11 @@ data class ArticleListUiState(
     val filterEnabled: Boolean = false,
     val lengthFilter: ArticleLengthFilter = ArticleLengthFilter.ALL,
     val scoreFilter: ArticleScoreFilter = ArticleScoreFilter.ALL,
-    val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT
+    val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT,
+    val scanTask: BackgroundTask? = null,
+    val scanMaxPerSection: Int = 5,
+    val scanRescoreAfterHours: Int = 24,
+    val isScanConfigExpanded: Boolean = false
 )
 
 @HiltViewModel
@@ -46,7 +54,9 @@ class ArticleListViewModel @Inject constructor(
     private val deleteArticleUseCase: DeleteArticleUseCase,
     private val articleRepository: ArticleRepository,
     private val articleAiRepository: ArticleAiRepository,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val backgroundTaskRepository: BackgroundTaskRepository,
+    private val backgroundTaskManager: BackgroundTaskManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ArticleListUiState())
@@ -109,6 +119,14 @@ class ArticleListViewModel @Inject constructor(
                         state.withPresentedArticles(articles)
                     }
                 }
+        }
+
+        viewModelScope.launch {
+            backgroundTaskRepository.observeTasksByTypes(
+                listOf(BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE)
+            ).collect { tasks ->
+                _uiState.update { it.copy(scanTask = tasks.maxByOrNull { t -> t.createdAt }) }
+            }
         }
     }
 
@@ -293,5 +311,52 @@ class ArticleListViewModel @Inject constructor(
             titleOf = { it.title }
         )
         return copy(articles = presented)
+    }
+
+    fun triggerScan() {
+        viewModelScope.launch {
+            val config = settingsDataStore.getFastAiConfig()
+            if (config.apiKey.isBlank()) {
+                _uiState.update { it.copy(error = "快速模型未配置，请先在设置中配置 API Key") }
+                return@launch
+            }
+            backgroundTaskManager.enqueueOnlineArticleScanScore(
+                force = true,
+                maxPerSection = _uiState.value.scanMaxPerSection,
+                rescoreAfterHours = _uiState.value.scanRescoreAfterHours
+            )
+        }
+    }
+
+    fun cancelScan() {
+        val taskId = _uiState.value.scanTask?.id ?: return
+        backgroundTaskManager.cancelTask(taskId)
+    }
+
+    fun pauseScan() {
+        val taskId = _uiState.value.scanTask?.id ?: return
+        backgroundTaskManager.pauseTask(taskId)
+    }
+
+    fun resumeScan() {
+        val taskId = _uiState.value.scanTask?.id ?: return
+        backgroundTaskManager.resumeTask(taskId)
+    }
+
+    fun deleteScanTask() {
+        val taskId = _uiState.value.scanTask?.id ?: return
+        backgroundTaskManager.deleteTask(taskId)
+    }
+
+    fun setScanMaxPerSection(value: Int) {
+        _uiState.update { it.copy(scanMaxPerSection = value.coerceIn(1, 20)) }
+    }
+
+    fun setScanRescoreAfterHours(value: Int) {
+        _uiState.update { it.copy(scanRescoreAfterHours = value.coerceIn(1, 720)) }
+    }
+
+    fun toggleScanConfig() {
+        _uiState.update { it.copy(isScanConfigExpanded = !it.isScanConfigExpanded) }
     }
 }

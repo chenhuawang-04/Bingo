@@ -6,5 +6,6 @@ enum class AiSettingsScope(val prefix: String) {
     POOL("pool_"),
     OCR("ocr_"),
     ARTICLE("article_"),
-    SEARCH("search_")
+    SEARCH("search_"),
+    REVIEWER("reviewer_")
 }

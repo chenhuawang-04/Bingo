@@ -582,7 +582,8 @@ private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewMo
             ScopeItem(AiSettingsScope.OCR, "OCR 模型", "OCR 识别与题库扫描"),
             ScopeItem(AiSettingsScope.POOL, "词池整理", "词池整理与批量处理"),
             ScopeItem(AiSettingsScope.ARTICLE, "文章解析", "段落与语法解析"),
-            ScopeItem(AiSettingsScope.SEARCH, "搜索模型", "题库来源验证与搜索")
+            ScopeItem(AiSettingsScope.SEARCH, "搜索模型", "题库来源验证与搜索"),
+            ScopeItem(AiSettingsScope.REVIEWER, "词池审核", "审核与评分词池质量")
         )
 
         scopeItems.forEach { item ->
@@ -1203,5 +1204,6 @@ private fun scopeLabel(scope: AiSettingsScope): String {
         AiSettingsScope.POOL -> "词池整理"
         AiSettingsScope.ARTICLE -> "文章解析"
         AiSettingsScope.SEARCH -> "搜索"
+        AiSettingsScope.REVIEWER -> "词池审核"
     }
 }
