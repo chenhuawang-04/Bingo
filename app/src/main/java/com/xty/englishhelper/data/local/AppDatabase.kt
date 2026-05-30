@@ -89,7 +89,7 @@ import java.util.UUID
         WordEdgeEntity::class,
         WordEdgeExcludedEntity::class
     ],
-    version = 25,
+    version = 26,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -976,6 +976,15 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_edge_excluded_dictionary_id` ON `word_edge_excluded` (`dictionary_id`)")
+            }
+        }
+
+        val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE word_edges ADD COLUMN register TEXT")
+                db.execSQL("ALTER TABLE word_edges ADD COLUMN example_sentence TEXT")
+                db.execSQL("ALTER TABLE word_edges ADD COLUMN difficulty_cefr TEXT")
+                db.execSQL("ALTER TABLE word_edge_excluded ADD COLUMN edge_type TEXT")
             }
         }
     }

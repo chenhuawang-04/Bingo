@@ -28,5 +28,8 @@ data class WordEdgeEntity(
     @ColumnInfo(name = "confidence", defaultValue = "0.5") val confidence: Double = 0.5,
     @ColumnInfo(name = "reason") val reason: String? = null,
     @ColumnInfo(name = "warning_note") val warningNote: String? = null,
-    @ColumnInfo(name = "evidence_source") val evidenceSource: String? = null
+    @ColumnInfo(name = "evidence_source") val evidenceSource: String? = null,
+    @ColumnInfo(name = "register") val register: String? = null,
+    @ColumnInfo(name = "example_sentence") val exampleSentence: String? = null,
+    @ColumnInfo(name = "difficulty_cefr") val difficultyCefr: String? = null
 )

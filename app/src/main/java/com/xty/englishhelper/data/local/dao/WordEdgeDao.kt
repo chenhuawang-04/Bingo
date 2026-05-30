@@ -19,7 +19,7 @@ interface WordEdgeDao {
     @Query("SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdgesFull(dictionaryId: Long): List<WordEdgeEntity>
 
-    @Query("SELECT word_id_a, word_id_b, edge_type, status, learning_value, relation_strength, confidence, reason, warning_note, evidence_source FROM word_edges WHERE dictionary_id = :dictionaryId")
+    @Query("SELECT word_id_a, word_id_b, edge_type, status, learning_value, relation_strength, confidence, reason, warning_note, evidence_source, register, example_sentence, difficulty_cefr FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdges(dictionaryId: Long): List<EdgeProjection>
 
     @Query("UPDATE word_edges SET status = :status, confidence = :confidence WHERE id = :id")
@@ -45,5 +45,8 @@ data class EdgeProjection(
     @ColumnInfo(name = "confidence") val confidence: Double,
     @ColumnInfo(name = "reason") val reason: String?,
     @ColumnInfo(name = "warning_note") val warningNote: String?,
-    @ColumnInfo(name = "evidence_source") val evidenceSource: String?
+    @ColumnInfo(name = "evidence_source") val evidenceSource: String?,
+    @ColumnInfo(name = "register") val register: String?,
+    @ColumnInfo(name = "example_sentence") val exampleSentence: String?,
+    @ColumnInfo(name = "difficulty_cefr") val difficultyCefr: String?
 )

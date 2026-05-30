@@ -16,6 +16,7 @@ import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.AiApiClientProvider
 import com.xty.englishhelper.data.remote.ChatMessage
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.EdgeCluster
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
@@ -55,7 +56,10 @@ private data class ParsedEdge(
     val confidence: Double,
     val reason: String?,
     val warningNote: String?,
-    val evidenceSource: String? = null
+    val evidenceSource: String? = null,
+    val register: String? = null,
+    val exampleSentence: String? = null,
+    val difficultyCefr: String? = null
 )
 
 private class RetryableEdgeException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -347,7 +351,7 @@ class WordPoolRepositoryImpl @Inject constructor(
 
                             val window = domains.subList(task.windowStart, task.windowEnd)
                             val prompt = buildEdgePrompt(currentWord, window)
-                            val aiResult = callAiForEdges(prompt, window.size, unwrapEnabled, repairEnabled)
+                            val aiResult = callAiForEdges(prompt, currentWord, window, unwrapEnabled, repairEnabled)
 
                             val count = completedCalls.incrementAndGet()
                             onProgress(count, totalAiCalls)
@@ -371,7 +375,10 @@ class WordPoolRepositoryImpl @Inject constructor(
                                     confidence = edge.confidence,
                                     reason = edge.reason,
                                     warningNote = edge.warningNote,
-                                    evidenceSource = edge.evidenceSource
+                                    evidenceSource = edge.evidenceSource,
+                                    register = edge.register,
+                                    exampleSentence = edge.exampleSentence,
+                                    difficultyCefr = edge.difficultyCefr
                                 )
                             }
                         }
@@ -398,43 +405,69 @@ class WordPoolRepositoryImpl @Inject constructor(
         return rebuildPoolsFromEdges(allEdges, wordIds)
     }
 
+    /**
+     * Multi-lane edge prompt: builds a sense-first, POS-aware prompt that
+     * instructs the AI to evaluate candidates across 5 relationship clusters.
+     * Each lane has its own inclusion criteria and hard thresholds.
+     */
     private fun buildEdgePrompt(
         target: WordDetails,
         window: List<WordDetails>
     ): String {
+        val targetPOS = target.meanings.map { it.pos }.distinct().joinToString("/")
+        val targetSenses = target.meanings.take(4).mapIndexed { idx, m ->
+            "${idx + 1}. [${m.pos}] ${m.definition}"
+        }.joinToString("\n")
+
         return buildString {
-            appendLine("你是英语词汇学习专家。下面是1个目标词和${window.size}个候选词（index. spelling: 首条中文释义）。")
+            appendLine("你是英语词池整理 Agent。你的任务是围绕目标词构建对学习者真正有价值的高质量词池。")
             appendLine()
-            appendLine("目标词：${target.spelling}（${target.meanings.firstOrNull()?.definition ?: ""}）")
+            appendLine("目标词：${target.spelling}")
+            appendLine("词性：$targetPOS")
+            appendLine("义项：")
+            appendLine(targetSenses)
             appendLine()
-            appendLine("请分析目标词与每个候选词之间的学习关联。返回JSON数组，每个元素是一个关联对象。")
+            appendLine("候选词（index. spelling [词性]: 释义）：")
+            window.forEachIndexed { idx, w ->
+                val m = w.meanings.firstOrNull()
+                val posTag = m?.pos ?: ""
+                val def = m?.definition ?: ""
+                appendLine("$idx. ${w.spelling} [$posTag]: $def")
+            }
             appendLine()
             appendLine("【核心原则】")
             appendLine("- 必须先区分词性，再区分义项。")
-            appendLine("- 先区分目标词的义项，再判断候选词与哪个义项相关。")
-            appendLine("- 不同义项的关联应独立判断，不要混在一起。")
-            appendLine("- 如果候选词与目标词的某个义项强相关但与其他义项无关，标注到具体义项。")
+            appendLine("- 词池以\"义项\"为单位，不得把不同义项混在一起。")
+            appendLine("- 语义类边默认只收同词性；跨词性归入 family lane。")
             appendLine("- \"语言学相关\"不等于\"值得加入\"；对每个候选都判断学习价值。")
             appendLine("- 不得把罕见、古旧、不自然、牵强附会的词当作高优先级。")
+            appendLine("- 不得把同根词、同前缀词自动视为应纳入。")
             appendLine()
-            appendLine("【允许的 edge_type 值及含义】")
-            appendLine("SEMANTIC_SYNONYM — 同义/近义词（如 big/large）")
-            appendLine("SEMANTIC_ANTONYM — 反义词（如 hot/cold）")
-            appendLine("SEMANTIC_OVERLAP — 语义有重叠但非严格同义（如 job/task）")
-            appendLine("SEMANTIC_HYPERNYM — 目标词是候选词的上位词（如 animal > dog）")
-            appendLine("SEMANTIC_HYPONYM — 目标词是候选词的下位词（如 dog < animal）")
-            appendLine("FORM_SPELLING — 拼写形近易混淆（如 affect/effect）")
-            appendLine("FORM_HOMOPHONE — 同音词（如 their/there）")
-            appendLine("FORM_PRONUNCIATION — 发音相似但拼写不同（如 desert/dessert）")
-            appendLine("FORM_MINIMAL_PAIR — 最小对立体（如 ship/sheep）")
-            appendLine("FAMILY_INFLECTION — 同一词的不同屈折形式（如 run/running）")
-            appendLine("FAMILY_DERIVATION — 派生词（如 happy/happiness）")
-            appendLine("FAMILY_SAME_ROOT — 共享词根（如 port/transport/export）")
-            appendLine("USAGE_COLLOCATION — 常见搭配（如 make/mistake）")
-            appendLine("USAGE_PHRASE — 固定短语组成（如 take/care）")
-            appendLine("USAGE_PATTERN — 句型模式相关（如 suggest/suggest that）")
-            appendLine("LEARNING_CONFUSABLE — 学习者常混淆的词对（如 lie/lay）")
-            appendLine("LEARNING_MISUSE_PAIR — 常见误用配对（如 borrow/lend）")
+            appendLine("【5条召回通道】对每个候选词，检查以下5个通道：")
+            appendLine("1. SEMANTIC — 语义概念关系（同义/近义/反义/上下位/语义重叠）")
+            appendLine("   纳入条件：必须绑定到目标词的某个具体义项，且同词性。")
+            appendLine("2. FORM — 形式与语音关系（拼写形近/同音/发音相似/最小对立体）")
+            appendLine("   纳入条件：混淆风险高或发音训练价值高。")
+            appendLine("3. FAMILY — 词族与构词关系（屈折/派生/同根）")
+            appendLine("   纳入条件：构词透明度高，学习收益明确。")
+            appendLine("4. USAGE — 语用与搭配关系（搭配/短语/句型模式）")
+            appendLine("   纳入条件：有真实用例或高频搭配证据。")
+            appendLine("5. LEARNING — 学习与错误关系（易混淆/常见误用/对比学习对）")
+            appendLine("   纳入条件：有 learner evidence 或显著教学收益。")
+            appendLine()
+            appendLine("【硬门槛】以下任一条不满足则必须排除：")
+            appendLine("- sense_match: 关系必须绑定到目标词的某个义项（form/family/learning 类除外）")
+            appendLine("- pos_rule: 语义类必须同词性；跨词性只能进 family/learning lane")
+            appendLine("- evidence_rule: 至少有一个可信理由支撑纳入")
+            appendLine("- naturalness_rule: 候选词必须是自然常用词，不收罕见/古旧词")
+            appendLine("- incremental_value_rule: 不能是已有候选的近重复或低收益远亲")
+            appendLine()
+            appendLine("【允许的 edge_type 值（16种）】")
+            appendLine("SEMANTIC_SYNONYM / SEMANTIC_ANTONYM / SEMANTIC_OVERLAP / SEMANTIC_HYPERNYM / SEMANTIC_HYPONYM")
+            appendLine("FORM_SPELLING / FORM_HOMOPHONE / FORM_PRONUNCIATION / FORM_MINIMAL_PAIR")
+            appendLine("FAMILY_INFLECTION / FAMILY_DERIVATION / FAMILY_SAME_ROOT")
+            appendLine("USAGE_COLLOCATION / USAGE_PHRASE / USAGE_PATTERN")
+            appendLine("LEARNING_CONFUSABLE / LEARNING_MISUSE_PAIR")
             appendLine()
             appendLine("【status 取值】")
             appendLine("core — 核心关联，必须掌握")
@@ -443,7 +476,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             appendLine("optional — 可选了解")
             appendLine()
             appendLine("【返回JSON格式】")
-            appendLine("""[{"i":1,"edge_type":"SEMANTIC_SYNONYM","relation_strength":4,"learning_value":5,"status":"core","register":"neutral","reason":"两词都表示'大的'，高频同义替换","warning_note":"","confidence":0.9,"evidence_source":"高频同义替换"}]""")
+            appendLine("""[{"i":1,"edge_type":"SEMANTIC_SYNONYM","relation_strength":4,"learning_value":5,"status":"core","register":"neutral","reason":"两词都表示'大的'，高频同义替换","warning_note":"","confidence":0.9,"evidence_source":"高频同义替换","example_sentence":"The big house is large.","difficulty_cefr":"A1"}]""")
             appendLine()
             appendLine("字段说明：")
             appendLine("- i: 候选词序号（从0开始）")
@@ -456,6 +489,8 @@ class WordPoolRepositoryImpl @Inject constructor(
             appendLine("- warning_note: 如有混淆风险给出警示（中文，无则空字符串）")
             appendLine("- confidence: 0.0-1.0，你对这个判断的自信程度")
             appendLine("- evidence_source: 证据来源简述（如\"拼写相似+高频词\"、\"常见搭配\"、\"词典标注易混\"，不超过10字）")
+            appendLine("- example_sentence: 展示该关联的例句（英文，无则空字符串）")
+            appendLine("- difficulty_cefr: 该边的难度等级（A1/A2/B1/B2/C1/C2，无法判断留空）")
             appendLine()
             appendLine("【自检要求】")
             appendLine("输出结果前请自查：")
@@ -463,21 +498,19 @@ class WordPoolRepositoryImpl @Inject constructor(
             appendLine("2. 是否有边的关系类型标注错误？（如把易混淆词标为同义词）")
             appendLine("3. status=core 的边是否确实应为核心？")
             appendLine("4. 是否有重复或近重复的边？")
+            appendLine("5. 是否混义项或混词性？")
+            appendLine("6. 是否有低频噪声或不自然搭配？")
             appendLine("如发现问题请自行修正后再输出。")
             appendLine()
             appendLine("只返回确实存在关联的词对。无关联则返回 []。")
             appendLine(Constants.JSON_STRICT_RULES)
-            appendLine()
-            window.forEachIndexed { idx, w ->
-                val firstMeaning = w.meanings.firstOrNull()?.definition ?: ""
-                appendLine("$idx. ${w.spelling}: $firstMeaning")
-            }
         }
     }
 
     private suspend fun callAiForEdges(
         prompt: String,
-        windowSize: Int,
+        target: WordDetails,
+        window: List<WordDetails>,
         unwrapEnabled: Boolean,
         repairEnabled: Boolean
     ): List<ParsedEdge> {
@@ -486,7 +519,8 @@ class WordPoolRepositoryImpl @Inject constructor(
             try {
                 val response = callAi(prompt)
                 val normalized = normalizeResponse(response, unwrapEnabled, repairEnabled)
-                return parseAndValidateEdgeResponse(normalized, windowSize)
+                val parsed = parseAndValidateEdgeResponse(normalized, window.size)
+                return applyHardThresholds(parsed, target, window)
             } catch (e: NonRetryableEdgeException) {
                 Log.w("WordPoolRepo", "Non-retryable error on attempt ${attempt + 1}", e)
                 return emptyList()
@@ -552,8 +586,11 @@ class WordPoolRepositoryImpl @Inject constructor(
                 val reason = extractJsonString(obj, "reason")
                 val warningNote = extractJsonString(obj, "warning_note")
                 val evidenceSource = extractJsonString(obj, "evidence_source")
+                val register = extractJsonString(obj, "register")
+                val exampleSentence = extractJsonString(obj, "example_sentence")
+                val difficultyCefr = extractJsonString(obj, "difficulty_cefr")
 
-                results.add(ParsedEdge(index, edgeType, status, learnValue, relStrength, confidence, reason, warningNote, evidenceSource))
+                results.add(ParsedEdge(index, edgeType, status, learnValue, relStrength, confidence, reason, warningNote, evidenceSource, register, exampleSentence, difficultyCefr))
             } catch (e: RetryableEdgeException) {
                 throw e
             } catch (e: Exception) {
@@ -617,7 +654,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             edges.forEachIndexed { idx, edge ->
                 val wordA = wordMap[edge.wordIdA]?.spelling ?: "?"
                 val wordB = wordMap[edge.wordIdB]?.spelling ?: "?"
-                appendLine("$idx. $wordA ↔ $wordB | 类型:${edge.edgeType} | 状态:${edge.status} | 置信度:${edge.confidence} | 理由:${edge.reason ?: "无"}")
+                appendLine("$idx. $wordA ↔ $wordB | 类型:${edge.edgeType} | 状态:${edge.status} | 置信度:${edge.confidence} | 语域:${edge.register ?: "neutral"} | 难度:${edge.difficultyCefr ?: "未知"} | 理由:${edge.reason ?: "无"}")
             }
             appendLine()
             appendLine("审核标准：")
@@ -677,6 +714,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                                 wordIdA = edge.wordIdA,
                                 wordIdB = edge.wordIdB,
                                 dictionaryId = edge.dictionaryId,
+                                edgeType = edge.edgeType,
                                 reason = extractJsonString(obj, "note") ?: "审核移除"
                             )
                         ))
@@ -769,6 +807,54 @@ class WordPoolRepositoryImpl @Inject constructor(
             }
         }
         return result
+    }
+
+    /**
+     * Hard threshold filter: apply 5 gates to each parsed edge.
+     * Returns only edges that pass all applicable gates.
+     *
+     * Gates:
+     * 1. sense_match — semantic edges must have reason binding to a specific sense
+     * 2. pos_rule — SEMANTIC cluster edges should be same POS (heuristic: check reason for POS mismatch)
+     * 3. evidence_rule — must have non-blank reason
+     * 4. naturalness_rule — confidence >= 0.4 (AI is fairly confident this is a natural relation)
+     * 5. incremental_value_rule — no near-duplicate edges for same word pair + same cluster
+     */
+    private fun applyHardThresholds(
+        edges: List<ParsedEdge>,
+        target: WordDetails,
+        window: List<WordDetails>
+    ): List<ParsedEdge> {
+        val targetPOS = target.meanings.map { it.pos }.toSet()
+        val seen = mutableSetOf<Pair<Int, EdgeCluster>>()
+        return edges.filter { edge ->
+            // Gate 3: evidence_rule — must have reason
+            if (edge.reason.isNullOrBlank()) return@filter false
+
+            // Gate 4: naturalness_rule — minimum confidence
+            if (edge.confidence < 0.4) return@filter false
+
+            // Gate 5: incremental_value_rule — deduplicate same index + same cluster
+            val key = edge.index to edge.edgeType.cluster
+            if (!seen.add(key)) return@filter false
+
+            // Gate 2: pos_rule — for SEMANTIC cluster, check if POS differs
+            if (edge.edgeType.cluster == EdgeCluster.SEMANTIC) {
+                val otherWord = window.getOrNull(edge.index)
+                if (otherWord != null) {
+                    val otherPOS = otherWord.meanings.map { it.pos }.toSet()
+                    // If no POS overlap at all, this is likely a cross-POS relation — reject
+                    if (targetPOS.isNotEmpty() && otherPOS.isNotEmpty() && targetPOS.intersect(otherPOS).isEmpty()) {
+                        // Allow if status is warning (learning/confusable pair)
+                        if (edge.status != "warning") {
+                            return@filter false
+                        }
+                    }
+                }
+            }
+
+            true
+        }
     }
 
     /**

@@ -14,6 +14,7 @@ data class WordEdgeExcludedEntity(
     @ColumnInfo(name = "word_id_a") val wordIdA: Long,
     @ColumnInfo(name = "word_id_b") val wordIdB: Long,
     @ColumnInfo(name = "dictionary_id") val dictionaryId: Long,
+    @ColumnInfo(name = "edge_type") val edgeType: String? = null,
     @ColumnInfo(name = "reason") val reason: String,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis()
 )
