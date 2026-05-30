@@ -106,13 +106,13 @@ interface WordDao {
 
     // ── Entry Type Classification ──
 
-    @Query("SELECT id, spelling, meanings_json, root_explanation FROM words WHERE dictionary_id = :dictionaryId AND entry_type = 'word' LIMIT :limit")
+    @Query("SELECT id, spelling, meanings_json, root_explanation FROM words WHERE dictionary_id = :dictionaryId LIMIT :limit")
     suspend fun getWordsWithoutEntryType(dictionaryId: Long, limit: Int): List<EntryTypeClassificationInput>
 
     @Query("UPDATE words SET entry_type = :entryType WHERE id = :wordId")
     suspend fun updateEntryType(wordId: Long, entryType: String)
 
-    @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId AND entry_type = 'word'")
+    @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId")
     suspend fun countWordsWithoutEntryType(dictionaryId: Long): Int
 
     @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId AND entry_type = :entryType")
