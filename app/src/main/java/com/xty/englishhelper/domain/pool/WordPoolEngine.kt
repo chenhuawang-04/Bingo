@@ -313,13 +313,22 @@ class WordPoolEngine {
     private fun extractChineseSubstrings(text: String, minLength: Int): List<String> {
         val result = mutableListOf<String>()
         // Extract contiguous Chinese character sequences
+        // BUG 7 fix: cap at max 3 substrings per run to avoid O(n^3) performance
         val chineseRuns = Regex("[\\u4e00-\\u9fff]+").findAll(text)
         chineseRuns.forEach { match ->
             val run = match.value
             if (run.length >= minLength) {
-                for (len in minLength..run.length) {
+                var count = 0
+                // Greedily extract from longest to shortest, deduplicating
+                for (len in run.length downTo minLength) {
+                    if (count >= 3) break
                     for (start in 0..run.length - len) {
-                        result.add(run.substring(start, start + len))
+                        if (count >= 3) break
+                        val substr = run.substring(start, start + len)
+                        if (substr !in result) {
+                            result.add(substr)
+                            count++
+                        }
                     }
                 }
             }
@@ -353,27 +362,4 @@ class WordPoolEngine {
         return prev[n]
     }
 
-    private class UnionFind(n: Int) {
-        val parent = IntArray(n) { it }
-        val rank = IntArray(n)
-
-        fun find(x: Int): Int {
-            if (parent[x] != x) parent[x] = find(parent[x])
-            return parent[x]
-        }
-
-        fun union(x: Int, y: Int) {
-            val rx = find(x)
-            val ry = find(y)
-            if (rx == ry) return
-            when {
-                rank[rx] < rank[ry] -> parent[rx] = ry
-                rank[rx] > rank[ry] -> parent[ry] = rx
-                else -> {
-                    parent[ry] = rx
-                    rank[rx]++
-                }
-            }
-        }
-    }
 }

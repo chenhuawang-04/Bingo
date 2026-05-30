@@ -189,15 +189,20 @@ class StudyViewModel @Inject constructor(
                         }
                     }
 
-                    // Sort candidates by priority
-                    currentLevel = nextCandidates.sortedByDescending { candidateId ->
-                        val candidateNeighbors = edgeMap[candidateId]?.keys ?: emptySet()
-                        // Priority 1: overlap with other candidates in this level
-                        val overlap = candidateNeighbors.intersect(nextCandidates).size
-                        // Priority 2: fewer total neighbors = higher priority (rarer connections)
-                        val totalNeighbors = candidateNeighbors.size
-                        overlap * 10000 - totalNeighbors
-                    }
+                    // BUG 6 fix: use sortedWith for deterministic tie-breaking with stable sort
+                    currentLevel = nextCandidates.sortedWith(
+                        compareByDescending<Long> { candidateId ->
+                            val candidateNeighbors = edgeMap[candidateId]?.keys ?: emptySet()
+                            // Priority 1: overlap with other candidates in this level
+                            val overlap = candidateNeighbors.intersect(nextCandidates).size
+                            // Priority 2: fewer total neighbors = higher priority (rarer connections)
+                            val totalNeighbors = candidateNeighbors.size
+                            overlap * 10000 - totalNeighbors
+                        }.thenBy { candidateId ->
+                            // Priority 3: stable tertiary sort by word ID for deterministic ordering
+                            candidateId
+                        }
+                    )
 
                     currentLevel.forEach { visited.add(it) }
                 }
