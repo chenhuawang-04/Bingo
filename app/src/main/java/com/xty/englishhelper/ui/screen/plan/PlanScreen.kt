@@ -905,6 +905,7 @@ private fun planTaskTypeLabel(type: PlanTaskType): String {
         PlanTaskType.STUDY_NEW_WORDS -> "学习新词"
         PlanTaskType.READ_ARTICLE -> "阅读文章"
         PlanTaskType.PRACTICE_QUESTIONS -> "题库练习"
+        PlanTaskType.BRAINSTORM_STUDY -> "头脑风暴背词"
         PlanTaskType.CUSTOM -> "自定义"
     }
 }
@@ -916,6 +917,7 @@ private fun planAutoSourceLabel(source: PlanAutoSource): String {
         PlanAutoSource.ARTICLE_OPEN -> "打开文章"
         PlanAutoSource.ARTICLE_TTS_FINISHED -> "完成文章朗读"
         PlanAutoSource.QUESTION_SUBMIT -> "提交题库答案"
+        PlanAutoSource.BRAINSTORM_SESSION -> "头脑风暴背词"
     }
 }
 
@@ -928,6 +930,7 @@ private fun supportedAutoSources(type: PlanTaskType): List<PlanAutoSource> {
             PlanAutoSource.ARTICLE_TTS_FINISHED
         )
         PlanTaskType.PRACTICE_QUESTIONS -> listOf(PlanAutoSource.QUESTION_SUBMIT)
+        PlanTaskType.BRAINSTORM_STUDY -> listOf(PlanAutoSource.BRAINSTORM_SESSION)
         PlanTaskType.CUSTOM -> emptyList()
     }
 }
@@ -955,6 +958,7 @@ private fun resolveLogTarget(log: PlanAutoEventLog): PlanLogTarget? {
         PlanAutoSource.QUESTION_SUBMIT -> PlanLogTarget.QuestionGroup(lastId)
 
         PlanAutoSource.STUDY_DUE_SESSION,
-        PlanAutoSource.STUDY_NEW_SESSION -> null
+        PlanAutoSource.STUDY_NEW_SESSION,
+        PlanAutoSource.BRAINSTORM_SESSION -> null
     }
 }

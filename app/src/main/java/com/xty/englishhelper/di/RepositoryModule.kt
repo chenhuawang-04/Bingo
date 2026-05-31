@@ -7,6 +7,7 @@ import com.xty.englishhelper.data.repository.ArticleAiRepositoryImpl
 import com.xty.englishhelper.data.repository.ArticleRepositoryImpl
 import com.xty.englishhelper.data.repository.AtlanticRepositoryImpl
 import com.xty.englishhelper.data.repository.BackgroundTaskRepositoryImpl
+import com.xty.englishhelper.data.repository.BrainstormRepositoryImpl
 import com.xty.englishhelper.data.repository.DictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.GitHubSyncRepositoryImpl
 import com.xty.englishhelper.data.repository.CsMonitorRepositoryImpl
@@ -28,6 +29,7 @@ import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.AtlanticRepository
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
+import com.xty.englishhelper.domain.repository.BrainstormRepository
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.CambridgeDictionaryRepository
@@ -73,6 +75,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindBackgroundTaskRepository(impl: BackgroundTaskRepositoryImpl): BackgroundTaskRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindBrainstormRepository(impl: BrainstormRepositoryImpl): BrainstormRepository
 
     @Binds
     @Singleton

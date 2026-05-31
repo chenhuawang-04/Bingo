@@ -22,7 +22,15 @@ data class StudyUiState(
     val cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
     val cloudExamples: List<CloudWordExample> = emptyList(),
     val cloudExamplesLoading: Boolean = false,
-    val cloudExamplesError: String? = null
+    val cloudExamplesError: String? = null,
+    // Brainstorm daily goal
+    val showBrainstormGoalDialog: Boolean = false,
+    val brainstormGoalTarget: Int = 200,
+    val showBrainstormGoalReachedDialog: Boolean = false,
+    val brainstormLearnedCount: Int = 0,
+    val brainstormTargetCount: Int = 0,
+    val brainstormDueLearned: Int = 0,
+    val brainstormNewLearned: Int = 0
 )
 
 data class WordEdgePreview(

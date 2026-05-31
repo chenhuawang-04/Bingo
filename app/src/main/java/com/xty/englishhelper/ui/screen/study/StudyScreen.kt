@@ -28,13 +28,38 @@ fun StudyScreen(
 
     BackHandler(onBack = onBack)
 
+    // Brainstorm daily goal dialog
+    if (state.showBrainstormGoalDialog) {
+        BrainstormGoalDialog(
+            defaultTarget = state.brainstormGoalTarget,
+            onConfirm = viewModel::confirmBrainstormGoal
+        )
+    }
+
+    // Brainstorm goal reached dialog
+    if (state.showBrainstormGoalReachedDialog) {
+        BrainstormGoalReachedDialog(
+            learned = state.brainstormLearnedCount,
+            target = state.brainstormTargetCount,
+            dueLearned = state.brainstormDueLearned,
+            newLearned = state.brainstormNewLearned,
+            onContinue = viewModel::onContinueAfterGoal,
+            onExit = viewModel::onExitAfterGoal
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     if (state.phase == StudyPhase.Studying || state.phase == StudyPhase.WaitingForNext) {
-                        val prefix = if (state.studyMode == StudyMode.BRAINSTORM) "风暴 " else ""
-                        Text("$prefix${state.progress}/${state.total}")
+                        if (state.studyMode == StudyMode.BRAINSTORM && state.brainstormTargetCount > 0) {
+                            // Show daily goal progress
+                            Text("风暴 ${state.brainstormLearnedCount}/${state.brainstormTargetCount}")
+                        } else {
+                            val prefix = if (state.studyMode == StudyMode.BRAINSTORM) "风暴 " else ""
+                            Text("$prefix${state.progress}/${state.total}")
+                        }
                     } else {
                         Text("学习完成")
                     }

@@ -176,10 +176,15 @@ internal fun StudyingContent(
 
 @Composable
 private fun ProgressBar(state: StudyUiState) {
+    val progress = if (state.studyMode == com.xty.englishhelper.domain.model.StudyMode.BRAINSTORM
+        && state.brainstormTargetCount > 0) {
+        state.brainstormLearnedCount.toFloat() / state.brainstormTargetCount
+    } else {
+        if (state.total > 0) state.progress.toFloat() / state.total else 0f
+    }
+
     LinearProgressIndicator(
-        progress = {
-            if (state.total > 0) state.progress.toFloat() / state.total else 0f
-        },
+        progress = { progress },
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)

@@ -8,6 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.ArticleCategoryDao
 import com.xty.englishhelper.data.local.dao.BackgroundTaskDao
+import com.xty.englishhelper.data.local.dao.BrainstormDao
 import com.xty.englishhelper.data.local.dao.DictionaryDao
 import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.StudyDao
@@ -43,6 +44,8 @@ import com.xty.englishhelper.data.local.entity.SynonymEntity
 import com.xty.englishhelper.data.local.entity.UnitEntity
 import com.xty.englishhelper.data.local.entity.UnitWordCrossRef
 import com.xty.englishhelper.data.local.entity.WordAssociationEntity
+import com.xty.englishhelper.data.local.entity.BrainstormDailyGoalEntity
+import com.xty.englishhelper.data.local.entity.BrainstormSettingsEntity
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.local.entity.WordEdgeExcludedEntity
 import com.xty.englishhelper.data.local.entity.WordEntity
@@ -87,9 +90,11 @@ import java.util.UUID
         PlanDayRecordEntity::class,
         PlanEventLogEntity::class,
         WordEdgeEntity::class,
-        WordEdgeExcludedEntity::class
+        WordEdgeExcludedEntity::class,
+        BrainstormDailyGoalEntity::class,
+        BrainstormSettingsEntity::class
     ],
-    version = 28,
+    version = 29,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -104,6 +109,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun articleCategoryDao(): ArticleCategoryDao
     abstract fun planDao(): PlanDao
     abstract fun wordEdgeDao(): WordEdgeDao
+    abstract fun brainstormDao(): BrainstormDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -1000,6 +1006,37 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_27_28 = object : Migration(27, 28) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE background_tasks ADD COLUMN progress_message TEXT DEFAULT NULL")
+            }
+        }
+
+        val MIGRATION_28_29 = object : Migration(28, 29) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS brainstorm_daily_goal (
+                        date TEXT PRIMARY KEY NOT NULL,
+                        target_count INTEGER NOT NULL DEFAULT 200,
+                        total_learned INTEGER NOT NULL DEFAULT 0,
+                        due_words_learned INTEGER NOT NULL DEFAULT 0,
+                        new_words_learned INTEGER NOT NULL DEFAULT 0,
+                        is_completed INTEGER NOT NULL DEFAULT 0,
+                        completed_at INTEGER,
+                        continued_after_goal INTEGER NOT NULL DEFAULT 0,
+                        created_at INTEGER NOT NULL DEFAULT 0,
+                        updated_at INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS brainstorm_settings (
+                        id INTEGER PRIMARY KEY NOT NULL DEFAULT 1,
+                        last_daily_target INTEGER NOT NULL DEFAULT 200,
+                        updated_at INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
             }
         }
     }

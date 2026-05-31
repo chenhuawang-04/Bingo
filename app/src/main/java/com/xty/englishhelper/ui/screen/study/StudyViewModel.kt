@@ -9,9 +9,16 @@ import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.CloudExampleSource
+import com.xty.englishhelper.domain.model.BrainstormDailyGoal
+import com.xty.englishhelper.domain.model.BrainstormProgressResult
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.WordPoolRepository
+import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.study.Rating
+import com.xty.englishhelper.domain.usecase.brainstorm.CollectRelatedGroupUseCase
+import com.xty.englishhelper.domain.usecase.brainstorm.GetBrainstormDailyGoalUseCase
+import com.xty.englishhelper.domain.usecase.brainstorm.SaveBrainstormDailyGoalUseCase
+import com.xty.englishhelper.domain.usecase.brainstorm.UpdateBrainstormProgressUseCase
 import com.xty.englishhelper.domain.usecase.dictionary.GetCloudWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.study.GetDueWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.GetNewWordsUseCase
@@ -45,10 +52,15 @@ class StudyViewModel @Inject constructor(
     private val reviewWord: ReviewWordUseCase,
     private val previewIntervals: PreviewIntervalsUseCase,
     private val wordPoolRepository: WordPoolRepository,
+    private val wordRepository: WordRepository,
     private val getCloudWordExamples: GetCloudWordExamplesUseCase,
     private val settingsDataStore: SettingsDataStore,
     private val ttsManager: TtsManager,
-    private val planAutoProgressTracker: PlanAutoProgressTracker
+    private val planAutoProgressTracker: PlanAutoProgressTracker,
+    private val getBrainstormDailyGoal: GetBrainstormDailyGoalUseCase,
+    private val saveBrainstormDailyGoal: SaveBrainstormDailyGoalUseCase,
+    private val updateBrainstormProgress: UpdateBrainstormProgressUseCase,
+    private val collectRelatedGroup: CollectRelatedGroupUseCase
 ) : ViewModel() {
 
     private val unitIdsStr: String = savedStateHandle["unitIds"] ?: ""
@@ -81,6 +93,14 @@ class StudyViewModel @Inject constructor(
     private var cloudExamplesJob: Job? = null
     private var cloudExamplesRequestVersion: Long = 0L
 
+    // Brainstorm daily goal state
+    private var brainstormDailyGoal: BrainstormDailyGoal? = null
+    private var brainstormGoalReached = false
+    private var brainstormFinishGroupWordIds = emptySet<Long>()  // 目标达成后需背完的关联词组
+    private var brainstormFinishGroupIndex = 0
+    private var brainstormAllWordIds = emptySet<Long>()  // 本次会话所有词 ID
+    private var dueWordIds = emptySet<Long>()  // 本次会话中的复习词 ID
+
     init {
         loadSession()
     }
@@ -88,59 +108,119 @@ class StudyViewModel @Inject constructor(
     private fun loadSession() {
         viewModelScope.launch {
             try {
-                // Get due words (most overdue first) and new words
-                val dueWords = getDueWords(unitIds)
-                val newWords = getNewWords(unitIds)
-                sessionHasDueWords = dueWords.isNotEmpty()
-                sessionHasNewWords = newWords.isNotEmpty()
-                sessionProgressTracked = false
-
-                // Build queue: due words first, then new words
-                queue.clear()
-                val addedIds = mutableSetOf<Long>()
-                val orderedWords = mutableListOf<WordDetails>()
-                for (word in dueWords) {
-                    if (word.id !in addedIds) {
-                        orderedWords.add(word)
-                        addedIds.add(word.id)
-                    }
-                }
-                for (word in newWords) {
-                    if (word.id !in addedIds) {
-                        orderedWords.add(word)
-                        addedIds.add(word.id)
-                    }
-                }
-
-                // Build spelling lookup for brainstorm tags
-                wordIdToSpelling = orderedWords.associate { it.id to it.spelling }
-
-                // Apply brainstorm reordering if needed
-                val finalOrder = if (studyMode == StudyMode.BRAINSTORM && orderedWords.isNotEmpty()) {
-                    val dictionaryId = orderedWords.first().dictionaryId
-                    applyBrainstormOrder(orderedWords, dictionaryId)
-                } else {
-                    orderedWords
-                }
-
-                finalOrder.forEach { queue.addLast(QueueEntry(it)) }
-                totalUniqueWords = queue.size
-
-                _uiState.update { it.copy(studyMode = studyMode) }
-
-                if (queue.isEmpty()) {
+                // BRAINSTORM mode: show daily goal dialog first
+                if (studyMode == StudyMode.BRAINSTORM) {
+                    brainstormDailyGoal = getBrainstormDailyGoal()
                     _uiState.update {
                         it.copy(
-                            phase = StudyPhase.Finished,
-                            stats = StudyStats(totalWords = 0)
+                            showBrainstormGoalDialog = true,
+                            brainstormGoalTarget = brainstormDailyGoal?.targetCount ?: 200
                         )
                     }
-                } else {
-                    showNextWord()
+                    return@launch  // Wait for user confirmation
                 }
+                // NORMAL mode: load directly
+                loadStudyContent()
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, phase = StudyPhase.Finished) }
             }
+        }
+    }
+
+    // Called when user confirms brainstorm goal
+    fun confirmBrainstormGoal(targetCount: Int) {
+        viewModelScope.launch {
+            saveBrainstormDailyGoal(targetCount)
+            brainstormDailyGoal = brainstormDailyGoal?.copy(targetCount = targetCount)
+            _uiState.update { it.copy(showBrainstormGoalDialog = false) }
+            loadStudyContent()
+        }
+    }
+
+    private suspend fun loadStudyContent() {
+        try {
+            // Get due words (most overdue first) and new words
+            val dueWords = getDueWords(unitIds)
+            val newWords = getNewWords(unitIds)
+            sessionHasDueWords = dueWords.isNotEmpty()
+            sessionHasNewWords = newWords.isNotEmpty()
+            sessionProgressTracked = false
+
+            // Build queue: due words first, then new words
+            queue.clear()
+            val addedIds = mutableSetOf<Long>()
+            val orderedWords = mutableListOf<WordDetails>()
+
+            // Track due word IDs for progress counting
+            val dueIds = mutableSetOf<Long>()
+
+            for (word in dueWords) {
+                if (word.id !in addedIds) {
+                    orderedWords.add(word)
+                    addedIds.add(word.id)
+                    dueIds.add(word.id)
+                }
+            }
+
+            // Brainstorm mode: collect related words from due words as new words
+            if (studyMode == StudyMode.BRAINSTORM && dueWords.isNotEmpty()) {
+                val dictionaryId = dueWords.first().dictionaryId
+                val edgeMap = wordPoolRepository.getWordEdgeAdjacency(dictionaryId)
+                for (word in dueWords) {
+                    val neighbors = edgeMap[word.id]?.keys ?: emptySet()
+                    for (neighborId in neighbors) {
+                        if (neighborId !in addedIds) {
+                            val relatedWord = wordRepository.getWordById(neighborId)
+                            if (relatedWord != null) {
+                                orderedWords.add(relatedWord)
+                                addedIds.add(neighborId)
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (word in newWords) {
+                if (word.id !in addedIds) {
+                    orderedWords.add(word)
+                    addedIds.add(word.id)
+                }
+            }
+
+            dueWordIds = dueIds.toSet()
+            brainstormAllWordIds = addedIds.toSet()
+            wordIdToSpelling = orderedWords.associate { it.id to it.spelling }
+
+            // Apply brainstorm reordering if needed
+            val finalOrder = if (studyMode == StudyMode.BRAINSTORM && orderedWords.isNotEmpty()) {
+                val dictionaryId = orderedWords.first().dictionaryId
+                applyBrainstormOrder(orderedWords, dictionaryId)
+            } else {
+                orderedWords
+            }
+
+            finalOrder.forEach { queue.addLast(QueueEntry(it)) }
+            totalUniqueWords = queue.size
+
+            _uiState.update {
+                it.copy(
+                    studyMode = studyMode,
+                    brainstormTargetCount = brainstormDailyGoal?.targetCount ?: 0
+                )
+            }
+
+            if (queue.isEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        phase = StudyPhase.Finished,
+                        stats = StudyStats(totalWords = 0)
+                    )
+                }
+            } else {
+                showNextWord()
+            }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(error = e.message, phase = StudyPhase.Finished) }
         }
     }
 
@@ -299,12 +379,21 @@ class StudyViewModel @Inject constructor(
         sessionProgressTracked = true
         viewModelScope.launch {
             runCatching {
-                planAutoProgressTracker.onStudySessionCompleted(
-                    unitIds = unitIds,
-                    studyMode = studyMode,
-                    hasDueWords = sessionHasDueWords,
-                    hasNewWords = sessionHasNewWords
-                )
+                if (studyMode == StudyMode.BRAINSTORM) {
+                    // Track brainstorm session for plan module
+                    val totalLearned = _uiState.value.brainstormLearnedCount
+                    planAutoProgressTracker.onBrainstormSessionCompleted(
+                        unitIds = unitIds,
+                        totalWordsLearned = totalLearned
+                    )
+                } else {
+                    planAutoProgressTracker.onStudySessionCompleted(
+                        unitIds = unitIds,
+                        studyMode = studyMode,
+                        hasDueWords = sessionHasDueWords,
+                        hasNewWords = sessionHasNewWords
+                    )
+                }
             }
         }
     }
@@ -345,14 +434,82 @@ class StudyViewModel @Inject constructor(
                     // Re-queue with the scheduled due time so the word waits
                     queue.addLast(QueueEntry(word, dueAt = result.due))
                 } else {
-                    // Only count as fully processed when not re-queued
+                    // Mark as processed
                     processedWordIds.add(word.id)
+
+                    // Brainstorm: update progress
+                    if (studyMode == StudyMode.BRAINSTORM) {
+                        val isDueWord = word.id in dueWordIds
+                        val progressResult = updateBrainstormProgress.onWordLearned(isDueWord)
+                        val (learned, target) = when (progressResult) {
+                            is BrainstormProgressResult.InProgress -> progressResult.learned to progressResult.target
+                            is BrainstormProgressResult.GoalReached -> progressResult.learned to progressResult.target
+                            is BrainstormProgressResult.NotStarted -> 0 to 0
+                        }
+                        _uiState.update {
+                            it.copy(
+                                brainstormLearnedCount = learned,
+                                brainstormTargetCount = target,
+                                brainstormDueLearned = if (isDueWord) it.brainstormDueLearned + 1 else it.brainstormDueLearned,
+                                brainstormNewLearned = if (!isDueWord) it.brainstormNewLearned + 1 else it.brainstormNewLearned
+                            )
+                        }
+                        if (progressResult is BrainstormProgressResult.GoalReached && !brainstormGoalReached) {
+                            brainstormGoalReached = true
+                            // Collect current related group (words not yet processed)
+                            val relatedGroup = collectRelatedGroup(
+                                dictionaryId = word.dictionaryId,
+                                startWordId = word.id,
+                                wordIds = brainstormAllWordIds,
+                                processedWordIds = processedWordIds
+                            )
+                            brainstormFinishGroupWordIds = relatedGroup.toSet()
+                            if (relatedGroup.isEmpty()) {
+                                showGoalReachedDialog()
+                            }
+                            // Otherwise continue studying; counter checked below
+                        } else if (brainstormGoalReached && word.id in brainstormFinishGroupWordIds) {
+                            // Only count words that are part of the related group
+                            brainstormFinishGroupIndex++
+                            if (brainstormFinishGroupIndex >= brainstormFinishGroupWordIds.size) {
+                                showGoalReachedDialog()
+                            }
+                        }
+                    }
                 }
 
                 showNextWord()
             } catch (e: Exception) {
                 isProcessingRating = false
                 _uiState.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
+    private fun showGoalReachedDialog() {
+        _uiState.update { it.copy(showBrainstormGoalReachedDialog = true) }
+    }
+
+    fun onContinueAfterGoal() {
+        viewModelScope.launch {
+            updateBrainstormProgress.onContinueAfterGoal()
+            // Defensive reset: DB isCompleted=true prevents re-entry, but clear stale state
+            brainstormGoalReached = false
+            brainstormFinishGroupWordIds = emptySet()
+            brainstormFinishGroupIndex = 0
+            _uiState.update { it.copy(showBrainstormGoalReachedDialog = false) }
+        }
+    }
+
+    fun onExitAfterGoal() {
+        viewModelScope.launch {
+            updateBrainstormProgress.onExitAfterGoal()
+            _uiState.update {
+                it.copy(
+                    showBrainstormGoalReachedDialog = false,
+                    phase = StudyPhase.Finished,
+                    stats = buildStats()
+                )
             }
         }
     }

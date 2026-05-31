@@ -5,6 +5,7 @@ enum class PlanTaskType {
     STUDY_NEW_WORDS,
     READ_ARTICLE,
     PRACTICE_QUESTIONS,
+    BRAINSTORM_STUDY,
     CUSTOM
 }
 
@@ -13,7 +14,8 @@ enum class PlanAutoSource {
     STUDY_NEW_SESSION,
     ARTICLE_OPEN,
     ARTICLE_TTS_FINISHED,
-    QUESTION_SUBMIT
+    QUESTION_SUBMIT,
+    BRAINSTORM_SESSION
 }
 
 enum class PlanStatsMode {

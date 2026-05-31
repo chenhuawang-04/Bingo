@@ -7,6 +7,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import com.xty.englishhelper.data.local.AppDatabase
 import com.xty.englishhelper.data.local.dao.BackgroundTaskDao
+import com.xty.englishhelper.data.local.dao.BrainstormDao
 import com.xty.englishhelper.data.local.dao.DictionaryDao
 import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.ArticleCategoryDao
@@ -65,7 +66,8 @@ object AppModule {
                 AppDatabase.MIGRATION_24_25,
                 AppDatabase.MIGRATION_25_26,
                 AppDatabase.MIGRATION_26_27,
-                AppDatabase.MIGRATION_27_28
+                AppDatabase.MIGRATION_27_28,
+                AppDatabase.MIGRATION_28_29
             )
             .build()
     }
@@ -102,6 +104,9 @@ object AppModule {
 
     @Provides
     fun providePlanDao(db: AppDatabase): PlanDao = db.planDao()
+
+    @Provides
+    fun provideBrainstormDao(db: AppDatabase): BrainstormDao = db.brainstormDao()
 
     @Provides
     @Singleton
