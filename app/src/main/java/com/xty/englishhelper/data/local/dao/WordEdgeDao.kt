@@ -16,6 +16,9 @@ interface WordEdgeDao {
     @Query("DELETE FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun deleteByDictionary(dictionaryId: Long)
 
+    @Query("DELETE FROM word_edges WHERE dictionary_id = :dictionaryId AND (word_id_a = :wordId OR word_id_b = :wordId)")
+    suspend fun deleteEdgesForWord(dictionaryId: Long, wordId: Long)
+
     @Query("SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdgesFull(dictionaryId: Long): List<WordEdgeEntity>
 

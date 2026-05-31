@@ -3,39 +3,39 @@ package com.xty.englishhelper.data.repository.pool
 import kotlinx.coroutines.delay
 
 /**
- * Simple token-bucket rate limiter.
+ * Token-bucket rate limiter that tracks the NEXT allowed acquisition time.
  * @param maxPerMinute maximum requests per minute; 0 = unlimited
  *
- * N9 fix: uses System.nanoTime() (monotonic clock) instead of
- * System.currentTimeMillis() which can jump backward due to NTP adjustments.
+ * Uses System.nanoTime() (monotonic clock) to avoid NTP adjustments.
+ * Tracks nextAcquireNs instead of lastAcquireNs to avoid negative-elapsed
+ * bugs when multiple coroutines call acquire() concurrently.
  */
 internal class EdgeRateLimiter(maxPerMinute: Int) {
     private val minIntervalNs = if (maxPerMinute > 0) 60_000_000_000L / maxPerMinute else 0L
-    private var lastAcquireNs = 0L
+    private var nextAcquireNs = 0L
     private val lock = Any()
 
     suspend fun acquire() {
         if (minIntervalNs <= 0) return
         val waitNs = synchronized(lock) {
             val now = System.nanoTime()
-            if (lastAcquireNs == 0L) {
-                // First call: record timestamp, no wait
-                lastAcquireNs = now
+            if (nextAcquireNs == 0L) {
+                // First call: allow immediately, schedule next
+                nextAcquireNs = now + minIntervalNs
+                0L
+            } else if (now >= nextAcquireNs) {
+                // Enough time has passed: allow immediately
+                nextAcquireNs = now + minIntervalNs
                 0L
             } else {
-                val elapsed = now - lastAcquireNs
-                if (elapsed >= minIntervalNs) {
-                    lastAcquireNs = now
-                    0L
-                } else {
-                    val delayNs = minIntervalNs - elapsed
-                    lastAcquireNs = now + delayNs
-                    delayNs
-                }
+                // Must wait until nextAcquireNs
+                val delayNs = nextAcquireNs - now
+                nextAcquireNs += minIntervalNs  // Schedule next AFTER this one
+                delayNs
             }
         }
         if (waitNs > 0) {
-            delay(waitNs / 1_000_000) // convert ns to ms
+            delay((waitNs + 999_999) / 1_000_000) // Round up to nearest ms
         }
     }
 }

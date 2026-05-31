@@ -769,7 +769,7 @@ class BackgroundTaskManager @Inject constructor(
         val startIndex = if (rebuildMode == RebuildMode.INCREMENTAL && task.progressCurrent > 0) {
             task.progressCurrent
         } else {
-            -1  // -1 means start from end
+            -1  // No resume: process all words from the beginning
         }
 
         var lastCurrent = 0

@@ -341,6 +341,12 @@ class WordPoolRepositoryImpl @Inject constructor(
                     continue
                 }
 
+                // When resuming, clean stale edges for the word at the interruption point
+                // to avoid conflicting edge types from the previous (incomplete) run
+                if (isResuming && wordIndex == resumeIndex) {
+                    wordEdgeDao.deleteEdgesForWord(dictionaryId, currentWord.id)
+                }
+
                 // Split history into chunks for concurrent AI calls
                 val chunks = history.chunked(windowSize)
 
@@ -534,7 +540,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
 
         // Build pools from components with >=2 members, split large ones
-        val maxPoolSize = 15
+        val maxPoolSize = WordPoolEngine.MAX_POOL_SIZE
         val result = mutableListOf<BuiltPoolWithWordIds>()
         components.values.forEach { members ->
             if (members.size < 2) return@forEach

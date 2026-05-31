@@ -75,6 +75,7 @@ class PoolBuildDetailViewModel @Inject constructor(
                     else -> BuildStatus.IDLE
                 }
                 val strategy = (poolTask.payload as? WordPoolRebuildPayload)?.strategy
+                val rebuildMode = (poolTask.payload as? WordPoolRebuildPayload)?.rebuildMode
                 val newError = if (poolTask.status == BackgroundTaskStatus.FAILED && poolTask.errorMessage != null) {
                     poolTask.errorMessage
                 } else {
@@ -98,6 +99,7 @@ class PoolBuildDetailViewModel @Inject constructor(
                         progressCurrent = poolTask.progressCurrent,
                         progressTotal = poolTask.progressTotal,
                         strategy = strategy,
+                        rebuildMode = rebuildMode,
                         isPaused = poolTask.status == BackgroundTaskStatus.PAUSED,
                         errorMessage = newError,
                         errorLogs = errorLogs
@@ -132,11 +134,13 @@ class PoolBuildDetailViewModel @Inject constructor(
         val state = _uiState.value
         val strategy = state.strategy ?: return
         val poolStrategy = runCatching { PoolStrategy.valueOf(strategy) }.getOrNull() ?: return
+        val mode = runCatching { RebuildMode.valueOf(state.rebuildMode ?: "") }
+            .getOrDefault(RebuildMode.INCREMENTAL)
         backgroundTaskManager.enqueueWordPoolRebuild(
             dictionaryId = dictionaryId,
             strategy = poolStrategy,
-            force = false,
-            rebuildMode = RebuildMode.INCREMENTAL
+            force = mode == RebuildMode.FULL,
+            rebuildMode = mode
         )
     }
 
@@ -163,6 +167,7 @@ data class PoolBuildDetailUiState(
     val progressCurrent: Int = 0,
     val progressTotal: Int = 0,
     val strategy: String? = null,
+    val rebuildMode: String? = null,
     val isPaused: Boolean = false,
     val errorMessage: String? = null,
     val errorLogs: List<String> = emptyList()
