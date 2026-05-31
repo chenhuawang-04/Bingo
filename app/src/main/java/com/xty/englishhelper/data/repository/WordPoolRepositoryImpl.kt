@@ -279,9 +279,11 @@ class WordPoolRepositoryImpl @Inject constructor(
         isPaused: () -> Boolean,
         onProgress: (Int, Int, String?) -> Unit
     ): List<BuiltPoolWithWordIds> {
-        val windowSize = settingsDataStore.getPoolWindowSize()
-        val maxConcurrent = settingsDataStore.getPoolMaxConcurrent()
+        val chunkSize = settingsDataStore.getPoolWindowSize()      // 每个 chunk 的候选词数
+        val maxConcurrent = settingsDataStore.getPoolMaxConcurrent() // 单个词的 chunk 最大并发
         val requestsPerMinute = settingsDataStore.getPoolRequestsPerMinute()
+
+        Log.i("WordPoolRepo", "QUALITY_FIRST config: chunkSize=$chunkSize, maxConcurrent=$maxConcurrent, rpm=$requestsPerMinute")
 
         if (rebuildMode == RebuildMode.FULL) {
             wordEdgeDao.deleteByDictionary(dictionaryId)
@@ -295,149 +297,187 @@ class WordPoolRepositoryImpl @Inject constructor(
 
         // Count total words for progress
         val totalWords = wordDao.countAllWords(dictionaryId)
-        val processedWords = java.util.concurrent.atomic.AtomicInteger(0)
+        Log.i("WordPoolRepo", "Total words in dictionary: $totalWords")
 
-        // Stream words in batches, process each against all previous words
-        val stream = WordStream(wordDao, dictionaryId)
-        val history = mutableListOf<WordRef>() // Lightweight refs (~50 bytes each)
+        val processedWords = java.util.concurrent.atomic.AtomicInteger(0)
+        val successfulAiCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val failedAiCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        var firstAiError: String? = null
+
+        // Load all words into memory (ordered by entry_order ASC)
+        val allWords = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
+
         val isResuming = startIndex >= 0
         val resumeIndex = if (isResuming) startIndex else 0
-        var wordIndex = 0
 
-        while (stream.hasNext()) {
+        // ============================================================
+        // 外层循环：逐词遍历（从后向前，即 entry_order ASC 顺序）
+        // 每个词与它前面的所有词进行比较
+        // ============================================================
+        for ((wordIndex, currentWord) in allWords.withIndex()) {
             if (isCancelled()) {
-                Log.d("WordPoolRepo", "QualityFirst streaming build cancelled")
+                Log.d("WordPoolRepo", "QualityFirst build cancelled at wordIndex=$wordIndex")
                 break
             }
 
-            // Pause: wait here before loading next batch. Already-in-flight AI calls
-            // continue running and their results are processed normally.
+            // 暂停检查
             while (isPaused()) {
                 delay(500)
                 if (isCancelled()) break
             }
 
-            // Load next batch of words (full details needed for AI prompt)
-            val batch = stream.take(windowSize)
-            if (batch.isEmpty()) break
-
-            // Process each word in batch against ALL previous words (chunked)
-            for (currentWord in batch) {
-                if (isCancelled()) break
-                if (history.isEmpty()) {
-                    history.add(WordRef.from(currentWord))
-                    wordIndex++
-                    val count = processedWords.incrementAndGet()
-                    onProgress(count, totalWords, currentWord.spelling)
-                    continue
-                }
-
-                // Skip edge generation for words before resume index, but still build history
-                if (wordIndex < resumeIndex) {
-                    history.add(WordRef.from(currentWord))
-                    wordIndex++
-                    val count = processedWords.incrementAndGet()
-                    onProgress(count, totalWords, currentWord.spelling)
-                    continue
-                }
-
-                // When resuming, clean stale edges for the word at the interruption point
-                // to avoid conflicting edge types from the previous (incomplete) run
-                if (isResuming && wordIndex == resumeIndex) {
-                    wordEdgeDao.deleteEdgesForWord(dictionaryId, currentWord.id)
-                }
-
-                // Split history into chunks for concurrent AI calls
-                val chunks = history.chunked(windowSize)
-
-                val windowResults = coroutineScope {
-                    chunks.map { chunk ->
-                        async {
-                            semaphore.withPermit {
-                                // Pause: wait before sending this AI request.
-                                // Other in-flight requests complete normally.
-                                while (isPaused()) {
-                                    delay(200)
-                                    if (isCancelled()) return@withPermit emptyList()
-                                }
-
-                                rateLimiter.acquire()
-                                if (isCancelled()) return@withPermit emptyList()
-
-                                // Batch load full WordDetails for this chunk from DB
-                                // IMPORTANT: preserve input order — AI edge.index is based on prompt order
-                                val chunkIds = chunk.map { it.id }
-                                val detailsById = wordDao.getWordsByIds(chunkIds)
-                                    .associateBy { it.word.id }
-                                val chunkDetails = chunkIds.mapNotNull { detailsById[it]?.toDomain() }
-
-                                val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, chunkDetails)
-                                val aiResult = callAiForEdges(prompt, currentWord, chunkDetails, unwrapEnabled, repairEnabled)
-
-                                aiResult.mapNotNull { edge ->
-                                    if (edge.index !in chunkDetails.indices) return@mapNotNull null
-                                    val otherWord = chunkDetails[edge.index]
-                                    val (idA, idB) = if (currentWord.id < otherWord.id) {
-                                        currentWord.id to otherWord.id
-                                    } else {
-                                        otherWord.id to currentWord.id
-                                    }
-                                    WordEdgeEntity(
-                                        wordIdA = idA,
-                                        wordIdB = idB,
-                                        edgeType = edge.edgeType.dbValue,
-                                        dictionaryId = dictionaryId,
-                                        status = edge.status,
-                                        learningValue = edge.learningValue,
-                                        relationStrength = edge.relationStrength,
-                                        confidence = edge.confidence,
-                                        reason = edge.reason,
-                                        warningNote = edge.warningNote,
-                                        evidenceSource = edge.evidenceSource,
-                                        register = edge.register,
-                                        exampleSentence = edge.exampleSentence,
-                                        difficultyCefr = edge.difficultyCefr
-                                    )
-                                }
-                            }
-                        }
-                    }.awaitAll()
-                }
-
-                // Batch insert edges
-                val newEdges = windowResults.flatten()
-                if (newEdges.isNotEmpty()) {
-                    wordEdgeDao.insertEdges(newEdges)
-                }
-
-                // Add current word to history (lightweight ref)
-                history.add(WordRef.from(currentWord))
-                wordIndex++
-
-                // Update progress once per word (not per chunk)
+            // 第一个词前面没有词，直接跳过
+            if (wordIndex == 0) {
                 val count = processedWords.incrementAndGet()
                 onProgress(count, totalWords, currentWord.spelling)
+                continue
             }
+
+            // 跳过恢复点之前的词（但仍然计入进度）
+            if (isResuming && wordIndex < resumeIndex) {
+                val count = processedWords.incrementAndGet()
+                onProgress(count, totalWords, currentWord.spelling)
+                continue
+            }
+
+            // 恢复时清理上次中断产生的不完整边
+            if (isResuming && wordIndex == resumeIndex) {
+                wordEdgeDao.deleteEdgesForWord(dictionaryId, currentWord.id)
+            }
+
+            // 当前词的前面所有词（从 index 0 到 wordIndex-1）
+            val previousWords = allWords.subList(0, wordIndex)
+
+            // ============================================================
+            // 内层：将 previousWords 按 chunkSize 分块，逐块发送 AI 请求
+            // 例：301个词处理第301个时，history=300，chunkSize=50
+            // → 分6块：[0-50], [51-100], ..., [250-300]
+            // ============================================================
+            val chunks = previousWords.chunked(chunkSize)
+            Log.d("WordPoolRepo", "Word '${currentWord.spelling}' (#${wordIndex + 1}/$totalWords): " +
+                "对比${previousWords.size}个前词，分${chunks.size}个chunk")
+
+            // 当前词的所有 chunk 并发执行，受 maxConcurrent 限制
+            // 本词所有 chunk 完成后，才进入下一个词
+            var totalEdgesForWord = 0
+            val chunkResults = coroutineScope {
+                chunks.mapIndexed { chunkIdx, chunk ->
+                    async {
+                        semaphore.withPermit {
+                            // 暂停检查
+                            while (isPaused()) {
+                                delay(200)
+                                if (isCancelled()) return@withPermit emptyList()
+                            }
+
+                            // 速率限制：等待直到允许发送下一个请求
+                            rateLimiter.acquire()
+                            if (isCancelled()) return@withPermit emptyList()
+
+                            // 报告当前 chunk 状态
+                            onProgress(processedWords.get(), totalWords,
+                                "${currentWord.spelling}|${chunkIdx + 1}|${chunks.size}|${totalEdgesForWord}")
+
+                            // 从 DB 加载 chunk 中每个词的完整信息
+                            val chunkIds = chunk.map { it.id }
+                            val detailsById = wordDao.getWordsByIds(chunkIds)
+                                .associateBy { it.word.id }
+                            val chunkDetails = chunkIds.mapNotNull { detailsById[it]?.toDomain() }
+
+                            // 构建 prompt 并调用 AI
+                            val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, chunkDetails)
+                            val errorRef = arrayOfNulls<String>(1)
+                            val aiResult = callAiForEdges(
+                                prompt, currentWord, chunkDetails,
+                                unwrapEnabled, repairEnabled, errorRef
+                            )
+
+                            Log.d("WordPoolRepo", "  chunk[${chunkIdx + 1}/${chunks.size}] " +
+                                "'${currentWord.spelling}' vs ${chunk.size}词 → ${aiResult.size}条边")
+
+                            if (aiResult.isNotEmpty()) {
+                                successfulAiCalls.incrementAndGet()
+                                totalEdgesForWord += aiResult.size
+                            } else {
+                                failedAiCalls.incrementAndGet()
+                                if (firstAiError == null && errorRef[0] != null) {
+                                    firstAiError = errorRef[0]
+                                }
+                            }
+
+                            // 将 AI 返回的边转换为实体
+                            aiResult.mapNotNull { edge ->
+                                if (edge.index !in chunkDetails.indices) return@mapNotNull null
+                                val otherWord = chunkDetails[edge.index]
+                                val (idA, idB) = if (currentWord.id < otherWord.id) {
+                                    currentWord.id to otherWord.id
+                                } else {
+                                    otherWord.id to currentWord.id
+                                }
+                                WordEdgeEntity(
+                                    wordIdA = idA,
+                                    wordIdB = idB,
+                                    edgeType = edge.edgeType.dbValue,
+                                    dictionaryId = dictionaryId,
+                                    status = edge.status,
+                                    learningValue = edge.learningValue,
+                                    relationStrength = edge.relationStrength,
+                                    confidence = edge.confidence,
+                                    reason = edge.reason,
+                                    warningNote = edge.warningNote,
+                                    evidenceSource = edge.evidenceSource,
+                                    register = edge.register,
+                                    exampleSentence = edge.exampleSentence,
+                                    difficultyCefr = edge.difficultyCefr
+                                )
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+
+            // 当前词的所有 chunk 处理完毕，批量写入边
+            val newEdges = chunkResults.flatten()
+            if (newEdges.isNotEmpty()) {
+                wordEdgeDao.insertEdges(newEdges)
+            }
+
+            // 更新进度
+            val count = processedWords.incrementAndGet()
+            onProgress(count, totalWords, currentWord.spelling)
         }
 
-        // Review low-confidence edges with REVIEWER model
+        // ============================================================
+        // 构建完成，统计 AI 调用情况
+        // ============================================================
+        val totalAiAttempts = successfulAiCalls.get() + failedAiCalls.get()
+        if (totalAiAttempts > 0 && successfulAiCalls.get() == 0) {
+            val errorMsg = "所有 AI 调用均失败（共 $totalAiAttempts 次），未生成任何边。" +
+                (firstAiError?.let { "\n首个错误: $it" } ?: "")
+            Log.e("WordPoolRepo", errorMsg)
+            throw IllegalStateException(errorMsg)
+        }
+        if (totalAiAttempts > 0) {
+            Log.i("WordPoolRepo", "AI 调用统计: 成功 ${successfulAiCalls.get()}/$totalAiAttempts, 失败 ${failedAiCalls.get()}")
+        }
+
+        // ============================================================
+        // 审查低置信度边
+        // ============================================================
         coroutineContext.ensureActive()
         val allEdgesForReview = wordEdgeDao.getAllEdgesFull(dictionaryId)
 
-        // Collect all word IDs for reviewer
         val allWordIds = mutableSetOf<Long>()
         allEdgesForReview.forEach { edge ->
             allWordIds.add(edge.wordIdA)
             allWordIds.add(edge.wordIdB)
         }
 
-        // Load words for reviewer context (one-time cost, GC'd after review)
         val allWordsForReviewer = wordDao.getWordsByDictionaryOnce(dictionaryId)
         val domainsForReviewer = allWordsForReviewer.map { it.toDomain() }
 
         val reviewModified = edgeReviewer.reviewEdgesWithAi(allEdgesForReview, domainsForReviewer, dictionaryId)
 
-        // Build pools from edges in DB; re-fetch only if reviewer modified any edges
         coroutineContext.ensureActive()
         val allEdges = if (reviewModified) {
             wordEdgeDao.getAllEdgesFull(dictionaryId)
@@ -452,7 +492,8 @@ class WordPoolRepositoryImpl @Inject constructor(
         target: WordDetails,
         window: List<WordDetails>,
         unwrapEnabled: Boolean,
-        repairEnabled: Boolean
+        repairEnabled: Boolean,
+        errorOut: Array<String?> = arrayOfNulls(1)
     ): List<com.xty.englishhelper.data.repository.pool.ParsedEdge> {
         var lastException: Exception? = null
         for (attempt in 0 until MAX_EDGE_RETRIES) {
@@ -475,6 +516,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                 return EdgeParser.applyHardThresholds(parsed, target, window)
             } catch (e: NonRetryableEdgeException) {
                 Log.w("WordPoolRepo", "Non-retryable error on attempt ${attempt + 1}", e)
+                errorOut[0] = e.message?.take(200) ?: e.javaClass.simpleName
                 return emptyList()
             } catch (e: CancellationException) {
                 throw e
@@ -489,13 +531,17 @@ class WordPoolRepositoryImpl @Inject constructor(
                 lastException = e
                 val retryable = AiErrorUtils.isRetryableError(e)
                 Log.w("WordPoolRepo", "AI edge call attempt ${attempt + 1}/$MAX_EDGE_RETRIES failed (retryable=$retryable)", e)
-                if (!retryable) return emptyList()
+                if (!retryable) {
+                    errorOut[0] = e.message?.take(200) ?: e.javaClass.simpleName
+                    return emptyList()
+                }
                 if (attempt < MAX_EDGE_RETRIES - 1) {
                     delay(AiErrorUtils.retryDelay(e, attempt))
                 }
             }
         }
         Log.w("WordPoolRepo", "AI edge call failed after $MAX_EDGE_RETRIES attempts", lastException)
+        errorOut[0] = lastException?.message?.take(200) ?: "AI 调用失败（已重试 $MAX_EDGE_RETRIES 次）"
         return emptyList()
     }
 

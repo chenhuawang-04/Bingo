@@ -294,9 +294,9 @@ private fun PoolSettingsSection(
         )
 
         // Window size
-        Text("窗口大小：$windowSize", style = MaterialTheme.typography.bodyMedium)
+        Text("每批候选词数：$windowSize", style = MaterialTheme.typography.bodyMedium)
         Text(
-            "每个词与前面的词比较时，每批发送的候选词数量。越大单次 AI 调用越慢但覆盖更广。",
+            "每个词与前面的词比较时，每批发送给 AI 的候选词数量。例如设为50，则 AI 每次收到 1个目标词 + 50个候选词。越大单次 AI 调用越慢但覆盖更广。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

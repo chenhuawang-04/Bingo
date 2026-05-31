@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -97,7 +98,10 @@ fun PoolBuildDetailScreen(
                 item {
                     CurrentWordCard(
                         currentWord = state.currentWord,
-                        isPaused = state.isPaused
+                        isPaused = state.isPaused,
+                        chunkCurrent = state.chunkCurrent,
+                        chunkTotal = state.chunkTotal,
+                        edgesFound = state.edgesFound
                     )
                 }
             }
@@ -108,7 +112,9 @@ fun PoolBuildDetailScreen(
                     ProgressCard(
                         current = state.progressCurrent,
                         total = state.progressTotal,
-                        isPaused = state.isPaused
+                        isPaused = state.isPaused,
+                        chunkCurrent = state.chunkCurrent,
+                        chunkTotal = state.chunkTotal
                     )
                 }
             } else if (state.status == BuildStatus.RUNNING) {
@@ -288,7 +294,10 @@ private fun StatusHeaderCard(
 @Composable
 private fun CurrentWordCard(
     currentWord: String?,
-    isPaused: Boolean
+    isPaused: Boolean,
+    chunkCurrent: Int = 0,
+    chunkTotal: Int = 0,
+    edgesFound: Int = 0
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -319,8 +328,17 @@ private fun CurrentWordCard(
             )
             if (!isPaused && currentWord != null) {
                 Spacer(modifier = Modifier.height(8.dp))
+                if (chunkTotal > 0) {
+                    // 显示 chunk 进度：正在对比 chunk 2/6
+                    Text(
+                        text = "正在对比 chunk $chunkCurrent / $chunkTotal",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
                 Text(
-                    text = "正在构建该词的语义关系…",
+                    text = "已找到 $edgesFound 条语义关系",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                 )
@@ -333,7 +351,9 @@ private fun CurrentWordCard(
 private fun ProgressCard(
     current: Int,
     total: Int,
-    isPaused: Boolean
+    isPaused: Boolean,
+    chunkCurrent: Int = 0,
+    chunkTotal: Int = 0
 ) {
     val progress = remember(current, total) {
         if (total > 0) current.toFloat() / total else 0f
@@ -399,6 +419,30 @@ private fun ProgressCard(
                     label = "进度",
                     value = "${(animatedProgress * 100).toInt()}%"
                 )
+            }
+
+            // 当前词的 chunk 进度
+            if (chunkTotal > 0) {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "当前词对比进度",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "chunk $chunkCurrent / $chunkTotal",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
         }
     }

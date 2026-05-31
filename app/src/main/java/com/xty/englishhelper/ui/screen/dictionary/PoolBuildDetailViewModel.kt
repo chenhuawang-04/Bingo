@@ -92,17 +92,40 @@ class PoolBuildDetailViewModel @Inject constructor(
                     else -> _uiState.value.errorLogs
                 }
 
+                // 解析 progressMessage 格式: "word|chunkIdx|totalChunks|edgesFound"
+                // 如果不是这个格式（例如纯单词），则 chunk 信息为 0
+                val rawMsg = poolTask.progressMessage
+                val parsedWord: String?
+                val parsedChunkCurrent: Int
+                val parsedChunkTotal: Int
+                val parsedEdgesFound: Int
+                if (rawMsg != null && rawMsg.contains("|")) {
+                    val parts = rawMsg.split("|")
+                    parsedWord = parts.getOrNull(0)
+                    parsedChunkCurrent = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                    parsedChunkTotal = parts.getOrNull(2)?.toIntOrNull() ?: 0
+                    parsedEdgesFound = parts.getOrNull(3)?.toIntOrNull() ?: 0
+                } else {
+                    parsedWord = rawMsg
+                    parsedChunkCurrent = 0
+                    parsedChunkTotal = 0
+                    parsedEdgesFound = 0
+                }
+
                 _uiState.update {
                     it.copy(
                         status = status,
-                        currentWord = poolTask.progressMessage,
+                        currentWord = parsedWord,
                         progressCurrent = poolTask.progressCurrent,
                         progressTotal = poolTask.progressTotal,
                         strategy = strategy,
                         rebuildMode = rebuildMode,
                         isPaused = poolTask.status == BackgroundTaskStatus.PAUSED,
                         errorMessage = newError,
-                        errorLogs = errorLogs
+                        errorLogs = errorLogs,
+                        chunkCurrent = parsedChunkCurrent,
+                        chunkTotal = parsedChunkTotal,
+                        edgesFound = parsedEdgesFound
                     )
                 }
 
@@ -170,5 +193,9 @@ data class PoolBuildDetailUiState(
     val rebuildMode: String? = null,
     val isPaused: Boolean = false,
     val errorMessage: String? = null,
-    val errorLogs: List<String> = emptyList()
+    val errorLogs: List<String> = emptyList(),
+    // 详细 chunk 信息（从 progressMessage 解析）
+    val chunkCurrent: Int = 0,       // 当前 chunk 序号
+    val chunkTotal: Int = 0,         // 总 chunk 数
+    val edgesFound: Int = 0          // 当前词已找到的边数
 )
