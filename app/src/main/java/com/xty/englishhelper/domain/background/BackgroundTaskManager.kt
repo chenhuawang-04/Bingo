@@ -86,6 +86,10 @@ class BackgroundTaskManager @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val runningJobs = ConcurrentHashMap<Long, kotlinx.coroutines.Job>()
     private val dispatchLock = Mutex()
+    // Per-task pause/unpause/cancel handlers for pool rebuild (flag-based, not job cancel)
+    private val pauseHandlers = ConcurrentHashMap<Long, () -> Unit>()
+    private val unpauseHandlers = ConcurrentHashMap<Long, () -> Unit>()
+    private val cancelHandlers = ConcurrentHashMap<Long, () -> Unit>()
     @Volatile
     private var maxConcurrency = 2
     @Volatile
@@ -240,7 +244,14 @@ class BackgroundTaskManager @Inject constructor(
     fun pauseTask(taskId: Long) {
         scope.launch {
             repository.updateStatus(taskId, BackgroundTaskStatus.PAUSED, "已暂停")
-            runningJobs.remove(taskId)?.cancel()
+            // For pool rebuild: use flag-based pause (don't cancel job, let in-flight requests complete)
+            val handler = pauseHandlers[taskId]
+            if (handler != null) {
+                handler()
+            } else {
+                // Other task types: cancel the job
+                runningJobs.remove(taskId)?.cancel()
+            }
         }
     }
 
@@ -248,11 +259,17 @@ class BackgroundTaskManager @Inject constructor(
         scope.launch {
             val task = repository.getTaskById(taskId)
             repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
-            // For pool rebuild, preserve progress so the task can resume from last index
-            if (task?.type != BackgroundTaskType.WORD_POOL_REBUILD) {
-                repository.updateProgress(taskId, 0, 0)
+            // For pool rebuild: unpause the running job
+            val unpauseHandler = unpauseHandlers[taskId]
+            if (unpauseHandler != null) {
+                unpauseHandler()
+            } else {
+                // Other task types: re-schedule
+                if (task?.type != BackgroundTaskType.WORD_POOL_REBUILD) {
+                    repository.updateProgress(taskId, 0, 0)
+                }
+                schedule()
             }
-            schedule()
         }
     }
 
@@ -267,6 +284,9 @@ class BackgroundTaskManager @Inject constructor(
     fun cancelTask(taskId: Long) {
         scope.launch {
             repository.updateStatus(taskId, BackgroundTaskStatus.CANCELED, "已停止")
+            // Invoke cancel handler (sets flag) before cancelling job
+            cancelHandlers.remove(taskId)?.invoke()
+            unpauseHandlers.remove(taskId)  // Clean up unpause handler too
             runningJobs.remove(taskId)?.cancel()
         }
     }
@@ -754,6 +774,14 @@ class BackgroundTaskManager @Inject constructor(
 
         var lastCurrent = 0
         var lastTotal = 0
+        var lastWord: String? = null
+        val paused = java.util.concurrent.atomic.AtomicBoolean(false)
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        // Register pause/cancel handlers for this task
+        pauseHandlers[task.id] = { paused.set(true) }
+        unpauseHandlers[task.id] = { paused.set(false) }
+        cancelHandlers[task.id] = { cancelled.set(true) }
 
         try {
             rebuildWordPools(
@@ -761,26 +789,31 @@ class BackgroundTaskManager @Inject constructor(
                 strategy = strategy,
                 startIndex = startIndex,
                 rebuildMode = rebuildMode,
-                isCancelled = { false },  // cancellation handled by coroutine job cancel
-                isPaused = { false },      // pause handled by coroutine job cancel (pauseTask cancels the job)
-                onProgress = { current, total ->
+                isCancelled = { cancelled.get() },
+                isPaused = { paused.get() },
+                onProgress = { current, total, currentWord ->
                     lastCurrent = current
                     lastTotal = total
+                    lastWord = currentWord
                     scope.launch {
-                        repository.updateProgress(task.id, current, total)
+                        repository.updateProgress(task.id, current, total, currentWord)
                     }
                 }
             )
         } catch (e: CancellationException) {
-            // Pause/cancel detected — save progress for resume
+            // Save progress for resume
             if (lastTotal > 0) {
-                repository.updateProgress(task.id, lastCurrent, lastTotal)
+                repository.updateProgress(task.id, lastCurrent, lastTotal, lastWord)
             }
-            throw e  // re-throw so launchTask handles status update
+            throw e
+        } finally {
+            pauseHandlers.remove(task.id)
+            unpauseHandlers.remove(task.id)
+            cancelHandlers.remove(task.id)
         }
 
         if (lastTotal > 0) {
-            repository.updateProgress(task.id, lastTotal.coerceAtLeast(lastCurrent), lastTotal)
+            repository.updateProgress(task.id, lastTotal.coerceAtLeast(lastCurrent), lastTotal, null)
         }
     }
 

@@ -23,7 +23,7 @@ class RebuildWordPoolsUseCase @Inject constructor(
         rebuildMode: RebuildMode = RebuildMode.INCREMENTAL,
         isCancelled: () -> Boolean = { false },
         isPaused: () -> Boolean = { false },
-        onProgress: (Int, Int) -> Unit = { _, _ -> }
+        onProgress: (Int, Int, String?) -> Unit = { _, _, _ -> }
     ) = repo.rebuildPools(dictionaryId, strategy, startIndex, rebuildMode, isCancelled, isPaused, onProgress)
 }
 

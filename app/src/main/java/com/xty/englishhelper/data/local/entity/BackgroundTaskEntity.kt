@@ -24,6 +24,8 @@ data class BackgroundTaskEntity(
     val progressCurrent: Int = 0,
     @ColumnInfo(name = "progress_total")
     val progressTotal: Int = 0,
+    @ColumnInfo(name = "progress_message")
+    val progressMessage: String? = null,
     val attempt: Int = 0,
     @ColumnInfo(name = "error_message")
     val errorMessage: String? = null,

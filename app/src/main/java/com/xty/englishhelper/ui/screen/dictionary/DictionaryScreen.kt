@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.dictionary
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
@@ -12,8 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -79,6 +82,7 @@ fun DictionaryScreen(
     onUnitClick: (unitId: Long, dictionaryId: Long) -> Unit,
     onStudy: (dictionaryId: Long) -> Unit,
     onBatchImport: (dictionaryId: Long) -> Unit = {},
+    onPoolBuildDetail: () -> Unit = {},
     viewModel: DictionaryViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -228,7 +232,8 @@ fun DictionaryScreen(
                         viewModel = viewModel,
                         onWordClick = handleWordClick,
                         onUnitClick = onUnitClick,
-                        selectedWordId = selectedWordId
+                        selectedWordId = selectedWordId,
+                        onPoolBuildDetail = onPoolBuildDetail
                     )
                 }
 
@@ -276,7 +281,8 @@ fun DictionaryScreen(
                     viewModel = viewModel,
                     onWordClick = handleWordClick,
                     onUnitClick = onUnitClick,
-                    selectedWordId = null
+                    selectedWordId = null,
+                    onPoolBuildDetail = onPoolBuildDetail
                 )
             }
         }
@@ -488,7 +494,8 @@ private fun DictionaryListContent(
     viewModel: DictionaryViewModel,
     onWordClick: (Long, Long) -> Unit,
     onUnitClick: (Long, Long) -> Unit,
-    selectedWordId: Long?
+    selectedWordId: Long?,
+    onPoolBuildDetail: () -> Unit = {}
 ) {
     SearchBar(
         query = state.searchQuery,
@@ -644,62 +651,101 @@ private fun DictionaryListContent(
                     }
 
                     item {
+                        val isBuilding = state.isRebuildingPools
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .then(
+                                    if (isBuilding) Modifier.clickable { onPoolBuildDetail() } else Modifier
+                                )
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             Row(
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(
-                                    text = "词池 ${state.poolCount} 个",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                if (state.outdatedStrategies.isNotEmpty()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     Text(
-                                        text = "算法已更新，建议重建",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.error
+                                        text = "词池 ${state.poolCount} 个",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    if (state.outdatedStrategies.isNotEmpty()) {
+                                        Text(
+                                            text = "算法已更新，建议重建",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                    if (isBuilding) {
+                                        val progress = state.rebuildProgress
+                                        if (progress != null && progress.second > 0) {
+                                            Text(
+                                                text = "${progress.first}/${progress.second}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        if (state.currentBuildWord != null) {
+                                            Text(
+                                                text = state.currentBuildWord,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                                if (isBuilding) {
+                                    Icon(
+                                        Icons.Default.ChevronRight,
+                                        contentDescription = "查看详情",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
-                            if (state.isRebuildingPools) {
+                            if (isBuilding) {
                                 val progress = state.rebuildProgress
                                 if (progress != null && progress.second > 0) {
                                     LinearProgressIndicator(
                                         progress = { progress.first.toFloat() / progress.second },
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(top = 4.dp)
+                                            .padding(top = 6.dp)
                                     )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "${progress.first}/${progress.second}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            TextButton(onClick = viewModel::pauseRebuild) {
-                                                Text("暂停")
-                                            }
-                                            TextButton(onClick = viewModel::cancelRebuild) {
-                                                Text("取消")
-                                            }
-                                        }
-                                    }
                                 } else {
                                     LinearProgressIndicator(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(top = 4.dp)
+                                            .padding(top = 6.dp)
                                     )
+                                }
+                                // Quick pause/cancel row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextButton(
+                                        onClick = {
+                                            if (state.isBuildPaused) viewModel.resumeRebuild() else viewModel.pauseRebuild()
+                                        }
+                                    ) {
+                                        Text(if (state.isBuildPaused) "继续" else "暂停")
+                                    }
+                                    TextButton(onClick = viewModel::cancelRebuild) {
+                                        Text("取消")
+                                    }
+                                    TextButton(onClick = onPoolBuildDetail) {
+                                        Text("详情")
+                                    }
                                 }
                             }
                         }

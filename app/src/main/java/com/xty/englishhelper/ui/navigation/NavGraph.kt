@@ -18,6 +18,7 @@ import com.xty.englishhelper.ui.screen.questionbank.QuestionBankReaderScreen
 import com.xty.englishhelper.ui.screen.plan.PlanScreen
 import com.xty.englishhelper.ui.screen.batchimport.BatchImportScreen
 import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
+import com.xty.englishhelper.ui.screen.dictionary.PoolBuildDetailScreen
 import com.xty.englishhelper.ui.screen.home.HomeScreen
 import com.xty.englishhelper.ui.screen.importexport.ImportExportScreen
 import com.xty.englishhelper.ui.screen.main.MainScaffold
@@ -72,7 +73,16 @@ fun NavGraph(navController: NavHostController) {
                     },
                     onBatchImport = { dictId ->
                         navController.navigate(BatchImportRoute(dictId))
+                    },
+                    onPoolBuildDetail = {
+                        navController.navigate(PoolBuildDetailRoute(route.dictionaryId))
                     }
+                )
+            }
+
+            composable<PoolBuildDetailRoute> {
+                PoolBuildDetailScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
 

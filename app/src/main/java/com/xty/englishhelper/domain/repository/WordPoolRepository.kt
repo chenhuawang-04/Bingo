@@ -15,7 +15,7 @@ interface WordPoolRepository {
         rebuildMode: RebuildMode = RebuildMode.INCREMENTAL,
         isCancelled: () -> Boolean = { false },
         isPaused: () -> Boolean = { false },
-        onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }
+        onProgress: (current: Int, total: Int, currentWord: String?) -> Unit = { _, _, _ -> }
     )
 
     suspend fun getPoolCount(dictionaryId: Long): Int

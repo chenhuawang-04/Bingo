@@ -367,7 +367,13 @@ class DictionaryViewModel @Inject constructor(
                 if (poolTask == null) {
                     poolTaskId = null
                     _uiState.update {
-                        it.copy(isRebuildingPools = false, rebuildProgress = null, rebuildError = null)
+                        it.copy(
+                            isRebuildingPools = false,
+                            rebuildProgress = null,
+                            rebuildError = null,
+                            currentBuildWord = null,
+                            isBuildPaused = false
+                        )
                     }
                     lastStatus = null
                     return@collect
@@ -375,7 +381,8 @@ class DictionaryViewModel @Inject constructor(
 
                 poolTaskId = poolTask.id
                 val inProgress = poolTask.status == BackgroundTaskStatus.PENDING ||
-                    poolTask.status == BackgroundTaskStatus.RUNNING
+                    poolTask.status == BackgroundTaskStatus.RUNNING ||
+                    poolTask.status == BackgroundTaskStatus.PAUSED
                 val progress = if (poolTask.progressTotal > 0) {
                     poolTask.progressCurrent to poolTask.progressTotal
                 } else {
@@ -390,7 +397,9 @@ class DictionaryViewModel @Inject constructor(
                     it.copy(
                         isRebuildingPools = inProgress,
                         rebuildProgress = progress,
-                        rebuildError = error
+                        rebuildError = error,
+                        currentBuildWord = poolTask.progressMessage,
+                        isBuildPaused = poolTask.status == BackgroundTaskStatus.PAUSED
                     )
                 }
 
@@ -439,6 +448,11 @@ class DictionaryViewModel @Inject constructor(
         val taskId = poolTaskId ?: return
         backgroundTaskManager.cancelTask(taskId)
         _uiState.update { it.copy(isRebuildingPools = false, rebuildProgress = null) }
+    }
+
+    fun resumeRebuild() {
+        val taskId = poolTaskId ?: return
+        backgroundTaskManager.resumeTask(taskId)
     }
 
     fun clearRebuildError() {

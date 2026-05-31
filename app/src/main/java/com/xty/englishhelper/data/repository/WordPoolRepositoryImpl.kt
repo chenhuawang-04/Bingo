@@ -108,14 +108,14 @@ class WordPoolRepositoryImpl @Inject constructor(
         rebuildMode: RebuildMode,
         isCancelled: () -> Boolean,
         isPaused: () -> Boolean,
-        onProgress: (Int, Int) -> Unit
+        onProgress: (Int, Int, String?) -> Unit
     ) {
         val pools: List<BuiltPoolWithWordIds> = when (strategy) {
             PoolStrategy.BALANCED, PoolStrategy.BALANCED_WITH_AI -> {
                 // BALANCED needs all candidates in memory for the engine
                 val words = wordDao.getWordsByDictionaryOnce(dictionaryId)
                 val total = words.size
-                onProgress(0, total)
+                onProgress(0, total, null)
                 buildBalanced(words, dictionaryId, strategy, isCancelled, isPaused, onProgress, total)
             }
             PoolStrategy.QUALITY_FIRST ->
@@ -197,7 +197,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         strategy: PoolStrategy,
         isCancelled: () -> Boolean,
         isPaused: () -> Boolean,
-        onProgress: (Int, Int) -> Unit,
+        onProgress: (Int, Int, String?) -> Unit,
         total: Int
     ): List<BuiltPoolWithWordIds> {
         val associations = wordPoolDao.getAssociationsInDictionary(dictionaryId)
@@ -214,7 +214,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                 if (isCancelled()) return emptyList()
             }
             coroutineContext.ensureActive()
-            onProgress(index, total)
+            onProgress(index, total, wwd.word.spelling)
             val domain = wwd.toDomain()
             PoolCandidate(
                 index = index,
@@ -229,7 +229,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
 
         var pools = engine.buildPools(candidates)
-        onProgress(total, total)
+        onProgress(total, total, null)
 
         if (strategy == PoolStrategy.BALANCED_WITH_AI) {
             coroutineContext.ensureActive()
@@ -277,7 +277,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         rebuildMode: RebuildMode,
         isCancelled: () -> Boolean,
         isPaused: () -> Boolean,
-        onProgress: (Int, Int) -> Unit
+        onProgress: (Int, Int, String?) -> Unit
     ): List<BuiltPoolWithWordIds> {
         val windowSize = settingsDataStore.getPoolWindowSize()
         val maxConcurrent = settingsDataStore.getPoolMaxConcurrent()
@@ -326,7 +326,8 @@ class WordPoolRepositoryImpl @Inject constructor(
                 if (history.isEmpty()) {
                     history.add(WordRef.from(currentWord))
                     wordIndex++
-                    processedWords.incrementAndGet()
+                    val count = processedWords.incrementAndGet()
+                    onProgress(count, totalWords, currentWord.spelling)
                     continue
                 }
 
@@ -334,7 +335,8 @@ class WordPoolRepositoryImpl @Inject constructor(
                 if (wordIndex < resumeIndex) {
                     history.add(WordRef.from(currentWord))
                     wordIndex++
-                    processedWords.incrementAndGet()
+                    val count = processedWords.incrementAndGet()
+                    onProgress(count, totalWords, currentWord.spelling)
                     continue
                 }
 
@@ -407,7 +409,7 @@ class WordPoolRepositoryImpl @Inject constructor(
 
                 // Update progress once per word (not per chunk)
                 val count = processedWords.incrementAndGet()
-                onProgress(count, totalWords)
+                onProgress(count, totalWords, currentWord.spelling)
             }
         }
 

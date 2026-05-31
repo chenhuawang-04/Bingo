@@ -5,6 +5,15 @@ import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.organize.OrganizeTask
 
+enum class BuildStatus {
+    IDLE,
+    RUNNING,
+    PAUSED,
+    SUCCESS,
+    FAILED,
+    CANCELED
+}
+
 enum class EntryPresenceFilter {
     ANY,
     PRESENT,
@@ -49,6 +58,8 @@ data class DictionaryUiState(
     val isRebuildingPools: Boolean = false,
     val rebuildProgress: Pair<Int, Int>? = null,
     val rebuildError: String? = null,
+    val currentBuildWord: String? = null,
+    val isBuildPaused: Boolean = false,
     val showQfConfirmDialog: Boolean = false,
     val qfWordCount: Int = 0,
     val outdatedStrategies: Set<String> = emptySet(),

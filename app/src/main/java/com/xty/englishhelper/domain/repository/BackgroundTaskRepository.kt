@@ -26,7 +26,7 @@ interface BackgroundTaskRepository {
 
     suspend fun updateStatus(id: Long, status: BackgroundTaskStatus, errorMessage: String? = null)
 
-    suspend fun updateProgress(id: Long, current: Int, total: Int)
+    suspend fun updateProgress(id: Long, current: Int, total: Int, message: String? = null)
 
     suspend fun incrementAttempt(id: Long)
 

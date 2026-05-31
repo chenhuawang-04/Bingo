@@ -7,6 +7,7 @@ data class BackgroundTask(
     val payload: BackgroundTaskPayload?,
     val progressCurrent: Int,
     val progressTotal: Int,
+    val progressMessage: String?,
     val attempt: Int,
     val errorMessage: String?,
     val createdAt: Long,

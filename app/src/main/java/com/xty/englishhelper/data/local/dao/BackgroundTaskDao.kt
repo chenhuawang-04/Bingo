@@ -51,11 +51,11 @@ interface BackgroundTaskDao {
     @Query(
         """
         UPDATE background_tasks
-        SET progress_current = :current, progress_total = :total, updated_at = :updatedAt
+        SET progress_current = :current, progress_total = :total, progress_message = :message, updated_at = :updatedAt
         WHERE id = :id
         """
     )
-    suspend fun updateProgress(id: Long, current: Int, total: Int, updatedAt: Long)
+    suspend fun updateProgress(id: Long, current: Int, total: Int, message: String?, updatedAt: Long)
 
     @Query(
         """

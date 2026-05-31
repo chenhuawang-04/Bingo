@@ -92,8 +92,8 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
         dao.updateStatus(id, status.name, errorMessage, System.currentTimeMillis())
     }
 
-    override suspend fun updateProgress(id: Long, current: Int, total: Int) {
-        dao.updateProgress(id, current, total, System.currentTimeMillis())
+    override suspend fun updateProgress(id: Long, current: Int, total: Int, message: String?) {
+        dao.updateProgress(id, current, total, message, System.currentTimeMillis())
     }
 
     override suspend fun incrementAttempt(id: Long) {
@@ -155,6 +155,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
             payload = parsePayload(typeEnum, payloadJson),
             progressCurrent = progressCurrent,
             progressTotal = progressTotal,
+            progressMessage = progressMessage,
             attempt = attempt,
             errorMessage = errorMessage,
             createdAt = createdAt,

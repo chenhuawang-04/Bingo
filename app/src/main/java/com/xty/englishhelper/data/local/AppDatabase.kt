@@ -89,7 +89,7 @@ import java.util.UUID
         WordEdgeEntity::class,
         WordEdgeExcludedEntity::class
     ],
-    version = 27,
+    version = 28,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -994,6 +994,12 @@ abstract class AppDatabase : RoomDatabase() {
                 // Auto-classify: phrases (multi-word) and roots (have root_explanation)
                 db.execSQL("UPDATE words SET entry_type = 'phrase' WHERE spelling LIKE '% %'")
                 db.execSQL("UPDATE words SET entry_type = 'root' WHERE root_explanation IS NOT NULL AND root_explanation != '' AND entry_type = 'word'")
+            }
+        }
+
+        val MIGRATION_27_28 = object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE background_tasks ADD COLUMN progress_message TEXT DEFAULT NULL")
             }
         }
     }

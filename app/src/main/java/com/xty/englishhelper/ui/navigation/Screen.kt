@@ -63,6 +63,9 @@ data class ArticleReaderRoute(val articleId: Long, val scrollToSentenceId: Long 
 data class BatchImportRoute(val dictionaryId: Long)
 
 @Serializable
+data class PoolBuildDetailRoute(val dictionaryId: Long)
+
+@Serializable
 data object GuardianBrowseRoute
 
 @Serializable
