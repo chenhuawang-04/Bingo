@@ -48,12 +48,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.first
 import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -765,55 +772,68 @@ class BackgroundTaskManager @Inject constructor(
         val rebuildMode = runCatching { RebuildMode.valueOf(payload.rebuildMode) }
             .getOrDefault(RebuildMode.INCREMENTAL)
 
-        // Read resume point: for INCREMENTAL mode, use saved progress as start index
+        // 续传点：INCREMENTAL 且已有进度时，从上次已完成的词数继续；否则从头构建。
         val startIndex = if (rebuildMode == RebuildMode.INCREMENTAL && task.progressCurrent > 0) {
             task.progressCurrent
         } else {
-            -1  // No resume: process all words from the beginning
+            -1
         }
 
-        var lastCurrent = 0
-        var lastTotal = 0
-        var lastWord: String? = null
-        val paused = java.util.concurrent.atomic.AtomicBoolean(false)
-        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
-
-        // Register pause/cancel handlers for this task
+        val paused = AtomicBoolean(false)
+        val cancelled = AtomicBoolean(false)
         pauseHandlers[task.id] = { paused.set(true) }
         unpauseHandlers[task.id] = { paused.set(false) }
         cancelHandlers[task.id] = { cancelled.set(true) }
 
+        // 进度仅由单一节流写入器持久化：构建侧（含多个并发块）只更新内存中的最新快照，
+        // 写入器每隔 ~300ms 落库一次最新值。彻底消除原先 fire-and-forget 写入导致的乱序/抖动。
+        val latest = AtomicReference<Triple<Int, Int, String?>?>(null)
+
         try {
-            rebuildWordPools(
-                dictionaryId = payload.dictionaryId,
-                strategy = strategy,
-                startIndex = startIndex,
-                rebuildMode = rebuildMode,
-                isCancelled = { cancelled.get() },
-                isPaused = { paused.get() },
-                onProgress = { current, total, currentWord ->
-                    lastCurrent = current
-                    lastTotal = total
-                    lastWord = currentWord
-                    scope.launch {
-                        repository.updateProgress(task.id, current, total, currentWord)
+            coroutineScope {
+                val writer = launch {
+                    var written: Triple<Int, Int, String?>? = null
+                    while (isActive) {
+                        delay(300)
+                        val snap = latest.get()
+                        if (snap != null && snap != written) {
+                            repository.updateProgress(task.id, snap.first, snap.second, snap.third)
+                            written = snap
+                        }
                     }
                 }
-            )
+                try {
+                    rebuildWordPools(
+                        dictionaryId = payload.dictionaryId,
+                        strategy = strategy,
+                        startIndex = startIndex,
+                        rebuildMode = rebuildMode,
+                        isCancelled = { cancelled.get() },
+                        isPaused = { paused.get() },
+                        onProgress = { current, total, currentWord ->
+                            latest.set(Triple(current, total, currentWord))
+                        }
+                    )
+                } finally {
+                    writer.cancel()
+                }
+            }
+            // 成功：最终写一次 100%（清空 chunk 详情）。
+            latest.get()?.let { (_, total, _) ->
+                if (total > 0) repository.updateProgress(task.id, total, total, null)
+            }
         } catch (e: CancellationException) {
-            // Save progress for resume
-            if (lastTotal > 0) {
-                repository.updateProgress(task.id, lastCurrent, lastTotal, lastWord)
+            // 取消 / 进程结束：用 NonCancellable 落最后一次进度，供下次续传。
+            withContext(NonCancellable) {
+                latest.get()?.let { (current, total, msg) ->
+                    if (total > 0) repository.updateProgress(task.id, current, total, msg)
+                }
             }
             throw e
         } finally {
             pauseHandlers.remove(task.id)
             unpauseHandlers.remove(task.id)
             cancelHandlers.remove(task.id)
-        }
-
-        if (lastTotal > 0) {
-            repository.updateProgress(task.id, lastTotal.coerceAtLeast(lastCurrent), lastTotal, null)
         }
     }
 

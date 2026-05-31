@@ -23,7 +23,8 @@ import com.xty.englishhelper.data.repository.pool.EntryTypeClassifier
 import com.xty.englishhelper.data.repository.pool.NonRetryableEdgeException
 import com.xty.englishhelper.data.repository.pool.PoolQualityScorer
 import com.xty.englishhelper.data.repository.pool.RetryableEdgeException
-import com.xty.englishhelper.data.repository.pool.WordStream
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
@@ -244,33 +245,16 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
     }
 
-    // ── QUALITY_FIRST build (streaming, memory-efficient) ──
-
-    /**
-     * Lightweight word reference for history tracking.
-     * Only stores fields needed for AI prompt building (id, spelling, first meaning).
-     * ~50 bytes per word vs ~500 bytes for full WordDetails.
-     */
-    private data class WordRef(
-        val id: Long,
-        val spelling: String,
-        val pos: String,
-        val definition: String
-    ) {
-        companion object {
-            fun from(details: WordDetails): WordRef {
-                val m = details.meanings.firstOrNull()
-                return WordRef(details.id, details.spelling, m?.pos ?: "", m?.definition ?: "")
-            }
-        }
-    }
-
-    /**
-     * Streaming QUALITY_FIRST build.
-     * Uses cursor-based pagination (WordStream) and lightweight WordRef for history.
-     * Memory: ~2MB regardless of dictionary size.
-     * Edge correctness: compares against ALL previous words (same as non-streaming).
-     */
+    // ── QUALITY_FIRST 构建 ──
+    //
+    // 外层：从最后一个词向前遍历（倒序）。第 i 个词只与它前面的词 [0, i) 比较，
+    //       因此每对词恰好比较一次。末尾的词前驱最多 → 分块最多 → 一上来就并发多次请求。
+    // 内层：前驱词按 chunkSize 切块，每块一次 AI 请求；同一词的多块并发执行，
+    //       并发度受 maxConcurrent 限制、整体频率受 requestsPerMinute 限制。
+    //       一个词的所有块完成后才进入下一个词。
+    //
+    // 例：301 个词、chunkSize=50。先处理末词 → 前驱 300 个 → 6 块 → 6 次请求；
+    //     再处理倒数第二个 → 5~6 块……直到第 1 个词（无前驱，跳过）。
     private suspend fun buildQualityFirstStreaming(
         dictionaryId: Long,
         startIndex: Int,
@@ -279,181 +263,132 @@ class WordPoolRepositoryImpl @Inject constructor(
         isPaused: () -> Boolean,
         onProgress: (Int, Int, String?) -> Unit
     ): List<BuiltPoolWithWordIds> {
-        val chunkSize = settingsDataStore.getPoolWindowSize()      // 每个 chunk 的候选词数
-        val maxConcurrent = settingsDataStore.getPoolMaxConcurrent() // 单个词的 chunk 最大并发
+        val chunkSize = settingsDataStore.getPoolWindowSize()          // 每块候选词数
+        val maxConcurrent = settingsDataStore.getPoolMaxConcurrent()   // 同一词内各块的最大并发
         val requestsPerMinute = settingsDataStore.getPoolRequestsPerMinute()
-
-        Log.i("WordPoolRepo", "QUALITY_FIRST config: chunkSize=$chunkSize, maxConcurrent=$maxConcurrent, rpm=$requestsPerMinute")
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        Log.i("WordPoolRepo", "QUALITY_FIRST 配置: chunkSize=$chunkSize, maxConcurrent=$maxConcurrent, rpm=$requestsPerMinute")
 
         if (rebuildMode == RebuildMode.FULL) {
             wordEdgeDao.deleteByDictionary(dictionaryId)
         }
 
-        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
-
         val semaphore = Semaphore(maxConcurrent)
         val rateLimiter = EdgeRateLimiter(requestsPerMinute)
 
-        // Count total words for progress
-        val totalWords = wordDao.countAllWords(dictionaryId)
-        Log.i("WordPoolRepo", "Total words in dictionary: $totalWords")
+        // 一次性载入全部词（含完整释义），按 spelling 升序。各块直接复用这些对象，不再回查数据库。
+        val allWords: List<WordDetails> = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
+        val totalWords = allWords.size
+        Log.i("WordPoolRepo", "词典共 $totalWords 个词")
+        if (totalWords <= 1) {
+            onProgress(totalWords, totalWords, null)
+            return emptyList()
+        }
 
-        val processedWords = java.util.concurrent.atomic.AtomicInteger(0)
-        val successfulAiCalls = java.util.concurrent.atomic.AtomicInteger(0)
-        val failedAiCalls = java.util.concurrent.atomic.AtomicInteger(0)
-        var firstAiError: String? = null
+        // AI 调用统计（构建后据此判断是否“全部失败”）。在并发块中写入，故用原子类型。
+        val successfulAiCalls = AtomicInteger(0)
+        val failedAiCalls = AtomicInteger(0)
+        val firstAiError = AtomicReference<String?>(null)
 
-        // Load all words into memory (ordered by entry_order ASC)
-        val allWords = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
-
-        val isResuming = startIndex >= 0
-        val resumeIndex = if (isResuming) startIndex else 0
+        // 已完整处理的词数：用于进度展示与断点续传。
+        // 倒序处理时，已处理的是“末尾若干个词”，startIndex 即上次已处理的数量。
+        val alreadyProcessed = if (startIndex > 0) startIndex.coerceIn(0, totalWords) else 0
+        val processed = AtomicInteger(alreadyProcessed)
 
         // ============================================================
-        // 外层循环：逐词遍历（从后向前，即 entry_order ASC 顺序）
-        // 每个词与它前面的所有词进行比较
+        // 外层循环：从后向前（倒序）。
+        //   末词前驱最多 → 分块最多 → 立刻并发多次请求，可即时观察。
+        //   index 0 无前驱，循环结束后统一计入进度。
+        //   断点续传：跳过末尾已处理的 alreadyProcessed 个词，从 (totalWords-1-alreadyProcessed) 开始。
         // ============================================================
-        for ((wordIndex, currentWord) in allWords.withIndex()) {
+        val firstIndexToProcess = (totalWords - 1 - alreadyProcessed).coerceAtLeast(0)
+        for (wordIndex in firstIndexToProcess downTo 1) {
             if (isCancelled()) {
-                Log.d("WordPoolRepo", "QualityFirst build cancelled at wordIndex=$wordIndex")
+                Log.d("WordPoolRepo", "构建被取消 @wordIndex=$wordIndex")
                 break
             }
+            awaitWhilePaused(isPaused, isCancelled)
+            if (isCancelled()) break
 
-            // 暂停检查
-            while (isPaused()) {
-                delay(500)
-                if (isCancelled()) break
-            }
+            val currentWord = allWords[wordIndex]
 
-            // 第一个词前面没有词，直接跳过
-            if (wordIndex == 0) {
-                val count = processedWords.incrementAndGet()
-                onProgress(count, totalWords, currentWord.spelling)
-                continue
-            }
-
-            // 跳过恢复点之前的词（但仍然计入进度）
-            if (isResuming && wordIndex < resumeIndex) {
-                val count = processedWords.incrementAndGet()
-                onProgress(count, totalWords, currentWord.spelling)
-                continue
-            }
-
-            // 恢复时清理上次中断产生的不完整边
-            if (isResuming && wordIndex == resumeIndex) {
+            // 续传时，中断点这个词可能写入过不完整的边，先清除再重做。
+            if (wordIndex == firstIndexToProcess && alreadyProcessed > 0) {
                 wordEdgeDao.deleteEdgesForWord(dictionaryId, currentWord.id)
             }
 
-            // 当前词的前面所有词（从 index 0 到 wordIndex-1）
-            val previousWords = allWords.subList(0, wordIndex)
+            // 内层：前驱词 [0, wordIndex) 按 chunkSize 分块。
+            // 例：301 个词处理末词时，前驱 300 个、chunkSize=50 → 6 块：[0,50) [50,100) … [250,300)
+            val chunks = allWords.subList(0, wordIndex).chunked(chunkSize)
+            val wordsDone = processed.get()
+            val edgesForWord = AtomicInteger(0)
+            val chunksDone = AtomicInteger(0)
+            Log.d("WordPoolRepo", "词 '${currentWord.spelling}' (剩余#$wordIndex): 对比前 $wordIndex 个词，分 ${chunks.size} 块")
 
-            // ============================================================
-            // 内层：将 previousWords 按 chunkSize 分块，逐块发送 AI 请求
-            // 例：301个词处理第301个时，history=300，chunkSize=50
-            // → 分6块：[0-50], [51-100], ..., [250-300]
-            // ============================================================
-            val chunks = previousWords.chunked(chunkSize)
-            Log.d("WordPoolRepo", "Word '${currentWord.spelling}' (#${wordIndex + 1}/$totalWords): " +
-                "对比${previousWords.size}个前词，分${chunks.size}个chunk")
+            // 该词开始：先报告一次（0 块完成），让详情页立即显示总块数。
+            onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, 0, chunks.size, 0))
 
-            // 当前词的所有 chunk 并发执行，受 maxConcurrent 限制
-            // 本词所有 chunk 完成后，才进入下一个词
-            var totalEdgesForWord = 0
-            val chunkResults = coroutineScope {
-                chunks.mapIndexed { chunkIdx, chunk ->
+            // 同一词的各块并发执行（并发度 maxConcurrent，整体频率 requestsPerMinute）；
+            // 全部完成后才进入下一个词。
+            val newEdges = coroutineScope {
+                chunks.map { chunk ->
                     async {
                         semaphore.withPermit {
-                            // 暂停检查
-                            while (isPaused()) {
-                                delay(200)
-                                if (isCancelled()) return@withPermit emptyList()
-                            }
-
-                            // 速率限制：等待直到允许发送下一个请求
+                            awaitWhilePaused(isPaused, isCancelled)
+                            if (isCancelled()) return@withPermit emptyList()
                             rateLimiter.acquire()
                             if (isCancelled()) return@withPermit emptyList()
 
-                            // 报告当前 chunk 状态
-                            onProgress(processedWords.get(), totalWords,
-                                "${currentWord.spelling}|${chunkIdx + 1}|${chunks.size}|${totalEdgesForWord}")
-
-                            // 从 DB 加载 chunk 中每个词的完整信息
-                            val chunkIds = chunk.map { it.id }
-                            val detailsById = wordDao.getWordsByIds(chunkIds)
-                                .associateBy { it.word.id }
-                            val chunkDetails = chunkIds.mapNotNull { detailsById[it]?.toDomain() }
-
-                            // 构建 prompt 并调用 AI
-                            val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, chunkDetails)
+                            // chunk 本身就是完整的 WordDetails，直接构建 prompt，无需回查数据库。
+                            val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, chunk)
                             val errorRef = arrayOfNulls<String>(1)
-                            val aiResult = callAiForEdges(
-                                prompt, currentWord, chunkDetails,
-                                unwrapEnabled, repairEnabled, errorRef
-                            )
+                            val parsed = callAiForEdges(prompt, currentWord, chunk, unwrapEnabled, repairEnabled, errorRef)
 
-                            Log.d("WordPoolRepo", "  chunk[${chunkIdx + 1}/${chunks.size}] " +
-                                "'${currentWord.spelling}' vs ${chunk.size}词 → ${aiResult.size}条边")
-
-                            if (aiResult.isNotEmpty()) {
+                            if (parsed.isNotEmpty()) {
                                 successfulAiCalls.incrementAndGet()
-                                totalEdgesForWord += aiResult.size
+                                edgesForWord.addAndGet(parsed.size)
                             } else {
                                 failedAiCalls.incrementAndGet()
-                                if (firstAiError == null && errorRef[0] != null) {
-                                    firstAiError = errorRef[0]
-                                }
+                                errorRef[0]?.let { firstAiError.compareAndSet(null, it) }
                             }
 
-                            // 将 AI 返回的边转换为实体
-                            aiResult.mapNotNull { edge ->
-                                if (edge.index !in chunkDetails.indices) return@mapNotNull null
-                                val otherWord = chunkDetails[edge.index]
-                                val (idA, idB) = if (currentWord.id < otherWord.id) {
-                                    currentWord.id to otherWord.id
-                                } else {
-                                    otherWord.id to currentWord.id
-                                }
-                                WordEdgeEntity(
-                                    wordIdA = idA,
-                                    wordIdB = idB,
-                                    edgeType = edge.edgeType.dbValue,
-                                    dictionaryId = dictionaryId,
-                                    status = edge.status,
-                                    learningValue = edge.learningValue,
-                                    relationStrength = edge.relationStrength,
-                                    confidence = edge.confidence,
-                                    reason = edge.reason,
-                                    warningNote = edge.warningNote,
-                                    evidenceSource = edge.evidenceSource,
-                                    register = edge.register,
-                                    exampleSentence = edge.exampleSentence,
-                                    difficultyCefr = edge.difficultyCefr
-                                )
+                            // 本块完成，更新进度（已完成块数单调递增）。
+                            val done = chunksDone.incrementAndGet()
+                            onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, done, chunks.size, edgesForWord.get()))
+                            Log.d("WordPoolRepo", "  块[$done/${chunks.size}] '${currentWord.spelling}' vs ${chunk.size}词 → ${parsed.size}条边")
+
+                            parsed.mapNotNull { edge ->
+                                val other = chunk.getOrNull(edge.index) ?: return@mapNotNull null
+                                toEdgeEntity(currentWord, other, edge, dictionaryId)
                             }
                         }
                     }
-                }.awaitAll()
+                }.awaitAll().flatten()
             }
 
-            // 当前词的所有 chunk 处理完毕，批量写入边
-            val newEdges = chunkResults.flatten()
             if (newEdges.isNotEmpty()) {
                 wordEdgeDao.insertEdges(newEdges)
             }
 
-            // 更新进度
-            val count = processedWords.incrementAndGet()
-            onProgress(count, totalWords, currentWord.spelling)
+            // 该词处理完毕：完成数 +1，发出一次进度（块数清零，待下一个词重新填充）。
+            val done = processed.incrementAndGet()
+            onProgress(done, totalWords, encodeProgress(currentWord.spelling, 0, 0, newEdges.size))
+        }
+
+        // index 0 的词无前驱，处理结束后计入完成数，使进度抵达 100%。
+        if (!isCancelled()) {
+            processed.incrementAndGet()
+            onProgress(processed.get().coerceAtMost(totalWords), totalWords, null)
         }
 
         // ============================================================
         // 构建完成，统计 AI 调用情况
         // ============================================================
         val totalAiAttempts = successfulAiCalls.get() + failedAiCalls.get()
-        if (totalAiAttempts > 0 && successfulAiCalls.get() == 0) {
+        if (!isCancelled() && totalAiAttempts > 0 && successfulAiCalls.get() == 0) {
             val errorMsg = "所有 AI 调用均失败（共 $totalAiAttempts 次），未生成任何边。" +
-                (firstAiError?.let { "\n首个错误: $it" } ?: "")
+                (firstAiError.get()?.let { "\n首个错误: $it" } ?: "")
             Log.e("WordPoolRepo", errorMsg)
             throw IllegalStateException(errorMsg)
         }
@@ -473,10 +408,8 @@ class WordPoolRepositoryImpl @Inject constructor(
             allWordIds.add(edge.wordIdB)
         }
 
-        val allWordsForReviewer = wordDao.getWordsByDictionaryOnce(dictionaryId)
-        val domainsForReviewer = allWordsForReviewer.map { it.toDomain() }
-
-        val reviewModified = edgeReviewer.reviewEdgesWithAi(allEdgesForReview, domainsForReviewer, dictionaryId)
+        // 复用前面已载入的 allWords，无需再次查库。
+        val reviewModified = edgeReviewer.reviewEdgesWithAi(allEdgesForReview, allWords, dictionaryId)
 
         coroutineContext.ensureActive()
         val allEdges = if (reviewModified) {
@@ -485,6 +418,49 @@ class WordPoolRepositoryImpl @Inject constructor(
             allEdgesForReview
         }
         return rebuildPoolsFromEdges(allEdges, allWordIds)
+    }
+
+    // ── QUALITY_FIRST 小工具 ──
+
+    /** 进度消息编码：单词|已完成块数|总块数|本词已找到的边数。详情页据此解析展示。 */
+    private fun encodeProgress(word: String, chunksDone: Int, chunkTotal: Int, edges: Int): String =
+        "$word|$chunksDone|$chunkTotal|$edges"
+
+    /** 暂停期间挂起等待（标志位由 BackgroundTaskManager 控制），取消时立即返回。 */
+    private suspend fun awaitWhilePaused(isPaused: () -> Boolean, isCancelled: () -> Boolean) {
+        while (isPaused() && !isCancelled()) {
+            delay(300)
+        }
+    }
+
+    /** 把一条 AI 解析出的边转换为可入库实体（按 wordIdA < wordIdB 规范化）。 */
+    private fun toEdgeEntity(
+        currentWord: WordDetails,
+        otherWord: WordDetails,
+        edge: com.xty.englishhelper.data.repository.pool.ParsedEdge,
+        dictionaryId: Long
+    ): WordEdgeEntity {
+        val (idA, idB) = if (currentWord.id < otherWord.id) {
+            currentWord.id to otherWord.id
+        } else {
+            otherWord.id to currentWord.id
+        }
+        return WordEdgeEntity(
+            wordIdA = idA,
+            wordIdB = idB,
+            edgeType = edge.edgeType.dbValue,
+            dictionaryId = dictionaryId,
+            status = edge.status,
+            learningValue = edge.learningValue,
+            relationStrength = edge.relationStrength,
+            confidence = edge.confidence,
+            reason = edge.reason,
+            warningNote = edge.warningNote,
+            evidenceSource = edge.evidenceSource,
+            register = edge.register,
+            exampleSentence = edge.exampleSentence,
+            difficultyCefr = edge.difficultyCefr
+        )
     }
 
     private suspend fun callAiForEdges(

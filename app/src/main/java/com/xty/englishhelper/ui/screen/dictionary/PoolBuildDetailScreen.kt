@@ -329,9 +329,9 @@ private fun CurrentWordCard(
             if (!isPaused && currentWord != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 if (chunkTotal > 0) {
-                    // 显示 chunk 进度：正在对比 chunk 2/6
+                    // 已完成的候选词对比组数（X / Y）
                     Text(
-                        text = "正在对比 chunk $chunkCurrent / $chunkTotal",
+                        text = "已对比候选组 $chunkCurrent / $chunkTotal",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                     )
@@ -437,7 +437,7 @@ private fun ProgressCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "chunk $chunkCurrent / $chunkTotal",
+                        "$chunkCurrent / $chunkTotal 组",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.secondary
