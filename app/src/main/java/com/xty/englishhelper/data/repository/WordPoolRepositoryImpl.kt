@@ -300,7 +300,8 @@ class WordPoolRepositoryImpl @Inject constructor(
         // Stream words in batches, process each against all previous words
         val stream = WordStream(wordDao, dictionaryId)
         val history = mutableListOf<WordRef>() // Lightweight refs (~50 bytes each)
-        val resumeIndex = if (startIndex >= 0) startIndex else Int.MAX_VALUE
+        val isResuming = startIndex >= 0
+        val resumeIndex = if (isResuming) startIndex else 0
         var wordIndex = 0
 
         while (stream.hasNext()) {
