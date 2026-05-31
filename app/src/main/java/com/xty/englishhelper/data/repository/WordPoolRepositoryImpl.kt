@@ -14,6 +14,7 @@ import com.xty.englishhelper.data.mapper.toDomain
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.AiApiClientProvider
 import com.xty.englishhelper.data.remote.ChatMessage
+import com.xty.englishhelper.data.repository.pool.AiErrorUtils
 import com.xty.englishhelper.data.repository.pool.EdgeParser
 import com.xty.englishhelper.data.repository.pool.EdgePromptBuilder
 import com.xty.englishhelper.data.repository.pool.EdgeRateLimiter
@@ -22,6 +23,7 @@ import com.xty.englishhelper.data.repository.pool.EntryTypeClassifier
 import com.xty.englishhelper.data.repository.pool.NonRetryableEdgeException
 import com.xty.englishhelper.data.repository.pool.PoolQualityScorer
 import com.xty.englishhelper.data.repository.pool.RetryableEdgeException
+import com.xty.englishhelper.data.repository.pool.WordStream
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
@@ -30,7 +32,6 @@ import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.pool.BuiltPool
 import com.xty.englishhelper.domain.pool.MutableUnionFind
 import com.xty.englishhelper.domain.pool.PoolCandidate
-import com.xty.englishhelper.domain.pool.UnionFind
 import com.xty.englishhelper.domain.pool.WordPoolEngine
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import kotlinx.coroutines.CancellationException
@@ -41,8 +42,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.io.IOException
-import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
@@ -111,15 +110,16 @@ class WordPoolRepositoryImpl @Inject constructor(
         isPaused: () -> Boolean,
         onProgress: (Int, Int) -> Unit
     ) {
-        val words = wordDao.getWordsByDictionaryOnce(dictionaryId)
-        val total = words.size
-        onProgress(0, total)
-
         val pools: List<BuiltPoolWithWordIds> = when (strategy) {
-            PoolStrategy.BALANCED, PoolStrategy.BALANCED_WITH_AI ->
-                buildBalanced(words, dictionaryId, strategy, onProgress, total)
+            PoolStrategy.BALANCED, PoolStrategy.BALANCED_WITH_AI -> {
+                // BALANCED needs all candidates in memory for the engine
+                val words = wordDao.getWordsByDictionaryOnce(dictionaryId)
+                val total = words.size
+                onProgress(0, total)
+                buildBalanced(words, dictionaryId, strategy, isCancelled, isPaused, onProgress, total)
+            }
             PoolStrategy.QUALITY_FIRST ->
-                buildQualityFirst(words, dictionaryId, startIndex, rebuildMode, isCancelled, isPaused, onProgress, total)
+                buildQualityFirstStreaming(dictionaryId, startIndex, rebuildMode, isCancelled, isPaused, onProgress)
         }
 
         // Ensure not cancelled before writing
@@ -195,6 +195,8 @@ class WordPoolRepositoryImpl @Inject constructor(
         words: List<WordWithDetails>,
         dictionaryId: Long,
         strategy: PoolStrategy,
+        isCancelled: () -> Boolean,
+        isPaused: () -> Boolean,
         onProgress: (Int, Int) -> Unit,
         total: Int
     ): List<BuiltPoolWithWordIds> {
@@ -206,6 +208,11 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
 
         val candidates = words.mapIndexed { index, wwd ->
+            if (isCancelled()) return emptyList()
+            while (isPaused()) {
+                kotlinx.coroutines.delay(500)
+                if (isCancelled()) return emptyList()
+            }
             coroutineContext.ensureActive()
             onProgress(index, total)
             val domain = wwd.toDomain()
@@ -237,19 +244,41 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
     }
 
-    // ── QUALITY_FIRST build (sliding window + edge graph, incremental) ──
+    // ── QUALITY_FIRST build (streaming, memory-efficient) ──
 
-    private suspend fun buildQualityFirst(
-        words: List<WordWithDetails>,
+    /**
+     * Lightweight word reference for history tracking.
+     * Only stores fields needed for AI prompt building (id, spelling, first meaning).
+     * ~50 bytes per word vs ~500 bytes for full WordDetails.
+     */
+    private data class WordRef(
+        val id: Long,
+        val spelling: String,
+        val pos: String,
+        val definition: String
+    ) {
+        companion object {
+            fun from(details: WordDetails): WordRef {
+                val m = details.meanings.firstOrNull()
+                return WordRef(details.id, details.spelling, m?.pos ?: "", m?.definition ?: "")
+            }
+        }
+    }
+
+    /**
+     * Streaming QUALITY_FIRST build.
+     * Uses cursor-based pagination (WordStream) and lightweight WordRef for history.
+     * Memory: ~2MB regardless of dictionary size.
+     * Edge correctness: compares against ALL previous words (same as non-streaming).
+     */
+    private suspend fun buildQualityFirstStreaming(
         dictionaryId: Long,
         startIndex: Int,
         rebuildMode: RebuildMode,
         isCancelled: () -> Boolean,
         isPaused: () -> Boolean,
-        onProgress: (Int, Int) -> Unit,
-        total: Int
+        onProgress: (Int, Int) -> Unit
     ): List<BuiltPoolWithWordIds> {
-        val domains = words.map { it.toDomain() }
         val windowSize = settingsDataStore.getPoolWindowSize()
         val maxConcurrent = settingsDataStore.getPoolMaxConcurrent()
         val requestsPerMinute = settingsDataStore.getPoolRequestsPerMinute()
@@ -258,95 +287,146 @@ class WordPoolRepositoryImpl @Inject constructor(
             wordEdgeDao.deleteByDictionary(dictionaryId)
         }
 
-        val resumeIndex = if (startIndex >= 0) startIndex else domains.size - 1
-
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
         val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
 
         val semaphore = Semaphore(maxConcurrent)
         val rateLimiter = EdgeRateLimiter(requestsPerMinute)
 
-        val totalAiCalls = (1..resumeIndex).sumOf { i ->
-            (i + windowSize - 1) / windowSize
-        }
-        val completedCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        // Count total words for progress
+        val totalWords = wordDao.countAllWords(dictionaryId)
+        val processedWords = java.util.concurrent.atomic.AtomicInteger(0)
 
-        for (i in resumeIndex.downTo(0)) {
+        // Stream words in batches, process each against all previous words
+        val stream = WordStream(wordDao, dictionaryId)
+        val history = mutableListOf<WordRef>() // Lightweight refs (~50 bytes each)
+        val resumeIndex = if (startIndex >= 0) startIndex else Int.MAX_VALUE
+        var wordIndex = 0
+
+        while (stream.hasNext()) {
             if (isCancelled()) {
-                Log.d("WordPoolRepo", "QualityFirst build cancelled at index $i")
+                Log.d("WordPoolRepo", "QualityFirst streaming build cancelled")
                 break
             }
 
-            val currentWord = domains[i]
-            if (i == 0) continue
-
-            data class WindowTask(val windowStart: Int, val windowEnd: Int)
-            val windowTasks = mutableListOf<WindowTask>()
-            var windowEnd = i
-            while (windowEnd > 0) {
-                val windowStart = maxOf(0, windowEnd - windowSize)
-                windowTasks.add(WindowTask(windowStart, windowEnd))
-                windowEnd = windowStart
+            // Pause: wait here before loading next batch. Already-in-flight AI calls
+            // continue running and their results are processed normally.
+            while (isPaused()) {
+                delay(500)
+                if (isCancelled()) break
             }
 
-            // BUG 1 fix: collect all edges from concurrent async calls,
-            // then do a single batch insert after all window tasks complete.
-            // N1 fix: use single coroutineScope wrapping all async for true concurrency.
-            val windowResults = coroutineScope {
-                windowTasks.map { task ->
-                    async {
-                        semaphore.withPermit {
-                            rateLimiter.acquire()
-                            if (isCancelled()) return@withPermit emptyList()
+            // Load next batch of words (full details needed for AI prompt)
+            val batch = stream.take(windowSize)
+            if (batch.isEmpty()) break
 
-                            val window = domains.subList(task.windowStart, task.windowEnd)
-                            val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, window)
-                            val aiResult = callAiForEdges(prompt, currentWord, window, unwrapEnabled, repairEnabled)
+            // Process each word in batch against ALL previous words (chunked)
+            for (currentWord in batch) {
+                if (isCancelled()) break
+                if (history.isEmpty()) {
+                    history.add(WordRef.from(currentWord))
+                    wordIndex++
+                    processedWords.incrementAndGet()
+                    continue
+                }
 
-                            val count = completedCalls.incrementAndGet()
-                            onProgress(count, totalAiCalls)
+                // Skip edge generation for words before resume index, but still build history
+                if (wordIndex < resumeIndex) {
+                    history.add(WordRef.from(currentWord))
+                    wordIndex++
+                    processedWords.incrementAndGet()
+                    continue
+                }
 
-                            aiResult.mapNotNull { edge ->
-                                if (edge.index !in window.indices) return@mapNotNull null
-                                val otherWord = window[edge.index]
-                                val (idA, idB) = if (currentWord.id < otherWord.id) {
-                                    currentWord.id to otherWord.id
-                                } else {
-                                    otherWord.id to currentWord.id
+                // Split history into chunks for concurrent AI calls
+                val chunks = history.chunked(windowSize)
+
+                val windowResults = coroutineScope {
+                    chunks.map { chunk ->
+                        async {
+                            semaphore.withPermit {
+                                // Pause: wait before sending this AI request.
+                                // Other in-flight requests complete normally.
+                                while (isPaused()) {
+                                    delay(200)
+                                    if (isCancelled()) return@withPermit emptyList()
                                 }
-                                WordEdgeEntity(
-                                    wordIdA = idA,
-                                    wordIdB = idB,
-                                    edgeType = edge.edgeType.dbValue,
-                                    dictionaryId = dictionaryId,
-                                    status = edge.status,
-                                    learningValue = edge.learningValue,
-                                    relationStrength = edge.relationStrength,
-                                    confidence = edge.confidence,
-                                    reason = edge.reason,
-                                    warningNote = edge.warningNote,
-                                    evidenceSource = edge.evidenceSource,
-                                    register = edge.register,
-                                    exampleSentence = edge.exampleSentence,
-                                    difficultyCefr = edge.difficultyCefr
-                                )
+
+                                rateLimiter.acquire()
+                                if (isCancelled()) return@withPermit emptyList()
+
+                                // Batch load full WordDetails for this chunk from DB
+                                // IMPORTANT: preserve input order — AI edge.index is based on prompt order
+                                val chunkIds = chunk.map { it.id }
+                                val detailsById = wordDao.getWordsByIds(chunkIds)
+                                    .associateBy { it.word.id }
+                                val chunkDetails = chunkIds.mapNotNull { detailsById[it]?.toDomain() }
+
+                                val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, chunkDetails)
+                                val aiResult = callAiForEdges(prompt, currentWord, chunkDetails, unwrapEnabled, repairEnabled)
+
+                                aiResult.mapNotNull { edge ->
+                                    if (edge.index !in chunkDetails.indices) return@mapNotNull null
+                                    val otherWord = chunkDetails[edge.index]
+                                    val (idA, idB) = if (currentWord.id < otherWord.id) {
+                                        currentWord.id to otherWord.id
+                                    } else {
+                                        otherWord.id to currentWord.id
+                                    }
+                                    WordEdgeEntity(
+                                        wordIdA = idA,
+                                        wordIdB = idB,
+                                        edgeType = edge.edgeType.dbValue,
+                                        dictionaryId = dictionaryId,
+                                        status = edge.status,
+                                        learningValue = edge.learningValue,
+                                        relationStrength = edge.relationStrength,
+                                        confidence = edge.confidence,
+                                        reason = edge.reason,
+                                        warningNote = edge.warningNote,
+                                        evidenceSource = edge.evidenceSource,
+                                        register = edge.register,
+                                        exampleSentence = edge.exampleSentence,
+                                        difficultyCefr = edge.difficultyCefr
+                                    )
+                                }
                             }
                         }
-                    }
-                }.awaitAll()
-            }
+                    }.awaitAll()
+                }
 
-            // BUG 1 fix: batch insert after all concurrent work is done
-            val newEdges = windowResults.flatten()
-            if (newEdges.isNotEmpty()) {
-                wordEdgeDao.insertEdges(newEdges)
+                // Batch insert edges
+                val newEdges = windowResults.flatten()
+                if (newEdges.isNotEmpty()) {
+                    wordEdgeDao.insertEdges(newEdges)
+                }
+
+                // Add current word to history (lightweight ref)
+                history.add(WordRef.from(currentWord))
+                wordIndex++
+
+                // Update progress once per word (not per chunk)
+                val count = processedWords.incrementAndGet()
+                onProgress(count, totalWords)
             }
         }
 
         // Review low-confidence edges with REVIEWER model
         coroutineContext.ensureActive()
         val allEdgesForReview = wordEdgeDao.getAllEdgesFull(dictionaryId)
-        val reviewModified = edgeReviewer.reviewEdgesWithAi(allEdgesForReview, domains, dictionaryId)
+
+        // Collect all word IDs for reviewer
+        val allWordIds = mutableSetOf<Long>()
+        allEdgesForReview.forEach { edge ->
+            allWordIds.add(edge.wordIdA)
+            allWordIds.add(edge.wordIdB)
+        }
+
+        // Load words for reviewer context (one-time cost, GC'd after review)
+        val allWordsForReviewer = wordDao.getWordsByDictionaryOnce(dictionaryId)
+        val domainsForReviewer = allWordsForReviewer.map { it.toDomain() }
+
+        val reviewModified = edgeReviewer.reviewEdgesWithAi(allEdgesForReview, domainsForReviewer, dictionaryId)
 
         // Build pools from edges in DB; re-fetch only if reviewer modified any edges
         coroutineContext.ensureActive()
@@ -355,8 +435,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         } else {
             allEdgesForReview
         }
-        val wordIds = domains.map { it.id }.toSet()
-        return rebuildPoolsFromEdges(allEdges, wordIds)
+        return rebuildPoolsFromEdges(allEdges, allWordIds)
     }
 
     private suspend fun callAiForEdges(
@@ -369,8 +448,20 @@ class WordPoolRepositoryImpl @Inject constructor(
         var lastException: Exception? = null
         for (attempt in 0 until MAX_EDGE_RETRIES) {
             try {
-                val response = callAi(prompt)
-                val normalized = EdgeParser.normalizeResponse(response, unwrapEnabled, repairEnabled)
+                val raw = callAi(prompt)
+                if (raw.isBlank()) {
+                    Log.w("WordPoolRepo", "AI returned empty response on attempt ${attempt + 1}")
+                    lastException = RetryableEdgeException("Empty AI response")
+                    if (attempt < MAX_EDGE_RETRIES - 1) delay(1000L * (attempt + 1))
+                    continue
+                }
+                val normalized = EdgeParser.normalizeResponse(raw, unwrapEnabled, repairEnabled)
+                if (normalized.isBlank()) {
+                    Log.w("WordPoolRepo", "Normalized response is blank on attempt ${attempt + 1}, raw=${raw.take(200)}")
+                    lastException = RetryableEdgeException("Normalized response is blank")
+                    if (attempt < MAX_EDGE_RETRIES - 1) delay(1000L * (attempt + 1))
+                    continue
+                }
                 val parsed = EdgeParser.parseAndValidateEdgeResponse(normalized, window.size)
                 return EdgeParser.applyHardThresholds(parsed, target, window)
             } catch (e: NonRetryableEdgeException) {
@@ -378,48 +469,25 @@ class WordPoolRepositoryImpl @Inject constructor(
                 return emptyList()
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: RetryableEdgeException) {
+                // Parser detected malformed response — retryable by definition
+                lastException = e
+                Log.w("WordPoolRepo", "Malformed AI response on attempt ${attempt + 1}/$MAX_EDGE_RETRIES, retrying", e)
+                if (attempt < MAX_EDGE_RETRIES - 1) {
+                    delay(1000L * (attempt + 1))
+                }
             } catch (e: Exception) {
                 lastException = e
-                val retryable = isRetryableError(e)
+                val retryable = AiErrorUtils.isRetryableError(e)
                 Log.w("WordPoolRepo", "AI edge call attempt ${attempt + 1}/$MAX_EDGE_RETRIES failed (retryable=$retryable)", e)
                 if (!retryable) return emptyList()
                 if (attempt < MAX_EDGE_RETRIES - 1) {
-                    // BUG 9 fix: use exponential backoff, longer delay for 429
-                    val baseDelay = if (isRateLimitError(e)) 2000L else 1000L
-                    delay(baseDelay * (attempt + 1))
+                    delay(AiErrorUtils.retryDelay(e, attempt))
                 }
             }
         }
         Log.w("WordPoolRepo", "AI edge call failed after $MAX_EDGE_RETRIES attempts", lastException)
         return emptyList()
-    }
-
-    /**
-     * BUG 9 fix: 429 rate-limit errors are retryable with exponential backoff.
-     * Network timeouts and connection errors are explicitly handled.
-     * N7 fix: default to false, only retry known transient errors.
-     */
-    private fun isRetryableError(e: Exception): Boolean {
-        val msg = e.message?.lowercase() ?: ""
-        // Non-retryable: auth errors
-        if (msg.contains("401") || msg.contains("403") || msg.contains("unauthorized") || msg.contains("invalid api key")) {
-            return false
-        }
-        // Retryable: rate limit (handled with longer backoff in caller)
-        if (isRateLimitError(e)) return true
-        // Retryable: network timeouts and connection errors
-        if (e is SocketTimeoutException || e is java.net.ConnectException) return true
-        if (e is IOException && (msg.contains("timeout") || msg.contains("connect"))) return true
-        if (e is kotlinx.coroutines.TimeoutCancellationException) return true
-        // Retryable: server errors (5xx)
-        if (msg.contains("500") || msg.contains("502") || msg.contains("503") || msg.contains("504")) return true
-        // Default: do not retry unknown errors (programming errors, etc.)
-        return false
-    }
-
-    private fun isRateLimitError(e: Exception): Boolean {
-        val msg = e.message?.lowercase() ?: ""
-        return msg.contains("429") || msg.contains("rate limit")
     }
 
     // ── Reviewer ──
@@ -472,9 +540,10 @@ class WordPoolRepositoryImpl @Inject constructor(
                 result.add(BuiltPoolWithWordIds(focusWordId = null, memberWordIds = members, qualityScore = score))
             } else {
                 // Sort members by edge connectivity so connected words stay in same chunk
+                // Pre-compute degree from edgesByWordId (O(edges) instead of O(members*edges))
                 val degreeMap = mutableMapOf<Long, Int>()
                 members.forEach { wordId ->
-                    degreeMap[wordId] = significantEdges.count { it.wordIdA == wordId || it.wordIdB == wordId }
+                    degreeMap[wordId] = edgesByWordId[wordId]?.size ?: 0
                 }
                 val sortedMembers = members.sortedByDescending { degreeMap[it] ?: 0 }
                 sortedMembers.chunked(maxPoolSize).forEach { chunk ->
@@ -532,21 +601,38 @@ class WordPoolRepositoryImpl @Inject constructor(
         var lastException: Exception? = null
         for (attempt in 0 until MAX_EDGE_RETRIES) {
             try {
-                val response = callAi(prompt)
+                val raw = callAi(prompt)
+                if (raw.isBlank()) {
+                    Log.w("WordPoolRepo", "AI batch returned empty response on attempt ${attempt + 1}")
+                    lastException = RetryableEdgeException("Empty AI response")
+                    if (attempt < MAX_EDGE_RETRIES - 1) delay(1000L * (attempt + 1))
+                    continue
+                }
                 val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
                 val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
-                val normalized = EdgeParser.normalizeResponse(response, unwrapEnabled, repairEnabled)
+                val normalized = EdgeParser.normalizeResponse(raw, unwrapEnabled, repairEnabled)
+                if (normalized.isBlank()) {
+                    Log.w("WordPoolRepo", "AI batch normalized blank on attempt ${attempt + 1}, raw=${raw.take(200)}")
+                    lastException = RetryableEdgeException("Normalized response is blank")
+                    if (attempt < MAX_EDGE_RETRIES - 1) delay(1000L * (attempt + 1))
+                    continue
+                }
                 return EdgeParser.parseJsonIntArrayOfArrays(normalized, listSize)
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: RetryableEdgeException) {
+                lastException = e
+                Log.w("WordPoolRepo", "AI batch malformed on attempt ${attempt + 1}/$MAX_EDGE_RETRIES, retrying", e)
+                if (attempt < MAX_EDGE_RETRIES - 1) {
+                    delay(1000L * (attempt + 1))
+                }
             } catch (e: Exception) {
                 lastException = e
-                val retryable = isRetryableError(e)
+                val retryable = AiErrorUtils.isRetryableError(e)
                 Log.w("WordPoolRepo", "AI batch call attempt ${attempt + 1}/$MAX_EDGE_RETRIES failed (retryable=$retryable)", e)
                 if (!retryable) return emptyList()
                 if (attempt < MAX_EDGE_RETRIES - 1) {
-                    val baseDelay = if (isRateLimitError(e)) 2000L else 1000L
-                    delay(baseDelay * (attempt + 1))
+                    delay(AiErrorUtils.retryDelay(e, attempt))
                 }
             }
         }

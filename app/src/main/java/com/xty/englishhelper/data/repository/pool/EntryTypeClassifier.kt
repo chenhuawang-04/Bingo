@@ -59,6 +59,10 @@ class EntryTypeClassifier @javax.inject.Inject constructor(
             val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
             val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
             val normalized = EdgeParser.normalizeResponse(response, unwrapEnabled, repairEnabled)
+            if (normalized.isBlank()) {
+                Log.w("EntryTypeClassifier", "Normalized response is blank, raw=${response.take(200)}")
+                break
+            }
 
             val results = EdgeParser.parseEntryTypeResponse(normalized)
             val resultMap = results.associateBy { it.first }
@@ -91,35 +95,16 @@ class EntryTypeClassifier @javax.inject.Inject constructor(
                 throw e
             } catch (e: Exception) {
                 lastException = e
-                val retryable = isRetryableError(e)
+                val retryable = AiErrorUtils.isRetryableError(e)
                 Log.w("EntryTypeClassifier", "AI call attempt ${attempt + 1}/$MAX_RETRIES failed (retryable=$retryable)", e)
                 if (!retryable) return null
                 if (attempt < MAX_RETRIES - 1) {
-                    val baseDelay = if (isRateLimitError(e)) 2000L else 1000L
-                    delay(baseDelay * (attempt + 1))
+                    delay(AiErrorUtils.retryDelay(e, attempt))
                 }
             }
         }
         Log.w("EntryTypeClassifier", "AI call failed after $MAX_RETRIES attempts", lastException)
         return null
-    }
-
-    private fun isRetryableError(e: Exception): Boolean {
-        val msg = e.message?.lowercase() ?: ""
-        if (msg.contains("401") || msg.contains("403") || msg.contains("unauthorized") || msg.contains("invalid api key")) {
-            return false
-        }
-        if (isRateLimitError(e)) return true
-        if (e is java.net.SocketTimeoutException || e is java.net.ConnectException) return true
-        if (e is java.io.IOException && (msg.contains("timeout") || msg.contains("connect"))) return true
-        if (e is kotlinx.coroutines.TimeoutCancellationException) return true
-        if (msg.contains("500") || msg.contains("502") || msg.contains("503") || msg.contains("504")) return true
-        return false
-    }
-
-    private fun isRateLimitError(e: Exception): Boolean {
-        val msg = e.message?.lowercase() ?: ""
-        return msg.contains("429") || msg.contains("rate limit")
     }
 
     private suspend fun callAi(prompt: String): String {

@@ -25,6 +25,14 @@ interface WordDao {
     @Query("SELECT * FROM words WHERE dictionary_id = :dictionaryId ORDER BY spelling ASC")
     suspend fun getWordsByDictionaryOnce(dictionaryId: Long): List<WordWithDetails>
 
+    /**
+     * Cursor-based pagination: returns words after lastId (exclusive), ordered by id ASC.
+     * First call: lastId = 0.
+     */
+    @Transaction
+    @Query("SELECT * FROM words WHERE dictionary_id = :dictionaryId AND id > :lastId ORDER BY id ASC LIMIT :limit")
+    suspend fun getWordsByDictionaryPaginated(dictionaryId: Long, lastId: Long, limit: Int): List<WordWithDetails>
+
     @Transaction
     @Query("SELECT * FROM words WHERE dictionary_id = :dictionaryId AND spelling LIKE '%' || :query || '%' ORDER BY spelling ASC")
     fun searchWords(dictionaryId: Long, query: String): Flow<List<WordWithDetails>>
@@ -32,6 +40,10 @@ interface WordDao {
     @Transaction
     @Query("SELECT * FROM words WHERE id = :wordId")
     suspend fun getWordById(wordId: Long): WordWithDetails?
+
+    @Transaction
+    @Query("SELECT * FROM words WHERE id IN (:wordIds)")
+    suspend fun getWordsByIds(wordIds: List<Long>): List<WordWithDetails>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWord(word: WordEntity): Long

@@ -12,6 +12,7 @@ import com.xty.englishhelper.data.remote.ChatMessage
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.WordDetails
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
 
@@ -27,6 +28,10 @@ class EdgeReviewer @javax.inject.Inject constructor(
     private val aiApiClientProvider: AiApiClientProvider,
     private val settingsDataStore: SettingsDataStore
 ) {
+    companion object {
+        private const val MAX_RETRIES = 3
+    }
+
     /**
      * Review edges with confidence < 0.6 or status == "warning" using the REVIEWER AI model.
      * @return true if any edges were modified (removed or adjusted), false otherwise.
@@ -46,10 +51,8 @@ class EdgeReviewer @javax.inject.Inject constructor(
             coroutineContext.ensureActive()
             val prompt = EdgePromptBuilder.buildReviewPrompt(batch, wordMap)
             try {
-                val response = callAiForReviewer(prompt)
-                val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
-                val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
-                val normalized = EdgeParser.normalizeResponse(response, unwrapEnabled, repairEnabled)
+                val normalized = callAiForReviewerWithRetry(prompt)
+                    ?: return@forEach // all retries exhausted, skip this batch
                 if (parseAndApplyReview(normalized, batch)) {
                     modified = true
                 }
@@ -60,6 +63,49 @@ class EdgeReviewer @javax.inject.Inject constructor(
             }
         }
         return modified
+    }
+
+    /**
+     * Call AI with retry logic, blank response check, and normalization.
+     * Returns normalized response string, or null if all retries exhausted.
+     */
+    private suspend fun callAiForReviewerWithRetry(prompt: String): String? {
+        var lastException: Exception? = null
+        for (attempt in 0 until MAX_RETRIES) {
+            try {
+                val raw = callAiForReviewer(prompt)
+                if (raw.isBlank()) {
+                    Log.w("EdgeReviewer", "AI returned empty response on attempt ${attempt + 1}")
+                    lastException = RetryableEdgeException("Empty AI response")
+                    if (attempt < MAX_RETRIES - 1) delay(1000L * (attempt + 1))
+                    continue
+                }
+                val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+                val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+                val normalized = EdgeParser.normalizeResponse(raw, unwrapEnabled, repairEnabled)
+                if (normalized.isBlank()) {
+                    Log.w("EdgeReviewer", "Normalized response is blank on attempt ${attempt + 1}, raw=${raw.take(200)}")
+                    lastException = RetryableEdgeException("Normalized response is blank")
+                    if (attempt < MAX_RETRIES - 1) delay(1000L * (attempt + 1))
+                    continue
+                }
+                return normalized
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: RetryableEdgeException) {
+                lastException = e
+                Log.w("EdgeReviewer", "Malformed AI response on attempt ${attempt + 1}/$MAX_RETRIES, retrying", e)
+                if (attempt < MAX_RETRIES - 1) delay(1000L * (attempt + 1))
+            } catch (e: Exception) {
+                lastException = e
+                val retryable = AiErrorUtils.isRetryableError(e)
+                Log.w("EdgeReviewer", "AI review attempt ${attempt + 1}/$MAX_RETRIES failed (retryable=$retryable)", e)
+                if (!retryable) return null
+                if (attempt < MAX_RETRIES - 1) delay(AiErrorUtils.retryDelay(e, attempt))
+            }
+        }
+        Log.w("EdgeReviewer", "AI review failed after $MAX_RETRIES attempts", lastException)
+        return null
     }
 
     /**

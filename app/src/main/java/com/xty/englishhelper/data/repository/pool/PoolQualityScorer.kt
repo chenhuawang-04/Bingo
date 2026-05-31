@@ -60,8 +60,9 @@ internal object PoolQualityScorer {
         val optionalRatio = edgeList.count { it.status == "optional" }.toDouble() / size
         val noiseControl = ((1.0 - optionalRatio) * 5).toInt().coerceIn(0, 5)
 
-        // 8. Difficulty fit (0-5): average confidence as proxy
-        val difficultyFit = (avgConfidence * 5).toInt().coerceIn(0, 5)
+        // 8. Difficulty fit (0-5): proportion of edges with non-blank difficulty_cefr
+        val difficultyAware = edgeList.count { !it.difficultyCefr.isNullOrBlank() }
+        val difficultyFit = (difficultyAware.toDouble() / size * 5).toInt().coerceIn(0, 5)
 
         // 9. Register fit (0-5): proportion of edges with reason indicating register awareness
         // BUG 5 fix: removed coerceAtLeast(3) that was inflating scores

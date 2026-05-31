@@ -133,7 +133,7 @@ internal object EdgePromptBuilder {
             appendLine("7. reason 是否充分解释了纳入原因？")
             appendLine("8. 是否存在重复或近重复的边？")
             appendLine("9. 难度与语域是否匹配目标学习者？（如低频学术词不应标为A1核心）")
-            appendLine("10. excluded_candidates 是否合理？是否有本应排除但漏掉的候选？")
+            appendLine("10. 是否有本应排除但漏掉的候选？")
             appendLine()
             appendLine("返回JSON数组，每个元素：")
             appendLine("""[{"i":0,"verdict":"keep","new_status":"core","new_confidence":0.8,"note":"调整原因"}]""")
