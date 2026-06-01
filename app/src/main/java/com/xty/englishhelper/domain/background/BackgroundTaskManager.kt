@@ -380,7 +380,13 @@ class BackgroundTaskManager @Inject constructor(
                     BackgroundTaskStatus.CANCELED -> {
                         repository.updatePayload(existing.id, type, payload)
                         repository.updateStatus(existing.id, BackgroundTaskStatus.PENDING, null)
-                        repository.updateProgress(existing.id, 0, 0)
+                        // 词池“增量”构建：保留已完成进度，让重试从断点续传（重试 ≈ 继续）；
+                        // 其余任务（含词池 FULL 重建）一律重置进度从头开始。
+                        val resumeIncrementalPool = type == BackgroundTaskType.WORD_POOL_REBUILD &&
+                            (payload as? WordPoolRebuildPayload)?.rebuildMode == RebuildMode.INCREMENTAL.name
+                        if (!resumeIncrementalPool) {
+                            repository.updateProgress(existing.id, 0, 0)
+                        }
                         return@withLock BackgroundTaskEnqueueResult.RESTARTED
                     }
                 }
@@ -827,6 +833,16 @@ class BackgroundTaskManager @Inject constructor(
             withContext(NonCancellable) {
                 latest.get()?.let { (current, total, msg) ->
                     if (total > 0) repository.updateProgress(task.id, current, total, msg)
+                }
+            }
+            throw e
+        } catch (e: Exception) {
+            // 构建中止（如服务器多次返回不合规数据触发 PoolBuildDataException）：
+            // 先用 NonCancellable 落库最后进度，以便修复后从断点续传（INCREMENTAL 重试会保留进度），
+            // 再上抛由 launchTask 标记为 FAILED 并显示错误信息——这就是“暂停并报告”。
+            withContext(NonCancellable) {
+                latest.get()?.let { (current, total, _) ->
+                    if (total > 0) repository.updateProgress(task.id, current, total, null)
                 }
             }
             throw e

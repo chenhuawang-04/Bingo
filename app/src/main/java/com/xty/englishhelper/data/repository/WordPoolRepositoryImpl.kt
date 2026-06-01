@@ -21,10 +21,10 @@ import com.xty.englishhelper.data.repository.pool.EdgeRateLimiter
 import com.xty.englishhelper.data.repository.pool.EdgeReviewer
 import com.xty.englishhelper.data.repository.pool.EntryTypeClassifier
 import com.xty.englishhelper.data.repository.pool.NonRetryableEdgeException
+import com.xty.englishhelper.data.repository.pool.PoolBuildDataException
 import com.xty.englishhelper.data.repository.pool.PoolQualityScorer
 import com.xty.englishhelper.data.repository.pool.RetryableEdgeException
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
@@ -52,6 +52,18 @@ private data class BuiltPoolWithWordIds(
     val memberWordIds: List<Long>,
     val qualityScore: Int? = null
 )
+
+/**
+ * 单次边生成 AI 调用的结果，把“成功但无边”和“彻底失败”彻底区分开：
+ * - [Success] 表示 AI 返回了合规的 JSON 并完成解析，[edges] 可能为空（AI 判定两词无关，
+ *   或边全部被硬阈值过滤）——这都属于正常成功，不应当作失败处理。
+ * - [Failure] 表示重试 MAX_EDGE_RETRIES 次后仍拿不到合规数据，或遇到不可重试错误，
+ *   [error] 为可展示的简短原因。出现 Failure 即应中止构建并报告。
+ */
+private sealed interface EdgeCallResult {
+    data class Success(val edges: List<com.xty.englishhelper.data.repository.pool.ParsedEdge>) : EdgeCallResult
+    data class Failure(val error: String) : EdgeCallResult
+}
 
 @Singleton
 class WordPoolRepositoryImpl @Inject constructor(
@@ -286,10 +298,9 @@ class WordPoolRepositoryImpl @Inject constructor(
             return emptyList()
         }
 
-        // AI 调用统计（构建后据此判断是否“全部失败”）。在并发块中写入，故用原子类型。
+        // AI 调用成功计数（仅用于日志）。任何分块彻底失败都会立即抛 PoolBuildDataException 中止构建，
+        // 因此走到构建结束就意味着所有调用都成功了。并发块中写入，故用原子类型。
         val successfulAiCalls = AtomicInteger(0)
-        val failedAiCalls = AtomicInteger(0)
-        val firstAiError = AtomicReference<String?>(null)
 
         // 已完整处理的词数：用于进度展示与断点续传。
         // 倒序处理时，已处理的是“末尾若干个词”，startIndex 即上次已处理的数量。
@@ -330,9 +341,9 @@ class WordPoolRepositoryImpl @Inject constructor(
             onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, 0, chunks.size, 0))
 
             // 同一词的各块并发执行（并发度 maxConcurrent，整体频率 requestsPerMinute）；
-            // 全部完成后才进入下一个词。
+            // 全部完成后才进入下一个词。任一块在重试耗尽后仍拿不到合规数据 → 立即抛异常中止。
             val newEdges = coroutineScope {
-                chunks.map { chunk ->
+                chunks.mapIndexed { chunkIndex, chunk ->
                     async {
                         semaphore.withPermit {
                             awaitWhilePaused(isPaused, isCancelled)
@@ -342,23 +353,32 @@ class WordPoolRepositoryImpl @Inject constructor(
 
                             // chunk 本身就是完整的 WordDetails，直接构建 prompt，无需回查数据库。
                             val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, chunk)
-                            val errorRef = arrayOfNulls<String>(1)
-                            val parsed = callAiForEdges(prompt, currentWord, chunk, unwrapEnabled, repairEnabled, errorRef)
-
-                            if (parsed.isNotEmpty()) {
-                                successfulAiCalls.incrementAndGet()
-                                edgesForWord.addAndGet(parsed.size)
-                            } else {
-                                failedAiCalls.incrementAndGet()
-                                errorRef[0]?.let { firstAiError.compareAndSet(null, it) }
+                            val edges = when (val result =
+                                callAiForEdges(prompt, currentWord, chunk, unwrapEnabled, repairEnabled)) {
+                                is EdgeCallResult.Success -> {
+                                    // 合规响应（含合法空数组 / 全被阈值过滤）均算成功。
+                                    successfulAiCalls.incrementAndGet()
+                                    result.edges
+                                }
+                                is EdgeCallResult.Failure -> {
+                                    // 该块已重试 $MAX_EDGE_RETRIES 次仍返回不合规数据 → 中止整个构建并报告。
+                                    // 已写入的边与进度会被落库，排查后可从当前词续传。
+                                    throw PoolBuildDataException(
+                                        "词池构建已停止：单词「${currentWord.spelling}」第 ${chunkIndex + 1}/${chunks.size} 组" +
+                                            "在重试 $MAX_EDGE_RETRIES 次后仍返回不合规数据。\n" +
+                                            "原因：${result.error}\n" +
+                                            "已保留已完成进度，请检查 AI 服务/模型配置后继续构建。"
+                                    )
+                                }
                             }
 
+                            edgesForWord.addAndGet(edges.size)
                             // 本块完成，更新进度（已完成块数单调递增）。
                             val done = chunksDone.incrementAndGet()
                             onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, done, chunks.size, edgesForWord.get()))
-                            Log.d("WordPoolRepo", "  块[$done/${chunks.size}] '${currentWord.spelling}' vs ${chunk.size}词 → ${parsed.size}条边")
+                            Log.d("WordPoolRepo", "  块[$done/${chunks.size}] '${currentWord.spelling}' vs ${chunk.size}词 → ${edges.size}条边")
 
-                            parsed.mapNotNull { edge ->
+                            edges.mapNotNull { edge ->
                                 val other = chunk.getOrNull(edge.index) ?: return@mapNotNull null
                                 toEdgeEntity(currentWord, other, edge, dictionaryId)
                             }
@@ -383,17 +403,11 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
 
         // ============================================================
-        // 构建完成，统计 AI 调用情况
+        // 构建完成。任一分块在重试耗尽后失败都会提前抛 PoolBuildDataException 中止，
+        // 因此能走到这里就意味着所有 AI 调用都拿到了合规响应。
         // ============================================================
-        val totalAiAttempts = successfulAiCalls.get() + failedAiCalls.get()
-        if (!isCancelled() && totalAiAttempts > 0 && successfulAiCalls.get() == 0) {
-            val errorMsg = "所有 AI 调用均失败（共 $totalAiAttempts 次），未生成任何边。" +
-                (firstAiError.get()?.let { "\n首个错误: $it" } ?: "")
-            Log.e("WordPoolRepo", errorMsg)
-            throw IllegalStateException(errorMsg)
-        }
-        if (totalAiAttempts > 0) {
-            Log.i("WordPoolRepo", "AI 调用统计: 成功 ${successfulAiCalls.get()}/$totalAiAttempts, 失败 ${failedAiCalls.get()}")
+        if (successfulAiCalls.get() > 0) {
+            Log.i("WordPoolRepo", "AI 调用全部成功，共 ${successfulAiCalls.get()} 次")
         }
 
         // ============================================================
@@ -463,62 +477,64 @@ class WordPoolRepositoryImpl @Inject constructor(
         )
     }
 
+    /**
+     * 调用边生成 AI 并校验响应，最多重试 [MAX_EDGE_RETRIES] 次。
+     * 返回 [EdgeCallResult.Success]（含 0..N 条合规边）或 [EdgeCallResult.Failure]（重试耗尽 / 不可重试）。
+     * 注意：空数组 `[]`、或边全部被硬阈值过滤后为空，都属于 **成功**（合规且有意义），不视为失败。
+     */
     private suspend fun callAiForEdges(
         prompt: String,
         target: WordDetails,
         window: List<WordDetails>,
         unwrapEnabled: Boolean,
-        repairEnabled: Boolean,
-        errorOut: Array<String?> = arrayOfNulls(1)
-    ): List<com.xty.englishhelper.data.repository.pool.ParsedEdge> {
-        var lastException: Exception? = null
+        repairEnabled: Boolean
+    ): EdgeCallResult {
+        var lastError: String? = null
         for (attempt in 0 until MAX_EDGE_RETRIES) {
             try {
                 val raw = callAi(prompt)
                 if (raw.isBlank()) {
-                    Log.w("WordPoolRepo", "AI returned empty response on attempt ${attempt + 1}")
-                    lastException = RetryableEdgeException("Empty AI response")
+                    Log.w("WordPoolRepo", "AI 返回空响应 (第 ${attempt + 1}/$MAX_EDGE_RETRIES 次)")
+                    lastError = "AI 返回空响应"
                     if (attempt < MAX_EDGE_RETRIES - 1) delay(1000L * (attempt + 1))
                     continue
                 }
                 val normalized = EdgeParser.normalizeResponse(raw, unwrapEnabled, repairEnabled)
                 if (normalized.isBlank()) {
-                    Log.w("WordPoolRepo", "Normalized response is blank on attempt ${attempt + 1}, raw=${raw.take(200)}")
-                    lastException = RetryableEdgeException("Normalized response is blank")
+                    Log.w("WordPoolRepo", "响应归一化后为空 (第 ${attempt + 1}/$MAX_EDGE_RETRIES 次), raw=${raw.take(200)}")
+                    lastError = "响应归一化后为空"
                     if (attempt < MAX_EDGE_RETRIES - 1) delay(1000L * (attempt + 1))
                     continue
                 }
                 val parsed = EdgeParser.parseAndValidateEdgeResponse(normalized, window.size)
-                return EdgeParser.applyHardThresholds(parsed, target, window)
+                val filtered = EdgeParser.applyHardThresholds(parsed, target, window)
+                return EdgeCallResult.Success(filtered)
             } catch (e: NonRetryableEdgeException) {
-                Log.w("WordPoolRepo", "Non-retryable error on attempt ${attempt + 1}", e)
-                errorOut[0] = e.message?.take(200) ?: e.javaClass.simpleName
-                return emptyList()
+                Log.w("WordPoolRepo", "不可重试错误 (第 ${attempt + 1} 次)", e)
+                return EdgeCallResult.Failure(e.message?.take(200) ?: e.javaClass.simpleName)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RetryableEdgeException) {
-                // Parser detected malformed response — retryable by definition
-                lastException = e
-                Log.w("WordPoolRepo", "Malformed AI response on attempt ${attempt + 1}/$MAX_EDGE_RETRIES, retrying", e)
+                // 解析器判定响应格式不合规 —— 按定义可重试。
+                lastError = e.message?.take(200) ?: "响应格式不合规"
+                Log.w("WordPoolRepo", "AI 响应格式不合规 (第 ${attempt + 1}/$MAX_EDGE_RETRIES 次)，重试中", e)
                 if (attempt < MAX_EDGE_RETRIES - 1) {
                     delay(1000L * (attempt + 1))
                 }
             } catch (e: Exception) {
-                lastException = e
                 val retryable = AiErrorUtils.isRetryableError(e)
-                Log.w("WordPoolRepo", "AI edge call attempt ${attempt + 1}/$MAX_EDGE_RETRIES failed (retryable=$retryable)", e)
+                lastError = e.message?.take(200) ?: e.javaClass.simpleName
+                Log.w("WordPoolRepo", "AI 调用失败 (第 ${attempt + 1}/$MAX_EDGE_RETRIES 次, retryable=$retryable)", e)
                 if (!retryable) {
-                    errorOut[0] = e.message?.take(200) ?: e.javaClass.simpleName
-                    return emptyList()
+                    return EdgeCallResult.Failure(lastError ?: "不可重试的错误")
                 }
                 if (attempt < MAX_EDGE_RETRIES - 1) {
                     delay(AiErrorUtils.retryDelay(e, attempt))
                 }
             }
         }
-        Log.w("WordPoolRepo", "AI edge call failed after $MAX_EDGE_RETRIES attempts", lastException)
-        errorOut[0] = lastException?.message?.take(200) ?: "AI 调用失败（已重试 $MAX_EDGE_RETRIES 次）"
-        return emptyList()
+        Log.w("WordPoolRepo", "AI 调用在 $MAX_EDGE_RETRIES 次重试后仍失败: $lastError")
+        return EdgeCallResult.Failure(lastError ?: "AI 调用失败（已重试 $MAX_EDGE_RETRIES 次）")
     }
 
     // ── Reviewer ──

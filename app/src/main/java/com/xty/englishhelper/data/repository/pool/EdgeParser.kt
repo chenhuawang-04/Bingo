@@ -13,6 +13,14 @@ internal class RetryableEdgeException(message: String, cause: Throwable? = null)
 /** Thrown when an AI response is malformed and retrying will not help. */
 internal class NonRetryableEdgeException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
+/**
+ * 中止整个词池构建的信号：某个分块的 AI 响应在重试 MAX_EDGE_RETRIES 次后仍不合规
+ * （或遇到不可重试错误）。携带面向用户的中文报告信息，最终呈现为任务失败 + 错误提示。
+ * 与 [RetryableEdgeException]/[NonRetryableEdgeException] 不同：那两者只影响单次调用，
+ * 本异常会让构建停下来并把进度落库以便续传。
+ */
+internal class PoolBuildDataException(message: String) : Exception(message)
+
 /** Parsed representation of a single edge returned by the edge-generation AI. */
 internal data class ParsedEdge(
     val index: Int,
@@ -123,7 +131,9 @@ internal object EdgeParser {
 
         val results = mutableListOf<ParsedEdge>()
         val objPattern = Regex("""\{[^{}]+\}""")
+        var objectsSeen = 0
         objPattern.findAll(arrayText).forEach { match ->
+            objectsSeen++
             val obj = match.value
             try {
                 val index = extractJsonInt(obj, "i")
@@ -154,6 +164,11 @@ internal object EdgeParser {
             } catch (e: Exception) {
                 Log.w("EdgeParser", "Failed to parse edge object: $obj", e)
             }
+        }
+        // 数组里有内容（已排除 "[]"）却找不到任何 JSON 对象 → 服务器返回的结构不符合要求，
+        // 按可重试错误处理；空数组在上面已作为“合法的无边响应”提前返回，不会走到这里。
+        if (objectsSeen == 0) {
+            throw RetryableEdgeException("响应数组非空但未包含任何 JSON 对象: ${arrayText.take(120)}")
         }
         return results
     }
