@@ -19,6 +19,18 @@ interface WordEdgeDao {
     @Query("DELETE FROM word_edges WHERE dictionary_id = :dictionaryId AND (word_id_a = :wordId OR word_id_b = :wordId)")
     suspend fun deleteEdgesForWord(dictionaryId: Long, wordId: Long)
 
+    /**
+     * 删除某词与指定若干「相对词」之间的边（双向匹配：该词可能落在 word_id_a 或 word_id_b）。
+     * 用于块级续传清理：只清掉待重做块覆盖的前驱区残边，保留已提交块的边。
+     * 注意 SQLite IN(...) 参数上限约 999，调用方需把 otherIds 分批（≤900）。
+     */
+    @Query(
+        "DELETE FROM word_edges WHERE dictionary_id = :dictionaryId AND (" +
+            "(word_id_a = :wordId AND word_id_b IN (:otherIds)) OR " +
+            "(word_id_b = :wordId AND word_id_a IN (:otherIds)))"
+    )
+    suspend fun deleteEdgesForWordAgainst(dictionaryId: Long, wordId: Long, otherIds: List<Long>)
+
     @Query("SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdgesFull(dictionaryId: Long): List<WordEdgeEntity>
 

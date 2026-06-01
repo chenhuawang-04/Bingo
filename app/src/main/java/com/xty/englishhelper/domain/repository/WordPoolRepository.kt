@@ -13,6 +13,7 @@ interface WordPoolRepository {
         strategy: PoolStrategy,
         startIndex: Int = -1,
         rebuildMode: RebuildMode = RebuildMode.INCREMENTAL,
+        resumeProgressMessage: String? = null,
         isCancelled: () -> Boolean = { false },
         isPaused: () -> Boolean = { false },
         onProgress: (current: Int, total: Int, currentWord: String?) -> Unit = { _, _, _ -> }

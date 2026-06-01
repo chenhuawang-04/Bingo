@@ -21,10 +21,11 @@ class RebuildWordPoolsUseCase @Inject constructor(
         strategy: PoolStrategy,
         startIndex: Int = -1,
         rebuildMode: RebuildMode = RebuildMode.INCREMENTAL,
+        resumeProgressMessage: String? = null,
         isCancelled: () -> Boolean = { false },
         isPaused: () -> Boolean = { false },
         onProgress: (Int, Int, String?) -> Unit = { _, _, _ -> }
-    ) = repo.rebuildPools(dictionaryId, strategy, startIndex, rebuildMode, isCancelled, isPaused, onProgress)
+    ) = repo.rebuildPools(dictionaryId, strategy, startIndex, rebuildMode, resumeProgressMessage, isCancelled, isPaused, onProgress)
 }
 
 class GetPoolCountUseCase @Inject constructor(

@@ -37,7 +37,6 @@ import com.xty.englishhelper.domain.pool.WordPoolEngine
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -119,6 +118,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         strategy: PoolStrategy,
         startIndex: Int,
         rebuildMode: RebuildMode,
+        resumeProgressMessage: String?,
         isCancelled: () -> Boolean,
         isPaused: () -> Boolean,
         onProgress: (Int, Int, String?) -> Unit
@@ -132,7 +132,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                 buildBalanced(words, dictionaryId, strategy, isCancelled, isPaused, onProgress, total)
             }
             PoolStrategy.QUALITY_FIRST ->
-                buildQualityFirstStreaming(dictionaryId, startIndex, rebuildMode, isCancelled, isPaused, onProgress)
+                buildQualityFirstStreaming(dictionaryId, startIndex, rebuildMode, resumeProgressMessage, isCancelled, isPaused, onProgress)
         }
 
         // Ensure not cancelled before writing
@@ -271,6 +271,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         dictionaryId: Long,
         startIndex: Int,
         rebuildMode: RebuildMode,
+        resumeProgressMessage: String?,
         isCancelled: () -> Boolean,
         isPaused: () -> Boolean,
         onProgress: (Int, Int, String?) -> Unit
@@ -314,6 +315,17 @@ class WordPoolRepositoryImpl @Inject constructor(
         //   断点续传：跳过末尾已处理的 alreadyProcessed 个词，从 (totalWords-1-alreadyProcessed) 开始。
         // ============================================================
         val firstIndexToProcess = (totalWords - 1 - alreadyProcessed).coerceAtLeast(0)
+
+        // 块级续传点：断点词（本次首个被处理的词）从「第一个未提交的块」继续，已提交块的边保留。
+        // 仅 INCREMENTAL 生效（FULL 已清库，必须从块 0 重来）；并严格校验持久化消息确实属于该断点词，
+        // 否则一律回退到 0（词集变动 / 词刚完成时 chunkTotal=0 / 解析失败 都安全退化为整词重做）。
+        val startChunk = resolveStartChunk(
+            resumeProgressMessage, rebuildMode, allWords, firstIndexToProcess, chunkSize
+        )
+        if (startChunk > 0) {
+            Log.i("WordPoolRepo", "块级续传：断点词 '${allWords[firstIndexToProcess].spelling}' 从第 ${startChunk + 1} 块继续（跳过前 $startChunk 个已提交块）")
+        }
+
         for (wordIndex in firstIndexToProcess downTo 1) {
             if (isCancelled()) {
                 Log.d("WordPoolRepo", "构建被取消 @wordIndex=$wordIndex")
@@ -324,76 +336,99 @@ class WordPoolRepositoryImpl @Inject constructor(
 
             val currentWord = allWords[wordIndex]
 
-            // 续传时，中断点这个词可能写入过不完整的边，先清除再重做。
-            if (wordIndex == firstIndexToProcess && alreadyProcessed > 0) {
-                wordEdgeDao.deleteEdgesForWord(dictionaryId, currentWord.id)
+            // 续传清理：仅断点词（本次循环首个词）需要。
+            //   startChunk>0：块级续传——只清掉待重做块覆盖的前驱区 [startChunk*chunkSize, wordIndex) 残边，
+            //                 保留 [0, startChunk) 已提交块的边；前驱可能很多，分批以避开 SQLite 参数上限。
+            //   startChunk==0：整词重做——沿用旧逻辑，先清掉该词所有残边。
+            if (wordIndex == firstIndexToProcess && (alreadyProcessed > 0 || startChunk > 0)) {
+                if (startChunk > 0) {
+                    val from = (startChunk * chunkSize).coerceAtMost(wordIndex)
+                    allWords.subList(from, wordIndex).map { it.id }.chunked(900).forEach { batch ->
+                        wordEdgeDao.deleteEdgesForWordAgainst(dictionaryId, currentWord.id, batch)
+                    }
+                } else {
+                    wordEdgeDao.deleteEdgesForWord(dictionaryId, currentWord.id)
+                }
             }
 
             // 内层：前驱词 [0, wordIndex) 按 chunkSize 分块。
             // 例：301 个词处理末词时，前驱 300 个、chunkSize=50 → 6 块：[0,50) [50,100) … [250,300)
             val chunks = allWords.subList(0, wordIndex).chunked(chunkSize)
             val wordsDone = processed.get()
-            val edgesForWord = AtomicInteger(0)
-            val chunksDone = AtomicInteger(0)
-            Log.d("WordPoolRepo", "词 '${currentWord.spelling}' (剩余#$wordIndex): 对比前 $wordIndex 个词，分 ${chunks.size} 块")
+            // 块级续传：仅本次循环的首词（断点词）跳过已提交的前缀块；其余词都从块 0 开始。
+            val startChunkForWord = if (wordIndex == firstIndexToProcess) startChunk.coerceAtMost(chunks.size) else 0
+            Log.d(
+                "WordPoolRepo",
+                "词 '${currentWord.spelling}' (剩余#$wordIndex): 对比前 $wordIndex 个词，分 ${chunks.size} 块" +
+                    if (startChunkForWord > 0) "（从第 ${startChunkForWord + 1} 块续传）" else ""
+            )
 
-            // 该词开始：先报告一次（0 块完成），让详情页立即显示总块数。
-            onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, 0, chunks.size, 0))
+            // 该词开始：先报告一次（已提交块数 = startChunkForWord），让详情页立即显示总块数与续传起点。
+            onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, startChunkForWord, chunks.size, 0))
 
-            // 同一词的各块并发执行（并发度 maxConcurrent，整体频率 requestsPerMinute）；
-            // 全部完成后才进入下一个词。任一块在重试耗尽后仍拿不到合规数据 → 立即抛异常中止。
-            val newEdges = coroutineScope {
-                chunks.mapIndexed { chunkIndex, chunk ->
-                    async {
-                        semaphore.withPermit {
-                            awaitWhilePaused(isPaused, isCancelled)
-                            if (isCancelled()) return@withPermit emptyList()
-                            rateLimiter.acquire()
-                            if (isCancelled()) return@withPermit emptyList()
+            // 各块并发计算（并发度 maxConcurrent、整体频率 requestsPerMinute 均不变），但按块序逐块入库（顺序提交）：
+            //   块 K 失败时，已入库的恰是连续前缀 [startChunkForWord, K)，K 之后的块仅在内存算完、未入库
+            //   → DB 中不会出现超过已提交前缀的残边，续传点干净。
+            //   insertEdges 是单事务原子写 + (a,b,type) 唯一索引 IGNORE → 重做某块幂等，进程被杀重做亦安全。
+            var committedEdges = 0
+            coroutineScope {
+                val deferreds = chunks.mapIndexed { chunkIndex, chunk ->
+                    if (chunkIndex < startChunkForWord) {
+                        null // 已提交的前缀块：跳过，不再计算
+                    } else {
+                        async {
+                            semaphore.withPermit {
+                                awaitWhilePaused(isPaused, isCancelled)
+                                if (isCancelled()) return@withPermit emptyList()
+                                rateLimiter.acquire()
+                                if (isCancelled()) return@withPermit emptyList()
 
-                            // chunk 本身就是完整的 WordDetails，直接构建 prompt，无需回查数据库。
-                            val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, chunk)
-                            val edges = when (val result =
-                                callAiForEdges(prompt, currentWord, chunk, unwrapEnabled, repairEnabled)) {
-                                is EdgeCallResult.Success -> {
-                                    // 合规响应（含合法空数组 / 全被阈值过滤）均算成功。
-                                    successfulAiCalls.incrementAndGet()
-                                    result.edges
+                                // chunk 本身就是完整的 WordDetails，直接构建 prompt，无需回查数据库。
+                                val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, chunk)
+                                val edges = when (val result =
+                                    callAiForEdges(prompt, currentWord, chunk, unwrapEnabled, repairEnabled)) {
+                                    is EdgeCallResult.Success -> {
+                                        // 合规响应（含合法空数组 / 全被阈值过滤）均算成功。
+                                        successfulAiCalls.incrementAndGet()
+                                        result.edges
+                                    }
+                                    is EdgeCallResult.Failure -> {
+                                        // 该块已重试 $MAX_EDGE_RETRIES 次仍返回不合规数据 → 中止整个构建并报告。
+                                        // 已提交的块与进度会被落库，排查后可从当前词的当前块续传。
+                                        throw PoolBuildDataException(
+                                            "词池构建已停止：单词「${currentWord.spelling}」第 ${chunkIndex + 1}/${chunks.size} 组" +
+                                                "在重试 $MAX_EDGE_RETRIES 次后仍返回不合规数据。\n" +
+                                                "原因：${result.error}\n" +
+                                                "已保留已完成进度，请检查 AI 服务/模型配置后继续构建。"
+                                        )
+                                    }
                                 }
-                                is EdgeCallResult.Failure -> {
-                                    // 该块已重试 $MAX_EDGE_RETRIES 次仍返回不合规数据 → 中止整个构建并报告。
-                                    // 已写入的边与进度会被落库，排查后可从当前词续传。
-                                    throw PoolBuildDataException(
-                                        "词池构建已停止：单词「${currentWord.spelling}」第 ${chunkIndex + 1}/${chunks.size} 组" +
-                                            "在重试 $MAX_EDGE_RETRIES 次后仍返回不合规数据。\n" +
-                                            "原因：${result.error}\n" +
-                                            "已保留已完成进度，请检查 AI 服务/模型配置后继续构建。"
-                                    )
+
+                                edges.mapNotNull { edge ->
+                                    val other = chunk.getOrNull(edge.index) ?: return@mapNotNull null
+                                    toEdgeEntity(currentWord, other, edge, dictionaryId)
                                 }
-                            }
-
-                            edgesForWord.addAndGet(edges.size)
-                            // 本块完成，更新进度（已完成块数单调递增）。
-                            val done = chunksDone.incrementAndGet()
-                            onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, done, chunks.size, edgesForWord.get()))
-                            Log.d("WordPoolRepo", "  块[$done/${chunks.size}] '${currentWord.spelling}' vs ${chunk.size}词 → ${edges.size}条边")
-
-                            edges.mapNotNull { edge ->
-                                val other = chunk.getOrNull(edge.index) ?: return@mapNotNull null
-                                toEdgeEntity(currentWord, other, edge, dictionaryId)
                             }
                         }
                     }
-                }.awaitAll().flatten()
-            }
+                }
 
-            if (newEdges.isNotEmpty()) {
-                wordEdgeDao.insertEdges(newEdges)
+                // 按块序提交：等待第 chunkIndex 块算完即入库，再上报「已提交块数」（连续前缀，即安全续传点）。
+                for (chunkIndex in startChunkForWord until chunks.size) {
+                    val chunkEdges = deferreds[chunkIndex]!!.await()
+                    if (chunkEdges.isNotEmpty()) {
+                        wordEdgeDao.insertEdges(chunkEdges)
+                    }
+                    committedEdges += chunkEdges.size
+                    val committedChunks = chunkIndex + 1
+                    onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, committedChunks, chunks.size, committedEdges))
+                    Log.d("WordPoolRepo", "  块[$committedChunks/${chunks.size}] '${currentWord.spelling}' vs ${chunks[chunkIndex].size}词 → ${chunkEdges.size}条边已提交")
+                }
             }
 
             // 该词处理完毕：完成数 +1，发出一次进度（块数清零，待下一个词重新填充）。
             val done = processed.incrementAndGet()
-            onProgress(done, totalWords, encodeProgress(currentWord.spelling, 0, 0, newEdges.size))
+            onProgress(done, totalWords, encodeProgress(currentWord.spelling, 0, 0, committedEdges))
         }
 
         // index 0 的词无前驱，处理结束后计入完成数，使进度抵达 100%。
@@ -436,9 +471,43 @@ class WordPoolRepositoryImpl @Inject constructor(
 
     // ── QUALITY_FIRST 小工具 ──
 
-    /** 进度消息编码：单词|已完成块数|总块数|本词已找到的边数。详情页据此解析展示。 */
+    /**
+     * 进度消息编码：单词|已提交块数|总块数|本词已提交的边数。详情页据此解析展示，块级续传也据此恢复续传点。
+     * 「已提交块数」是连续前缀（按块序逐块入库后才 +1），因此可安全作为续传起点。
+     */
     private fun encodeProgress(word: String, chunksDone: Int, chunkTotal: Int, edges: Int): String =
         "$word|$chunksDone|$chunkTotal|$edges"
+
+    /**
+     * 解析持久化的进度消息，算出断点词应从第几块续传；返回 0 表示整词重做（无有效续传点）。
+     * 校验（任一不满足都回退 0，安全退化为整词重做）：
+     *   1) 必须 INCREMENTAL（FULL 已清库，必须从块 0 重来，否则前缀块永久丢失）；
+     *   2) firstIndexToProcess 在范围内，且消息里的词 == 断点词（防词集变动 / 消息来自已完成的其它词）；
+     *   3) 消息里的总块数 == 断点词当下应有块数 ceil(firstIndexToProcess/chunkSize)（防 chunkSize 设置变更）。
+     */
+    private fun resolveStartChunk(
+        message: String?,
+        rebuildMode: RebuildMode,
+        allWords: List<WordDetails>,
+        firstIndexToProcess: Int,
+        chunkSize: Int
+    ): Int {
+        if (rebuildMode != RebuildMode.INCREMENTAL) return 0
+        if (message.isNullOrBlank()) return 0
+        if (chunkSize <= 0) return 0
+        if (firstIndexToProcess !in allWords.indices) return 0
+        val parts = message.split("|")
+        if (parts.size < 3) return 0
+        val word = parts[0]
+        val chunksDone = parts[1].toIntOrNull() ?: return 0
+        val chunkTotal = parts[2].toIntOrNull() ?: return 0
+        if (chunksDone <= 0 || chunkTotal <= 0) return 0
+        if (allWords[firstIndexToProcess].spelling != word) return 0
+        // 断点词的前驱数 = firstIndexToProcess，应有块数 = ceil(firstIndexToProcess / chunkSize)。
+        val expectedTotal = (firstIndexToProcess + chunkSize - 1) / chunkSize
+        if (chunkTotal != expectedTotal) return 0
+        return chunksDone.coerceIn(0, chunkTotal)
+    }
 
     /** 暂停期间挂起等待（标志位由 BackgroundTaskManager 控制），取消时立即返回。 */
     private suspend fun awaitWhilePaused(isPaused: () -> Boolean, isCancelled: () -> Boolean) {

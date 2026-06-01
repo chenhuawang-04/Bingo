@@ -814,6 +814,10 @@ class BackgroundTaskManager @Inject constructor(
                         strategy = strategy,
                         startIndex = startIndex,
                         rebuildMode = rebuildMode,
+                        // 块级续传：把上次落库的进度消息传给构建侧解析续传块。仅 INCREMENTAL 有意义
+                        // （FULL 会清库重来）；且独立于 startIndex 的 progressCurrent>0 守卫——
+                        // 断点词失败时 progressCurrent 仍为 0，但块续传仍要生效。
+                        resumeProgressMessage = if (rebuildMode == RebuildMode.INCREMENTAL) task.progressMessage else null,
                         isCancelled = { cancelled.get() },
                         isPaused = { paused.get() },
                         onProgress = { current, total, currentWord ->
@@ -840,9 +844,10 @@ class BackgroundTaskManager @Inject constructor(
             // 构建中止（如服务器多次返回不合规数据触发 PoolBuildDataException）：
             // 先用 NonCancellable 落库最后进度，以便修复后从断点续传（INCREMENTAL 重试会保留进度），
             // 再上抛由 launchTask 标记为 FAILED 并显示错误信息——这就是“暂停并报告”。
+            // 必须保留 msg（含 word|已提交块数|总块数|边数）：块级续传据此从断点词的当前块继续，置 null 会退化成整词重做。
             withContext(NonCancellable) {
-                latest.get()?.let { (current, total, _) ->
-                    if (total > 0) repository.updateProgress(task.id, current, total, null)
+                latest.get()?.let { (current, total, msg) ->
+                    if (total > 0) repository.updateProgress(task.id, current, total, msg)
                 }
             }
             throw e
