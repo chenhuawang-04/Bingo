@@ -5,6 +5,7 @@ import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.model.PoolRetryMode
 import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.domain.repository.SyncProgress
 
@@ -36,6 +37,7 @@ data class SettingsUiState(
     val poolWindowSize: Int = 50,
     val poolMaxConcurrent: Int = 3,
     val poolRequestsPerMinute: Int = 30,
+    val poolRetryMode: PoolRetryMode = PoolRetryMode.AGGRESSIVE,
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
     val cloudSync: CloudSyncState = CloudSyncState()

@@ -9,6 +9,7 @@ import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiProviderProfile
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.model.PoolRetryMode
 import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.domain.usecase.ai.FetchAiModelsUseCase
 import com.xty.englishhelper.domain.usecase.ai.TestAiConnectionUseCase
@@ -155,6 +156,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsDataStore.poolRequestsPerMinute.collect { value ->
                 _uiState.update { it.copy(poolRequestsPerMinute = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.poolRetryMode.collect { value ->
+                _uiState.update { it.copy(poolRetryMode = value) }
             }
         }
         viewModelScope.launch {
@@ -471,6 +477,11 @@ class SettingsViewModel @Inject constructor(
     fun onPoolRequestsPerMinuteChange(value: Int) {
         _uiState.update { it.copy(poolRequestsPerMinute = value) }
         viewModelScope.launch { settingsDataStore.setPoolRequestsPerMinute(value) }
+    }
+
+    fun onPoolRetryModeChange(value: PoolRetryMode) {
+        _uiState.update { it.copy(poolRetryMode = value) }
+        viewModelScope.launch { settingsDataStore.setPoolRetryMode(value) }
     }
 
     fun onImageCompressionEnabledChange(value: Boolean) {

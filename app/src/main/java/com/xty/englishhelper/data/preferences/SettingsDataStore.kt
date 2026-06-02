@@ -13,6 +13,7 @@ import com.xty.englishhelper.domain.model.AiProviderProfile
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.model.PoolRetryMode
 import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.util.Constants
 import kotlinx.coroutines.flow.Flow
@@ -68,6 +69,7 @@ class SettingsDataStore @Inject constructor(
         val POOL_WINDOW_SIZE = intPreferencesKey("pool_window_size")
         val POOL_MAX_CONCURRENT = intPreferencesKey("pool_max_concurrent")
         val POOL_REQUESTS_PER_MINUTE = intPreferencesKey("pool_requests_per_minute")
+        val POOL_RETRY_MODE = stringPreferencesKey("pool_retry_mode")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -200,6 +202,10 @@ class SettingsDataStore @Inject constructor(
         prefs[POOL_REQUESTS_PER_MINUTE] ?: 30
     }
 
+    val poolRetryMode: Flow<PoolRetryMode> = dataStore.data.map { prefs ->
+        parsePoolRetryMode(prefs[POOL_RETRY_MODE])
+    }
+
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
@@ -298,6 +304,19 @@ class SettingsDataStore @Inject constructor(
     suspend fun setPoolRequestsPerMinute(value: Int) {
         dataStore.edit { prefs -> prefs[POOL_REQUESTS_PER_MINUTE] = value.coerceIn(1, 120) }
     }
+
+    suspend fun getPoolRetryMode(): PoolRetryMode {
+        val prefs = dataStore.data.first()
+        return parsePoolRetryMode(prefs[POOL_RETRY_MODE])
+    }
+
+    suspend fun setPoolRetryMode(value: PoolRetryMode) {
+        dataStore.edit { prefs -> prefs[POOL_RETRY_MODE] = value.name }
+    }
+
+    private fun parsePoolRetryMode(raw: String?): PoolRetryMode =
+        runCatching { PoolRetryMode.valueOf(raw ?: PoolRetryMode.AGGRESSIVE.name) }
+            .getOrDefault(PoolRetryMode.AGGRESSIVE)
 
     suspend fun getProviders(): List<AiProviderProfile> {
         return readProviders(dataStore.data.first())

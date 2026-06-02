@@ -57,6 +57,7 @@ import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.domain.model.PoolRetryMode
 import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.util.Constants
@@ -155,9 +156,11 @@ fun SettingsScreen(
                     windowSize = state.poolWindowSize,
                     maxConcurrent = state.poolMaxConcurrent,
                     requestsPerMinute = state.poolRequestsPerMinute,
+                    retryMode = state.poolRetryMode,
                     onWindowSizeChange = viewModel::onPoolWindowSizeChange,
                     onMaxConcurrentChange = viewModel::onPoolMaxConcurrentChange,
-                    onRequestsPerMinuteChange = viewModel::onPoolRequestsPerMinuteChange
+                    onRequestsPerMinuteChange = viewModel::onPoolRequestsPerMinuteChange,
+                    onRetryModeChange = viewModel::onPoolRetryModeChange
                 )
 
                 HorizontalDivider()
@@ -281,9 +284,11 @@ private fun PoolSettingsSection(
     windowSize: Int,
     maxConcurrent: Int,
     requestsPerMinute: Int,
+    retryMode: PoolRetryMode,
     onWindowSizeChange: (Int) -> Unit,
     onMaxConcurrentChange: (Int) -> Unit,
-    onRequestsPerMinuteChange: (Int) -> Unit
+    onRequestsPerMinuteChange: (Int) -> Unit,
+    onRetryModeChange: (PoolRetryMode) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("词池整理", style = MaterialTheme.typography.titleMedium)
@@ -292,6 +297,38 @@ private fun PoolSettingsSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        // Retry mode
+        Text("重试模式", style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = retryMode == PoolRetryMode.AGGRESSIVE,
+                onClick = { onRetryModeChange(PoolRetryMode.AGGRESSIVE) },
+                label = { Text("积极") }
+            )
+            FilterChip(
+                selected = retryMode == PoolRetryMode.LENIENT,
+                onClick = { onRetryModeChange(PoolRetryMode.LENIENT) },
+                label = { Text("宽松") }
+            )
+        }
+        Text(
+            text = when (retryMode) {
+                PoolRetryMode.AGGRESSIVE ->
+                    "积极：可重试错误短延迟后重试；遇到不可重试的错误立即中止整本构建。"
+                PoolRetryMode.LENIENT ->
+                    "宽松：任何失败都继续重试，仅在重试耗尽后才中止。重试间隔 = 当前词累计失败次数 × 10 秒（上限 2 分钟），失败越多等得越久，给限流/过载更多恢复时间。"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "修改后从「下一个词」起生效（与并发设置一致）。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        HorizontalDivider()
 
         // Window size
         Text("每批候选词数：$windowSize", style = MaterialTheme.typography.bodyMedium)
