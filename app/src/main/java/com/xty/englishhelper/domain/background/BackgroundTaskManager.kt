@@ -282,8 +282,15 @@ class BackgroundTaskManager @Inject constructor(
 
     fun restartTask(taskId: Long) {
         scope.launch {
+            val task = repository.getTaskById(taskId)
             repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
-            repository.updateProgress(taskId, 0, 0)
+            // 词池构建：保留进度，让“重启/重试”从断点续传（与 enqueueTaskInternal、resumeTask 的处理一致）。
+            // 否则会清零 progressCurrent 并把 progress_message 置 null → 续传点丢失 → 整本从头重来。
+            // （这正是“无论怎么修，从后台任务页点重试仍从头开始”的第三个、也是最隐蔽的入口。）
+            // 要彻底重建词池请用词典页「完全重建」（独立的 force=true 路径，会清零进度并清库）。
+            if (task?.type != BackgroundTaskType.WORD_POOL_REBUILD) {
+                repository.updateProgress(taskId, 0, 0)
+            }
             schedule()
         }
     }
@@ -778,12 +785,15 @@ class BackgroundTaskManager @Inject constructor(
         val rebuildMode = runCatching { RebuildMode.valueOf(payload.rebuildMode) }
             .getOrDefault(RebuildMode.INCREMENTAL)
 
-        // 续传点：INCREMENTAL 且已有进度时，从上次已完成的词数继续；否则从头构建。
-        val startIndex = if (rebuildMode == RebuildMode.INCREMENTAL && task.progressCurrent > 0) {
-            task.progressCurrent
-        } else {
-            -1
-        }
+        // 续传点（**与模式无关**）：只要已有"已完成词数"就从那里继续。FULL 被中断后续传同样适用——
+        // 是否清库由构建侧的 hasResumableWork 决定，与此处解耦。全新「完全重建」走 enqueue 的 SUCCESS+force
+        // 已把进度清零，故 progressCurrent=0 → startIndex=-1 → 从头构建。
+        val startIndex = if (task.progressCurrent > 0) task.progressCurrent else -1
+        Log.i(
+            "BackgroundTaskManager",
+            "词池构建启动 task=${task.id} mode=$rebuildMode progressCurrent=${task.progressCurrent} " +
+                "startIndex=$startIndex progressMessage=${task.progressMessage ?: "<none>"}"
+        )
 
         val paused = AtomicBoolean(false)
         val cancelled = AtomicBoolean(false)
@@ -814,10 +824,10 @@ class BackgroundTaskManager @Inject constructor(
                         strategy = strategy,
                         startIndex = startIndex,
                         rebuildMode = rebuildMode,
-                        // 块级续传：把上次落库的进度消息传给构建侧解析续传块。仅 INCREMENTAL 有意义
-                        // （FULL 会清库重来）；且独立于 startIndex 的 progressCurrent>0 守卫——
-                        // 断点词失败时 progressCurrent 仍为 0，但块续传仍要生效。
-                        resumeProgressMessage = if (rebuildMode == RebuildMode.INCREMENTAL) task.progressMessage else null,
+                        // 块级续传：把上次落库的进度消息传给构建侧解析续传块（**与模式无关**地传递）。
+                        // 解析在 resolveStartChunk 内严格校验（断点词拼写 + 总块数）；全新构建时本就为 null。
+                        // 独立于 startIndex 的 progressCurrent>0 守卫——断点词失败时 progressCurrent 仍为 0，但块续传仍要生效。
+                        resumeProgressMessage = task.progressMessage,
                         isCancelled = { cancelled.get() },
                         isPaused = { paused.get() },
                         onProgress = { current, total, currentWord ->
@@ -850,6 +860,11 @@ class BackgroundTaskManager @Inject constructor(
                     if (total > 0) repository.updateProgress(task.id, current, total, msg)
                 }
             }
+            Log.w(
+                "BackgroundTaskManager",
+                "词池构建中止 task=${task.id}：落库续传点 progressCurrent=${latest.get()?.first} " +
+                    "progressMessage=${latest.get()?.third ?: "<none>"}；重试将从此处续传。原因：${e.message?.take(160)}"
+            )
             throw e
         } finally {
             pauseHandlers.remove(task.id)

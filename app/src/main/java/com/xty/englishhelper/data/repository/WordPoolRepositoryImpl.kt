@@ -296,11 +296,11 @@ class WordPoolRepositoryImpl @Inject constructor(
         val requestsPerMinute = settingsDataStore.getPoolRequestsPerMinute()
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
         val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
-        Log.i("WordPoolRepo", "QUALITY_FIRST 配置: chunkSize=$chunkSize, maxConcurrent=$maxConcurrent, rpm=$requestsPerMinute")
+        Log.i("WordPoolRepo", "QUALITY_FIRST 配置: chunkSize=$chunkSize, maxConcurrent=$maxConcurrent, rpm=$requestsPerMinute, mode=$rebuildMode, startIndex=$startIndex, resumeMsg=${resumeProgressMessage ?: "<none>"}")
 
-        if (rebuildMode == RebuildMode.FULL) {
-            wordEdgeDao.deleteByDictionary(dictionaryId)
-        }
+        // 注意：FULL 的「清库」**不在此处无条件执行**——必须先算出续传点，仅当“全新构建（无任何可续传的已建边）”时才清库。
+        // 否则 FULL 构建被中断后「重试 / 进程重启续传」会再次清库，已建的边全部丢失——这正是“重试仍从头开始”的根因之一。
+        // 实际清库见下方算出 hasResumableWork 之后的判断。
 
         val semaphore = Semaphore(maxConcurrent)
         val rateLimiter = EdgeRateLimiter(requestsPerMinute)
@@ -331,12 +331,29 @@ class WordPoolRepositoryImpl @Inject constructor(
         // ============================================================
         val firstIndexToProcess = (totalWords - 1 - alreadyProcessed).coerceAtLeast(0)
 
-        // 块级续传点：断点词（本次首个被处理的词）从「第一个未提交的块」继续，已提交块的边保留。
-        // 仅 INCREMENTAL 生效（FULL 已清库，必须从块 0 重来）；并严格校验持久化消息确实属于该断点词，
-        // 否则一律回退到 0（词集变动 / 词刚完成时 chunkTotal=0 / 解析失败 都安全退化为整词重做）。
-        val startChunk = resolveStartChunk(
-            resumeProgressMessage, rebuildMode, allWords, firstIndexToProcess, chunkSize
+        // ============================================================
+        // 续传点解算（**与 rebuildMode 无关**）：
+        //   词级：alreadyProcessed = 已完整处理的末尾词数（来自 startIndex / progressCurrent）。
+        //   块级：startChunk = 断点词已提交的连续前缀块数（来自持久化的 progressMessage，严格校验）。
+        // 两者都与模式无关——FULL 被中断后同样要能续传，绝不能丢掉已建的边。
+        // ============================================================
+        val startChunk = resolveStartChunk(resumeProgressMessage, allWords, firstIndexToProcess, chunkSize)
+        val hasResumableWork = alreadyProcessed > 0 || startChunk > 0
+        Log.i(
+            "WordPoolRepo",
+            "续传点解算: alreadyProcessed=$alreadyProcessed, firstIndexToProcess=$firstIndexToProcess, " +
+                "startChunk=$startChunk, hasResumableWork=$hasResumableWork" +
+                (if (firstIndexToProcess in allWords.indices) ", 断点词='${allWords[firstIndexToProcess].spelling}'" else "")
         )
+
+        // 清库只发生在「全新的 FULL 构建」：FULL 且没有任何可续传的已建边时，才清空词典所有边。
+        //   · 词典页「完全重建」→ enqueue 走 SUCCESS+force 把进度清零 → 此处 hasResumableWork=false → 清库（符合预期）。
+        //   · FULL 构建中断后「重试 / 进程重启续传」→ 有可续传工作 → **不清库** → 保留已建边，从断点继续。
+        if (rebuildMode == RebuildMode.FULL && !hasResumableWork) {
+            Log.i("WordPoolRepo", "FULL 全新构建：清空词典 $dictionaryId 的所有边")
+            wordEdgeDao.deleteByDictionary(dictionaryId)
+        }
+
         if (startChunk > 0) {
             Log.i("WordPoolRepo", "块级续传：断点词 '${allWords[firstIndexToProcess].spelling}' 从第 ${startChunk + 1} 块继续（跳过前 $startChunk 个已提交块）")
         }
@@ -503,19 +520,18 @@ class WordPoolRepositoryImpl @Inject constructor(
 
     /**
      * 解析持久化的进度消息，算出断点词应从第几块续传；返回 0 表示整词重做（无有效续传点）。
+     * **与 rebuildMode 无关**：FULL 被中断后续传也要按块恢复（是否清库由调用方的 hasResumableWork 决定，与此处解耦）。
      * 校验（任一不满足都回退 0，安全退化为整词重做）：
-     *   1) 必须 INCREMENTAL（FULL 已清库，必须从块 0 重来，否则前缀块永久丢失）；
-     *   2) firstIndexToProcess 在范围内，且消息里的词 == 断点词（防词集变动 / 消息来自已完成的其它词）；
-     *   3) 消息里的总块数 == 断点词当下应有块数 ceil(firstIndexToProcess/chunkSize)（防 chunkSize 设置变更）。
+     *   1) firstIndexToProcess 在范围内，且消息里的词 == 断点词（防词集变动 / 消息来自已完成的其它词）；
+     *   2) 消息里的总块数 == 断点词当下应有块数 ceil(firstIndexToProcess/chunkSize)（防 chunkSize 设置变更）；
+     *   3) chunksDone / chunkTotal 必须 > 0（词刚完成时编码为 0|0，解析失败时缺字段，均回退 0）。
      */
     private fun resolveStartChunk(
         message: String?,
-        rebuildMode: RebuildMode,
         allWords: List<WordDetails>,
         firstIndexToProcess: Int,
         chunkSize: Int
     ): Int {
-        if (rebuildMode != RebuildMode.INCREMENTAL) return 0
         if (message.isNullOrBlank()) return 0
         if (chunkSize <= 0) return 0
         if (firstIndexToProcess !in allWords.indices) return 0

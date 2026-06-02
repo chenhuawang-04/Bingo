@@ -157,13 +157,13 @@ class PoolBuildDetailViewModel @Inject constructor(
         val state = _uiState.value
         val strategy = state.strategy ?: return
         val poolStrategy = runCatching { PoolStrategy.valueOf(strategy) }.getOrNull() ?: return
-        val mode = runCatching { RebuildMode.valueOf(state.rebuildMode ?: "") }
-            .getOrDefault(RebuildMode.INCREMENTAL)
+        // “重试” = 从断点继续，**绝不**重新清库：无论原构建是 FULL 还是 INCREMENTAL，重试一律走 INCREMENTAL 续传。
+        // （要彻底重建请用词典页的「完全重建」——那是独立的 force=true 路径，会清零进度并清库。）
         backgroundTaskManager.enqueueWordPoolRebuild(
             dictionaryId = dictionaryId,
             strategy = poolStrategy,
-            force = mode == RebuildMode.FULL,
-            rebuildMode = mode
+            force = false,
+            rebuildMode = RebuildMode.INCREMENTAL
         )
     }
 
