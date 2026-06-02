@@ -31,6 +31,18 @@ interface WordEdgeDao {
     )
     suspend fun deleteEdgesForWordAgainst(dictionaryId: Long, wordId: Long, otherIds: List<Long>)
 
+    /**
+     * 统计某词与指定若干「相对词」之间已存在的边数（双向匹配）。
+     * 用于块级续传时把"已提交块"已落库的边数作为本词计数起点，避免显示从 0 起、误以为前面的块白做了。
+     * 同样受 SQLite IN(...) ≈999 上限约束，调用方需把 otherIds 分批（≤900）后求和。
+     */
+    @Query(
+        "SELECT COUNT(*) FROM word_edges WHERE dictionary_id = :dictionaryId AND (" +
+            "(word_id_a = :wordId AND word_id_b IN (:otherIds)) OR " +
+            "(word_id_b = :wordId AND word_id_a IN (:otherIds)))"
+    )
+    suspend fun countEdgesForWordAgainst(dictionaryId: Long, wordId: Long, otherIds: List<Long>): Int
+
     @Query("SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdgesFull(dictionaryId: Long): List<WordEdgeEntity>
 

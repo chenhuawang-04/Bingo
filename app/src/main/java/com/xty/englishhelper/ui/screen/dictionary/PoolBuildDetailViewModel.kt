@@ -4,6 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.background.BackgroundTaskManager
+import com.xty.englishhelper.domain.background.ChunkProgress
+import com.xty.englishhelper.domain.background.PoolBuildLiveMonitor
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.PoolStrategy
@@ -22,7 +24,8 @@ import javax.inject.Inject
 class PoolBuildDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val taskRepository: BackgroundTaskRepository,
-    private val backgroundTaskManager: BackgroundTaskManager
+    private val backgroundTaskManager: BackgroundTaskManager,
+    private val liveMonitor: PoolBuildLiveMonitor
 ) : ViewModel() {
 
     private val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
@@ -34,6 +37,22 @@ class PoolBuildDetailViewModel @Inject constructor(
 
     init {
         observePoolRebuildTasks()
+        observeLiveChunks()
+    }
+
+    /** 收集实时分块网格（仅内存态）。仅展示属于本词典的当前词；其它情况清空方块。 */
+    private fun observeLiveChunks() {
+        viewModelScope.launch {
+            liveMonitor.liveWord.collect { live ->
+                _uiState.update {
+                    if (live != null && live.dictionaryId == dictionaryId) {
+                        it.copy(liveChunks = live.chunks, liveChunkWord = live.word)
+                    } else {
+                        it.copy(liveChunks = emptyList(), liveChunkWord = null)
+                    }
+                }
+            }
+        }
     }
 
     private fun observePoolRebuildTasks() {
@@ -197,5 +216,8 @@ data class PoolBuildDetailUiState(
     // 详细 chunk 信息（从 progressMessage 解析）
     val chunkCurrent: Int = 0,       // 当前 chunk 序号
     val chunkTotal: Int = 0,         // 总 chunk 数
-    val edgesFound: Int = 0          // 当前词已找到的边数
+    val edgesFound: Int = 0,         // 当前词已找到的边数
+    // 实时分块网格（来自 PoolBuildLiveMonitor，仅内存态）
+    val liveChunks: List<ChunkProgress> = emptyList(),
+    val liveChunkWord: String? = null
 )

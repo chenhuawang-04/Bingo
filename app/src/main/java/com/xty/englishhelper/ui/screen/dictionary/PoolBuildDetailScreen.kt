@@ -2,6 +2,18 @@ package com.xty.englishhelper.ui.screen.dictionary
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.xty.englishhelper.domain.background.ChunkBuildStatus
+import com.xty.englishhelper.domain.background.ChunkProgress
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -137,6 +149,16 @@ fun PoolBuildDetailScreen(
                             )
                         }
                     }
+                }
+            }
+
+            // 实时分块网格：当前词每个分块一个彩色方块，点击查看每一次请求的服务器返回。
+            if (state.liveChunks.isNotEmpty()) {
+                item {
+                    ChunkGridCard(
+                        word = state.liveChunkWord,
+                        chunks = state.liveChunks
+                    )
                 }
             }
 
@@ -618,4 +640,196 @@ private fun strategyDisplayName(strategy: String?): String {
         "QUALITY_FIRST" -> "质量优先"
         else -> strategy ?: ""
     }
+}
+
+// ── 实时分块网格 ──
+
+/**
+ * 当前正在整理的词的分块网格：每个分块一个彩色小方块。颜色见 [chunkColor]/[ChunkBuildStatus]。
+ * 点击任一方块弹出该组每一次请求（含失败重试）的服务器返回。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChunkGridCard(
+    word: String?,
+    chunks: List<ChunkProgress>
+) {
+    // 以 word 作 key：切换到下一个词时自动收起已打开的弹窗，避免索引错位。
+    var selectedIndex by remember(word) { mutableStateOf<Int?>(null) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+        ) {
+            Text(
+                text = "本词分块整理" + (word?.let { " · $it" } ?: ""),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            val succeeded = chunks.count { it.status == ChunkBuildStatus.SUCCESS }
+            Text(
+                text = "共 ${chunks.size} 组 · 已成功 $succeeded · 点击方块查看服务器返回",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            ChunkLegend()
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                chunks.forEach { chunk ->
+                    Box(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(chunkColor(chunk.status))
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))
+                            .clickable { selectedIndex = chunk.index }
+                    )
+                }
+            }
+        }
+    }
+
+    val idx = selectedIndex
+    if (idx != null && idx in chunks.indices) {
+        ChunkDetailDialog(
+            chunk = chunks[idx],
+            onDismiss = { selectedIndex = null }
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChunkLegend() {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        LegendItem(ChunkBuildStatus.SUCCESS, "成功")
+        LegendItem(ChunkBuildStatus.FAILED_1, "失败1次")
+        LegendItem(ChunkBuildStatus.FAILED_2, "失败2次")
+        LegendItem(ChunkBuildStatus.FAILED_3, "失败3次")
+        LegendItem(ChunkBuildStatus.FAILED_4, "失败4次")
+        LegendItem(ChunkBuildStatus.NOT_STARTED, "未开始")
+    }
+}
+
+@Composable
+private fun LegendItem(status: ChunkBuildStatus, label: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(14.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(chunkColor(status))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(3.dp))
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun ChunkDetailDialog(
+    chunk: ChunkProgress,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        },
+        title = {
+            Text("第 ${chunk.index + 1} 组 · ${chunkStatusLabel(chunk.status)}")
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (chunk.attempts.isEmpty()) {
+                    Text(
+                        "该组尚未开始请求。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    chunk.attempts.forEach { att ->
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                "第 ${att.attempt} 次尝试 · ${if (att.success) "成功" else "失败"}",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = if (att.success) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                }
+                            )
+                            if (att.error != null) {
+                                Text(
+                                    "原因：${att.error}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            Text(
+                                "服务器返回：",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = att.response?.ifBlank { "（空）" } ?: "（无返回内容）",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .padding(8.dp)
+                            )
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+        }
+    )
+}
+
+/** 六色映射：绿=成功 / 黄=失败1次 / 褐=失败2次 / 红=失败3次 / 黑=失败4次 / 白=未开始。 */
+private fun chunkColor(status: ChunkBuildStatus): Color = when (status) {
+    ChunkBuildStatus.SUCCESS -> Color(0xFF4CAF50)
+    ChunkBuildStatus.FAILED_1 -> Color(0xFFFBC02D)
+    ChunkBuildStatus.FAILED_2 -> Color(0xFF8D6E63)
+    ChunkBuildStatus.FAILED_3 -> Color(0xFFE53935)
+    ChunkBuildStatus.FAILED_4 -> Color(0xFF000000)
+    ChunkBuildStatus.NOT_STARTED -> Color(0xFFFFFFFF)
+}
+
+private fun chunkStatusLabel(status: ChunkBuildStatus): String = when (status) {
+    ChunkBuildStatus.SUCCESS -> "成功"
+    ChunkBuildStatus.FAILED_1 -> "第 1 次失败"
+    ChunkBuildStatus.FAILED_2 -> "第 2 次失败"
+    ChunkBuildStatus.FAILED_3 -> "第 3 次失败"
+    ChunkBuildStatus.FAILED_4 -> "第 4 次失败（已达上限）"
+    ChunkBuildStatus.NOT_STARTED -> "未开始"
 }
