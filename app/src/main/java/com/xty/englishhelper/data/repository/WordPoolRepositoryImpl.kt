@@ -64,6 +64,21 @@ private sealed interface EdgeCallResult {
     data class Failure(val error: String) : EdgeCallResult
 }
 
+/**
+ * 单个分块并发计算后的产出。
+ *
+ * 关键设计（修复“重试仍从头开始”的真正根因）：分块失败时返回 [Failed] 而**绝不**在 async 内抛异常。
+ * 内层用的是普通 `coroutineScope`（非 supervisor）；若失败块在 async 内直接抛出，结构化并发会**立即**
+ * 取消整个作用域——包括正在“按块序提交前缀”的提交循环。于是当某个靠后的块**快速失败**（如首次即遇
+ * 不可重试错误）、而靠前的成功块尚在跑较慢的 AI 调用时，提交循环会在把这些已成功的前缀块入库/上报**之前**
+ * 就被取消，导致 `committedChunks` 停在 0、续传点退化为 0（用户所见“重试从头来”）。
+ * 改为回传 [Failed] 后，失败只会在提交循环按块序 `await` 到该块时才浮现，此时其前的成功前缀必已提交并上报。
+ */
+private sealed interface ChunkOutcome {
+    data class Ok(val edges: List<WordEdgeEntity>) : ChunkOutcome
+    data class Failed(val chunkIndex: Int, val error: String) : ChunkOutcome
+}
+
 @Singleton
 class WordPoolRepositoryImpl @Inject constructor(
     private val db: AppDatabase,
@@ -370,6 +385,9 @@ class WordPoolRepositoryImpl @Inject constructor(
             //   块 K 失败时，已入库的恰是连续前缀 [startChunkForWord, K)，K 之后的块仅在内存算完、未入库
             //   → DB 中不会出现超过已提交前缀的残边，续传点干净。
             //   insertEdges 是单事务原子写 + (a,b,type) 唯一索引 IGNORE → 重做某块幂等，进程被杀重做亦安全。
+            //
+            // 失败块回传 ChunkOutcome.Failed（不在 async 内抛），确保它即便先算完也不会取消正在提交前缀的循环——
+            // 见 [ChunkOutcome] 注释（这是“重试仍从头开始”的真正根因修复）。
             var committedEdges = 0
             coroutineScope {
                 val deferreds = chunks.mapIndexed { chunkIndex, chunk ->
@@ -379,34 +397,26 @@ class WordPoolRepositoryImpl @Inject constructor(
                         async {
                             semaphore.withPermit {
                                 awaitWhilePaused(isPaused, isCancelled)
-                                if (isCancelled()) return@withPermit emptyList()
+                                if (isCancelled()) return@withPermit ChunkOutcome.Ok(emptyList())
                                 rateLimiter.acquire()
-                                if (isCancelled()) return@withPermit emptyList()
+                                if (isCancelled()) return@withPermit ChunkOutcome.Ok(emptyList())
 
                                 // chunk 本身就是完整的 WordDetails，直接构建 prompt，无需回查数据库。
                                 val prompt = EdgePromptBuilder.buildEdgePrompt(currentWord, chunk)
-                                val edges = when (val result =
+                                when (val result =
                                     callAiForEdges(prompt, currentWord, chunk, unwrapEnabled, repairEnabled)) {
                                     is EdgeCallResult.Success -> {
                                         // 合规响应（含合法空数组 / 全被阈值过滤）均算成功。
                                         successfulAiCalls.incrementAndGet()
-                                        result.edges
-                                    }
-                                    is EdgeCallResult.Failure -> {
-                                        // 该块已重试 $MAX_EDGE_RETRIES 次仍返回不合规数据 → 中止整个构建并报告。
-                                        // 已提交的块与进度会被落库，排查后可从当前词的当前块续传。
-                                        throw PoolBuildDataException(
-                                            "词池构建已停止：单词「${currentWord.spelling}」第 ${chunkIndex + 1}/${chunks.size} 组" +
-                                                "在重试 $MAX_EDGE_RETRIES 次后仍返回不合规数据。\n" +
-                                                "原因：${result.error}\n" +
-                                                "已保留已完成进度，请检查 AI 服务/模型配置后继续构建。"
+                                        ChunkOutcome.Ok(
+                                            result.edges.mapNotNull { edge ->
+                                                val other = chunk.getOrNull(edge.index) ?: return@mapNotNull null
+                                                toEdgeEntity(currentWord, other, edge, dictionaryId)
+                                            }
                                         )
                                     }
-                                }
-
-                                edges.mapNotNull { edge ->
-                                    val other = chunk.getOrNull(edge.index) ?: return@mapNotNull null
-                                    toEdgeEntity(currentWord, other, edge, dictionaryId)
+                                    // 该块已重试 $MAX_EDGE_RETRIES 次仍返回不合规数据 → 回传失败（不抛），交提交循环按序处理。
+                                    is EdgeCallResult.Failure -> ChunkOutcome.Failed(chunkIndex, result.error)
                                 }
                             }
                         }
@@ -415,14 +425,27 @@ class WordPoolRepositoryImpl @Inject constructor(
 
                 // 按块序提交：等待第 chunkIndex 块算完即入库，再上报「已提交块数」（连续前缀，即安全续传点）。
                 for (chunkIndex in startChunkForWord until chunks.size) {
-                    val chunkEdges = deferreds[chunkIndex]!!.await()
-                    if (chunkEdges.isNotEmpty()) {
-                        wordEdgeDao.insertEdges(chunkEdges)
+                    when (val outcome = deferreds[chunkIndex]!!.await()) {
+                        is ChunkOutcome.Ok -> {
+                            if (outcome.edges.isNotEmpty()) {
+                                wordEdgeDao.insertEdges(outcome.edges)
+                            }
+                            committedEdges += outcome.edges.size
+                            val committedChunks = chunkIndex + 1
+                            onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, committedChunks, chunks.size, committedEdges))
+                            Log.d("WordPoolRepo", "  块[$committedChunks/${chunks.size}] '${currentWord.spelling}' vs ${chunks[chunkIndex].size}词 → ${outcome.edges.size}条边已提交")
+                        }
+                        is ChunkOutcome.Failed -> {
+                            // 此刻前缀块 [startChunkForWord, chunkIndex) 已全部入库并上报，续传点 = chunkIndex（连续前缀）。
+                            // 抛出以中止整个构建：coroutineScope 会取消其余仍在算的块；已落库进度供修复后从当前词当前块续传。
+                            throw PoolBuildDataException(
+                                "词池构建已停止：单词「${currentWord.spelling}」第 ${outcome.chunkIndex + 1}/${chunks.size} 组" +
+                                    "在重试 $MAX_EDGE_RETRIES 次后仍返回不合规数据。\n" +
+                                    "原因：${outcome.error}\n" +
+                                    "已保留已完成进度，请检查 AI 服务/模型配置后继续构建。"
+                            )
+                        }
                     }
-                    committedEdges += chunkEdges.size
-                    val committedChunks = chunkIndex + 1
-                    onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, committedChunks, chunks.size, committedEdges))
-                    Log.d("WordPoolRepo", "  块[$committedChunks/${chunks.size}] '${currentWord.spelling}' vs ${chunks[chunkIndex].size}词 → ${chunkEdges.size}条边已提交")
                 }
             }
 
