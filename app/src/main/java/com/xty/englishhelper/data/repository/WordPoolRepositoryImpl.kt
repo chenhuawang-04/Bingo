@@ -292,8 +292,10 @@ class WordPoolRepositoryImpl @Inject constructor(
         onProgress: (Int, Int, String?) -> Unit
     ): List<BuiltPoolWithWordIds> {
         val chunkSize = settingsDataStore.getPoolWindowSize()          // 每块候选词数
-        val maxConcurrent = settingsDataStore.getPoolMaxConcurrent()   // 同一词内各块的最大并发
-        val requestsPerMinute = settingsDataStore.getPoolRequestsPerMinute()
+        // MAX_CONCURRENT / REQUESTS_PER_MINUTE 仅是「初始值」：下方外层词循环每词都会重读一次，
+        // 使构建途中修改这两项能从「后面的词」起立即生效（chunkSize 绑定续传坐标系，故不在此热更新）。
+        val maxConcurrent = settingsDataStore.getPoolMaxConcurrent()   // 同一词内各块的最大并发（初始值，每词热重读）
+        val requestsPerMinute = settingsDataStore.getPoolRequestsPerMinute() // 每分钟请求数（初始值，每词热重读）
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
         val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
         Log.i("WordPoolRepo", "QUALITY_FIRST 配置: chunkSize=$chunkSize, maxConcurrent=$maxConcurrent, rpm=$requestsPerMinute, mode=$rebuildMode, startIndex=$startIndex, resumeMsg=${resumeProgressMessage ?: "<none>"}")
@@ -302,8 +304,12 @@ class WordPoolRepositoryImpl @Inject constructor(
         // 否则 FULL 构建被中断后「重试 / 进程重启续传」会再次清库，已建的边全部丢失——这正是“重试仍从头开始”的根因之一。
         // 实际清库见下方算出 hasResumableWork 之后的判断。
 
-        val semaphore = Semaphore(maxConcurrent)
+        // 限流器全程**单实例**（保留全局节奏）：速率改变时用 updateRate 就地更新，绝不重建。
+        // Semaphore 改为「每词新建」——permit 数构造后不可变，但每词的块都在下方独立 coroutineScope（栅栏）内跑完，
+        // 词末已无块持票，故为每个词新建一个安全无泄漏。因此这里不再预建 Semaphore。
         val rateLimiter = EdgeRateLimiter(requestsPerMinute)
+        var lastMaxConcurrent = maxConcurrent   // 仅用于「并发配置热更新」变更日志
+        var lastRpm = requestsPerMinute          // 仅用于「并发配置热更新」变更日志
 
         // 一次性载入全部词（含完整释义），按 spelling 升序。各块直接复用这些对象，不再回查数据库。
         val allWords: List<WordDetails> = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
@@ -382,6 +388,26 @@ class WordPoolRepositoryImpl @Inject constructor(
                     wordEdgeDao.deleteEdgesForWord(dictionaryId, currentWord.id)
                 }
             }
+
+            // ── 并发配置热生效（每词重读一次）──
+            // 在设置里改了 MAX_CONCURRENT / REQUESTS_PER_MINUTE，从这里（即「后面的词」）起立即按新值执行。
+            //   · Semaphore 的 permit 数构造后不可变，但本词的块都在下方独立 coroutineScope（栅栏）内跑完，
+            //     上一个词此刻已无块持票 → 为本词新建一个 Semaphore，安全无泄漏。
+            //   · 限流器是**全局节奏**，绝不重建（重建会清零排程→每词边界突发击穿限流），用 updateRate 就地改间隔。
+            //   · chunkSize 不热更新：它绑定续传坐标系（progressMessage 总块数校验），中途改会使块级续传退化为整词重做。
+            val currentMaxConcurrent = settingsDataStore.getPoolMaxConcurrent()
+            val currentRpm = settingsDataStore.getPoolRequestsPerMinute()
+            if (currentMaxConcurrent != lastMaxConcurrent || currentRpm != lastRpm) {
+                Log.i(
+                    "WordPoolRepo",
+                    "并发配置热更新 @'${currentWord.spelling}': " +
+                        "maxConcurrent $lastMaxConcurrent→$currentMaxConcurrent, rpm $lastRpm→$currentRpm"
+                )
+                lastMaxConcurrent = currentMaxConcurrent
+                lastRpm = currentRpm
+            }
+            rateLimiter.updateRate(currentRpm)
+            val semaphore = Semaphore(currentMaxConcurrent)
 
             // 内层：前驱词 [0, wordIndex) 按 chunkSize 分块。
             // 例：301 个词处理末词时，前驱 300 个、chunkSize=50 → 6 块：[0,50) [50,100) … [250,300)
