@@ -12,6 +12,8 @@ import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
+import com.xty.englishhelper.domain.repository.ManualChunkContext
+import com.xty.englishhelper.domain.repository.ManualFillResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,7 +76,8 @@ class PoolBuildDetailViewModel @Inject constructor(
                             progressTotal = 0,
                             strategy = null,
                             isPaused = false,
-                            errorMessage = null
+                            errorMessage = null,
+                            fillableChunkIndex = null
                         )
                     }
                     lastStatus = null
@@ -144,7 +147,13 @@ class PoolBuildDetailViewModel @Inject constructor(
                         errorLogs = errorLogs,
                         chunkCurrent = parsedChunkCurrent,
                         chunkTotal = parsedChunkTotal,
-                        edgesFound = parsedEdgesFound
+                        edgesFound = parsedEdgesFound,
+                        // 仅 FAILED 且有待整理块时，断点块（=已提交块数）可手动填入。
+                        fillableChunkIndex = if (
+                            status == BuildStatus.FAILED &&
+                            parsedChunkTotal > 0 &&
+                            parsedChunkCurrent in 0 until parsedChunkTotal
+                        ) parsedChunkCurrent else null
                     )
                 }
 
@@ -190,6 +199,82 @@ class PoolBuildDetailViewModel @Inject constructor(
         _uiState.update { it.copy(errorLogs = emptyList()) }
     }
 
+    // ── 手动填块 ──
+
+    /** 打开当前 FAILED 任务"下一待填块"的填入弹窗，并异步加载该块候选词与提示词。 */
+    fun openManualFill() {
+        val taskId = poolTaskId ?: return
+        _uiState.update {
+            it.copy(
+                manualFillVisible = true,
+                manualFillLoading = true,
+                manualFillContext = null,
+                manualFillError = null,
+                manualFillSubmitting = false
+            )
+        }
+        viewModelScope.launch {
+            val ctx = runCatching { backgroundTaskManager.getPoolManualChunkContext(taskId) }.getOrNull()
+            _uiState.update {
+                when {
+                    !it.manualFillVisible -> it // 用户已关闭
+                    ctx == null -> it.copy(
+                        manualFillLoading = false,
+                        manualFillError = "无法加载该块（窗口大小可能已变更，或当前不在可填状态）"
+                    )
+                    else -> it.copy(manualFillLoading = false, manualFillContext = ctx, manualFillError = null)
+                }
+            }
+        }
+    }
+
+    /** 提交手动填入的 JSON；成功则关闭弹窗（进度/网格会经任务流自动刷新）。失败则在弹窗内提示。 */
+    fun submitManualFill(json: String) {
+        val taskId = poolTaskId ?: return
+        if (json.isBlank()) {
+            _uiState.update { it.copy(manualFillError = "请粘贴 JSON 数组（该块无边可填 [])") }
+            return
+        }
+        _uiState.update { it.copy(manualFillSubmitting = true, manualFillError = null) }
+        viewModelScope.launch {
+            val result = runCatching { backgroundTaskManager.manualFillPoolChunk(taskId, json) }
+                .getOrElse { ManualFillResult(false, error = it.message ?: "提交失败") }
+            _uiState.update {
+                if (result.success) {
+                    it.copy(
+                        manualFillSubmitting = false,
+                        manualFillVisible = false,
+                        manualFillContext = null,
+                        manualFillError = null,
+                        manualFillMessage = if (result.wordComplete) {
+                            "已填入，该词全部块完成，正在自动继续下一个词…"
+                        } else {
+                            "已填入（${result.insertedEdges} 条边）。可继续填下一块，或点「重试」让 AI 跑完剩下的。"
+                        }
+                    )
+                } else {
+                    it.copy(manualFillSubmitting = false, manualFillError = result.error ?: "提交失败")
+                }
+            }
+        }
+    }
+
+    fun dismissManualFill() {
+        _uiState.update {
+            it.copy(
+                manualFillVisible = false,
+                manualFillLoading = false,
+                manualFillContext = null,
+                manualFillError = null,
+                manualFillSubmitting = false
+            )
+        }
+    }
+
+    fun clearManualFillMessage() {
+        _uiState.update { it.copy(manualFillMessage = null) }
+    }
+
     companion object {
         private val TERMINAL_STATES = setOf(
             BackgroundTaskStatus.FAILED,
@@ -219,5 +304,13 @@ data class PoolBuildDetailUiState(
     val edgesFound: Int = 0,         // 当前词已找到的边数
     // 实时分块网格（来自 PoolBuildLiveMonitor，仅内存态）
     val liveChunks: List<ChunkProgress> = emptyList(),
-    val liveChunkWord: String? = null
+    val liveChunkWord: String? = null,
+    // 手动填块
+    val fillableChunkIndex: Int? = null,
+    val manualFillVisible: Boolean = false,
+    val manualFillLoading: Boolean = false,
+    val manualFillContext: ManualChunkContext? = null,
+    val manualFillError: String? = null,
+    val manualFillSubmitting: Boolean = false,
+    val manualFillMessage: String? = null
 )

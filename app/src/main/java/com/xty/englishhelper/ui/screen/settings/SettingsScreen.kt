@@ -157,10 +157,12 @@ fun SettingsScreen(
                     maxConcurrent = state.poolMaxConcurrent,
                     requestsPerMinute = state.poolRequestsPerMinute,
                     retryMode = state.poolRetryMode,
+                    managedMode = state.poolManagedMode,
                     onWindowSizeChange = viewModel::onPoolWindowSizeChange,
                     onMaxConcurrentChange = viewModel::onPoolMaxConcurrentChange,
                     onRequestsPerMinuteChange = viewModel::onPoolRequestsPerMinuteChange,
-                    onRetryModeChange = viewModel::onPoolRetryModeChange
+                    onRetryModeChange = viewModel::onPoolRetryModeChange,
+                    onManagedModeChange = viewModel::onPoolManagedModeChange
                 )
 
                 HorizontalDivider()
@@ -285,10 +287,12 @@ private fun PoolSettingsSection(
     maxConcurrent: Int,
     requestsPerMinute: Int,
     retryMode: PoolRetryMode,
+    managedMode: Boolean,
     onWindowSizeChange: (Int) -> Unit,
     onMaxConcurrentChange: (Int) -> Unit,
     onRequestsPerMinuteChange: (Int) -> Unit,
-    onRetryModeChange: (PoolRetryMode) -> Unit
+    onRetryModeChange: (PoolRetryMode) -> Unit,
+    onManagedModeChange: (Boolean) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("词池整理", style = MaterialTheme.typography.titleMedium)
@@ -324,6 +328,23 @@ private fun PoolSettingsSection(
         )
         Text(
             "修改后从「下一个词」起生效（与并发设置一致）。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        HorizontalDivider()
+
+        // Managed mode
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("托管模式", style = MaterialTheme.typography.bodyMedium)
+            Switch(checked = managedMode, onCheckedChange = onManagedModeChange)
+        }
+        Text(
+            "开启后，词池构建因重试失败而中止时，将在中止 10 分钟后自动续传，无上限（适合夜间无人值守）。仍可随时手动取消或填块。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

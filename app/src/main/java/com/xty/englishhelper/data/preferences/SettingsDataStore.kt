@@ -70,6 +70,7 @@ class SettingsDataStore @Inject constructor(
         val POOL_MAX_CONCURRENT = intPreferencesKey("pool_max_concurrent")
         val POOL_REQUESTS_PER_MINUTE = intPreferencesKey("pool_requests_per_minute")
         val POOL_RETRY_MODE = stringPreferencesKey("pool_retry_mode")
+        val POOL_MANAGED_MODE = booleanPreferencesKey("pool_managed_mode")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -206,6 +207,10 @@ class SettingsDataStore @Inject constructor(
         parsePoolRetryMode(prefs[POOL_RETRY_MODE])
     }
 
+    val poolManagedMode: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[POOL_MANAGED_MODE] ?: false
+    }
+
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
@@ -317,6 +322,15 @@ class SettingsDataStore @Inject constructor(
     private fun parsePoolRetryMode(raw: String?): PoolRetryMode =
         runCatching { PoolRetryMode.valueOf(raw ?: PoolRetryMode.AGGRESSIVE.name) }
             .getOrDefault(PoolRetryMode.AGGRESSIVE)
+
+    suspend fun getPoolManagedMode(): Boolean {
+        val prefs = dataStore.data.first()
+        return prefs[POOL_MANAGED_MODE] ?: false
+    }
+
+    suspend fun setPoolManagedMode(value: Boolean) {
+        dataStore.edit { prefs -> prefs[POOL_MANAGED_MODE] = value }
+    }
 
     suspend fun getProviders(): List<AiProviderProfile> {
         return readProviders(dataStore.data.first())

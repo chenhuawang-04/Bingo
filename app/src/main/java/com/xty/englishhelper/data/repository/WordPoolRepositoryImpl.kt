@@ -37,6 +37,9 @@ import com.xty.englishhelper.domain.pool.MutableUnionFind
 import com.xty.englishhelper.domain.pool.PoolCandidate
 import com.xty.englishhelper.domain.pool.WordPoolEngine
 import com.xty.englishhelper.domain.repository.WordPoolRepository
+import com.xty.englishhelper.domain.repository.ManualChunkCandidate
+import com.xty.englishhelper.domain.repository.ManualChunkContext
+import com.xty.englishhelper.domain.repository.ManualFillResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -924,5 +927,108 @@ class WordPoolRepositoryImpl @Inject constructor(
         onProgress: (classified: Int, total: Int) -> Unit
     ): Int {
         return entryTypeClassifier.classify(dictionaryId, isCancelled, onProgress)
+    }
+
+    // ── 手动填块（敏感词等模型拒答时人工补数据；坐标系与构建侧严格一致） ──
+
+    override suspend fun getManualChunkContext(
+        dictionaryId: Long,
+        wordSpelling: String,
+        chunkIndex: Int,
+        totalChunks: Int
+    ): ManualChunkContext? {
+        val chunkSize = settingsDataStore.getPoolWindowSize()
+        if (chunkSize <= 0) return null
+        val allWords = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
+        val wordIndex = allWords.indexOfFirst { it.spelling == wordSpelling }
+        if (wordIndex < 0) return null
+        // 与 resolveStartChunk 同样的坐标系校验：当前 chunkSize 推算的总块数须与持久化的一致。
+        val expectedTotal = (wordIndex + chunkSize - 1) / chunkSize
+        if (expectedTotal != totalChunks) return null
+        if (chunkIndex !in 0 until totalChunks) return null
+        val target = allWords[wordIndex]
+        val from = chunkIndex * chunkSize
+        val to = ((chunkIndex + 1) * chunkSize).coerceAtMost(wordIndex)
+        if (from >= to) return null
+        val window = allWords.subList(from, to)
+        val candidates = window.mapIndexed { i, w ->
+            val m = w.meanings.firstOrNull()
+            ManualChunkCandidate(
+                index = i,
+                spelling = w.spelling,
+                pos = m?.pos ?: "",
+                definition = m?.definition ?: ""
+            )
+        }
+        return ManualChunkContext(
+            targetSpelling = target.spelling,
+            chunkIndex = chunkIndex,
+            totalChunks = totalChunks,
+            candidates = candidates,
+            promptText = EdgePromptBuilder.buildEdgePrompt(target, window)
+        )
+    }
+
+    override suspend fun manualFillChunk(
+        dictionaryId: Long,
+        wordSpelling: String,
+        chunkIndex: Int,
+        totalChunks: Int,
+        json: String
+    ): ManualFillResult {
+        val chunkSize = settingsDataStore.getPoolWindowSize()
+        if (chunkSize <= 0) return ManualFillResult(false, error = "窗口大小无效")
+        val allWords = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
+        val wordIndex = allWords.indexOfFirst { it.spelling == wordSpelling }
+        if (wordIndex < 0) return ManualFillResult(false, error = "找不到断点词「$wordSpelling」")
+        val expectedTotal = (wordIndex + chunkSize - 1) / chunkSize
+        if (expectedTotal != totalChunks) {
+            return ManualFillResult(false, error = "窗口大小已变更，坐标系不一致，无法手动填入（请用一致的设置续传，或完全重建）")
+        }
+        if (chunkIndex !in 0 until totalChunks) return ManualFillResult(false, error = "块序号越界")
+        val target = allWords[wordIndex]
+        val from = chunkIndex * chunkSize
+        val to = ((chunkIndex + 1) * chunkSize).coerceAtMost(wordIndex)
+        if (from >= to) return ManualFillResult(false, error = "该块无候选词")
+        val window = allWords.subList(from, to)
+
+        // 复用与 AI 完全相同的解析 / 校验链；空数组 [] 合法（该块判定无边，可直接跳过敏感块）。
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        val edges: List<WordEdgeEntity> = try {
+            val normalized = EdgeParser.normalizeResponse(json, unwrapEnabled, repairEnabled)
+            if (normalized.isBlank()) return ManualFillResult(false, error = "内容为空")
+            val parsed = EdgeParser.parseAndValidateEdgeResponse(normalized, window.size)
+            val filtered = EdgeParser.applyHardThresholds(parsed, target, window)
+            filtered.mapNotNull { edge ->
+                val other = window.getOrNull(edge.index) ?: return@mapNotNull null
+                toEdgeEntity(target, other, edge, dictionaryId)
+            }
+        } catch (e: Exception) {
+            return ManualFillResult(false, error = "JSON 解析失败：${e.message?.take(160) ?: e.javaClass.simpleName}")
+        }
+
+        // 幂等：先删该块覆盖的前驱区残边（双向匹配，分批避开 SQLite 参数上限），再插入。
+        window.map { it.id }.chunked(900).forEach { batch ->
+            wordEdgeDao.deleteEdgesForWordAgainst(dictionaryId, target.id, batch)
+        }
+        if (edges.isNotEmpty()) wordEdgeDao.insertEdges(edges)
+
+        // 刷新实时网格（仅当现场正是该词时生效；进程重启后网格为空则 no-op，续传会重填）。
+        liveMonitor.recordAttempt(
+            dictionaryId = dictionaryId,
+            word = wordSpelling,
+            chunkIndex = chunkIndex,
+            attempt = 0,
+            response = "（手动填入）\n$json",
+            error = null,
+            success = true
+        )
+
+        return ManualFillResult(
+            success = true,
+            insertedEdges = edges.size,
+            wordComplete = chunkIndex + 1 >= totalChunks
+        )
     }
 }

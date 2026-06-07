@@ -164,6 +164,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.poolManagedMode.collect { value ->
+                _uiState.update { it.copy(poolManagedMode = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.ttsPrewarmConcurrency.collect { value ->
                 _uiState.update { it.copy(ttsPrewarmConcurrency = value) }
             }
@@ -482,6 +487,11 @@ class SettingsViewModel @Inject constructor(
     fun onPoolRetryModeChange(value: PoolRetryMode) {
         _uiState.update { it.copy(poolRetryMode = value) }
         viewModelScope.launch { settingsDataStore.setPoolRetryMode(value) }
+    }
+
+    fun onPoolManagedModeChange(value: Boolean) {
+        _uiState.update { it.copy(poolManagedMode = value) }
+        viewModelScope.launch { settingsDataStore.setPoolManagedMode(value) }
     }
 
     fun onImageCompressionEnabledChange(value: Boolean) {

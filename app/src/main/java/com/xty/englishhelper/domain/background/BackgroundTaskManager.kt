@@ -34,6 +34,9 @@ import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
+import com.xty.englishhelper.domain.repository.ManualChunkContext
+import com.xty.englishhelper.domain.repository.ManualFillResult
+import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.article.OnlineReadingCatalog
 import com.xty.englishhelper.domain.article.OnlineArticleSourceUrl
@@ -86,6 +89,7 @@ class BackgroundTaskManager @Inject constructor(
     private val wordRepository: WordRepository,
     private val organizeWordWithAi: OrganizeWordWithAiUseCase,
     private val rebuildWordPools: RebuildWordPoolsUseCase,
+    private val wordPoolRepository: WordPoolRepository,
     private val createArticle: CreateArticleUseCase,
     private val parseArticle: ParseArticleUseCase,
     private val settingsDataStore: SettingsDataStore
@@ -97,6 +101,9 @@ class BackgroundTaskManager @Inject constructor(
     private val pauseHandlers = ConcurrentHashMap<Long, () -> Unit>()
     private val unpauseHandlers = ConcurrentHashMap<Long, () -> Unit>()
     private val cancelHandlers = ConcurrentHashMap<Long, () -> Unit>()
+    // 托管模式：词池任务因构建中止 FAILED 后，挂起的"10 分钟后自动续传"任务（按 taskId 索引，便于用户介入时取消）。
+    private val managedResumeJobs = ConcurrentHashMap<Long, kotlinx.coroutines.Job>()
+    private val managedResumeDelayMs = 10L * 60 * 1000  // 终止 10 分钟后自动续传
     @Volatile
     private var maxConcurrency = 2
     @Volatile
@@ -119,6 +126,7 @@ class BackgroundTaskManager @Inject constructor(
         scope.launch {
             repository.updateStatusByStatus(BackgroundTaskStatus.RUNNING, BackgroundTaskStatus.PENDING)
             migrateLegacyWordOrganizeTasks()
+            scheduleManagedResumesOnStart()
             schedule()
         }
     }
@@ -264,6 +272,7 @@ class BackgroundTaskManager @Inject constructor(
 
     fun resumeTask(taskId: Long) {
         scope.launch {
+            cancelManagedResume(taskId)
             val task = repository.getTaskById(taskId)
             repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
             // For pool rebuild: unpause the running job
@@ -282,6 +291,7 @@ class BackgroundTaskManager @Inject constructor(
 
     fun restartTask(taskId: Long) {
         scope.launch {
+            cancelManagedResume(taskId)
             val task = repository.getTaskById(taskId)
             repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
             // 词池构建：保留进度，让“重启/重试”从断点续传（与 enqueueTaskInternal、resumeTask 的处理一致）。
@@ -297,6 +307,7 @@ class BackgroundTaskManager @Inject constructor(
 
     fun cancelTask(taskId: Long) {
         scope.launch {
+            cancelManagedResume(taskId)
             repository.updateStatus(taskId, BackgroundTaskStatus.CANCELED, "已停止")
             // Invoke cancel handler (sets flag) before cancelling job
             cancelHandlers.remove(taskId)?.invoke()
@@ -307,6 +318,7 @@ class BackgroundTaskManager @Inject constructor(
 
     fun deleteTask(taskId: Long) {
         scope.launch {
+            cancelManagedResume(taskId)
             runningJobs.remove(taskId)?.cancel()
             repository.deleteTask(taskId)
         }
@@ -456,6 +468,7 @@ class BackgroundTaskManager @Inject constructor(
             try {
                 executeTask(task)
                 repository.updateStatus(task.id, BackgroundTaskStatus.SUCCESS, null)
+                cancelManagedResume(task.id)
             } catch (e: CancellationException) {
                 val current = repository.getTaskById(task.id)
                 if (current?.status == BackgroundTaskStatus.PAUSED || current?.status == BackgroundTaskStatus.CANCELED) {
@@ -464,6 +477,8 @@ class BackgroundTaskManager @Inject constructor(
                 repository.updateStatus(task.id, BackgroundTaskStatus.CANCELED, "已停止")
             } catch (e: Exception) {
                 repository.updateStatus(task.id, BackgroundTaskStatus.FAILED, e.message ?: "任务失败")
+                // 托管模式：词池构建中止后定时自动续传（仅有续传进度时；缺配置类错误不反复重试）。
+                maybeScheduleManagedResume(task.id)
             } finally {
                 runningJobs.remove(task.id)
                 schedule()
@@ -871,6 +886,127 @@ class BackgroundTaskManager @Inject constructor(
             unpauseHandlers.remove(task.id)
             cancelHandlers.remove(task.id)
         }
+    }
+
+    // ── 手动填块编排（详情页调用；只在 FAILED 时可用） ──
+
+    /** 取出当前 FAILED 词池任务"下一待填块"的上下文（候选词 + 提示词）。非 FAILED / 无待填块 / 无法定位 → null。 */
+    suspend fun getPoolManualChunkContext(taskId: Long): ManualChunkContext? {
+        val task = repository.getTaskById(taskId) ?: return null
+        if (task.type != BackgroundTaskType.WORD_POOL_REBUILD) return null
+        if (task.status != BackgroundTaskStatus.FAILED) return null
+        val payload = task.payload as? WordPoolRebuildPayload ?: return null
+        val progress = parsePoolProgress(task.progressMessage) ?: return null
+        if (progress.committedChunks >= progress.totalChunks) return null
+        return wordPoolRepository.getManualChunkContext(
+            payload.dictionaryId, progress.word, progress.committedChunks, progress.totalChunks
+        )
+    }
+
+    /**
+     * 用用户 JSON 手动落库当前 FAILED 词池任务的"下一待填块"；成功则把进度块数推进 1。
+     * 若该词所有块已齐（wordComplete）→ 自动续传到下一个词。返回结果供 UI 提示。
+     */
+    suspend fun manualFillPoolChunk(taskId: Long, json: String): ManualFillResult {
+        val task = repository.getTaskById(taskId)
+            ?: return ManualFillResult(false, error = "任务不存在")
+        if (task.type != BackgroundTaskType.WORD_POOL_REBUILD) {
+            return ManualFillResult(false, error = "任务类型不符")
+        }
+        if (task.status != BackgroundTaskStatus.FAILED) {
+            return ManualFillResult(false, error = "仅在构建失败时可手动填入")
+        }
+        val payload = task.payload as? WordPoolRebuildPayload
+            ?: return ManualFillResult(false, error = "任务参数缺失")
+        val progress = parsePoolProgress(task.progressMessage)
+            ?: return ManualFillResult(false, error = "无法定位断点块（进度信息缺失）")
+        if (progress.committedChunks >= progress.totalChunks) {
+            return ManualFillResult(false, error = "该词已无待填块")
+        }
+        val result = wordPoolRepository.manualFillChunk(
+            payload.dictionaryId, progress.word, progress.committedChunks, progress.totalChunks, json
+        )
+        if (!result.success) return result
+
+        // 推进续传点：块数 +1、边数累加；progressCurrent/Total（词级）不变。
+        val newMessage = "${progress.word}|${progress.committedChunks + 1}|${progress.totalChunks}|${progress.edges + result.insertedEdges}"
+        repository.updateProgress(taskId, task.progressCurrent, task.progressTotal, newMessage)
+
+        if (result.wordComplete) {
+            // 该词全部块已齐 → 自动续传（保留进度，从断点继续，会跳过该词进入下一个词）。
+            cancelManagedResume(taskId)
+            repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
+            schedule()
+        }
+        return result
+    }
+
+    private data class PoolProgress(val word: String, val committedChunks: Int, val totalChunks: Int, val edges: Int)
+
+    /** 解析 progress_message "word|committed|total|edges"；任一字段缺失 / 非法 → null。 */
+    private fun parsePoolProgress(message: String?): PoolProgress? {
+        if (message.isNullOrBlank()) return null
+        val parts = message.split("|")
+        if (parts.size < 3) return null
+        val word = parts[0]
+        if (word.isBlank()) return null
+        val committed = parts[1].toIntOrNull() ?: return null
+        val total = parts[2].toIntOrNull() ?: return null
+        val edges = parts.getOrNull(3)?.toIntOrNull() ?: 0
+        if (total <= 0 || committed < 0 || committed > total) return null
+        return PoolProgress(word, committed, total, edges)
+    }
+
+    // ── 托管模式：构建中止后定时自动续传（无上限） ──
+
+    /** FAILED 后按需排程自动续传（仅词池任务、托管模式开、且有可续传进度时）。 */
+    private suspend fun maybeScheduleManagedResume(taskId: Long) {
+        if (!settingsDataStore.getPoolManagedMode()) return
+        val task = repository.getTaskById(taskId) ?: return
+        if (task.type != BackgroundTaskType.WORD_POOL_REBUILD) return
+        if (task.status != BackgroundTaskStatus.FAILED) return
+        // 仅对"有续传进度的构建中止"托管；缺 API Key 等配置错误（无任何进度）不反复重试。
+        val hasProgress = task.progressCurrent > 0 || !task.progressMessage.isNullOrBlank()
+        if (!hasProgress) return
+        scheduleManagedResume(taskId, managedResumeDelayMs)
+    }
+
+    /** 排程一次延迟自动续传（覆盖该任务已有的排程）。期间用户介入会改状态，触发时再校验。 */
+    private fun scheduleManagedResume(taskId: Long, delayMs: Long) {
+        managedResumeJobs.remove(taskId)?.cancel()
+        val job = scope.launch {
+            try {
+                delay(delayMs)
+                if (!settingsDataStore.getPoolManagedMode()) return@launch
+                val task = repository.getTaskById(taskId) ?: return@launch
+                if (task.type != BackgroundTaskType.WORD_POOL_REBUILD) return@launch
+                // 期间用户可能已手动续传 / 取消 / 删除 → 状态不再是 FAILED 就放弃。
+                if (task.status != BackgroundTaskStatus.FAILED) return@launch
+                Log.i("BackgroundTaskManager", "托管模式：自动续传词池任务 $taskId（终止约 ${delayMs / 60000} 分钟后）")
+                repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
+                schedule()
+            } finally {
+                managedResumeJobs.remove(taskId)
+            }
+        }
+        managedResumeJobs[taskId] = job
+    }
+
+    /** 应用启动时：为已 FAILED 的词池任务按 updatedAt + 10min 重新排程（托管模式开时）。 */
+    private suspend fun scheduleManagedResumesOnStart() {
+        if (!settingsDataStore.getPoolManagedMode()) return
+        val failed = repository.getTasksByStatuses(listOf(BackgroundTaskStatus.FAILED), 100)
+        failed.filter { it.type == BackgroundTaskType.WORD_POOL_REBUILD }
+            .filter { it.progressCurrent > 0 || !it.progressMessage.isNullOrBlank() }
+            .forEach { task ->
+                val elapsed = System.currentTimeMillis() - task.updatedAt
+                val remaining = (managedResumeDelayMs - elapsed).coerceIn(5_000L, managedResumeDelayMs)
+                scheduleManagedResume(task.id, remaining)
+            }
+    }
+
+    private fun cancelManagedResume(taskId: Long) {
+        managedResumeJobs.remove(taskId)?.cancel()
     }
 
     private suspend fun executeSourceVerify(task: BackgroundTask) {

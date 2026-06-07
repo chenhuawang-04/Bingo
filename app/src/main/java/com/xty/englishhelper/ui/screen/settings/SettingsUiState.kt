@@ -38,6 +38,7 @@ data class SettingsUiState(
     val poolMaxConcurrent: Int = 3,
     val poolRequestsPerMinute: Int = 30,
     val poolRetryMode: PoolRetryMode = PoolRetryMode.AGGRESSIVE,
+    val poolManagedMode: Boolean = false,
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
     val cloudSync: CloudSyncState = CloudSyncState()
