@@ -3,9 +3,12 @@ package com.xty.englishhelper.ui.screen.dictionary
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import com.xty.englishhelper.domain.background.ChunkProgress
 import com.xty.englishhelper.domain.background.PoolBuildLiveMonitor
+import com.xty.englishhelper.domain.model.AiProvider
+import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.PoolStrategy
@@ -14,6 +17,8 @@ import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.ManualChunkContext
 import com.xty.englishhelper.domain.repository.ManualFillResult
+import com.xty.englishhelper.domain.usecase.ai.FetchAiModelsUseCase
+import com.xty.englishhelper.util.Constants
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +32,9 @@ class PoolBuildDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val taskRepository: BackgroundTaskRepository,
     private val backgroundTaskManager: BackgroundTaskManager,
-    private val liveMonitor: PoolBuildLiveMonitor
+    private val liveMonitor: PoolBuildLiveMonitor,
+    private val settingsDataStore: SettingsDataStore,
+    private val fetchAiModels: FetchAiModelsUseCase
 ) : ViewModel() {
 
     private val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
@@ -40,6 +47,8 @@ class PoolBuildDetailViewModel @Inject constructor(
     init {
         observePoolRebuildTasks()
         observeLiveChunks()
+        observePoolModelConfig()
+        observeProviders()
     }
 
     /** 收集实时分块网格（仅内存态）。仅展示属于本词典的当前词；其它情况清空方块。 */
@@ -275,6 +284,123 @@ class PoolBuildDetailViewModel @Inject constructor(
         _uiState.update { it.copy(manualFillMessage = null) }
     }
 
+    // ── 词池整理模型热切换（全局 POOL 作用域）──
+    // callAi() 每次请求都现读 getAiConfig(POOL)，故这里写入 POOL 配置后，构建的下一次请求（含失败重试）即用新模型——
+    // 无需触碰构建循环。词池构建一次只跑一个任务，故全局模型无并发冲突。
+
+    /** 观察当前 POOL 作用域配置（提供商 + 模型），用于卡片显示与弹窗初值。 */
+    private fun observePoolModelConfig() {
+        viewModelScope.launch {
+            settingsDataStore.scopeConfig(AiSettingsScope.POOL).collect { config ->
+                _uiState.update { it.copy(poolProviderName = config.providerName, poolModel = config.model) }
+            }
+        }
+    }
+
+    /** 观察可用提供商（含是否已配置 API Key），供切换弹窗选择。 */
+    private fun observeProviders() {
+        viewModelScope.launch {
+            settingsDataStore.providersWithKeys.collect { list ->
+                _uiState.update { state ->
+                    state.copy(
+                        poolProviders = list.map { s ->
+                            PoolModelProvider(s.profile.name, s.profile.provider, s.profile.baseUrl, s.hasApiKey)
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    /** 打开切换弹窗，编辑态以当前 POOL 配置为初值（确认前不落库）。 */
+    fun openModelSwitch() {
+        _uiState.update {
+            it.copy(
+                modelSwitchVisible = true,
+                editingProviderName = it.poolProviderName,
+                editingModel = it.poolModel,
+                modelOptions = emptyList(),
+                modelLoading = false,
+                modelError = null
+            )
+        }
+    }
+
+    fun dismissModelSwitch() {
+        _uiState.update {
+            it.copy(modelSwitchVisible = false, modelOptions = emptyList(), modelLoading = false, modelError = null)
+        }
+    }
+
+    /** 切换编辑中的提供商：清掉上一个提供商拉取到的模型列表；手动输入框保留，由用户决定。 */
+    fun onEditingProviderChange(providerName: String) {
+        _uiState.update { it.copy(editingProviderName = providerName, modelOptions = emptyList(), modelError = null) }
+    }
+
+    fun onEditingModelChange(model: String) {
+        _uiState.update { it.copy(editingModel = model) }
+    }
+
+    /** 从接口拉取「编辑中提供商」的可用模型列表（复用设置页同款 FetchAiModelsUseCase）。 */
+    fun fetchModelsForEditing() {
+        val provider = _uiState.value.poolProviders.firstOrNull { it.name == _uiState.value.editingProviderName }
+        if (provider == null) {
+            _uiState.update { it.copy(modelError = "提供商不存在") }
+            return
+        }
+        viewModelScope.launch {
+            val apiKey = settingsDataStore.getProviderApiKey(provider.name)
+            if (apiKey.isBlank()) {
+                _uiState.update { it.copy(modelError = "请先在设置中为「${provider.name}」配置 API Key") }
+                return@launch
+            }
+            _uiState.update { it.copy(modelLoading = true, modelError = null) }
+            val baseUrl = provider.baseUrl.ifBlank { defaultBaseUrl(provider.format) }
+            val result = runCatching { fetchAiModels(apiKey, provider.format, baseUrl) }
+            _uiState.update {
+                result.fold(
+                    onSuccess = { models -> it.copy(modelLoading = false, modelOptions = models) },
+                    onFailure = { e -> it.copy(modelLoading = false, modelError = e.message ?: "拉取失败") }
+                )
+            }
+        }
+    }
+
+    /** 确认切换：写入全局 POOL 配置（scopeConfig flow 会自动回流刷新卡片显示）。 */
+    fun confirmModelSwitch() {
+        val providerName = _uiState.value.editingProviderName
+        val model = _uiState.value.editingModel.trim()
+        if (providerName.isBlank()) {
+            _uiState.update { it.copy(modelError = "请选择提供商") }
+            return
+        }
+        if (model.isBlank()) {
+            _uiState.update { it.copy(modelError = "请填写或选择模型") }
+            return
+        }
+        viewModelScope.launch {
+            settingsDataStore.setScopeConfig(AiSettingsScope.POOL, providerName, model)
+            _uiState.update {
+                it.copy(
+                    modelSwitchVisible = false,
+                    modelOptions = emptyList(),
+                    modelLoading = false,
+                    modelError = null,
+                    modelSwitchMessage = "已切换词池整理模型为「$model」，从下一次请求生效。"
+                )
+            }
+        }
+    }
+
+    fun clearModelSwitchMessage() {
+        _uiState.update { it.copy(modelSwitchMessage = null) }
+    }
+
+    private fun defaultBaseUrl(provider: AiProvider): String = when (provider) {
+        AiProvider.ANTHROPIC -> Constants.ANTHROPIC_BASE_URL
+        AiProvider.OPENAI_COMPATIBLE -> Constants.OPENAI_BASE_URL
+    }
+
     companion object {
         private val TERMINAL_STATES = setOf(
             BackgroundTaskStatus.FAILED,
@@ -312,5 +438,24 @@ data class PoolBuildDetailUiState(
     val manualFillContext: ManualChunkContext? = null,
     val manualFillError: String? = null,
     val manualFillSubmitting: Boolean = false,
-    val manualFillMessage: String? = null
+    val manualFillMessage: String? = null,
+    // ── 词池整理模型热切换（全局 POOL 作用域）──
+    val poolProviderName: String = "",
+    val poolModel: String = "",
+    val poolProviders: List<PoolModelProvider> = emptyList(),
+    val modelSwitchVisible: Boolean = false,
+    val editingProviderName: String = "",
+    val editingModel: String = "",
+    val modelOptions: List<String> = emptyList(),
+    val modelLoading: Boolean = false,
+    val modelError: String? = null,
+    val modelSwitchMessage: String? = null
+)
+
+/** 切换弹窗用的提供商摘要（名称、接口格式、Base URL、是否已配 Key）。 */
+data class PoolModelProvider(
+    val name: String,
+    val format: AiProvider,
+    val baseUrl: String,
+    val hasApiKey: Boolean
 )

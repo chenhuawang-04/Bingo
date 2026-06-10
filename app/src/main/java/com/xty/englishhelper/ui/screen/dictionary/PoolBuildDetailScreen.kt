@@ -50,6 +50,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -125,6 +126,23 @@ fun PoolBuildDetailScreen(
                 )
             }
 
+            // 整理模型（全局 POOL 作用域）：随时可切换，热生效。
+            item {
+                PoolModelCard(
+                    providerName = state.poolProviderName,
+                    model = state.poolModel,
+                    onSwitch = viewModel::openModelSwitch
+                )
+            }
+
+            // 模型切换成功提示
+            val modelMsg = state.modelSwitchMessage
+            if (modelMsg != null) {
+                item {
+                    InfoMessageCard(message = modelMsg, onDismiss = viewModel::clearModelSwitchMessage)
+                }
+            }
+
             // Current word card
             if (state.status == BuildStatus.RUNNING || state.status == BuildStatus.PAUSED) {
                 item {
@@ -176,7 +194,7 @@ fun PoolBuildDetailScreen(
             val fillMsg = state.manualFillMessage
             if (fillMsg != null) {
                 item {
-                    ManualFillMessageCard(message = fillMsg, onDismiss = viewModel::clearManualFillMessage)
+                    InfoMessageCard(message = fillMsg, onDismiss = viewModel::clearManualFillMessage)
                 }
             }
 
@@ -264,6 +282,22 @@ fun PoolBuildDetailScreen(
                 onDismiss = viewModel::dismissManualFill
             )
         }
+
+        if (state.modelSwitchVisible) {
+            ModelSwitchDialog(
+                providers = state.poolProviders,
+                editingProviderName = state.editingProviderName,
+                editingModel = state.editingModel,
+                modelOptions = state.modelOptions,
+                modelLoading = state.modelLoading,
+                modelError = state.modelError,
+                onProviderChange = viewModel::onEditingProviderChange,
+                onModelChange = viewModel::onEditingModelChange,
+                onFetchModels = viewModel::fetchModelsForEditing,
+                onConfirm = viewModel::confirmModelSwitch,
+                onDismiss = viewModel::dismissModelSwitch
+            )
+        }
     }
 }
 
@@ -349,6 +383,48 @@ private fun StatusHeaderCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PoolModelCard(
+    providerName: String,
+    model: String,
+    onSwitch: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "整理模型（全局）",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${providerName.ifBlank { "默认提供商" }} · ${model.ifBlank { "默认模型" }}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    "切换后从下一次请求生效；全局保留。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            FilledTonalButton(onClick = onSwitch) {
+                Text("切换")
             }
         }
     }
@@ -889,10 +965,133 @@ private fun chunkStatusLabel(status: ChunkBuildStatus): String = when (status) {
     ChunkBuildStatus.NOT_STARTED -> "未开始"
 }
 
+// ── 词池整理模型切换 UI ──
+
+/**
+ * 切换词池整理模型（全局 POOL 作用域）。提供商以 FilterChip 选择（标注是否已配 Key），
+ * 模型可「拉取模型」从接口取列表后选，或手动输入。确认即写入全局配置，构建下一次请求热生效。
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ModelSwitchDialog(
+    providers: List<PoolModelProvider>,
+    editingProviderName: String,
+    editingModel: String,
+    modelOptions: List<String>,
+    modelLoading: Boolean,
+    modelError: String?,
+    onProviderChange: (String) -> Unit,
+    onModelChange: (String) -> Unit,
+    onFetchModels: () -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val selectedProvider = providers.firstOrNull { it.name == editingProviderName }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                enabled = editingProviderName.isNotBlank() && editingModel.isNotBlank()
+            ) { Text("确定切换") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+        title = { Text("切换词池整理模型") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 480.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "提供商",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (providers.isEmpty()) {
+                    Text(
+                        "暂无提供商，请先到设置中添加。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                } else {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        providers.forEach { p ->
+                            FilterChip(
+                                selected = p.name == editingProviderName,
+                                onClick = { onProviderChange(p.name) },
+                                label = { Text(if (p.hasApiKey) p.name else "${p.name}（无Key）") }
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "模型",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(
+                        onClick = onFetchModels,
+                        enabled = !modelLoading && editingProviderName.isNotBlank()
+                    ) {
+                        Text(if (modelLoading) "拉取中…" else "拉取模型")
+                    }
+                }
+                if (modelOptions.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        modelOptions.forEach { m ->
+                            FilterChip(
+                                selected = m == editingModel,
+                                onClick = { onModelChange(m) },
+                                label = { Text(m) }
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = editingModel,
+                    onValueChange = onModelChange,
+                    label = { Text("模型名（可手动输入）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (modelError != null) {
+                    Text(
+                        modelError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                if (selectedProvider != null && !selectedProvider.hasApiKey) {
+                    Text(
+                        "该提供商未配置 API Key，切换后构建请求会失败，请先到设置中配置。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Text(
+                    "切换会写入全局「词池整理」模型并保留；构建途中切换从下一次请求（含失败重试）生效。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    )
+}
+
 // ── 手动填块 UI ──
 
 @Composable
-private fun ManualFillMessageCard(message: String, onDismiss: () -> Unit) {
+private fun InfoMessageCard(message: String, onDismiss: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
