@@ -12,9 +12,11 @@ import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import com.xty.englishhelper.domain.organize.OrganizeTaskStatus
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
+import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.usecase.dictionary.GetDictionaryByIdUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetPoolCountUseCase
+import com.xty.englishhelper.domain.usecase.pool.GetPoolEdgeCountUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetPoolVersionInfoUseCase
 import com.xty.englishhelper.domain.usecase.unit.CreateUnitUseCase
 import com.xty.englishhelper.domain.usecase.unit.GetUnitsWithWordCountUseCase
@@ -41,6 +43,7 @@ class DictionaryViewModel @Inject constructor(
     private val getUnitsWithWordCount: GetUnitsWithWordCountUseCase,
     private val createUnit: CreateUnitUseCase,
     private val getPoolCount: GetPoolCountUseCase,
+    private val getPoolEdgeCount: GetPoolEdgeCountUseCase,
     private val getPoolVersionInfo: GetPoolVersionInfoUseCase,
     private val backgroundOrganizeManager: BackgroundOrganizeManager,
     private val backgroundTaskManager: BackgroundTaskManager,
@@ -53,6 +56,7 @@ class DictionaryViewModel @Inject constructor(
     val uiState: StateFlow<DictionaryUiState> = _uiState.asStateFlow()
 
     private var poolTaskId: Long? = null
+    private var reviewTaskId: Long? = null
     private var jumpToLastUnitPage = false
 
     init {
@@ -62,6 +66,7 @@ class DictionaryViewModel @Inject constructor(
         loadPoolInfo()
         observeOrganizeTasks()
         observePoolRebuildTasks()
+        observePoolReviewTasks()
     }
 
     private fun loadDictionary() {
@@ -339,7 +344,8 @@ class DictionaryViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val count = getPoolCount(dictionaryId)
-                _uiState.update { it.copy(poolCount = count) }
+                val edges = getPoolEdgeCount(dictionaryId)
+                _uiState.update { it.copy(poolCount = count, edgeCount = edges) }
 
                 // Version check
                 val versionInfo = getPoolVersionInfo(dictionaryId)
@@ -457,6 +463,87 @@ class DictionaryViewModel @Inject constructor(
 
     fun clearRebuildError() {
         _uiState.update { it.copy(rebuildError = null) }
+    }
+
+    // ── 词池审核（独立任务，手动触发） ──
+
+    private fun observePoolReviewTasks() {
+        viewModelScope.launch {
+            var lastStatus: BackgroundTaskStatus? = null
+            taskRepository.observeAllTasks().collect { tasks ->
+                val reviewTask = tasks
+                    .filter { it.type == BackgroundTaskType.WORD_POOL_REVIEW }
+                    .filter { (it.payload as? WordPoolReviewPayload)?.dictionaryId == dictionaryId }
+                    .maxByOrNull { it.updatedAt }
+
+                if (reviewTask == null) {
+                    reviewTaskId = null
+                    _uiState.update {
+                        it.copy(
+                            isReviewingPools = false,
+                            reviewProgress = null,
+                            reviewError = null,
+                            isReviewPaused = false
+                        )
+                    }
+                    lastStatus = null
+                    return@collect
+                }
+
+                reviewTaskId = reviewTask.id
+                val inProgress = reviewTask.status == BackgroundTaskStatus.PENDING ||
+                    reviewTask.status == BackgroundTaskStatus.RUNNING ||
+                    reviewTask.status == BackgroundTaskStatus.PAUSED
+                val progress = if (reviewTask.progressTotal > 0) {
+                    reviewTask.progressCurrent to reviewTask.progressTotal
+                } else {
+                    null
+                }
+                val error = if (reviewTask.status == BackgroundTaskStatus.FAILED) reviewTask.errorMessage else null
+                _uiState.update {
+                    it.copy(
+                        isReviewingPools = inProgress,
+                        reviewProgress = progress,
+                        reviewError = error,
+                        isReviewPaused = reviewTask.status == BackgroundTaskStatus.PAUSED
+                    )
+                }
+
+                // 审核成功后刷新词池数（审核会用复查后的边重建词池）。
+                if (reviewTask.status != lastStatus && reviewTask.status == BackgroundTaskStatus.SUCCESS) {
+                    loadPoolInfo()
+                }
+                lastStatus = reviewTask.status
+            }
+        }
+    }
+
+    /** 手动发起词池审核（仅 QUALITY_FIRST：审核针对边）。需已有边、且当前无整理 / 审核进行中。 */
+    fun requestReviewPools() {
+        if (_uiState.value.edgeCount <= 0) return
+        if (_uiState.value.isRebuildingPools || _uiState.value.isReviewingPools) return
+        _uiState.update { it.copy(isReviewingPools = true, reviewProgress = null, reviewError = null) }
+        backgroundTaskManager.enqueueWordPoolReview(dictionaryId, PoolStrategy.QUALITY_FIRST)
+    }
+
+    fun pauseReview() {
+        val taskId = reviewTaskId ?: return
+        backgroundTaskManager.pauseTask(taskId)
+    }
+
+    fun resumeReview() {
+        val taskId = reviewTaskId ?: return
+        backgroundTaskManager.resumeTask(taskId)
+    }
+
+    fun cancelReview() {
+        val taskId = reviewTaskId ?: return
+        backgroundTaskManager.cancelTask(taskId)
+        _uiState.update { it.copy(isReviewingPools = false, reviewProgress = null) }
+    }
+
+    fun clearReviewError() {
+        _uiState.update { it.copy(reviewError = null) }
     }
 
     fun clearError() {

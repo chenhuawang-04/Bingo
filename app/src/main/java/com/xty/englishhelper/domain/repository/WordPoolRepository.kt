@@ -21,6 +21,22 @@ interface WordPoolRepository {
 
     suspend fun getPoolCount(dictionaryId: Long): Int
 
+    /** 该词典已建边总数（用于判断是否可发起「词池审核」）。 */
+    suspend fun getEdgeCount(dictionaryId: Long): Int
+
+    /**
+     * 词池审核（手动触发，独立于整理）：用 REVIEWER AI 复查低置信度（<0.6）/ warning 边，
+     * 据裁决移除或调整边，然后用复查后的边重建 [strategy] 策略的词池。
+     * 每次整跑（无块级续传）；可暂停 / 取消；[onProgress] 上报 (已处理边数, 待审边总数, 文案)。
+     */
+    suspend fun reviewPools(
+        dictionaryId: Long,
+        strategy: PoolStrategy,
+        isCancelled: () -> Boolean = { false },
+        isPaused: () -> Boolean = { false },
+        onProgress: (current: Int, total: Int, message: String?) -> Unit = { _, _, _ -> }
+    )
+
     /** Brainstorm: returns wordId -> Set<poolId> for all strategies */
     suspend fun getWordToPoolsMap(dictionaryId: Long): Map<Long, Set<Long>>
 

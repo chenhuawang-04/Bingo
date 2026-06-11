@@ -178,6 +178,16 @@ fun DictionaryScreen(
                                     },
                                     enabled = !state.isRebuildingPools
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("审核词池（AI 复查·质量优先）") },
+                                    onClick = {
+                                        showPoolMenu = false
+                                        viewModel.requestReviewPools()
+                                    },
+                                    enabled = state.edgeCount > 0 &&
+                                        !state.isRebuildingPools &&
+                                        !state.isReviewingPools
+                                )
                             }
                         }
                     }
@@ -745,6 +755,64 @@ private fun DictionaryListContent(
                                     }
                                     TextButton(onClick = onPoolBuildDetail) {
                                         Text("详情")
+                                    }
+                                }
+                            }
+
+                            // 词池审核（独立任务）状态行
+                            if (state.isReviewingPools) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (state.isReviewPaused) "审核已暂停" else "审核中",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                    val rp = state.reviewProgress
+                                    if (rp != null && rp.second > 0) {
+                                        Text(
+                                            text = "${rp.first}/${rp.second}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.tertiary
+                                        )
+                                    }
+                                }
+                                val rp = state.reviewProgress
+                                if (rp != null && rp.second > 0) {
+                                    LinearProgressIndicator(
+                                        progress = { rp.first.toFloat() / rp.second },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp)
+                                    )
+                                } else {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp)
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextButton(
+                                        onClick = {
+                                            if (state.isReviewPaused) viewModel.resumeReview() else viewModel.pauseReview()
+                                        }
+                                    ) {
+                                        Text(if (state.isReviewPaused) "继续" else "暂停")
+                                    }
+                                    TextButton(onClick = viewModel::cancelReview) {
+                                        Text("取消")
                                     }
                                 }
                             }

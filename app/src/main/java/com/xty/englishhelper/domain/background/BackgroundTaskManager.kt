@@ -23,6 +23,7 @@ import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
+import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
 import com.xty.englishhelper.domain.model.ArticleParseStatus
@@ -181,6 +182,22 @@ class BackgroundTaskManager @Inject constructor(
             rebuildMode = rebuildMode.name
         )
         enqueueTaskAsync(BackgroundTaskType.WORD_POOL_REBUILD, payload, "pool:$dictionaryId:${strategy.name}", force)
+    }
+
+    /**
+     * 词池审核（手动触发，独立于整理）。每次整跑，故一律 force=true：已有审核任务（SUCCESS/FAILED/…）会被重置重跑。
+     * 与 WORD_POOL_REBUILD 用不同 dedupeKey，互不顶替，可与整理任务共存。
+     */
+    fun enqueueWordPoolReview(
+        dictionaryId: Long,
+        strategy: PoolStrategy,
+        force: Boolean = true
+    ) {
+        val payload = WordPoolReviewPayload(
+            dictionaryId = dictionaryId,
+            strategy = strategy.name
+        )
+        enqueueTaskAsync(BackgroundTaskType.WORD_POOL_REVIEW, payload, "poolreview:$dictionaryId:${strategy.name}", force)
     }
 
     suspend fun enqueueQuestionGenerateFromArticle(
@@ -491,6 +508,7 @@ class BackgroundTaskManager @Inject constructor(
         when (task.type) {
             BackgroundTaskType.WORD_ORGANIZE -> executeWordOrganize(task)
             BackgroundTaskType.WORD_POOL_REBUILD -> executeWordPoolRebuild(task)
+            BackgroundTaskType.WORD_POOL_REVIEW -> executeWordPoolReview(task)
             BackgroundTaskType.QUESTION_GENERATE -> executeQuestionGenerate(task)
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> executeAnswerGenerate(task)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> executeSourceVerify(task)
@@ -880,6 +898,81 @@ class BackgroundTaskManager @Inject constructor(
                 "词池构建中止 task=${task.id}：落库续传点 progressCurrent=${latest.get()?.first} " +
                     "progressMessage=${latest.get()?.third ?: "<none>"}；重试将从此处续传。原因：${e.message?.take(160)}"
             )
+            throw e
+        } finally {
+            pauseHandlers.remove(task.id)
+            unpauseHandlers.remove(task.id)
+            cancelHandlers.remove(task.id)
+        }
+    }
+
+    // ── 词池审核（手动触发，独立于整理） ──
+
+    /**
+     * 词池审核：用 REVIEWER AI 复查低置信度 / warning 边，复查完用结果重建词池。
+     * 每次整跑（无续传坐标系，故无 startIndex / resumeMessage）；进度按待审边数上报，可暂停 / 取消。
+     */
+    private suspend fun executeWordPoolReview(task: BackgroundTask) {
+        val payload = task.payload as? WordPoolReviewPayload ?: throw IllegalStateException("任务参数缺失")
+        val strategy = runCatching { PoolStrategy.valueOf(payload.strategy) }.getOrElse {
+            throw IllegalStateException("词池策略无效")
+        }
+
+        val paused = AtomicBoolean(false)
+        val cancelled = AtomicBoolean(false)
+        pauseHandlers[task.id] = { paused.set(true) }
+        unpauseHandlers[task.id] = { paused.set(false) }
+        cancelHandlers[task.id] = { cancelled.set(true) }
+
+        // 与构建一致：单一节流写入器（每 ~300ms 落库最新进度快照）。
+        val latest = AtomicReference<Triple<Int, Int, String?>?>(null)
+
+        try {
+            coroutineScope {
+                val writer = launch {
+                    var written: Triple<Int, Int, String?>? = null
+                    while (isActive) {
+                        delay(300)
+                        val snap = latest.get()
+                        if (snap != null && snap != written) {
+                            repository.updateProgress(task.id, snap.first, snap.second, snap.third)
+                            written = snap
+                        }
+                    }
+                }
+                try {
+                    wordPoolRepository.reviewPools(
+                        dictionaryId = payload.dictionaryId,
+                        strategy = strategy,
+                        isCancelled = { cancelled.get() },
+                        isPaused = { paused.get() },
+                        onProgress = { current, total, message ->
+                            latest.set(Triple(current, total, message))
+                        }
+                    )
+                } finally {
+                    writer.cancel()
+                }
+            }
+            // 成功：最终写一次 100%。
+            latest.get()?.let { (_, total, _) ->
+                if (total > 0) repository.updateProgress(task.id, total, total, "审核完成")
+            }
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                latest.get()?.let { (current, total, msg) ->
+                    if (total > 0) repository.updateProgress(task.id, current, total, msg)
+                }
+            }
+            throw e
+        } catch (e: Exception) {
+            // 审核中止：落最后进度后上抛，由 launchTask 标记 FAILED。审核重试即整跑（不依赖续传点）。
+            withContext(NonCancellable) {
+                latest.get()?.let { (current, total, msg) ->
+                    if (total > 0) repository.updateProgress(task.id, current, total, msg)
+                }
+            }
+            Log.w("BackgroundTaskManager", "词池审核中止 task=${task.id}：${e.message?.take(160)}")
             throw e
         } finally {
             pauseHandlers.remove(task.id)

@@ -164,6 +164,15 @@ class WordPoolRepositoryImpl @Inject constructor(
         coroutineContext.ensureActive()
 
         // Single transaction write
+        persistPools(dictionaryId, strategy, pools)
+    }
+
+    /** 把构建好的词池在单事务内落库（先删该策略旧池再插入新池+成员）。整理与审核共用。 */
+    private suspend fun persistPools(
+        dictionaryId: Long,
+        strategy: PoolStrategy,
+        pools: List<BuiltPoolWithWordIds>
+    ) {
         val now = System.currentTimeMillis()
         db.withTransaction {
             wordPoolDao.deleteByDictionaryAndStrategy(dictionaryId, strategy.dbValue)
@@ -185,6 +194,47 @@ class WordPoolRepositoryImpl @Inject constructor(
                 )
             }
         }
+    }
+
+    override suspend fun getEdgeCount(dictionaryId: Long): Int =
+        wordEdgeDao.countEdges(dictionaryId)
+
+    override suspend fun reviewPools(
+        dictionaryId: Long,
+        strategy: PoolStrategy,
+        isCancelled: () -> Boolean,
+        isPaused: () -> Boolean,
+        onProgress: (Int, Int, String?) -> Unit
+    ) {
+        coroutineContext.ensureActive()
+        val edgesBefore = wordEdgeDao.getAllEdgesFull(dictionaryId)
+        if (edgesBefore.isEmpty()) {
+            onProgress(0, 0, null)
+            return
+        }
+        val allWords: List<WordDetails> = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
+
+        // 复查低置信度 / warning 边（移除或调整）。进度按待审边数上报。
+        val modified = edgeReviewer.reviewEdgesWithAi(
+            edges = edgesBefore,
+            domains = allWords,
+            dictionaryId = dictionaryId,
+            isCancelled = isCancelled,
+            isPaused = isPaused,
+            onProgress = onProgress
+        )
+
+        // 用复查后的边重建词池（有改动才重载）。
+        coroutineContext.ensureActive()
+        val finalEdges = if (modified) wordEdgeDao.getAllEdgesFull(dictionaryId) else edgesBefore
+        val wordIds = mutableSetOf<Long>()
+        finalEdges.forEach { edge ->
+            wordIds.add(edge.wordIdA)
+            wordIds.add(edge.wordIdB)
+        }
+        val pools = rebuildPoolsFromEdges(finalEdges, wordIds)
+        coroutineContext.ensureActive()
+        persistPools(dictionaryId, strategy, pools)
     }
 
     override suspend fun getPoolCount(dictionaryId: Long): Int =
@@ -567,25 +617,16 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
 
         // ============================================================
-        // 审查低置信度边
+        // 整理完成：直接用当前边构建词池。
+        // 审核（AI 复查低置信度 / warning 边）已抽离为独立的手动触发任务（见 reviewPools），
+        // 不再附加在整理之后。
         // ============================================================
         coroutineContext.ensureActive()
-        val allEdgesForReview = wordEdgeDao.getAllEdgesFull(dictionaryId)
-
+        val allEdges = wordEdgeDao.getAllEdgesFull(dictionaryId)
         val allWordIds = mutableSetOf<Long>()
-        allEdgesForReview.forEach { edge ->
+        allEdges.forEach { edge ->
             allWordIds.add(edge.wordIdA)
             allWordIds.add(edge.wordIdB)
-        }
-
-        // 复用前面已载入的 allWords，无需再次查库。
-        val reviewModified = edgeReviewer.reviewEdgesWithAi(allEdgesForReview, allWords, dictionaryId)
-
-        coroutineContext.ensureActive()
-        val allEdges = if (reviewModified) {
-            wordEdgeDao.getAllEdgesFull(dictionaryId)
-        } else {
-            allEdgesForReview
         }
         return rebuildPoolsFromEdges(allEdges, allWordIds)
     }

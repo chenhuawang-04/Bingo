@@ -53,6 +53,7 @@ import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
+import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 
@@ -345,6 +346,7 @@ private fun taskTitle(task: BackgroundTask): String {
     return when (task.type) {
         BackgroundTaskType.WORD_ORGANIZE -> "单词整理"
         BackgroundTaskType.WORD_POOL_REBUILD -> "词池重建"
+        BackgroundTaskType.WORD_POOL_REVIEW -> "词池审核"
         BackgroundTaskType.QUESTION_GENERATE -> "文章出题"
         BackgroundTaskType.QUESTION_ANSWER_GENERATE -> "题库答案生成"
         BackgroundTaskType.QUESTION_SOURCE_VERIFY -> "题库来源验证"
@@ -359,6 +361,14 @@ private fun taskSubtitle(task: BackgroundTask): String {
     return when (payload) {
         is WordOrganizePayload -> payload.spelling
         is WordPoolRebuildPayload -> buildString {
+            append("词典 ")
+            append(payload.dictionaryId)
+            if (payload.strategy.isNotBlank()) {
+                append(" · ")
+                append(payload.strategy)
+            }
+        }
+        is WordPoolReviewPayload -> buildString {
             append("词典 ")
             append(payload.dictionaryId)
             if (payload.strategy.isNotBlank()) {

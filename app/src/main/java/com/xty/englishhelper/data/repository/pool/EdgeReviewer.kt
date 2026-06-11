@@ -34,26 +34,44 @@ class EdgeReviewer @javax.inject.Inject constructor(
 
     /**
      * Review edges with confidence < 0.6 or status == "warning" using the REVIEWER AI model.
+     * @param isCancelled cooperative cancellation (checked at batch boundaries).
+     * @param isPaused cooperative pause (busy-waits at batch boundaries).
+     * @param onProgress reports (processedEdges, totalEdges, message) after each batch.
      * @return true if any edges were modified (removed or adjusted), false otherwise.
      */
     suspend fun reviewEdgesWithAi(
         edges: List<WordEdgeEntity>,
         domains: List<WordDetails>,
-        dictionaryId: Long
+        dictionaryId: Long,
+        isCancelled: () -> Boolean = { false },
+        isPaused: () -> Boolean = { false },
+        onProgress: (current: Int, total: Int, message: String?) -> Unit = { _, _, _ -> }
     ): Boolean {
         val needsReview = edges.filter { it.confidence < 0.6 || it.status == "warning" }
-        if (needsReview.isEmpty()) return false
+        if (needsReview.isEmpty()) {
+            onProgress(0, 0, null)
+            return false
+        }
 
+        val total = needsReview.size
+        onProgress(0, total, "待审 $total 条边")
         val wordMap = domains.associateBy { it.id }
         var modified = false
+        var processed = 0
 
         needsReview.chunked(20).forEach { batch ->
+            // 暂停：在批边界忙等；取消：抛 CancellationException 由上层落库进度。
+            while (isPaused() && !isCancelled()) {
+                delay(500)
+            }
+            if (isCancelled()) coroutineContext.ensureActive()
             coroutineContext.ensureActive()
             val prompt = EdgePromptBuilder.buildReviewPrompt(batch, wordMap)
             try {
                 val normalized = callAiForReviewerWithRetry(prompt)
-                    ?: return@forEach // all retries exhausted, skip this batch
-                if (parseAndApplyReview(normalized, batch)) {
+                if (normalized == null) {
+                    // all retries exhausted, skip this batch
+                } else if (parseAndApplyReview(normalized, batch)) {
                     modified = true
                 }
             } catch (e: CancellationException) {
@@ -61,6 +79,8 @@ class EdgeReviewer @javax.inject.Inject constructor(
             } catch (e: Exception) {
                 Log.w("EdgeReviewer", "Edge review batch failed, keeping original edges", e)
             }
+            processed = (processed + batch.size).coerceAtMost(total)
+            onProgress(processed, total, "已审 $processed/$total 条边")
         }
         return modified
     }

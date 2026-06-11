@@ -31,6 +31,16 @@ data class WordPoolRebuildPayload(
     val rebuildMode: String = "INCREMENTAL"  // "FULL" or "INCREMENTAL"
 ) : BackgroundTaskPayload
 
+/**
+ * 词池审核（AI 复查低置信度 / warning 边）。独立于整理（WORD_POOL_REBUILD），手动触发。
+ * 审核每次整跑（无块级续传坐标系），故 payload 只需词典 + 策略（策略仅用于复查后重建该策略的词池）。
+ */
+@Serializable
+data class WordPoolReviewPayload(
+    val dictionaryId: Long,
+    val strategy: String
+) : BackgroundTaskPayload
+
 @Serializable
 data class QuestionGeneratePayload(
     val articleId: Long,

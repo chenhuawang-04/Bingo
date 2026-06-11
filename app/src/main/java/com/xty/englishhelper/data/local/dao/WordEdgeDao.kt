@@ -46,6 +46,9 @@ interface WordEdgeDao {
     @Query("SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdgesFull(dictionaryId: Long): List<WordEdgeEntity>
 
+    @Query("SELECT COUNT(*) FROM word_edges WHERE dictionary_id = :dictionaryId")
+    suspend fun countEdges(dictionaryId: Long): Int
+
     @Query("SELECT word_id_a, word_id_b, edge_type, status, learning_value, relation_strength, confidence, reason, warning_note, evidence_source, register, example_sentence, difficulty_cefr FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdges(dictionaryId: Long): List<EdgeProjection>
 
