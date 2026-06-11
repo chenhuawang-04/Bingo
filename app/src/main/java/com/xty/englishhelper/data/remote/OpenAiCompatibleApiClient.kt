@@ -1,16 +1,27 @@
 package com.xty.englishhelper.data.remote
 
+import com.squareup.moshi.Moshi
 import com.xty.englishhelper.data.remote.dto.OpenAiContentPart
 import com.xty.englishhelper.data.remote.dto.OpenAiImageUrl
 import com.xty.englishhelper.data.remote.dto.OpenAiMessageDto
 import com.xty.englishhelper.data.remote.dto.OpenAiRequest
+import com.xty.englishhelper.data.remote.dto.OpenAiResponse
+import com.xty.englishhelper.data.remote.dto.OpenAiStreamChunk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.ResponseBody
+import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class OpenAiCompatibleApiClient @Inject constructor(
-    private val apiService: OpenAiApiService
+    private val apiService: OpenAiApiService,
+    moshi: Moshi
 ) : AiApiClient {
+
+    private val responseAdapter = moshi.adapter(OpenAiResponse::class.java)
+    private val streamChunkAdapter = moshi.adapter(OpenAiStreamChunk::class.java)
 
     override suspend fun sendMessage(
         url: String,
@@ -91,10 +102,44 @@ class OpenAiCompatibleApiClient @Inject constructor(
         }
     }
 
-    private fun extractContent(response: com.xty.englishhelper.data.remote.dto.OpenAiResponse): String {
-        return response.choices.firstOrNull()?.message?.content
-            ?: throw IllegalStateException("Empty response from OpenAI-compatible API")
-    }
+    /**
+     * 读取原始响应体并自动判断是普通 JSON 还是 SSE 流式响应：
+     * - 普通 JSON：按 [OpenAiResponse] 取 choices[0].message.content。
+     * - 流式（text/event-stream 或体以 data:/event: 开头）：把每个 chunk 的
+     *   choices[0].delta.content 顺序拼接成完整文本。
+     * 非 2xx 时抛出携带状态码的异常，保持 [com.xty.englishhelper.data.repository.pool.AiErrorUtils]
+     * 基于消息中状态码的重试分类不变。
+     */
+    private suspend fun extractContent(response: Response<ResponseBody>): String =
+        withContext(Dispatchers.IO) {
+            if (!response.isSuccessful) {
+                val errorBody = runCatching { response.errorBody()?.string() }.getOrNull().orEmpty()
+                throw IllegalStateException(
+                    "HTTP ${response.code()} ${response.message()} 调用 AI 失败: ${errorBody.take(500)}"
+                )
+            }
+            val body = response.body()
+                ?: throw IllegalStateException("Empty response from OpenAI-compatible API")
+            val contentType = body.contentType()?.toString()
+            val raw = body.string()
+
+            if (SseParser.looksLikeEventStream(contentType, raw)) {
+                val text = buildString {
+                    SseParser.dataPayloads(raw).forEach { payload ->
+                        val chunk = runCatching { streamChunkAdapter.fromJson(payload) }.getOrNull()
+                        chunk?.choices?.firstOrNull()?.delta?.content?.let { append(it) }
+                    }
+                }
+                if (text.isEmpty()) {
+                    throw IllegalStateException("Empty streamed response from OpenAI-compatible API")
+                }
+                text
+            } else {
+                val parsed = runCatching { responseAdapter.fromJson(raw) }.getOrNull()
+                parsed?.choices?.firstOrNull()?.message?.content
+                    ?: throw IllegalStateException("Empty response from OpenAI-compatible API")
+            }
+        }
 
     private fun detectImageMime(bytes: ByteArray): String {
         if (bytes.size < 4) return "image/jpeg"

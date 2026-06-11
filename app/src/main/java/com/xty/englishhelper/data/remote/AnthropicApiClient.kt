@@ -1,16 +1,27 @@
 package com.xty.englishhelper.data.remote
 
+import com.squareup.moshi.Moshi
 import com.xty.englishhelper.data.remote.dto.AnthropicRequest
+import com.xty.englishhelper.data.remote.dto.AnthropicResponse
+import com.xty.englishhelper.data.remote.dto.AnthropicStreamEvent
 import com.xty.englishhelper.data.remote.dto.MessageDto
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
+import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class AnthropicApiClient @Inject constructor(
-    private val apiService: AnthropicApiService
+    private val apiService: AnthropicApiService,
+    moshi: Moshi
 ) : AiApiClient {
+
+    private val responseAdapter = moshi.adapter(AnthropicResponse::class.java)
+    private val streamEventAdapter = moshi.adapter(AnthropicStreamEvent::class.java)
 
     override suspend fun sendMessage(
         url: String,
@@ -28,8 +39,7 @@ class AnthropicApiClient @Inject constructor(
             messages = messages.map { MessageDto(role = it.role, content = it.content) }
         )
         val response = apiService.createMessage(fullUrl, apiKey, request)
-        return response.content.firstOrNull()?.text
-            ?: throw IllegalStateException("Empty response from Anthropic API")
+        return extractContent(response)
     }
 
     override suspend fun sendMultimodalMessage(
@@ -43,9 +53,47 @@ class AnthropicApiClient @Inject constructor(
         val fullUrl = buildUrl(url)
         val requestBody = buildMultimodalRequestBody(model, imageBytes, prompt, maxTokens)
         val response = apiService.createMultimodalMessage(fullUrl, apiKey, requestBody)
-        return response.content.firstOrNull()?.text
-            ?: throw IllegalStateException("Empty response from Anthropic API")
+        return extractContent(response)
     }
+
+    /**
+     * 读取原始响应体并自动判断普通 JSON 还是 SSE 流式：
+     * - 普通 JSON：按 [AnthropicResponse] 取 content[0].text。
+     * - 流式：聚合所有 content_block_delta / text_delta 事件的 text。
+     * 非 2xx 抛携带状态码的异常，保持重试分类不变。
+     */
+    private suspend fun extractContent(response: Response<ResponseBody>): String =
+        withContext(Dispatchers.IO) {
+            if (!response.isSuccessful) {
+                val errorBody = runCatching { response.errorBody()?.string() }.getOrNull().orEmpty()
+                throw IllegalStateException(
+                    "HTTP ${response.code()} ${response.message()} 调用 AI 失败: ${errorBody.take(500)}"
+                )
+            }
+            val body = response.body()
+                ?: throw IllegalStateException("Empty response from Anthropic API")
+            val contentType = body.contentType()?.toString()
+            val raw = body.string()
+
+            if (SseParser.looksLikeEventStream(contentType, raw)) {
+                val text = buildString {
+                    SseParser.dataPayloads(raw).forEach { payload ->
+                        val event = runCatching { streamEventAdapter.fromJson(payload) }.getOrNull()
+                        if (event?.type == "content_block_delta" && event.delta?.type == "text_delta") {
+                            event.delta.text?.let { append(it) }
+                        }
+                    }
+                }
+                if (text.isEmpty()) {
+                    throw IllegalStateException("Empty streamed response from Anthropic API")
+                }
+                text
+            } else {
+                val parsed = runCatching { responseAdapter.fromJson(raw) }.getOrNull()
+                parsed?.content?.firstOrNull()?.text
+                    ?: throw IllegalStateException("Empty response from Anthropic API")
+            }
+        }
 
     private fun buildUrl(baseUrl: String): String {
         var base = baseUrl.trim().trimEnd('/')
