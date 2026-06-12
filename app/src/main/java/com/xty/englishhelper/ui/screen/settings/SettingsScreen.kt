@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.settings
+package com.xty.englishhelper.ui.screen.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -635,13 +636,63 @@ private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewMo
         )
 
         val scopeItems = listOf(
-            ScopeItem(AiSettingsScope.MAIN, "主模型", "常规对话与主任务使用"),
-            ScopeItem(AiSettingsScope.FAST, "快速模型", "朗读、词链与实时交互使用"),
-            ScopeItem(AiSettingsScope.OCR, "OCR 模型", "OCR 识别与题库扫描"),
-            ScopeItem(AiSettingsScope.POOL, "词池整理", "词池整理与批量处理"),
-            ScopeItem(AiSettingsScope.ARTICLE, "文章解析", "段落与语法解析"),
-            ScopeItem(AiSettingsScope.SEARCH, "搜索模型", "题库来源验证与搜索"),
-            ScopeItem(AiSettingsScope.REVIEWER, "词池审核", "审核与评分词池质量")
+            ScopeItem(
+                AiSettingsScope.MAIN, "主模型", "常规对话与主任务使用",
+                details = "使用场景：\n" +
+                    "· 单词 AI 整理（自动填充音标、释义、词根拆解、近义词等）\n" +
+                    "· 文章段落 AI 翻译\n" +
+                    "· 文章段落 AI 分析（语法点、关键词汇、句子拆解）\n" +
+                    "· 题库 AI 答案生成与解析\n" +
+                    "· 后台批量任务（单词整理、答案生成等）"
+            ),
+            ScopeItem(
+                AiSettingsScope.FAST, "快速模型", "朗读、词链与实时交互使用",
+                details = "使用场景：\n" +
+                    "· 文章适配度评分（评估是否适合考研出题，0-100 分）\n" +
+                    "· 在线文章批量评分（后台任务）\n" +
+                    "· 题库翻译评分（逐句对比参考译文）\n" +
+                    "· 题库写作批改（五档评分 + 扣分明细）\n" +
+                    "· 文章生词快速分析\n" +
+                    "· 即时查词与词链高亮\n\n" +
+                    "建议选用响应快、成本低的模型。"
+            ),
+            ScopeItem(
+                AiSettingsScope.OCR, "OCR 模型", "OCR 识别与题库扫描",
+                details = "使用场景：\n" +
+                    "· 拍照批量导入单词（识别手写/印刷体）\n" +
+                    "· 试卷扫描识别（题型、文章、题目、选项）\n" +
+                    "· 答案页扫描提取\n" +
+                    "· 文章 OCR 录入（拍照提取标题、正文）\n\n" +
+                    "需要支持视觉/多模态输入的模型。"
+            ),
+            ScopeItem(
+                AiSettingsScope.POOL, "词池整理", "词池整理与批量处理",
+                details = "使用场景：\n" +
+                    "· 质量优先模式词池构建（逐词 AI 精确比对）\n" +
+                    "· 词池条目类型分类\n\n" +
+                    "构建途中可在此处热切换模型，下一个请求即生效。"
+            ),
+            ScopeItem(
+                AiSettingsScope.ARTICLE, "文章解析", "段落与语法解析",
+                details = "使用场景：\n" +
+                    "· 文章段落 AI 分析（中文翻译、语法点、关键词汇、句子拆解）\n\n" +
+                    "与主模型的段落分析共用，但可独立配置以使用更适合长文理解的模型。"
+            ),
+            ScopeItem(
+                AiSettingsScope.SEARCH, "搜索模型", "题库来源验证与搜索",
+                details = "使用场景：\n" +
+                    "· 阅读理解来源验证（联网搜索原文出处）\n" +
+                    "· 范文检索（搜索模型范文与链接）\n" +
+                    "· 单词整理增强模式的参考检索（当参考来源选"搜索模型"时）\n\n" +
+                    "需要支持联网搜索/工具调用的模型。"
+            ),
+            ScopeItem(
+                AiSettingsScope.REVIEWER, "词池审核", "审核与评分词池质量",
+                details = "使用场景：\n" +
+                    "· 词池质量审核（检查分组合理性）\n" +
+                    "· 词池评分\n\n" +
+                    "作为独立手动任务触发，不影响自动构建流程。"
+            )
         )
 
         scopeItems.forEach { item ->
@@ -870,18 +921,52 @@ private fun ScopeConfigCard(
 ) {
     var providerExpanded by remember { mutableStateOf(false) }
     var modelExpanded by remember { mutableStateOf(false) }
+    var showDetailsDialog by remember { mutableStateOf(false) }
+
+    if (showDetailsDialog) {
+        AlertDialog(
+            onDismissRequest = { showDetailsDialog = false },
+            title = { Text(item.title) },
+            text = {
+                Text(
+                    text = item.details,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showDetailsDialog = false }) {
+                    Text("知道了")
+                }
+            }
+        )
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(item.title, style = MaterialTheme.typography.titleSmall)
-            Text(
-                item.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(item.title, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        item.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = { showDetailsDialog = true }) {
+                    Icon(
+                        Icons.Outlined.Info,
+                        contentDescription = "查看使用场景",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             ExposedDropdownMenuBox(
                 expanded = providerExpanded,
@@ -1222,7 +1307,8 @@ private fun TtsSection(
 private data class ScopeItem(
     val scope: AiSettingsScope,
     val title: String,
-    val description: String
+    val description: String,
+    val details: String
 )
 
 private fun providerLabel(provider: AiProvider): String {
