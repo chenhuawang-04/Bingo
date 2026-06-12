@@ -181,18 +181,6 @@ fun ScanDetailScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(
-                                        text = "每栏目最多 ${uiState.maxPerSection} 篇",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Slider(
-                                        value = uiState.maxPerSection.toFloat(),
-                                        onValueChange = { viewModel.setScanMaxPerSection(it.roundToInt()) },
-                                        valueRange = 1f..20f,
-                                        steps = 18
-                                    )
-                                }
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(
                                         text = "重评间隔 ${uiState.rescoreAfterHours} 小时",
                                         style = MaterialTheme.typography.bodyMedium
                                     )

@@ -42,7 +42,6 @@ data class ArticleListUiState(
     val scoreFilter: ArticleScoreFilter = ArticleScoreFilter.ALL,
     val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT,
     val scanTask: BackgroundTask? = null,
-    val scanMaxPerSection: Int = 5,
     val scanRescoreAfterHours: Int = 24,
     val isScanConfigExpanded: Boolean = false
 )
@@ -322,7 +321,6 @@ class ArticleListViewModel @Inject constructor(
             }
             backgroundTaskManager.enqueueOnlineArticleScanScore(
                 force = true,
-                maxPerSection = _uiState.value.scanMaxPerSection,
                 rescoreAfterHours = _uiState.value.scanRescoreAfterHours
             )
         }
@@ -346,10 +344,6 @@ class ArticleListViewModel @Inject constructor(
     fun deleteScanTask() {
         val taskId = _uiState.value.scanTask?.id ?: return
         backgroundTaskManager.deleteTask(taskId)
-    }
-
-    fun setScanMaxPerSection(value: Int) {
-        _uiState.update { it.copy(scanMaxPerSection = value.coerceIn(1, 20)) }
     }
 
     fun setScanRescoreAfterHours(value: Int) {

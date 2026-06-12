@@ -18,7 +18,6 @@ import javax.inject.Inject
 
 data class ScanDetailUiState(
     val scanTask: BackgroundTask? = null,
-    val maxPerSection: Int = 5,
     val rescoreAfterHours: Int = 24,
     val isConfigExpanded: Boolean = false,
     val error: String? = null
@@ -43,11 +42,6 @@ class ScanDetailViewModel @Inject constructor(
                 }
         }
         viewModelScope.launch {
-            settingsDataStore.scanMaxPerSection.collect { value ->
-                _uiState.update { it.copy(maxPerSection = value) }
-            }
-        }
-        viewModelScope.launch {
             settingsDataStore.scanRescoreAfterHours.collect { value ->
                 _uiState.update { it.copy(rescoreAfterHours = value) }
             }
@@ -56,12 +50,6 @@ class ScanDetailViewModel @Inject constructor(
 
     fun toggleScanConfig() {
         _uiState.update { it.copy(isConfigExpanded = !it.isConfigExpanded) }
-    }
-
-    fun setScanMaxPerSection(value: Int) {
-        val clamped = value.coerceIn(1, 20)
-        _uiState.update { it.copy(maxPerSection = clamped) }
-        viewModelScope.launch { settingsDataStore.setScanMaxPerSection(clamped) }
     }
 
     fun setScanRescoreAfterHours(value: Int) {
@@ -79,7 +67,6 @@ class ScanDetailViewModel @Inject constructor(
             }
             backgroundTaskManager.enqueueOnlineArticleScanScore(
                 force = true,
-                maxPerSection = _uiState.value.maxPerSection,
                 rescoreAfterHours = _uiState.value.rescoreAfterHours
             )
         }

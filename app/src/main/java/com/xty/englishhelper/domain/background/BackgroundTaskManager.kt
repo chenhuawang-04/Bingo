@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.domain.background
+package com.xty.englishhelper.domain.background
 
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.domain.model.AiModelSnapshot
@@ -255,13 +255,11 @@ class BackgroundTaskManager @Inject constructor(
 
     fun enqueueOnlineArticleScanScore(
         force: Boolean = false,
-        maxPerSection: Int = 5,
         rescoreAfterHours: Int = 24,
         forceRefresh: Boolean = false
     ) {
         val payload = OnlineArticleScanScorePayload(
             startedAt = System.currentTimeMillis(),
-            maxPerSection = maxPerSection.coerceIn(1, 20),
             rescoreAfterHours = rescoreAfterHours.coerceIn(1, 24 * 30),
             forceRefresh = forceRefresh
         )
@@ -1222,35 +1220,44 @@ class BackgroundTaskManager @Inject constructor(
         val sectionPlan = OnlineReadingSource.entries.flatMap { source ->
             OnlineReadingCatalog.sectionsFor(source).map { section -> source to section }
         }
-        val total = (sectionPlan.size * payload.maxPerSection).coerceAtLeast(1)
+        var total = 0
         var progress = 0
         val recentThreshold = payload.rescoreAfterHours.toLong() * 60L * 60L * 1000L
         val scannedUrls = mutableSetOf<String>()
 
-        repository.updateProgress(task.id, progress, total)
-
+        // First pass: count all candidates to set accurate total
+        val allCandidates = mutableListOf<Triple<OnlineReadingSource, OnlineReadingCatalog.Section, OnlineScanCandidate>>()
         for ((source, section) in sectionPlan) {
             val candidates = runCatching {
-                fetchOnlineScanCandidates(source, section.key).take(payload.maxPerSection)
+                fetchOnlineScanCandidates(source, section.key)
             }.getOrElse { e ->
                 Log.w("BackgroundTaskManager", "Scan section failed: ${source.key}/${section.key}", e)
                 emptyList()
             }
-
             for (candidate in candidates) {
-                progress += 1
-                repository.updateProgress(task.id, progress.coerceAtMost(total), total)
-
                 val normalizedUrl = OnlineArticleSourceUrl.normalize(candidate.url).ifBlank { candidate.url }
-                if (!scannedUrls.add(normalizedUrl)) continue
+                if (scannedUrls.add(normalizedUrl)) {
+                    allCandidates.add(Triple(source, section, candidate))
+                }
+            }
+        }
+        total = allCandidates.size.coerceAtLeast(1)
+        scannedUrls.clear()
+        repository.updateProgress(task.id, progress, total)
 
-                try {
-                    val now = System.currentTimeMillis()
-                    val existing = articleRepository.getArticleBySourceUrl(candidate.url)
-                    val isRecent = existing?.suitabilityUpdatedAt?.let { now - it < recentThreshold } == true
-                    if (!payload.forceRefresh && existing?.suitabilityScore != null && isRecent) {
-                        continue
-                    }
+        for ((source, section, candidate) in allCandidates) {
+            progress += 1
+            repository.updateProgress(task.id, progress.coerceAtMost(total), total)
+
+            val normalizedUrl = OnlineArticleSourceUrl.normalize(candidate.url).ifBlank { candidate.url }
+
+            try {
+                val now = System.currentTimeMillis()
+                val existing = articleRepository.getArticleBySourceUrl(candidate.url)
+                val isRecent = existing?.suitabilityUpdatedAt?.let { now - it < recentThreshold } == true
+                if (!payload.forceRefresh && existing?.suitabilityScore != null && isRecent) {
+                    continue
+                }
 
                     val detail = fetchOnlineArticleDetail(source, candidate.url)
                     val excerpt = buildOnlineEvaluationExcerpt(detail.paragraphs)
