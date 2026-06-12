@@ -328,14 +328,48 @@ class ArticleAiRepositoryImpl @Inject constructor(
     ): ArticleSuitabilityResult {
         val safeExcerpt = excerpt.trim().take(2200)
         val userMessage = buildString {
-            append("你是考研英语选文评估员，请判断文章是否适合用作考研英语阅读/完形/翻译材料，并给出0-100整数评分与简短理由。\n")
-            append("评估标准（摘要）：\n")
-            append("- 主题倾向公共议题/社科/科技/教育/经济/环境/文化现象；避免政治、宗教、军事、暴力、种族、色情等敏感或强争议话题。\n")
-            append("- 体裁偏议论文/说明文；文学/诗歌/戏剧/纯新闻快讯/广告/操作指南/过度娱乐化内容不适合。\n")
-            append("- 可读性与公平：语言规范、背景依赖低，避免高度专业论文或术语密集。\n")
-            append("- 命题性：逻辑结构清晰，有转折/因果/对比/例证等，便于出题。\n")
-            append("- 长度适中（约400-600词更合适），过短/过长可扣分。\n\n")
-            append("文章信息：\n")
+            appendLine("你是考研英语选文评估专家，严格依据《考研英语选文口味报告（2020–2025真题样本）》评估文章适配度。")
+            appendLine()
+            appendLine("═══ 评估维度与权重 ═══")
+            appendLine("按以下5个维度分别打分（0-100），加权计算总分：")
+            appendLine()
+            appendLine("【1】题材适配度（权重25%）")
+            appendLine("  高分：社会科学/公共议题（教育、就业、代际差异、社会行为、公共政策）、经济管理、科技与社会关系（AI伦理、互联网、环境）、人文文化现象")
+            appendLine("  中分：自然科学科普、健康医疗（非专业门槛）")
+            appendLine("  低分：高度专业论文（医学/物理/哲学深奥研究）、纯娱乐八卦")
+            appendLine("  零分：政治/宗教/军事/暴力/种族/色情/歧视等敏感争议话题")
+            appendLine()
+            appendLine("【2】体裁适配度（权重20%）")
+            appendLine("  高分：议论文、说明文（逻辑曲折、转折/对比/因果/举例充分）")
+            appendLine("  中分：深度评论/分析性文章（非新闻快讯）")
+            appendLine("  低分：纯新闻快讯、操作手册、广告文案")
+            appendLine("  零分：小说、戏剧、诗歌、文学散文")
+            appendLine()
+            appendLine("【3】可读性（权重20%）")
+            appendLine("  高分：语言规范正式、信息密度高但可理解、背景依赖低、文本自足")
+            appendLine("  中分：偶尔术语但可推测、需要少量背景知识")
+            appendLine("  低分：术语密集、高度专业行话、需要深厚专业背景")
+            appendLine()
+            appendLine("【4】命题性（权重25%）")
+            appendLine("  高分：论证结构完整、有明确逻辑链、易设置主旨/细节/推理/态度/例证作用题")
+            appendLine("  中分：有一定逻辑结构但转折较少")
+            appendLine("  低分：逻辑过于平直、缺乏论证空间、难以设题")
+            appendLine()
+            appendLine("【5】长度适配度（权重10%）")
+            appendLine("  最佳：400-500词（阅读理解单篇典型长度）")
+            appendLine("  可接受：300-400词或500-600词")
+            appendLine("  偏短：<300词   偏长：>600词")
+            appendLine()
+            appendLine("═══ 来源参考（不计分，仅加分项）═══")
+            appendLine("以下来源的文章可额外+3分（上限100）：The Economist, The Guardian, The Christian Science Monitor, Scientific American, Nature, The Atlantic, The New York Times, Bloomberg BusinessWeek")
+            appendLine()
+            appendLine("═══ 扣分项 ═══")
+            appendLine("- 逻辑过于平直、缺乏转折与论证空间：-10分")
+            appendLine("- 观点极端或立场偏颇：-10分")
+            appendLine("- 语言不规范/口语化严重：-10分")
+            appendLine("- 过时内容（>5年）：-5分")
+            appendLine()
+            appendLine("═══ 文章信息 ═══")
             append("Title: ").append(title).append('\n')
             if (!trailText.isNullOrBlank()) append("Summary: ").append(trailText.trim()).append('\n')
             if (!source.isNullOrBlank()) append("Source: ").append(source.trim()).append('\n')
@@ -346,15 +380,25 @@ class ArticleAiRepositoryImpl @Inject constructor(
                 append("Excerpt:\n")
                 append(safeExcerpt).append('\n')
             }
+            appendLine()
+            appendLine("═══ 输出要求 ═══")
+            appendLine("请先对每个维度评分并简述理由，然后计算加权总分。")
+            appendLine("返回严格JSON格式：")
             append(
                 """
-                请仅返回如下JSON：
                 {
                   "score": 85,
-                  "reason": "简短理由，不超过两句话"
+                  "topicScore": 90,
+                  "genreScore": 85,
+                  "readabilityScore": 80,
+                  "examinabilityScore": 90,
+                  "lengthScore": 85,
+                  "reason": "综合评价，2-3句话说明主要优势和不足"
                 }
                 """.trimIndent()
             )
+            appendLine()
+            appendLine("评分标准：90+优秀（高适配）、75-89良好（适配）、60-74一般（基本可用）、<60较差（不建议出题）")
             append("\n")
             append(Constants.JSON_STRICT_RULES)
         }
@@ -580,7 +624,12 @@ private data class QuickWordAnalysisJson(
 
 private data class SuitabilityJson(
     val score: Double? = null,
-    val reason: String? = null
+    val reason: String? = null,
+    val topicScore: Double? = null,
+    val genreScore: Double? = null,
+    val readabilityScore: Double? = null,
+    val examinabilityScore: Double? = null,
+    val lengthScore: Double? = null
 )
 
 private data class WordCandidateJson(
