@@ -79,6 +79,7 @@ fun ArticleListScreen(
         sortOption = uiState.sortOption
     )
     var showCreateCategoryDialog by rememberSaveable { mutableStateOf(false) }
+    var newCategoryName by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -193,10 +194,10 @@ fun ArticleListScreen(
         AlertDialog(
             onDismissRequest = {
                 showCreateCategoryDialog = false
+                newCategoryName = ""
             },
             title = { Text("新建分类") },
             text = {
-                var newCategoryName by rememberSaveable { mutableStateOf("") }
                 OutlinedTextField(
                     value = newCategoryName,
                     onValueChange = { newCategoryName = it },
@@ -208,15 +209,19 @@ fun ArticleListScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.createCategory("")
+                        viewModel.createCategory(newCategoryName)
                         showCreateCategoryDialog = false
+                        newCategoryName = ""
                     }
                 ) {
                     Text("确定")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showCreateCategoryDialog = false }) {
+                TextButton(onClick = {
+                    showCreateCategoryDialog = false
+                    newCategoryName = ""
+                }) {
                     Text("取消")
                 }
             }
@@ -680,7 +685,7 @@ private fun ArticleCardMenu(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    androidx.compose.foundation.layout.Box(modifier = modifier) {
+    Box(modifier = modifier) {
         IconButton(onClick = onExpand) {
             Icon(
                 imageVector = Icons.Default.MoreVert,
