@@ -82,3 +82,6 @@ data class QuestionBankReaderRoute(val groupId: Long)
 
 @Serializable
 data object PlanRoute
+
+@Serializable
+data object ScanDetailRoute

@@ -11,6 +11,7 @@ import com.xty.englishhelper.ui.screen.addword.AddWordScreen
 import com.xty.englishhelper.ui.screen.article.ArticleEditorScreen
 import com.xty.englishhelper.ui.screen.article.ArticleListScreen
 import com.xty.englishhelper.ui.screen.article.ArticleReaderScreen
+import com.xty.englishhelper.ui.screen.article.ScanDetailScreen
 import com.xty.englishhelper.ui.screen.guardian.GuardianBrowseScreen
 import com.xty.englishhelper.ui.screen.questionbank.QuestionBankListScreen
 import com.xty.englishhelper.ui.screen.questionbank.QuestionBankScanScreen
@@ -132,6 +133,12 @@ fun NavGraph(navController: NavHostController) {
 
             composable<TtsDiagnosticsRoute> {
                 TtsDiagnosticsScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<ScanDetailRoute> {
+                ScanDetailScreen(
                     onBack = { navController.popBackStack() }
                 )
             }
