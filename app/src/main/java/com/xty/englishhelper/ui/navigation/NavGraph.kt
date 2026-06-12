@@ -190,7 +190,8 @@ fun NavGraph(navController: NavHostController) {
                         navController.navigate(ArticleReaderRoute(articleId))
                     },
                     onSettings = { navController.navigate(SettingsRoute) },
-                    onGuardianBrowse = { navController.navigate(GuardianBrowseRoute) }
+                    onGuardianBrowse = { navController.navigate(GuardianBrowseRoute) },
+                    onScanDetail = { navController.navigate(ScanDetailRoute) }
                 )
             }
 
