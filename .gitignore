@@ -18,8 +18,7 @@ local.properties
 *.keystore
 
 # Project documents (local only, do not commit/push)
-docs/*
-!docs/compose/
+docs/
 
 # Claude Code local settings
 .claude/
