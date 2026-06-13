@@ -1361,9 +1361,7 @@ class BackgroundTaskManager @Inject constructor(
             else -> com.xty.englishhelper.data.sync.SyncMode.SMART
         }
 
-        syncEngine.sync(mode) { progress ->
-            repository.updateProgress(task.id, progress.current, progress.total, "${progress.phase}: ${progress.detail}")
-        }
+        syncEngine.sync(mode)
     }
 
     private suspend fun fetchOnlineScanCandidates(
