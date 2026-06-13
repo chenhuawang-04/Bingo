@@ -3,6 +3,8 @@ package com.xty.englishhelper.data.sync
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import javax.inject.Inject
+import javax.inject.Singleton
 
 enum class SyncPhase { DOWNLOAD, MERGE, UPLOAD }
 
@@ -13,7 +15,8 @@ data class SyncProgress(
     val total: Int = 0
 )
 
-class SyncProgressTracker {
+@Singleton
+class SyncProgressTracker @Inject constructor() {
     private val _progress = MutableStateFlow(SyncProgress())
     val progress: StateFlow<SyncProgress> = _progress.asStateFlow()
 
