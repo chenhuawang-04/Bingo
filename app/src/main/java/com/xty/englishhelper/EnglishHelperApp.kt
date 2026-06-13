@@ -3,6 +3,7 @@
 import android.app.Application
 import com.xty.englishhelper.data.debug.AiDebugManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.data.sync.AutoSyncScheduler
 import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +21,8 @@ class EnglishHelperApp : Application() {
     lateinit var aiDebugManager: AiDebugManager
     @Inject
     lateinit var backgroundTaskManager: BackgroundTaskManager
+    @Inject
+    lateinit var autoSyncScheduler: AutoSyncScheduler
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -44,7 +47,11 @@ class EnglishHelperApp : Application() {
             backgroundTaskManager.start()
             backgroundTaskManager.enqueueOnlineArticleScanScore()
         }
+        appScope.launch {
+            autoSyncScheduler.checkAndSync()
+        }
     }
 }
+
 
 
