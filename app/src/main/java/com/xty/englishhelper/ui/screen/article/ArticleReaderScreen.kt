@@ -472,7 +472,6 @@ private fun ArticleReaderContent(
             parseStatusText(article.parseStatus)?.let(::add)
         }
     }
-    val hasSummary = article.summary.isNotBlank()
 
     val ttsSessionId = "article:${article.id}"
     val ttsActive = ttsState.sessionId == ttsSessionId
@@ -516,7 +515,6 @@ private fun ArticleReaderContent(
                 article = article,
                 coverUri = coverUri,
                 metaParts = metaParts,
-                hasSummary = hasSummary,
                 translationEnabled = translationEnabled,
                 isArticleSpeaking = ttsActive && ttsState.isSpeaking
             )
@@ -584,7 +582,6 @@ private fun ReaderHeroCard(
     article: Article,
     coverUri: String?,
     metaParts: List<String>,
-    hasSummary: Boolean,
     translationEnabled: Boolean,
     isArticleSpeaking: Boolean
 ) {
