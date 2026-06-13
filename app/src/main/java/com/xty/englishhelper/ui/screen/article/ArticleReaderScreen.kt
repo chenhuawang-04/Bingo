@@ -98,6 +98,7 @@ import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TranslationBlock
 import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
+import com.xty.englishhelper.ui.designsystem.tokens.LocalReaderColors
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 import kotlinx.coroutines.launch
 
