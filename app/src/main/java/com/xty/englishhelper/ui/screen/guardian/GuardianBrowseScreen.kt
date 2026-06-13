@@ -576,15 +576,10 @@ private fun ArticlePreviewCard(
     val imageUrl = article.coverImageUrl ?: article.thumbnailUrl
     val scoreText = when {
         article.isEvaluating -> "评估中"
-        article.suitabilityScore != null -> "评分 ${article.suitabilityScore}"
+        article.suitabilityScore != null -> "${article.suitabilityScore}分"
         else -> "未评分"
     }
-    val scoreColor = when {
-        article.isEvaluating -> MaterialTheme.colorScheme.primary
-        article.suitabilityScore != null -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val supportingLine = buildList {
+    val sourceLine = buildList {
         add(article.source?.label ?: "Online")
         article.sectionLabel?.takeIf { it.isNotBlank() }?.let { add(it) }
         if (!article.author.isNullOrBlank()) add(article.author)
@@ -592,13 +587,12 @@ private fun ArticlePreviewCard(
     val placeholderSeed = article.title.firstOrNull()?.uppercase() ?: "A"
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = ArticleShapes.Card,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
-        ),
-        shape = ArticleShapes.Card
+        )
     ) {
         Row(
             modifier = Modifier
@@ -619,9 +613,9 @@ private fun ArticlePreviewCard(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (supportingLine.isNotBlank()) {
+                if (sourceLine.isNotBlank()) {
                     Text(
-                        text = supportingLine,
+                        text = sourceLine,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -639,68 +633,26 @@ private fun ArticlePreviewCard(
                         text = article.trailText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    EditorialPill(
-                        text = when {
-                            article.isWordCountLoading -> "统计词数中"
-                            article.wordCount != null && article.wordCount > 0 -> "${article.wordCount} 词"
-                            else -> "词数未知"
-                        }
-                    )
-                    EditorialPill(
-                        text = scoreText,
-                        containerColor = scoreColor.copy(alpha = 0.12f),
-                        contentColor = scoreColor
-                    )
-                    if (!article.detailError.isNullOrBlank()) {
-                        EditorialPill(
-                            text = "详情待补全",
-                            containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.10f),
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-
-                if (!article.suitabilityReason.isNullOrBlank()) {
-                    Text(
-                        text = article.suitabilityReason,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (!article.detailError.isNullOrBlank()) {
+                    if (article.wordCount != null && article.wordCount > 0) {
                         Text(
-                            text = article.detailError,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = "${article.wordCount}词",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    } else {
-                        Spacer(Modifier.weight(1f))
                     }
-                    EditorialActionButton(
-                        text = "重新评估",
-                        icon = Icons.Default.Refresh,
-                        onClick = onReevaluate,
-                        enabled = !article.isEvaluating
+                    Text(
+                        text = scoreText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
