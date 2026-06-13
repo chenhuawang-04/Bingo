@@ -286,48 +286,57 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     }
 
     override suspend fun forceUpload(onProgress: (SyncProgress) -> Unit) {
-        onProgress(SyncProgress("上传中", "正在导出本地数据...", 0, 3))
+        onProgress(SyncProgress("上传中", "正在对比云端数据...", 0, 4))
 
+        // Download cloud manifest for comparison
+        val previousManifest = downloadJson("manifest.json", manifestAdapter)
+
+        // Phase 1: Upload dictionaries (incremental via content hash)
+        onProgress(SyncProgress("上传中", "正在同步辞书...", 1, 4))
         val localDicts = dictionaryRepository.getAllDictionaries().first()
         val finalDictJsons = localDicts.mapIndexed { i, dict ->
-            onProgress(SyncProgress("Uploading", "Exporting ${dict.name}...", i + 1, localDicts.size + 2))
             exportLocalDictionary(dict)
         }
-        val previousManifest = downloadJson("manifest.json", manifestAdapter)
         val dictionaryUpload = uploadDictionarySnapshot(
             dictionaries = finalDictJsons,
             previousManifest = previousManifest
         )
 
-        // Upload articles
+        // Phase 2: Upload articles (incremental via timestamp comparison)
+        onProgress(SyncProgress("上传中", "正在同步文章...", 2, 4))
+        val cloudArticles = downloadJson("articles.json", articlesAdapter)
+        val cloudArticleMap = cloudArticles?.articles?.associateBy { it.articleUid } ?: emptyMap()
         val allArticles = articleRepository.getAllArticles().first()
         val articleJsons = mutableListOf<ArticleJsonModel>()
+        var articlesUpdated = 0
         for (article in allArticles) {
-            articleJsons.add(exportArticleJson(article))
+            val cloudArticle = cloudArticleMap[article.articleUid]
+            if (cloudArticle == null || article.updatedAt > cloudArticle.updatedAt) {
+                articleJsons.add(exportArticleJson(article))
+                articlesUpdated++
+            } else {
+                articleJsons.add(cloudArticle)
+            }
         }
-        val articlesExport = ArticlesExportModel(
-            schemaVersion = 3,
-            articles = articleJsons
-        )
+        val articlesExport = ArticlesExportModel(schemaVersion = 3, articles = articleJsons)
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
-        // Upload article categories
+        // Phase 3: Upload categories, question bank, word examples, plan (always full)
+        onProgress(SyncProgress("上传中", "正在同步其他数据...", 3, 4))
         val categoriesExport = exportArticleCategories()
         uploadJson("article_categories.json", categoriesExport, articleCategoriesAdapter)
 
-        // Upload question bank
         val questionBankExport = exportQuestionBank()
         uploadJson("questionbank.json", questionBankExport, questionBankAdapter)
 
-        // Upload word examples
         val wordExamplesExport = exportWordExamples()
         uploadJson("word_examples.json", wordExamplesExport, wordExamplesAdapter)
 
-        // Upload plan
         val planExport = planRepository.exportBackup().toJsonModel()
         uploadJson("plan.json", planExport, planAdapter)
 
-        // Upload manifest
+        // Phase 4: Upload manifest
+        onProgress(SyncProgress("上传中", "正在更新清单...", 4, 4))
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
             schemaVersion = 6,
@@ -343,81 +352,87 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         uploadJson("manifest.json", manifest, manifestAdapter)
 
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
-        onProgress(SyncProgress("完成", "上传完成", 3, 3))
+        onProgress(SyncProgress("完成", "上传完成（增量：${articlesUpdated} 篇文章更新）", 4, 4))
     }
 
     override suspend fun forceDownload(onProgress: (SyncProgress) -> Unit) {
-        onProgress(SyncProgress("下载中", "正在下载云端数据...", 0, 3))
+        onProgress(SyncProgress("下载中", "正在下载云端数据...", 0, 4))
 
         val cloudManifest = downloadJson("manifest.json", manifestAdapter)
             ?: throw IllegalStateException("云端没有同步数据")
 
-        // Download all dicts
+        // Phase 1: Download dictionaries (incremental via content hash)
+        onProgress(SyncProgress("下载中", "正在同步辞书...", 1, 4))
         val cloudDicts = downloadCloudDictionaries(cloudManifest) { current, total, entry ->
             onProgress(
                 SyncProgress(
-                    "Downloading",
-                    "Downloading ${entry.name.ifBlank { entry.path }}",
+                    "下载中",
+                    "下载辞书 ${entry.name.ifBlank { entry.path }}",
                     current,
                     total.coerceAtLeast(1)
                 )
             )
         }.values.toList()
 
+        // Phase 2: Download and merge articles (incremental via timestamp comparison)
+        onProgress(SyncProgress("下载中", "正在同步文章...", 2, 4))
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
-        val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
-        val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
-        val cloudPlan = downloadJson("plan.json", planAdapter)
 
-        // Clear local data
-        onProgress(SyncProgress("导入中", "正在清空本地数据...", 1, 3))
-        val localDicts = dictionaryRepository.getAllDictionaries().first()
-        for (dict in localDicts) {
-            dictionaryRepository.deleteDictionary(dict.id)
-        }
         val localArticles = articleRepository.getAllArticles().first()
-        for (article in localArticles) {
-            articleRepository.deleteArticle(article.id)
-        }
-        // Clear local question bank (CASCADE deletes child tables)
-        val localPapers = questionBankDao.getAllExamPapers().first()
-        for (paper in localPapers) {
-            questionBankDao.deleteExamPaper(paper.id)
-        }
-        planRepository.replaceFromBackup(PlanBackup())
+        val localArticleMap = localArticles.associateBy { it.articleUid }
+        var articlesImported = 0
+        var articlesSkipped = 0
 
-        replaceCategoriesFromCloud(cloudCategories)
-
-        // Import cloud data
-        onProgress(SyncProgress("导入中", "正在导入辞书...", 2, 3))
-        for (dict in cloudDicts) {
-            importCloudDictionary(dict)
-        }
-
-        // Import articles
         if (cloudArticles != null) {
             for (articleJson in cloudArticles.articles) {
-                importArticleFromJson(articleJson, null, supportsStructuredContent = (cloudArticles?.schemaVersion ?: 1) >= 2)
+                val localArticle = localArticleMap[articleJson.articleUid]
+                if (localArticle == null || cloudArticles.articles.firstOrNull { it.articleUid == articleJson.articleUid }?.let {
+                    it.updatedAt > localArticle.updatedAt
+                } == true) {
+                    importArticleFromJson(articleJson, localArticle, supportsStructuredContent = (cloudArticles.schemaVersion ?: 1) >= 2)
+                    articlesImported++
+                } else {
+                    articlesSkipped++
+                }
             }
         }
         normalizeArticleCategories()
 
-        // Import question bank
+        // Phase 3: Download question bank, word examples, plan
+        onProgress(SyncProgress("下载中", "正在同步其他数据...", 3, 4))
+        val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
+        val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
+        val cloudPlan = downloadJson("plan.json", planAdapter)
+
+        // Import question bank (always full, as it's complex to diff)
         if (cloudQuestionBank != null && cloudQuestionBank.papers.isNotEmpty()) {
+            val localPapers = questionBankDao.getAllExamPapers().first()
+            for (paper in localPapers) {
+                questionBankDao.deleteExamPaper(paper.id)
+            }
             val articleUidToId = buildArticleUidToIdMap()
             importQuestionBank(cloudQuestionBank, articleUidToId)
         }
 
+        // Import word examples
         val wordUidToId = buildWordUidToIdMap()
         val articleUidToId = buildArticleUidToIdMap()
         importWordExamples(cloudWordExamples, wordUidToId, articleUidToId)
+
+        // Import plan (always full)
         if (cloudPlan != null) {
             planRepository.replaceFromBackup(cloudPlan.toDomainBackup())
         }
 
+        // Phase 4: Import dictionaries
+        onProgress(SyncProgress("导入中", "正在导入辞书...", 4, 4))
+        for (dict in cloudDicts) {
+            importCloudDictionary(dict)
+        }
+
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
-        onProgress(SyncProgress("完成", "下载完成", 3, 3))
+        onProgress(SyncProgress("完成", "下载完成（增量：${articlesImported} 篇新增，${articlesSkipped} 篇跳过）", 4, 4))
     }
 
     private data class DictionaryUploadResult(
