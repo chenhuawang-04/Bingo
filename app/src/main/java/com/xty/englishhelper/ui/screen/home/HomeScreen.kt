@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -101,13 +100,6 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("我的辞书") },
                 actions = {
-                    // TEMPORARY: entry_type classification button — remove after use
-                    IconButton(
-                        onClick = viewModel::startEntryTypeClassification,
-                        enabled = !state.isClassifying
-                    ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = "AI分类词条")
-                    }
                     IconButton(onClick = onImportExport) {
                         Icon(Icons.Default.ImportExport, contentDescription = "导入导出")
                     }
