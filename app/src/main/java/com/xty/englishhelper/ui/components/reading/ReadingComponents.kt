@@ -81,7 +81,6 @@ fun ParagraphBlock(
     val containerModifier = if (isSpeaking) {
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
             .background(readerColors.speakingBg)
             .padding(6.dp)
     } else {
@@ -129,9 +128,7 @@ fun ParagraphBlock(
                         AsyncImage(
                             model = imageUri,
                             contentDescription = "段落图片",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(4.dp)),
+                            modifier = Modifier.fillMaxWidth(),
                             contentScale = ContentScale.FillWidth
                         )
                     }

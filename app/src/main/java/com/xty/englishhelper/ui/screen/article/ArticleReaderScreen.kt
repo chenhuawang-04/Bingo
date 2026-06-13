@@ -587,135 +587,66 @@ private fun ReaderHeroCard(
     translationEnabled: Boolean,
     isArticleSpeaking: Boolean
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shape = ArticleShapes.Hero
+    val readerColors = LocalReaderColors.current
+
+    Column(
+        modifier = Modifier.fillMaxWidth()
     ) {
+        if (coverUri != null) {
+            AsyncImage(
+                model = coverUri,
+                contentDescription = "封面",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentScale = ContentScale.Crop
+            )
+        }
+
         Column(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (coverUri != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(248.dp)
-                ) {
-                    AsyncImage(
-                        model = coverUri,
-                        contentDescription = "封面",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.Black.copy(alpha = 0.08f),
-                                        Color.Black.copy(alpha = 0.66f)
-                                    )
-                                )
-                            )
-                    )
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(horizontal = 20.dp, vertical = 18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        ReaderMetaPill(
-                            text = if (article.sourceTypeV2 == com.xty.englishhelper.domain.model.ArticleSourceTypeV2.ONLINE) {
-                                "在线文章"
-                            } else {
-                                "本地文章"
-                            },
-                            emphasized = true
-                        )
-                        Text(
-                            text = article.title,
-                            style = ArticleTypography.ReaderTitle,
-                            color = Color.White
-                        )
-                    }
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
-                                    MaterialTheme.colorScheme.surface,
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.36f)
-                                )
-                            )
-                        )
-                        .padding(horizontal = 20.dp, vertical = 22.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ReaderMetaPill(
-                            text = if (article.sourceTypeV2 == com.xty.englishhelper.domain.model.ArticleSourceTypeV2.ONLINE) {
-                                "在线文章"
-                            } else {
-                                "本地文章"
-                            },
-                            emphasized = true
-                        )
-                        Text(
-                            text = article.title,
-                            style = ArticleTypography.ReaderTitle,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+            // Source in MintTeal + rest in gray
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    metaParts.forEach { part ->
-                        ReaderMetaPill(part)
-                    }
-                    ReaderMetaPill(
-                        text = if (translationEnabled) "双语辅助已开" else "原文模式",
-                        emphasized = translationEnabled
+                if (article.source.isNotBlank()) {
+                    Text(
+                        text = article.source,
+                        style = ArticleTypography.ReaderMeta,
+                        color = readerColors.quoteBar
                     )
-                    if (isArticleSpeaking) {
-                        ReaderMetaPill(text = "朗读中", emphasized = true)
-                    }
                 }
-
-                if (hasSummary) {
-                    Surface(
-                        shape = ArticleShapes.Section,
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "导语",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = article.summary,
-                                style = ArticleTypography.ReaderQuote,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                if (article.author.isNotBlank() || article.domain.isNotBlank()) {
+                    Text(
+                        text = buildString {
+                            if (article.author.isNotBlank()) append(article.author)
+                            if (article.domain.isNotBlank()) {
+                                if (isNotBlank()) append(" · ")
+                                append(article.domain)
+                            }
+                        },
+                        style = ArticleTypography.ReaderMeta,
+                        color = readerColors.meta
+                    )
                 }
             }
+
+            // Title
+            Text(
+                text = article.title,
+                style = ArticleTypography.ReaderTitle,
+                color = readerColors.title
+            )
+
+            // Thin rule
+            HorizontalDivider(
+                modifier = Modifier.width(40.dp),
+                color = readerColors.quoteBar,
+                thickness = 1.dp
+            )
         }
     }
 }
