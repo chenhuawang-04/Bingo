@@ -234,155 +234,64 @@ private fun OnlineBrowseOverviewCard(
     onOpenScopeSheet: () -> Unit,
     onRefresh: () -> Unit
 ) {
-    Card(
-        shape = ArticleShapes.Section,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.58f),
-                            MaterialTheme.colorScheme.surface,
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
-                        )
-                    )
-                )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = if (isHomePage) "首页推荐" else "在线题源",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = sectionLabel,
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = if (isHomePage) {
-                            "展示三个来源中评分最高的前 5 篇文章。进入“更改范围”可切换到任一来源栏目。"
-                        } else if (filterEnabled) {
-                            "当前列表只保留符合筛选条件的文章，自动评估也会限定在这一批内容里。"
-                        } else {
-                            "先收窄来源与栏目，再决定是否用筛选与评分排序继续精修题源。"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            Column {
+                Text(
+                    text = if (isHomePage) "首页推荐" else selectedSource.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = sectionLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onRefresh) {
+                    Text("刷新", style = MaterialTheme.typography.labelMedium)
                 }
-
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    EditorialPill(
-                        text = if (isHomePage) "跨来源 Top 5" else selectedSource.label,
-                        emphasized = true
-                    )
-                    if (visibleEvaluatingCount > 0) {
-                        EditorialPill(
-                            text = "评估中 $visibleEvaluatingCount/$totalVisibleCount",
-                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        EditorialPill(text = "当前 $totalVisibleCount 篇")
-                    }
-                    if (filterEnabled) {
-                        EditorialPill(text = "筛选开启")
-                    }
-                }
-
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val stackedLayout = maxWidth < 560.dp
-                    if (stackedLayout) {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    text = "当前栏目",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "${selectedSource.label} · $sectionLabel",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                EditorialActionButton(
-                                    text = "更改范围",
-                                    icon = Icons.Default.Edit,
-                                    onClick = onOpenScopeSheet
-                                )
-                                if (!isHomePage) {
-                                    EditorialActionButton(
-                                        text = "刷新",
-                                        icon = Icons.Default.Refresh,
-                                        onClick = onRefresh,
-                                        prominent = true
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Bottom
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "当前栏目",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "${selectedSource.label} · $sectionLabel",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                EditorialActionButton(
-                                    text = "更改范围",
-                                    icon = Icons.Default.Edit,
-                                    onClick = onOpenScopeSheet
-                                )
-                                if (!isHomePage) {
-                                    EditorialActionButton(
-                                        text = "刷新",
-                                        icon = Icons.Default.Refresh,
-                                        onClick = onRefresh,
-                                        prominent = true
-                                    )
-                                }
-                            }
-                        }
-                    }
+                TextButton(onClick = onOpenScopeSheet) {
+                    Text("切换栏目", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (visibleEvaluatingCount > 0) {
+                Text(
+                    text = "评估中 $visibleEvaluatingCount/$totalVisibleCount",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Text(
+                    text = "共 $totalVisibleCount 篇",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (filterEnabled) {
+                Text(
+                    text = "· 筛选已开启",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
