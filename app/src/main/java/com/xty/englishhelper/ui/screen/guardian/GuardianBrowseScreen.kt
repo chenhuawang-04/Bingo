@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.guardian
+package com.xty.englishhelper.ui.screen.guardian
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -688,8 +688,7 @@ private fun ArticlePreviewCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        shape = ArticleShapes.Section,
-        elevation = CardDefaults.cardElevation(3.dp)
+        shape = ArticleShapes.Card
     ) {
         Row(
             modifier = Modifier
