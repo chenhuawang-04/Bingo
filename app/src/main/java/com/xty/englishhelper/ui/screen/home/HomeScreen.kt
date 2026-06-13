@@ -132,14 +132,15 @@ fun HomeScreen(
                     ) {
                         // Left panel: Dashboard
                         if (state.dashboard.hasData) {
-                            Column(
+                            LazyColumn(
                                 modifier = Modifier
                                     .width(320.dp)
-                                    .fillMaxHeight()
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(16.dp)
+                                    .fillMaxHeight(),
+                                contentPadding = PaddingValues(16.dp)
                             ) {
-                                DashboardPanel(state.dashboard)
+                                item {
+                                    DashboardPanel(state.dashboard)
+                                }
                             }
                             VerticalDivider()
                         }
