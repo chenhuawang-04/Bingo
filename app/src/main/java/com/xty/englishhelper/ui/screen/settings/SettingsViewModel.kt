@@ -39,7 +39,8 @@ class SettingsViewModel @Inject constructor(
     private val forceDownloadUseCase: ForceDownloadUseCase,
     private val testSyncConnectionUseCase: TestSyncConnectionUseCase,
     private val getCloudManifestUseCase: GetCloudManifestUseCase,
-    private val backgroundTaskManager: com.xty.englishhelper.domain.background.BackgroundTaskManager
+    private val backgroundTaskManager: com.xty.englishhelper.domain.background.BackgroundTaskManager,
+    private val backgroundTaskRepository: com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -642,11 +643,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     private suspend fun monitorSyncTask() {
-        val repository = backgroundTaskManager.javaClass.getDeclaredField("repository")
-            .apply { isAccessible = true }
-            .get(backgroundTaskManager) as com.xty.englishhelper.domain.repository.BackgroundTaskRepository
-
-        repository.getTasksByType(com.xty.englishhelper.domain.model.BackgroundTaskType.CLOUD_SYNC)
+        backgroundTaskRepository.getTasksByType(com.xty.englishhelper.domain.model.BackgroundTaskType.CLOUD_SYNC)
             .collect { tasks ->
                 val task = tasks.firstOrNull { it.status != com.xty.englishhelper.domain.model.BackgroundTaskStatus.CANCELED }
                 if (task == null) {
