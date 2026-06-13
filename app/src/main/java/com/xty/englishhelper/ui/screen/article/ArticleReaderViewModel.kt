@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.article
+package com.xty.englishhelper.ui.screen.article
 
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
@@ -775,9 +775,9 @@ class ArticleReaderViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isGeneratingQuestions = true, generateError = null) }
             try {
-                val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
+                val config = settingsDataStore.getAiConfig(AiSettingsScope.QUESTION_GENERATE)
                 if (config.apiKey.isBlank()) {
-                    _uiState.update { it.copy(isGeneratingQuestions = false, generateError = "请先在设置中配置主模型") }
+                    _uiState.update { it.copy(isGeneratingQuestions = false, generateError = "请先在设置中配置出题模型") }
                     return@launch
                 }
 

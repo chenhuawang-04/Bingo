@@ -7,5 +7,6 @@ enum class AiSettingsScope(val prefix: String) {
     OCR("ocr_"),
     ARTICLE("article_"),
     SEARCH("search_"),
-    REVIEWER("reviewer_")
+    REVIEWER("reviewer_"),
+    QUESTION_GENERATE("qgen_")
 }

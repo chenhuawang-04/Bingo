@@ -650,7 +650,8 @@ private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewMo
                     "· 文章段落 AI 翻译\n" +
                     "· 文章段落 AI 分析（语法点、关键词汇、句子拆解）\n" +
                     "· 题库 AI 答案生成与解析\n" +
-                    "· 后台批量任务（单词整理、答案生成等）"
+                    "· 后台批量任务（单词整理、答案生成等）\n\n" +
+                    "注意：出题功能已独立为「出题模型」作用域。"
             ),
             ScopeItem(
                 AiSettingsScope.FAST, "快速模型", "朗读、词链与实时交互使用",
@@ -699,6 +700,16 @@ private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewMo
                     "· 词池质量审核（检查分组合理性）\n" +
                     "· 词池评分\n\n" +
                     "作为独立手动任务触发，不影响自动构建流程。"
+            ),
+            ScopeItem(
+                AiSettingsScope.QUESTION_GENERATE, "出题模型", "文章出题与试卷生成",
+                details = "使用场景：\n" +
+                    "· 阅读理解出题（5 题 · 400-500 词）\n" +
+                    "· 完形填空出题（20 空 · 280-360 词）\n" +
+                    "· 翻译题出题（英语一/二）\n" +
+                    "· 写作出题（小作文/大作文）\n" +
+                    "· 新题型出题（段落排序/句子插入/匹配题）\n\n" +
+                    "需要支持长文本理解和复杂推理的模型。"
             )
         )
 
@@ -1403,5 +1414,6 @@ private fun scopeLabel(scope: AiSettingsScope): String {
         AiSettingsScope.ARTICLE -> "文章解析"
         AiSettingsScope.SEARCH -> "搜索"
         AiSettingsScope.REVIEWER -> "词池审核"
+        AiSettingsScope.QUESTION_GENERATE -> "出题模型"
     }
 }
