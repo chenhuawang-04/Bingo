@@ -458,7 +458,7 @@ private fun ProviderListSection(state: SettingsUiState, viewModel: SettingsViewM
                 )
             }
             Button(onClick = viewModel::startCreateProvider) {
-                Icon(Icons.Default.Add, contentDescription = null)
+                Icon(Icons.Default.Add, contentDescription = "新增提供商")
                 Text("新增")
             }
         }
@@ -615,7 +615,7 @@ private fun ProviderEditorSection(state: SettingsUiState, viewModel: SettingsVie
                     onClick = viewModel::fetchModelsForEditor,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Icon(Icons.Default.Refresh, contentDescription = "拉取模型列表")
                     Text("拉取模型")
                 }
             }

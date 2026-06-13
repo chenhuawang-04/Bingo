@@ -63,7 +63,7 @@ fun CloudSyncSection(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.Default.Cloud,
-                contentDescription = null,
+                contentDescription = "云同步",
                 tint = MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.width(8.dp))
@@ -168,7 +168,7 @@ fun CloudSyncSection(
             enabled = !state.isSyncing && state.pat.isNotBlank() && state.githubOwner.isNotBlank() && state.githubRepo.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.Sync, contentDescription = "同步", modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("智能同步")
         }
@@ -217,7 +217,7 @@ fun CloudSyncSection(
         ) {
             Icon(
                 if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = null,
+                contentDescription = if (showAdvanced) "收起高级选项" else "展开高级选项",
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(4.dp))
@@ -234,7 +234,7 @@ fun CloudSyncSection(
                     enabled = !state.isSyncing,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.CloudUpload, contentDescription = "强制上传", modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("强制上传")
                 }
@@ -246,7 +246,7 @@ fun CloudSyncSection(
                     ),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.CloudDownload, contentDescription = "强制下载", modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("强制下载")
                 }

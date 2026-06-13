@@ -168,27 +168,27 @@ private fun BatchActions(
         AssistChip(
             onClick = onPauseAll,
             label = { Text("全部暂停") },
-            leadingIcon = { Icon(Icons.Default.Pause, contentDescription = null) }
+            leadingIcon = { Icon(Icons.Default.Pause, contentDescription = "暂停") }
         )
         AssistChip(
             onClick = onCancelAll,
             label = { Text("全部停止") },
-            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
+            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = "停止") }
         )
         AssistChip(
             onClick = onResumeAll,
             label = { Text("全部继续") },
-            leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null) }
+            leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = "继续") }
         )
         AssistChip(
             onClick = onRetryFailed,
             label = { Text("重试失败") },
-            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) }
+            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = "重试") }
         )
         AssistChip(
             onClick = onClearFinished,
             label = { Text("清除已结束") },
-            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
+            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = "清除") }
         )
     }
 }
