@@ -38,7 +38,8 @@ class SettingsViewModel @Inject constructor(
     private val forceUploadUseCase: ForceUploadUseCase,
     private val forceDownloadUseCase: ForceDownloadUseCase,
     private val testSyncConnectionUseCase: TestSyncConnectionUseCase,
-    private val getCloudManifestUseCase: GetCloudManifestUseCase
+    private val getCloudManifestUseCase: GetCloudManifestUseCase,
+    private val backgroundTaskManager: com.xty.englishhelper.domain.background.BackgroundTaskManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -605,14 +606,12 @@ class SettingsViewModel @Inject constructor(
         if (_uiState.value.cloudSync.isSyncing) return
         viewModelScope.launch {
             _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = true, error = null, syncProgress = null)) }
-            try {
-                syncUseCase { progress ->
-                    _uiState.update { it.copy(cloudSync = it.cloudSync.copy(syncProgress = progress)) }
-                }
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "同步失败: ${e.message}")) }
-            }
+            backgroundTaskManager.enqueueCloudSync(
+                force = true,
+                syncMode = "SMART",
+                triggeredBy = "manual"
+            )
+            monitorSyncTask()
         }
     }
 
@@ -620,14 +619,12 @@ class SettingsViewModel @Inject constructor(
         if (_uiState.value.cloudSync.isSyncing) return
         viewModelScope.launch {
             _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = true, error = null, syncProgress = null)) }
-            try {
-                forceUploadUseCase { progress ->
-                    _uiState.update { it.copy(cloudSync = it.cloudSync.copy(syncProgress = progress)) }
-                }
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "上传失败: ${e.message}")) }
-            }
+            backgroundTaskManager.enqueueCloudSync(
+                force = true,
+                syncMode = "FORCE_UPLOAD",
+                triggeredBy = "manual"
+            )
+            monitorSyncTask()
         }
     }
 
@@ -635,15 +632,49 @@ class SettingsViewModel @Inject constructor(
         if (_uiState.value.cloudSync.isSyncing) return
         viewModelScope.launch {
             _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = true, error = null, syncProgress = null)) }
-            try {
-                forceDownloadUseCase { progress ->
-                    _uiState.update { it.copy(cloudSync = it.cloudSync.copy(syncProgress = progress)) }
-                }
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = "下载失败: ${e.message}")) }
-            }
+            backgroundTaskManager.enqueueCloudSync(
+                force = true,
+                syncMode = "FORCE_DOWNLOAD",
+                triggeredBy = "manual"
+            )
+            monitorSyncTask()
         }
+    }
+
+    private suspend fun monitorSyncTask() {
+        val repository = backgroundTaskManager.javaClass.getDeclaredField("repository")
+            .apply { isAccessible = true }
+            .get(backgroundTaskManager) as com.xty.englishhelper.domain.repository.BackgroundTaskRepository
+
+        repository.getTasksByType(com.xty.englishhelper.domain.model.BackgroundTaskType.CLOUD_SYNC)
+            .collect { tasks ->
+                val task = tasks.firstOrNull { it.status != com.xty.englishhelper.domain.model.BackgroundTaskStatus.CANCELED }
+                if (task == null) {
+                    _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
+                    return@collect
+                }
+
+                val progress = if (task.progressTotal > 0) {
+                    com.xty.englishhelper.domain.repository.SyncProgress(
+                        phase = task.progressMessage?.substringBefore(":") ?: "同步中",
+                        detail = task.progressMessage?.substringAfter(": ") ?: "",
+                        current = task.progressCurrent,
+                        total = task.progressTotal
+                    )
+                } else null
+
+                when (task.status) {
+                    com.xty.englishhelper.domain.model.BackgroundTaskStatus.SUCCESS -> {
+                        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null)) }
+                    }
+                    com.xty.englishhelper.domain.model.BackgroundTaskStatus.FAILED -> {
+                        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = false, syncProgress = null, error = task.errorMessage ?: "同步失败")) }
+                    }
+                    else -> {
+                        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(syncProgress = progress)) }
+                    }
+                }
+            }
     }
 
     fun clearSyncError() {
