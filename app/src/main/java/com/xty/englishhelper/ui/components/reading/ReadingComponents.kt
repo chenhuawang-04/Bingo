@@ -54,6 +54,7 @@ import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.ParagraphType
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
+import com.xty.englishhelper.ui.designsystem.tokens.LocalReaderColors
 import com.xty.englishhelper.ui.screen.article.ParagraphAnalysisCard
 import kotlinx.coroutines.launch
 
@@ -149,8 +150,7 @@ fun ParagraphBlock(
                             text = paragraph.text,
                             wordLinkMap = wordLinkMap,
                             onWordClick = onWordClick,
-                            onCollectWord = onCollectWord,
-                            color = readerColors.body
+                            onCollectWord = onCollectWord
                         )
                     }
                 }
@@ -159,8 +159,7 @@ fun ParagraphBlock(
                         text = paragraph.text,
                         wordLinkMap = wordLinkMap,
                         onWordClick = onWordClick,
-                        onCollectWord = onCollectWord,
-                        color = readerColors.body
+                        onCollectWord = onCollectWord
                     )
                 }
             }

@@ -2,6 +2,24 @@
 <resources>
     <string name="app_name">Bingo</string>
 
+    <!-- Navigation -->
+    <string name="nav_dictionary">辞书</string>
+    <string name="nav_article">文章</string>
+    <string name="nav_question_bank">题库</string>
+    <string name="nav_plan">计划</string>
+    <string name="back">返回</string>
+    <string name="settings">设置</string>
+    <string name="confirm">确定</string>
+    <string name="cancel">取消</string>
+    <string name="save">保存</string>
+    <string name="delete">删除</string>
+    <string name="edit">编辑</string>
+    <string name="add">添加</string>
+    <string name="refresh">刷新</string>
+    <string name="search">搜索</string>
+    <string name="loading">加载中…</string>
+    <string name="error">错误</string>
+
     <!-- Home -->
     <string name="home_title">我的辞书</string>
     <string name="create_dictionary">创建辞书</string>
@@ -11,6 +29,7 @@
     <string name="empty_dictionaries">还没有辞书\n点击 + 创建一个吧</string>
     <string name="delete_dictionary">删除辞书</string>
     <string name="delete_dictionary_confirm">确定要删除辞书「%s」吗？其中的所有单词也将被删除。</string>
+    <string name="import_export">导入导出</string>
 
     <!-- Dictionary -->
     <string name="search_words">搜索单词…</string>
@@ -18,6 +37,11 @@
     <string name="empty_words">辞书中还没有单词\n点击 + 添加一个吧</string>
     <string name="delete_word">删除单词</string>
     <string name="delete_word_confirm">确定要删除单词「%s」吗？</string>
+    <string name="ai_organize">AI 自动整理</string>
+    <string name="ai_organizing">正在整理…</string>
+    <string name="batch_import">批量导入</string>
+    <string name="pool_build">词池构建</string>
+    <string name="start_study">开始学习</string>
 
     <!-- Word Detail -->
     <string name="meanings">词性与词义</string>
@@ -25,29 +49,152 @@
     <string name="synonyms">近义词</string>
     <string name="similar_words">形近词</string>
     <string name="cognates">同根词</string>
+    <string name="inflections">词形变化</string>
     <string name="no_data">暂无数据</string>
     <string name="edit_word">编辑单词</string>
-
-    <!-- Add/Edit Word -->
-    <string name="spelling">单词拼写</string>
+    <string name="word">单词</string>
     <string name="phonetic">音标</string>
-    <string name="ai_organize">AI 自动整理</string>
-    <string name="ai_organizing">正在整理…</string>
-    <string name="save">保存</string>
-    <string name="cancel">取消</string>
-    <string name="add_meaning">添加词义</string>
-    <string name="add_synonym">添加近义词</string>
-    <string name="add_similar_word">添加形近词</string>
-    <string name="add_cognate">添加同根词</string>
     <string name="part_of_speech">词性</string>
     <string name="definition">释义</string>
-    <string name="word">单词</string>
     <string name="explanation">说明</string>
     <string name="meaning">含义</string>
     <string name="shared_root">共同词根</string>
 
+    <!-- Add/Edit Word -->
+    <string name="spelling">单词拼写</string>
+    <string name="add_meaning">添加词义</string>
+    <string name="add_synonym">添加近义词</string>
+    <string name="add_similar_word">添加形近词</string>
+    <string name="add_cognate">添加同根词</string>
+
+    <!-- Article -->
+    <string name="article_reading">文章阅读</string>
+    <string name="create_article">新建文章</string>
+    <string name="online_reading">在线阅读</string>
+    <string name="article_list">文章列表</string>
+    <string name="empty_articles">还没有文章进入这个分类</string>
+    <string name="empty_articles_filtered">当前筛选条件下没有文章</string>
+    <string name="empty_articles_category">当前分类下暂时没有文章</string>
+    <string name="new_category">新建分类</string>
+    <string name="category_name">分类名称</string>
+    <string name="all_articles">全部</string>
+    <string name="new_tab">+ 新建</string>
+    <string name="filter_score">评分</string>
+    <string name="filter_length">长度</string>
+    <string name="filter_sort">排序</string>
+    <string name="reset_filter">重置</string>
+    <string name="online_scan">在线扫描</string>
+    <string name="scan_progress">%d/%d 在线扫描</string>
+    <string name="word_count_unit">%d词</string>
+    <string name="score_format">%d分</string>
+    <string name="no_score">未评分</string>
+    <string name="evaluating">评估中</string>
+
+    <!-- Article Reader -->
+    <string name="read_article">阅读文章</string>
+    <string name="tts_play">朗读全文</string>
+    <string name="tts_pause">暂停朗读</string>
+    <string name="translate_toggle">全文翻译</string>
+    <string name="translate_off">关闭全文翻译</string>
+    <string name="generate_questions">文章出题</string>
+    <string name="generating_questions">后台出题中</string>
+    <string name="save_to_local">保存到本地</string>
+    <string name="saving">保存中</string>
+    <string name="notebook">单词本</string>
+    <string name="translating">翻译中…</string>
+    <string name="retry_translate">重试翻译</string>
+    <string name="analyze">整理</string>
+    <string name="reanalyze">重新整理</string>
+    <string name="paragraph_image">段落图片</string>
+
+    <!-- Question Bank -->
+    <string name="question_bank">题库</string>
+    <string name="scan_paper">扫描试卷</string>
+    <string name="select_image">选择图片</string>
+    <string name="select_pdf">选择 PDF</string>
+    <string name="source_verified">已验证</string>
+    <string name="source_verify_failed">验证失败</string>
+    <string name="help">帮助</string>
+
+    <!-- Study -->
+    <string name="study">背单词</string>
+    <string name="normal_mode">普通</string>
+    <string name="brainstorm_mode">头脑风暴</string>
+    <string name="due_words">到期词 %d</string>
+    <string name="new_words">新词 %d</string>
+    <string name="study_complete">学习完成</string>
+    <string name="again">重来</string>
+    <string name="hard">困难</string>
+    <string name="good">良好</string>
+    <string name="easy">简单</string>
+
+    <!-- Plan -->
+    <string name="plan">学习计划</string>
+    <string name="today">今日</string>
+    <string name="template">模板</string>
+    <string name="statistics">统计</string>
+
+    <!-- Settings -->
+    <string name="ai_providers">AI 提供商</string>
+    <string name="add_provider">新增</string>
+    <string name="provider_name">唯一名称</string>
+    <string name="base_url">Base URL</string>
+    <string name="api_key">API Key</string>
+    <string name="test_connection">测试连接</string>
+    <string name="fetch_models">拉取模型</string>
+    <string name="connection_success">连接成功</string>
+    <string name="connection_failed">连接失败</string>
+    <string name="model_scopes">模型作用域</string>
+    <string name="scope_main">主模型</string>
+    <string name="scope_fast">快速模型</string>
+    <string name="scope_ocr">OCR 模型</string>
+    <string name="scope_pool">词池整理</string>
+    <string name="scope_article">文章解析</string>
+    <string name="scope_search">搜索模型</string>
+    <string name="scope_reviewer">词池审核</string>
+    <string name="image_compression">图片压缩</string>
+    <string name="background_task">后台任务</string>
+    <string name="cloud_sync">云同步</string>
+    <string name="tts_settings">语音播报</string>
+    <string name="tts_rate">语速</string>
+    <string name="tts_pitch">音调</string>
+    <string name="tts_locale">语言</string>
+    <string name="tts_auto_study">背词自动朗读</string>
+    <string name="tts_prewarm">TTS 预热</string>
+    <string name="play_sample">播放示例</string>
+    <string name="smart_sync">智能同步</string>
+    <string name="force_upload">强制上传</string>
+    <string name="force_download">强制下载</string>
+    <string name="sync_complete">同步完成</string>
+    <string name="sync_failed">同步失败</string>
+    <string name="advanced_options">高级选项</string>
+    <string name="auto_scan">在线文章自动评分</string>
+    <string name="rescore_interval">重评间隔（小时）</string>
+
+    <!-- Background Task -->
+    <string name="background_task_management">后台任务管理</string>
+    <string name="task_word_organize">单词整理</string>
+    <string name="task_pool_rebuild">词池重建</string>
+    <string name="task_pool_review">词池审核</string>
+    <string name="task_question_generate">文章出题</string>
+    <string name="task_answer_generate">题库答案生成</string>
+    <string name="task_source_verify">题库来源验证</string>
+    <string name="task_writing_sample">作文范文检索</string>
+    <string name="task_online_scan">在线文章批量评分</string>
+    <string name="task_cloud_sync">云同步</string>
+    <string name="task_unknown">未知任务</string>
+    <string name="pause_all">全部暂停</string>
+    <string name="stop_all">全部停止</string>
+    <string name="resume_all">全部继续</string>
+    <string name="retry_failed">重试失败</string>
+    <string name="clear_finished">清除已结束</string>
+    <string name="pause">暂停</string>
+    <string name="stop">停止</string>
+    <string name="resume">继续</string>
+    <string name="retry">重试</string>
+    <string name="清除">清除</string>
+
     <!-- Import/Export -->
-    <string name="import_export">导入导出</string>
     <string name="import_dictionary">导入辞书</string>
     <string name="export_dictionary">导出辞书</string>
     <string name="select_file">选择 JSON 文件</string>
@@ -57,20 +204,20 @@
     <string name="import_error">导入失败：%s</string>
     <string name="export_error">导出失败：%s</string>
 
-    <!-- Settings -->
-    <string name="settings">设置</string>
-    <string name="api_key">API Key</string>
-    <string name="api_key_hint">输入 Anthropic API Key</string>
-    <string name="model_selection">模型选择</string>
-    <string name="test_connection">测试连接</string>
-    <string name="testing_connection">正在测试…</string>
-    <string name="connection_success">连接成功！</string>
-    <string name="connection_failed">连接失败：%s</string>
-    <string name="api_key_not_set">请先设置 API Key</string>
+    <!-- Guardian -->
+    <string name="guardian_browse">在线浏览</string>
+    <string name="section_all">全部</string>
 
-    <!-- Common -->
-    <string name="confirm">确定</string>
-    <string name="error_occurred">发生错误：%s</string>
-    <string name="loading">加载中…</string>
-    <string name="ok">好的</string>
+    <!-- Scan Detail -->
+    <string name="scan_detail">在线文章扫描</string>
+    <string name="scan_status">扫描状态</string>
+    <string name="scan_not_running">未运行</string>
+    <string name="scan_waiting">等待中</string>
+    <string name="scan_running">扫描中</string>
+    <string name="scan_paused">已暂停</string>
+    <string name="scan_completed">已完成</string>
+    <string name="scan_failed">失败</string>
+    <string name="scan_stopped">已停止</string>
+    <string name="start_scan">开始扫描</string>
+    <string name="config_hint">评分设置请在「设置 → 在线文章自动评分」中调整</string>
 </resources>
