@@ -12,22 +12,22 @@ object ArticleTypography {
 
     val ReaderBody = TextStyle(
         fontFamily = ReadingEnglish,
-        fontSize = 18.sp,
-        lineHeight = 32.sp,
+        fontSize = 17.sp,
+        lineHeight = 30.sp,
         fontWeight = FontWeight.Normal,
         letterSpacing = 0.1.sp
     )
 
     val ReaderTitle = TextStyle(
         fontFamily = ReadingEnglish,
-        fontSize = 30.sp,
-        lineHeight = 40.sp,
+        fontSize = 28.sp,
+        lineHeight = 38.sp,
         fontWeight = FontWeight.SemiBold,
         letterSpacing = (-0.2).sp
     )
 
     val ReaderMeta = TextStyle(
-        fontFamily = ReadingEnglish,
+        fontFamily = FontFamily.SansSerif,
         fontSize = 12.sp,
         lineHeight = 18.sp,
         fontWeight = FontWeight.Medium
@@ -35,8 +35,8 @@ object ArticleTypography {
 
     val ReaderQuote = TextStyle(
         fontFamily = ReadingEnglish,
-        fontSize = 17.sp,
-        lineHeight = 30.sp,
+        fontSize = 16.sp,
+        lineHeight = 28.sp,
         fontWeight = FontWeight.Normal,
         fontStyle = FontStyle.Italic,
         letterSpacing = 0.1.sp
@@ -75,5 +75,7 @@ object ArticleTypography {
     )
 
     val ParagraphSpacing = 24.dp
-    val HorizontalPadding = 18.dp
+    val HorizontalPadding = 20.dp
+    val HorizontalPaddingWide = 48.dp
+    val MaxContentWidth = 720.dp
 }

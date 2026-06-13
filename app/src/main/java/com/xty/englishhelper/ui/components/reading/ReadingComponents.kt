@@ -76,12 +76,12 @@ fun ParagraphBlock(
     onCollectWord: (word: String, contextSentence: String) -> Unit,
     showContent: Boolean = true
 ) {
-    val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+    val readerColors = LocalReaderColors.current
     val containerModifier = if (isSpeaking) {
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(highlightColor)
+            .clip(RoundedCornerShape(4.dp))
+            .background(readerColors.speakingBg)
             .padding(6.dp)
     } else {
         Modifier.fillMaxWidth()
@@ -96,23 +96,22 @@ fun ParagraphBlock(
                     Text(
                         paragraph.text,
                         style = ArticleTypography.ReaderHeading,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = readerColors.title
                     )
                 }
                 ParagraphType.QUOTE -> {
-                    val quoteColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .drawBehind {
                                 drawLine(
-                                    color = quoteColor,
+                                    color = readerColors.quoteBar,
                                     start = Offset(0f, 0f),
                                     end = Offset(0f, size.height),
                                     strokeWidth = 3.dp.toPx()
                                 )
                             }
-                            .padding(start = 12.dp)
+                            .padding(start = 16.dp)
                     ) {
                         HighlightedParagraphText(
                             text = paragraph.text,
@@ -131,7 +130,7 @@ fun ParagraphBlock(
                             contentDescription = "段落图片",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp)),
+                                .clip(RoundedCornerShape(4.dp)),
                             contentScale = ContentScale.FillWidth
                         )
                     }
@@ -139,18 +138,19 @@ fun ParagraphBlock(
                         Text(
                             paragraph.text,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = readerColors.meta
                         )
                     }
                 }
                 ParagraphType.LIST -> {
                     Row {
-                        Text("•  ", style = ArticleTypography.ReaderBody)
+                        Text("•  ", style = ArticleTypography.ReaderBody, color = readerColors.body)
                         HighlightedParagraphText(
                             text = paragraph.text,
                             wordLinkMap = wordLinkMap,
                             onWordClick = onWordClick,
-                            onCollectWord = onCollectWord
+                            onCollectWord = onCollectWord,
+                            color = readerColors.body
                         )
                     }
                 }
@@ -159,7 +159,8 @@ fun ParagraphBlock(
                         text = paragraph.text,
                         wordLinkMap = wordLinkMap,
                         onWordClick = onWordClick,
-                        onCollectWord = onCollectWord
+                        onCollectWord = onCollectWord,
+                        color = readerColors.body
                     )
                 }
             }
@@ -176,7 +177,7 @@ fun ParagraphBlock(
                     Text(
                         "翻译中…",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = readerColors.meta
                     )
                 }
             } else {
@@ -203,7 +204,7 @@ fun ParagraphBlock(
                     contentDescription = "段落图片",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp)),
+                        .clip(RoundedCornerShape(4.dp)),
                     contentScale = ContentScale.FillWidth
                 )
             }
@@ -300,24 +301,26 @@ fun TtsPlaybackBar(
 
 @Composable
 fun TranslationBlock(translation: String) {
-    val lineColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f)
+    val readerColors = LocalReaderColors.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .background(readerColors.translationBg)
             .drawBehind {
                 drawLine(
-                    lineColor,
+                    readerColors.translationBorder,
                     Offset(0f, 0f),
                     Offset(0f, size.height),
-                    strokeWidth = 2.dp.toPx()
+                    strokeWidth = 3.dp.toPx()
                 )
             }
-            .padding(start = 10.dp, top = 2.dp, bottom = 2.dp)
+            .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 8.dp)
     ) {
         Text(
             translation,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = readerColors.body
         )
     }
 }
