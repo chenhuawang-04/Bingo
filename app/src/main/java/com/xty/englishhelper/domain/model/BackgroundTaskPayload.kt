@@ -77,4 +77,11 @@ data class OnlineArticleScanScorePayload(
     val forceRefresh: Boolean = false
 ) : BackgroundTaskPayload
 
+@Serializable
+data class SyncTaskPayload(
+    val startedAt: Long,
+    val syncMode: String = "SMART",
+    val triggeredBy: String = "manual"
+) : BackgroundTaskPayload
+
 

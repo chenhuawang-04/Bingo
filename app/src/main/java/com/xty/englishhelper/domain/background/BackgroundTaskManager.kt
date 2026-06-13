@@ -13,6 +13,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.ExamPaper
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
+import com.xty.englishhelper.domain.model.SyncTaskPayload
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
@@ -93,7 +94,8 @@ class BackgroundTaskManager @Inject constructor(
     private val wordPoolRepository: WordPoolRepository,
     private val createArticle: CreateArticleUseCase,
     private val parseArticle: ParseArticleUseCase,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val syncEngine: com.xty.englishhelper.data.sync.SyncEngine
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val runningJobs = ConcurrentHashMap<Long, kotlinx.coroutines.Job>()
@@ -267,6 +269,24 @@ class BackgroundTaskManager @Inject constructor(
             type = BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE,
             payload = payload,
             dedupeKey = "online:scan_score",
+            force = force
+        )
+    }
+
+    fun enqueueCloudSync(
+        force: Boolean = false,
+        syncMode: String = "SMART",
+        triggeredBy: String = "manual"
+    ) {
+        val payload = SyncTaskPayload(
+            startedAt = System.currentTimeMillis(),
+            syncMode = syncMode,
+            triggeredBy = triggeredBy
+        )
+        enqueueTaskAsync(
+            type = BackgroundTaskType.CLOUD_SYNC,
+            payload = payload,
+            dedupeKey = "cloud_sync",
             force = force
         )
     }
@@ -512,6 +532,7 @@ class BackgroundTaskManager @Inject constructor(
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> executeSourceVerify(task)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> executeWritingSampleSearch(task)
             BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> executeOnlineArticleScanScore(task)
+            BackgroundTaskType.CLOUD_SYNC -> executeCloudSync(task)
             BackgroundTaskType.UNKNOWN -> throw IllegalStateException("未知任务类型")
         }
     }
@@ -1331,6 +1352,22 @@ class BackgroundTaskManager @Inject constructor(
         val coverImageUrl: String?,
         val paragraphs: List<ArticleParagraph>
     )
+
+    private suspend fun executeCloudSync(task: BackgroundTask) {
+        val payload = task.payload as? SyncTaskPayload
+            ?: throw IllegalStateException("任务参数缺失")
+
+        val mode = when (payload.syncMode) {
+            "FORCE_UPLOAD" -> com.xty.englishhelper.data.sync.SyncMode.FORCE_UPLOAD
+            "FORCE_DOWNLOAD" -> com.xty.englishhelper.data.sync.SyncMode.FORCE_DOWNLOAD
+            else -> com.xty.englishhelper.data.sync.SyncMode.SMART
+        }
+
+        syncEngine.sync(mode) { progress ->
+            repository.updateProgress(task.id, progress.current, progress.total)
+            repository.updateDetail(task.id, "${progress.phase}: ${progress.detail}")
+        }
+    }
 
     private suspend fun fetchOnlineScanCandidates(
         source: OnlineReadingSource,

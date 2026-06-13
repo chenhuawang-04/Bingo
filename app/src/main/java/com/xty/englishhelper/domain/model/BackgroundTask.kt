@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.domain.model
+package com.xty.englishhelper.domain.model
 
 data class BackgroundTask(
     val id: Long,
@@ -24,7 +24,8 @@ enum class BackgroundTaskType {
     QUESTION_ANSWER_GENERATE,
     QUESTION_SOURCE_VERIFY,
     QUESTION_WRITING_SAMPLE_SEARCH,
-    ONLINE_ARTICLE_SCAN_SCORE
+    ONLINE_ARTICLE_SCAN_SCORE,
+    CLOUD_SYNC
 }
 
 enum class BackgroundTaskStatus {
