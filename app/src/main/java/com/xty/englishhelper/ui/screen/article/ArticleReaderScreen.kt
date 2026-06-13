@@ -648,6 +648,15 @@ private fun ReaderHeroCard(
                 color = readerColors.quoteBar,
                 thickness = 1.dp
             )
+
+            // Summary / 导语
+            if (article.summary.isNotBlank()) {
+                Text(
+                    text = article.summary,
+                    style = ArticleTypography.ReaderQuote,
+                    color = readerColors.body
+                )
+            }
         }
     }
 }
