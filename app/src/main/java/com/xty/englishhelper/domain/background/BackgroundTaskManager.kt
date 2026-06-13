@@ -1280,63 +1280,60 @@ class BackgroundTaskManager @Inject constructor(
                     continue
                 }
 
-                    val detail = fetchOnlineArticleDetail(source, candidate.url)
-                    val excerpt = buildOnlineEvaluationExcerpt(detail.paragraphs)
-                    if (excerpt.isBlank()) continue
-                    val wordCount = countOnlineWords(detail.paragraphs)
+                val detail = fetchOnlineArticleDetail(source, candidate.url)
+                val excerpt = buildOnlineEvaluationExcerpt(detail.paragraphs)
+                if (excerpt.isBlank()) continue
+                val wordCount = countOnlineWords(detail.paragraphs)
 
-                    val result = articleAiRepository.evaluateArticleSuitability(
-                        title = candidate.title,
-                        excerpt = excerpt,
-                        trailText = candidate.trailText,
-                        source = source.label,
-                        section = section.label,
-                        wordCount = wordCount,
-                        url = candidate.url,
-                        apiKey = config.apiKey,
-                        model = config.model,
-                        baseUrl = config.baseUrl,
-                        provider = config.provider
-                    )
+                val result = articleAiRepository.evaluateArticleSuitability(
+                    title = candidate.title,
+                    excerpt = excerpt,
+                    trailText = candidate.trailText,
+                    source = source.label,
+                    section = section.label,
+                    wordCount = wordCount,
+                    url = candidate.url,
+                    apiKey = config.apiKey,
+                    model = config.model,
+                    baseUrl = config.baseUrl,
+                    provider = config.provider
+                )
 
-                    val updated = articleRepository.updateSuitabilityBySourceUrl(
-                        sourceUrl = candidate.url,
-                        score = result.score,
-                        reason = result.reason,
-                        evaluatedAt = now,
-                        modelKey = modelKey
-                    )
+                val updated = articleRepository.updateSuitabilityBySourceUrl(
+                    sourceUrl = candidate.url,
+                    score = result.score,
+                    reason = result.reason,
+                    evaluatedAt = now,
+                    modelKey = modelKey
+                )
 
-                    if (updated == 0) {
-                        articleRepository.upsertArticle(
-                            com.xty.englishhelper.domain.model.Article(
-                                title = candidate.title,
-                                content = "",
-                                articleUid = UUID.randomUUID().toString(),
-                                sourceType = ArticleSourceType.MANUAL,
-                                sourceTypeV2 = ArticleSourceTypeV2.ONLINE,
-                                parseStatus = ArticleParseStatus.DONE,
-                                summary = candidate.trailText.orEmpty(),
-                                author = detail.author.ifBlank { candidate.author.orEmpty() },
-                                source = source.label,
-                                coverImageUrl = detail.coverImageUrl ?: candidate.thumbnailUrl,
-                                domain = normalizedUrl,
-                                isSaved = false,
-                                wordCount = wordCount,
-                                suitabilityScore = result.score,
-                                suitabilityReason = result.reason,
-                                suitabilityUpdatedAt = now,
-                                suitabilityModel = modelKey
-                            )
+                if (updated == 0) {
+                    articleRepository.upsertArticle(
+                        com.xty.englishhelper.domain.model.Article(
+                            title = candidate.title,
+                            content = "",
+                            articleUid = UUID.randomUUID().toString(),
+                            sourceType = ArticleSourceType.MANUAL,
+                            sourceTypeV2 = ArticleSourceTypeV2.ONLINE,
+                            parseStatus = ArticleParseStatus.DONE,
+                            summary = candidate.trailText.orEmpty(),
+                            author = detail.author.ifBlank { candidate.author.orEmpty() },
+                            source = source.label,
+                            coverImageUrl = detail.coverImageUrl ?: candidate.thumbnailUrl,
+                            domain = normalizedUrl,
+                            isSaved = false,
+                            wordCount = wordCount,
+                            suitabilityScore = result.score,
+                            suitabilityReason = result.reason,
+                            suitabilityUpdatedAt = now,
+                            suitabilityModel = modelKey
                         )
-                    }
-                } catch (e: Exception) {
-                    Log.w("BackgroundTaskManager", "Scan article failed: ${candidate.url}", e)
+                    )
                 }
+            } catch (e: Exception) {
+                Log.w("BackgroundTaskManager", "Scan article failed: ${candidate.url}", e)
             }
         }
-
-        repository.updateProgress(task.id, total, total)
     }
 
     private data class OnlineScanCandidate(
