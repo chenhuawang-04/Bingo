@@ -249,7 +249,7 @@ fun PoolBuildDetailScreen(
                         ) {
                             Icon(
                                 Icons.Default.Error,
-                                contentDescription = null,
+                                contentDescription = "错误",
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -367,7 +367,7 @@ private fun StatusHeaderCard(
             ) {
                 Icon(
                     icon,
-                    contentDescription = null,
+                    contentDescription = title,
                     tint = iconColor,
                     modifier = Modifier.size(24.dp)
                 )
@@ -626,7 +626,7 @@ private fun ActionButtonsRow(
                     onClick = onPause,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Pause, contentDescription = "暂停", modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("暂停")
                 }
@@ -634,7 +634,7 @@ private fun ActionButtonsRow(
                     onClick = onCancel,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Close, contentDescription = "取消", modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("取消")
                 }
@@ -644,7 +644,7 @@ private fun ActionButtonsRow(
                     onClick = onResume,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.PlayArrow, contentDescription = "继续", modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("继续")
                 }
@@ -652,7 +652,7 @@ private fun ActionButtonsRow(
                     onClick = onCancel,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Close, contentDescription = "取消", modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("取消")
                 }
@@ -662,7 +662,7 @@ private fun ActionButtonsRow(
                     onClick = onRetry,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Refresh, contentDescription = "重试", modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("重试")
                 }
@@ -703,7 +703,7 @@ private fun ErrorLogsCard(
                 ) {
                     Icon(
                         Icons.Default.Warning,
-                        contentDescription = null,
+                        contentDescription = "警告",
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(18.dp)
                     )
