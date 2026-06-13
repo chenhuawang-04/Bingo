@@ -906,7 +906,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     memberWordUids = memberUids,
                     strategy = strategy,
                     algorithmVersion = algorithmVersion,
-                    updatedAt = poolEntity?.updatedAt ?: 0L
+                    updatedAt = poolEntity?.updatedAt ?: 0L,
+                    qualityScore = poolEntity?.qualityScore
                 )
             )
         }
@@ -1249,7 +1250,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     focusWordId = focusId,
                     strategy = strategy,
                     algorithmVersion = algorithmVersion,
-                    updatedAt = updatedAt
+                    updatedAt = updatedAt,
+                    qualityScore = pool.qualityScore
                 )
             )
             wordPoolDao.insertMembers(

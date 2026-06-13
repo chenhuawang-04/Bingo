@@ -94,5 +94,6 @@ data class WordPoolJsonModel(
     val memberWordUids: List<String> = emptyList(),
     val strategy: String = "",
     val algorithmVersion: String = "",
-    val updatedAt: Long = 0
+    val updatedAt: Long = 0,
+    val qualityScore: Int? = null
 )
