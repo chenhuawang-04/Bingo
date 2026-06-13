@@ -49,8 +49,7 @@ class ScanDetailViewModel @Inject constructor(
                 _uiState.update { it.copy(error = "快速模型未配置，请先在设置中配置 API Key") }
                 return@launch
             }
-            val rescoreAfterHours = settingsDataStore.scanRescoreAfterHours
-                .first() ?: 24
+            val rescoreAfterHours = settingsDataStore.scanRescoreAfterHours.first()
             backgroundTaskManager.enqueueOnlineArticleScanScore(
                 force = true,
                 rescoreAfterHours = rescoreAfterHours
