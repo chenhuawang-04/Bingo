@@ -345,8 +345,4 @@ class ArticleListViewModel @Inject constructor(
         val taskId = _uiState.value.scanTask?.id ?: return
         backgroundTaskManager.deleteTask(taskId)
     }
-
-    fun toggleScanConfig() {
-        _uiState.update { it.copy(isScanConfigExpanded = !it.isScanConfigExpanded) }
-    }
 }

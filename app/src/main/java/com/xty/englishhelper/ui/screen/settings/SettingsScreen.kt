@@ -690,7 +690,7 @@ private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewMo
                 details = "使用场景：\n" +
                     "· 阅读理解来源验证（联网搜索原文出处）\n" +
                     "· 范文检索（搜索模型范文与链接）\n" +
-                    "· 单词整理增强模式的参考检索（当参考来源选"搜索模型"时）\n\n" +
+                    "· 单词整理增强模式的参考检索（当参考来源选'搜索模型'时）\n\n" +
                     "需要支持联网搜索/工具调用的模型。"
             ),
             ScopeItem(

@@ -643,7 +643,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     private suspend fun monitorSyncTask() {
-        backgroundTaskRepository.getTasksByType(com.xty.englishhelper.domain.model.BackgroundTaskType.CLOUD_SYNC)
+        backgroundTaskRepository.observeTasksByTypes(listOf(com.xty.englishhelper.domain.model.BackgroundTaskType.CLOUD_SYNC))
             .collect { tasks ->
                 val task = tasks.firstOrNull { it.status != com.xty.englishhelper.domain.model.BackgroundTaskStatus.CANCELED }
                 if (task == null) {

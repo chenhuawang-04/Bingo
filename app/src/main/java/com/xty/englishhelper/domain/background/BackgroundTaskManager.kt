@@ -41,6 +41,7 @@ import com.xty.englishhelper.domain.repository.ManualFillResult
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.article.OnlineReadingCatalog
+import com.xty.englishhelper.domain.article.OnlineReadingSection
 import com.xty.englishhelper.domain.article.OnlineArticleSourceUrl
 import com.xty.englishhelper.domain.usecase.ai.OrganizeWordWithAiUseCase
 import com.xty.englishhelper.domain.usecase.article.CreateArticleUseCase
@@ -1247,7 +1248,7 @@ class BackgroundTaskManager @Inject constructor(
         val scannedUrls = mutableSetOf<String>()
 
         // First pass: count all candidates to set accurate total
-        val allCandidates = mutableListOf<Triple<OnlineReadingSource, OnlineReadingCatalog.Section, OnlineScanCandidate>>()
+        val allCandidates = mutableListOf<Triple<OnlineReadingSource, OnlineReadingSection, OnlineScanCandidate>>()
         for ((source, section) in sectionPlan) {
             val candidates = runCatching {
                 fetchOnlineScanCandidates(source, section.key)
@@ -1361,8 +1362,7 @@ class BackgroundTaskManager @Inject constructor(
         }
 
         syncEngine.sync(mode) { progress ->
-            repository.updateProgress(task.id, progress.current, progress.total)
-            repository.updateDetail(task.id, "${progress.phase}: ${progress.detail}")
+            repository.updateProgress(task.id, progress.current, progress.total, "${progress.phase}: ${progress.detail}")
         }
     }
 

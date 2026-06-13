@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.data.repository
+package com.xty.englishhelper.data.repository
 
 import com.xty.englishhelper.data.local.dao.BackgroundTaskDao
 import com.xty.englishhelper.data.local.entity.BackgroundTaskEntity
@@ -128,6 +128,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.encodeToString(payload as QuestionSourceVerifyPayload)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.encodeToString(payload as QuestionWritingSamplePayload)
             BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> json.encodeToString(payload as OnlineArticleScanScorePayload)
+            BackgroundTaskType.CLOUD_SYNC -> json.encodeToString(payload as com.xty.englishhelper.domain.model.SyncTaskPayload)
             BackgroundTaskType.UNKNOWN -> "{}"
         }
     }
@@ -143,6 +144,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
                 BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.decodeFromString<QuestionSourceVerifyPayload>(raw)
                 BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.decodeFromString<QuestionWritingSamplePayload>(raw)
                 BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> json.decodeFromString<OnlineArticleScanScorePayload>(raw)
+                BackgroundTaskType.CLOUD_SYNC -> json.decodeFromString<com.xty.englishhelper.domain.model.SyncTaskPayload>(raw)
                 BackgroundTaskType.UNKNOWN -> null
             }
         }.getOrNull()

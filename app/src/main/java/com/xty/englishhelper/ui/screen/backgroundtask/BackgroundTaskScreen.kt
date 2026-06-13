@@ -352,6 +352,7 @@ private fun taskTitle(task: BackgroundTask): String {
         BackgroundTaskType.QUESTION_SOURCE_VERIFY -> "题库来源验证"
         BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> "作文范文检索"
         BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> "在线文章批量评分"
+        BackgroundTaskType.CLOUD_SYNC -> "云同步"
         BackgroundTaskType.UNKNOWN -> "未知任务"
     }
 }
@@ -420,7 +421,7 @@ private fun taskSubtitle(task: BackgroundTask): String {
             if (isEmpty()) append("题组 ${payload.groupId}")
         }
         is OnlineArticleScanScorePayload -> {
-            "全来源全栏目扫描，分栏最多 ${payload.maxPerSection} 篇，重评间隔 ${payload.rescoreAfterHours}h"
+            "全来源全栏目扫描，重评间隔 ${payload.rescoreAfterHours}h"
         }
         else -> "任务 ${task.id}"
     }

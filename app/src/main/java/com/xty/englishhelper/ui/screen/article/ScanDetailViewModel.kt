@@ -34,7 +34,7 @@ class ScanDetailViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            backgroundTaskRepository.getTasksByType(BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE)
+            backgroundTaskRepository.observeTasksByTypes(listOf(BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE))
                 .collect { tasks ->
                     val task = tasks.firstOrNull { it.status != BackgroundTaskStatus.CANCELED }
                     _uiState.update { it.copy(scanTask = task) }
