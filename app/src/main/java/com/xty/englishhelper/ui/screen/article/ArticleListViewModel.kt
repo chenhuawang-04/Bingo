@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -41,9 +42,7 @@ data class ArticleListUiState(
     val lengthFilter: ArticleLengthFilter = ArticleLengthFilter.ALL,
     val scoreFilter: ArticleScoreFilter = ArticleScoreFilter.ALL,
     val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT,
-    val scanTask: BackgroundTask? = null,
-    val scanRescoreAfterHours: Int = 24,
-    val isScanConfigExpanded: Boolean = false
+    val scanTask: BackgroundTask? = null
 )
 
 @HiltViewModel
@@ -319,9 +318,11 @@ class ArticleListViewModel @Inject constructor(
                 _uiState.update { it.copy(error = "快速模型未配置，请先在设置中配置 API Key") }
                 return@launch
             }
+            val rescoreAfterHours = settingsDataStore.scanRescoreAfterHours
+                .first() ?: 24
             backgroundTaskManager.enqueueOnlineArticleScanScore(
                 force = true,
-                rescoreAfterHours = _uiState.value.scanRescoreAfterHours
+                rescoreAfterHours = rescoreAfterHours
             )
         }
     }
@@ -344,10 +345,6 @@ class ArticleListViewModel @Inject constructor(
     fun deleteScanTask() {
         val taskId = _uiState.value.scanTask?.id ?: return
         backgroundTaskManager.deleteTask(taskId)
-    }
-
-    fun setScanRescoreAfterHours(value: Int) {
-        _uiState.update { it.copy(scanRescoreAfterHours = value.coerceIn(1, 720)) }
     }
 
     fun toggleScanConfig() {

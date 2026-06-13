@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.settings
+package com.xty.englishhelper.ui.screen.settings
 
 import com.xty.englishhelper.data.json.SyncManifest
 import com.xty.englishhelper.domain.model.AiProvider
@@ -41,6 +41,7 @@ data class SettingsUiState(
     val poolManagedMode: Boolean = false,
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
+    val scanRescoreAfterHours: Int = 24,
     val cloudSync: CloudSyncState = CloudSyncState()
 )
 

@@ -12,14 +12,13 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class ScanDetailUiState(
     val scanTask: BackgroundTask? = null,
-    val rescoreAfterHours: Int = 24,
-    val isConfigExpanded: Boolean = false,
     val error: String? = null
 )
 
@@ -41,21 +40,6 @@ class ScanDetailViewModel @Inject constructor(
                     _uiState.update { it.copy(scanTask = task) }
                 }
         }
-        viewModelScope.launch {
-            settingsDataStore.scanRescoreAfterHours.collect { value ->
-                _uiState.update { it.copy(rescoreAfterHours = value) }
-            }
-        }
-    }
-
-    fun toggleScanConfig() {
-        _uiState.update { it.copy(isConfigExpanded = !it.isConfigExpanded) }
-    }
-
-    fun setScanRescoreAfterHours(value: Int) {
-        val clamped = value.coerceIn(1, 720)
-        _uiState.update { it.copy(rescoreAfterHours = clamped) }
-        viewModelScope.launch { settingsDataStore.setScanRescoreAfterHours(clamped) }
     }
 
     fun triggerScan() {
@@ -65,9 +49,11 @@ class ScanDetailViewModel @Inject constructor(
                 _uiState.update { it.copy(error = "快速模型未配置，请先在设置中配置 API Key") }
                 return@launch
             }
+            val rescoreAfterHours = settingsDataStore.scanRescoreAfterHours
+                .first() ?: 24
             backgroundTaskManager.enqueueOnlineArticleScanScore(
                 force = true,
-                rescoreAfterHours = _uiState.value.rescoreAfterHours
+                rescoreAfterHours = rescoreAfterHours
             )
         }
     }

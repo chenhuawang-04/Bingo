@@ -5,15 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -25,7 +19,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -43,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,7 +92,6 @@ fun ScanDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
@@ -139,12 +130,6 @@ fun ScanDetailScreen(
                                     style = MaterialTheme.typography.titleSmall
                                 )
                             }
-                            IconButton(onClick = viewModel::toggleScanConfig) {
-                                Icon(
-                                    imageVector = if (uiState.isConfigExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                    contentDescription = if (uiState.isConfigExpanded) "收起配置" else "展开配置"
-                                )
-                            }
                         }
 
                         if (isActive) {
@@ -174,24 +159,6 @@ fun ScanDetailScreen(
                                 color = MaterialTheme.colorScheme.error,
                                 maxLines = 3
                             )
-                        }
-
-                        if (uiState.isConfigExpanded) {
-                            HorizontalDivider()
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(
-                                        text = "重评间隔 ${uiState.rescoreAfterHours} 小时",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Slider(
-                                        value = uiState.rescoreAfterHours.toFloat(),
-                                        onValueChange = { viewModel.setScanRescoreAfterHours(it.roundToInt()) },
-                                        valueRange = 1f..720f,
-                                        steps = 0
-                                    )
-                                }
-                            }
                         }
 
                         HorizontalDivider()
@@ -233,6 +200,12 @@ fun ScanDetailScreen(
                         }
                     }
                 }
+
+                Text(
+                    text = "评分设置请在「设置 → 在线文章自动评分」中调整",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

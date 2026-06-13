@@ -178,6 +178,11 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(ttsPrewarmRetry = value) }
             }
         }
+        viewModelScope.launch {
+            settingsDataStore.scanRescoreAfterHours.collect { value ->
+                _uiState.update { it.copy(scanRescoreAfterHours = value) }
+            }
+        }
         initCloudSync()
     }
 
@@ -520,6 +525,12 @@ class SettingsViewModel @Inject constructor(
         val clamped = value.coerceIn(0, 5)
         _uiState.update { it.copy(ttsPrewarmRetry = clamped) }
         viewModelScope.launch { settingsDataStore.setTtsPrewarmRetry(clamped) }
+    }
+
+    fun onScanRescoreAfterHoursChange(value: Int) {
+        val clamped = value.coerceIn(1, 720)
+        _uiState.update { it.copy(scanRescoreAfterHours = clamped) }
+        viewModelScope.launch { settingsDataStore.setScanRescoreAfterHours(clamped) }
     }
 
     fun playTtsSample() {

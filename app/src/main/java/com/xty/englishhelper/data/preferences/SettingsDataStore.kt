@@ -71,6 +71,7 @@ class SettingsDataStore @Inject constructor(
         val POOL_REQUESTS_PER_MINUTE = intPreferencesKey("pool_requests_per_minute")
         val POOL_RETRY_MODE = stringPreferencesKey("pool_retry_mode")
         val POOL_MANAGED_MODE = booleanPreferencesKey("pool_managed_mode")
+        val SCAN_RESCORE_AFTER_HOURS = intPreferencesKey("scan_rescore_after_hours")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -638,6 +639,12 @@ class SettingsDataStore @Inject constructor(
     val githubOwner: Flow<String> = dataStore.data.map { it[GITHUB_OWNER] ?: "" }
     val githubRepo: Flow<String> = dataStore.data.map { it[GITHUB_REPO] ?: "" }
     val lastSyncAt: Flow<Long> = dataStore.data.map { it[LAST_SYNC_AT] ?: 0L }
+
+    val scanRescoreAfterHours: Flow<Int> = dataStore.data.map { (it[SCAN_RESCORE_AFTER_HOURS] ?: 24).coerceIn(1, 720) }
+
+    suspend fun setScanRescoreAfterHours(value: Int) {
+        dataStore.edit { it[SCAN_RESCORE_AFTER_HOURS] = value.coerceIn(1, 720) }
+    }
 
     suspend fun setGitHubOwner(owner: String) {
         dataStore.edit { it[GITHUB_OWNER] = owner }

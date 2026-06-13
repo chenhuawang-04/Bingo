@@ -181,6 +181,13 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                AutoScanSection(
+                    rescoreAfterHours = state.scanRescoreAfterHours,
+                    onRescoreAfterHoursChange = viewModel::onScanRescoreAfterHoursChange
+                )
+
+                HorizontalDivider()
+
                 TtsSection(
                     rate = state.ttsRate,
                     pitch = state.ttsPitch,
@@ -1146,6 +1153,53 @@ private fun OnlineReadingSection(
             },
             label = { Text("详情并发") },
             placeholder = { Text("5") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun AutoScanSection(
+    rescoreAfterHours: Int,
+    onRescoreAfterHoursChange: (Int) -> Unit
+) {
+    var input by remember { mutableStateOf(rescoreAfterHours.toString()) }
+
+    LaunchedEffect(rescoreAfterHours) {
+        val current = rescoreAfterHours.toString()
+        if (input != current) {
+            input = current
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("在线文章自动评分", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "扫描在线文章源（Guardian/The Atlantic/CS Monitor），自动评估是否适合考研出题。已评分且未过期的文章会被跳过。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        OutlinedTextField(
+            value = input,
+            onValueChange = { value ->
+                val filtered = value.filter { it.isDigit() }
+                input = filtered
+                if (filtered.isBlank()) {
+                    onRescoreAfterHoursChange(24)
+                    return@OutlinedTextField
+                }
+                val parsed = filtered.toIntOrNull() ?: return@OutlinedTextField
+                val clamped = parsed.coerceIn(1, 720)
+                if (clamped != rescoreAfterHours) {
+                    onRescoreAfterHoursChange(clamped)
+                }
+            },
+            label = { Text("重评间隔（小时）") },
+            placeholder = { Text("24") },
+            supportingText = { Text("已评分文章在此间隔内不会重复评分，建议 24-168") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
