@@ -47,7 +47,7 @@ internal fun SectionHeader(title: String, onAdd: () -> Unit) {
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium)
         OutlinedButton(onClick = onAdd, contentPadding = PaddingValues(horizontal = 12.dp)) {
-            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.Add, contentDescription = "添加", modifier = Modifier.size(16.dp))
             Text(" 添加")
         }
     }

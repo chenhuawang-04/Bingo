@@ -87,7 +87,7 @@ fun UnitDetailScreen(
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(
                             text = { Text("重命名") },
-                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = "重命名") },
                             onClick = {
                                 showMenu = false
                                 viewModel.showRenameDialog()
@@ -105,7 +105,7 @@ fun UnitDetailScreen(
                             leadingIcon = {
                                 Icon(
                                     Icons.Default.Delete,
-                                    contentDescription = null,
+                                    contentDescription = "删除",
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             },

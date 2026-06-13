@@ -22,7 +22,7 @@ fun SearchBar(
         value = query,
         onValueChange = onQueryChange,
         placeholder = { Text(placeholder) },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
         trailingIcon = {
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQueryChange("") }) {

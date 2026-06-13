@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.plan
+package com.xty.englishhelper.ui.screen.plan
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -407,17 +407,17 @@ private fun TemplateTab(
                 AssistChip(
                     onClick = { editTemplate = activeTemplate },
                     label = { Text("重命名") },
-                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = "重命名") }
                 )
                 AssistChip(
                     onClick = { onDeleteTemplate(activeTemplate.id) },
                     label = { Text("删除模板") },
-                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = "删除") }
                 )
                 AssistChip(
                     onClick = { showAddItemDialog = true },
                     label = { Text("新增任务") },
-                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) }
+                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = "新增") }
                 )
             }
         }

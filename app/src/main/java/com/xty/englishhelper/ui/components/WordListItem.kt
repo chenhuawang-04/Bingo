@@ -80,7 +80,7 @@ fun WordListItem(
         }
         Icon(
             Icons.Default.ChevronRight,
-            contentDescription = null,
+            contentDescription = "详情",
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

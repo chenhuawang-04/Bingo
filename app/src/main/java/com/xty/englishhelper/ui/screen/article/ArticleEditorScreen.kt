@@ -202,7 +202,7 @@ fun ArticleEditorScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(onClick = { coverPickerLauncher.launch("image/*") }) {
-                                    Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Image, contentDescription = "选择封面", modifier = Modifier.size(18.dp))
                                     Text("  选择封面")
                                 }
                                 if (state.coverImageUri != null) {
@@ -266,7 +266,7 @@ fun ArticleEditorScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(onClick = viewModel::addParagraph) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Add, contentDescription = "添加段落", modifier = Modifier.size(18.dp))
                                     Text("  添加段落")
                                 }
                                 OutlinedButton(
@@ -277,7 +277,7 @@ fun ArticleEditorScreen(
                                         }
                                     }
                                 ) {
-                                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.ContentPaste, contentDescription = "粘贴", modifier = Modifier.size(18.dp))
                                     Text("  粘贴全文")
                                 }
                             }
@@ -294,7 +294,7 @@ fun ArticleEditorScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(onClick = { imagePickerLauncher.launch("image/*") }) {
-                                    Icon(Icons.Default.Image, contentDescription = null)
+                                    Icon(Icons.Default.Image, contentDescription = "选择图片")
                                     Text("  选择图片")
                                 }
                                 Button(
@@ -314,7 +314,7 @@ fun ArticleEditorScreen(
                                         )
                                         Text("  识别中…")
                                     } else {
-                                        Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                                        Icon(Icons.Default.AutoAwesome, contentDescription = "AI 处理")
                                         Text("  AI 识别并填充")
                                     }
                                 }

@@ -685,22 +685,22 @@ private fun SourceStatusRow(
         ) {
             when (group.sourceVerified) {
                 SourceVerifyStatus.VERIFIED -> {
-                    Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.CheckCircle, "已验证", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                     Text("已验证", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     if (linkedArticleId != null) {
                         TextButton(onClick = onViewArticle, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.MenuBook, null, modifier = Modifier.size(14.dp))
+                            Icon(Icons.AutoMirrored.Filled.MenuBook, "查看原文", modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("查看原文", style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
                 SourceVerifyStatus.FAILED -> {
-                    Icon(Icons.Default.Error, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Error, "验证失败", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                     Text("验证失败", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 }
                 else -> {
-                    Icon(Icons.AutoMirrored.Filled.HelpOutline, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                    Icon(Icons.AutoMirrored.Filled.HelpOutline, "未验证", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                     Text("未验证", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -724,12 +724,12 @@ private fun SourceStatusRow(
         if (group.sourceVerified != SourceVerifyStatus.VERIFIED) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                 TextButton(onClick = onShowSourceEditor, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                    Icon(Icons.Default.Edit, null, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Edit, "编辑来源", modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(if (group.sourceUrl.isNullOrBlank()) "输入来源 URL" else "编辑来源", style = MaterialTheme.typography.labelSmall)
                 }
                 TextButton(onClick = onVerifySource, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                    Icon(Icons.Default.Search, null, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Search, "验证来源", modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("验证来源", style = MaterialTheme.typography.labelSmall)
                 }
@@ -870,7 +870,7 @@ private fun PracticeResultRow(
             true -> {
                 Icon(
                     Icons.Default.CheckCircle,
-                    contentDescription = null,
+                    contentDescription = "正确",
                     tint = statusColors.success,
                     modifier = Modifier.size(16.dp)
                 )
@@ -884,7 +884,7 @@ private fun PracticeResultRow(
             false -> {
                 Icon(
                     Icons.Default.Error,
-                    contentDescription = null,
+                    contentDescription = "错误",
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(16.dp)
                 )
@@ -1133,7 +1133,7 @@ private fun PracticeActionBar(
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(8.dp))
             } else {
-                Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.CameraAlt, "扫描答案", modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
             }
             Text("扫描答案")
@@ -3711,7 +3711,7 @@ private fun WritingPassagePanel(
                             )
                         } else {
                             TextButton(onClick = onSearchPromptSource) {
-                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Search, contentDescription = "搜索", modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("重新补录来源")
                             }
@@ -3844,7 +3844,7 @@ private fun WritingAnswerPanel(
                     modifier = Modifier.weight(1f),
                     enabled = !state.isSubmitted && !state.isOcrWriting
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.CameraAlt, contentDescription = "扫描", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("扫描作文")
                 }

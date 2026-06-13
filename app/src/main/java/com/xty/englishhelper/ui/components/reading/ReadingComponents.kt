@@ -128,7 +128,7 @@ fun ParagraphBlock(
                     if (imageUri != null) {
                         AsyncImage(
                             model = imageUri,
-                            contentDescription = null,
+                            contentDescription = "段落图片",
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp)),
@@ -200,7 +200,7 @@ fun ParagraphBlock(
             if (paraImage != null && paragraph.paragraphType != ParagraphType.IMAGE) {
                 AsyncImage(
                     model = paraImage,
-                    contentDescription = null,
+                    contentDescription = "段落图片",
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp)),

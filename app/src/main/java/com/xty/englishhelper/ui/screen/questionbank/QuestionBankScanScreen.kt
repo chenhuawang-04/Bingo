@@ -173,7 +173,7 @@ private fun SelectPhaseContent(
                 onClick = onSelectImages,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Image, contentDescription = "图片", modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(8.dp))
                 Text("选择图片")
             }
@@ -182,7 +182,7 @@ private fun SelectPhaseContent(
                 onClick = onSelectPdf,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.PictureAsPdf, contentDescription = "PDF", modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(8.dp))
                 Text("选择 PDF")
             }

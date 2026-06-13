@@ -542,7 +542,7 @@ private fun AiOrganizeButton(state: AddWordUiState, onClick: () -> Unit) {
             )
             Text("  ${state.aiLoadingMessage ?: "正在整理"}")
         } else {
-            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+            Icon(Icons.Default.AutoAwesome, contentDescription = "AI 处理")
             Text("  AI 自动整理")
         }
     }
@@ -554,7 +554,7 @@ private fun SaveAndOrganizeButton(state: AddWordUiState, onClick: () -> Unit) {
         enabled = !state.isSaving && !state.isAiLoading && state.spelling.isNotBlank(),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Icon(Icons.Default.CloudUpload, contentDescription = null)
+        Icon(Icons.Default.CloudUpload, contentDescription = "保存并整理")
         Text("  保存并后台整理")
     }
 }

@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.components.dictionary
+package com.xty.englishhelper.ui.components.dictionary
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
@@ -338,7 +338,7 @@ private fun EntrySummaryRow(entry: QuickDictionaryEntry, onClick: () -> Unit) {
                     }
                 }
                 TextButton(onClick = { uriHandler.openUri(entry.sourceUrl) }) {
-                    Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = "打开链接")
                     Spacer(Modifier.width(4.dp))
                     Text(entry.sourceLabel)
                 }

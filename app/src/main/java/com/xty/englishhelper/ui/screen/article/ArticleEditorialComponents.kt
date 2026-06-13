@@ -72,7 +72,7 @@ fun EditorialThumbnail(
     if (imageModel != null) {
         AsyncImage(
             model = imageModel,
-            contentDescription = null,
+                contentDescription = "操作",
             modifier = modifier.clip(ArticleShapes.Thumbnail),
             contentScale = ContentScale.Crop
         )
@@ -135,7 +135,7 @@ fun EditorialActionButton(
         ) {
             Icon(
                 imageVector = icon,
-                contentDescription = null,
+            contentDescription = "文章缩略图",
                 modifier = Modifier.size(18.dp)
             )
             Text(

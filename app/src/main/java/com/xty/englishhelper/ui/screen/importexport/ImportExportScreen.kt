@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.importexport
+package com.xty.englishhelper.ui.screen.importexport
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -135,7 +135,7 @@ fun ImportExportScreen(
                                     onClick = { importDictionaryLauncher.launch("application/json") },
                                     enabled = !state.isLoading
                                 ) {
-                                    Icon(Icons.Default.Upload, contentDescription = null)
+                                    Icon(Icons.Default.Upload, contentDescription = "导入")
                                     Text("  选择词书 JSON")
                                 }
                             }
@@ -158,7 +158,7 @@ fun ImportExportScreen(
                                     onClick = { importPlanLauncher.launch("application/json") },
                                     enabled = !state.isLoading
                                 ) {
-                                    Icon(Icons.Default.Upload, contentDescription = null)
+                                    Icon(Icons.Default.Upload, contentDescription = "导入")
                                     Text("  选择计划 JSON")
                                 }
                             }
@@ -214,7 +214,7 @@ fun ImportExportScreen(
                                     onClick = { exportPlanLauncher.launch("plan_backup.json") },
                                     enabled = !state.isLoading
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = null)
+                                    Icon(Icons.Default.Download, contentDescription = "导出")
                                     Text("  导出计划 JSON")
                                 }
                             }

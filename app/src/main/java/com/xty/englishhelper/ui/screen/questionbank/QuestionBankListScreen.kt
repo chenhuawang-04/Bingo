@@ -237,7 +237,7 @@ private fun QuestionGroupCard(
                         SourceVerifyStatus.VERIFIED -> {
                             Icon(
                                 Icons.Default.CheckCircle,
-                                contentDescription = null,
+                                contentDescription = "已验证",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(14.dp)
                             )
@@ -247,7 +247,7 @@ private fun QuestionGroupCard(
                         SourceVerifyStatus.FAILED -> {
                             Icon(
                                 Icons.Default.Error,
-                                contentDescription = null,
+                                contentDescription = "验证失败",
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(14.dp)
                             )
@@ -257,7 +257,7 @@ private fun QuestionGroupCard(
                         else -> {
                             Icon(
                                 Icons.AutoMirrored.Filled.HelpOutline,
-                                contentDescription = null,
+                                contentDescription = "未验证",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(14.dp)
                             )
