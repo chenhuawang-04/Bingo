@@ -149,9 +149,13 @@ fun PoolGraphScreen(
     }
 }
 
-private const val FAR_SCALE = 0.18f       // 低于此缩放 → 远景 LOD（一簇一点）
+private const val FAR_SCALE = 0.06f       // 低于此缩放 → 远景 LOD（一簇一聚合点）。刻意设得很低，
+                                          // 使「适配全图」通常仍落在中景（看到节点云）而非只剩一个聚合点。
 private const val LABEL_SCALE = 0.6f      // 高于此缩放 → 近景 LOD（绘制词标签）
 private const val LABEL_MAX = 400         // 单帧标签上限（保护近-中景边界的极端可见量）
+private const val EDGE_VISIBLE_BUDGET = 600  // 屏内可见节点 > 此数 → 本帧跳过画边。超大连通分量整片可见时，
+                                             // 逐边连线是 O(E) 且必成乱麻；跳过既快又清爽（消除中景缩放时的卡死/ANR）。
+private const val NODE_RENDER_CAP = 5000     // 单帧最多绘制的节点数（保护超大图；命中测试走网格不受影响）。
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -237,6 +241,16 @@ private fun PoolGraphContent(
             focusCluster(focusId)
         } else {
             fitWorld()
+            // 若整图太大、适配后仍落在远景（只剩聚合点），改为放大到中景并对准最大簇，
+            // 保证首屏看到的是可读的节点云而非一个孤点（「回到全图」按钮仍走真实适配）。
+            if (scale < FAR_SCALE * 1.2f && layout.clusterCount > 0) {
+                val legible = (FAR_SCALE * 1.6f).coerceIn(minScale, maxScale)
+                scale = legible
+                translation = Offset(
+                    w / 2f - layout.clusterCenterX[0] * legible,
+                    h / 2f - layout.clusterCenterY[0] * legible
+                )
+            }
         }
         consumedFocus = true
     }
@@ -311,36 +325,40 @@ private fun PoolGraphContent(
                 val right = (w - trx) / sc
                 val bottom = (h - tryy) / sc
 
-                // pass 1：收集可见节点（gen 戳标记，免清零）
+                // pass 1：收集可见节点（gen 戳标记，免清零）。收集量封顶 NODE_RENDER_CAP；
+                // gen 仍对所有可见节点打标（成本 O(可见)、用于画边去重），仅 visBuf 写入封顶。
                 val gen = ++genHolder[0]
                 var visCount = 0
                 layout.forEachNodeInWorldRect(left, top, right, bottom) { i ->
                     visibleGen[i] = gen
-                    if (visCount < visBuf.size) { visBuf[visCount] = i; visCount++ }
+                    if (visCount < NODE_RENDER_CAP && visCount < visBuf.size) { visBuf[visCount] = i; visCount++ }
                 }
 
-                // pass 2：可见节点的边 → 按 5 大类合批进 Path（每边恰画一次）
-                for (p in edgePaths) p.rewind()
+                // pass 2：可见节点的边 → 按 5 大类合批进 Path（每边恰画一次）。
+                // 仅在屏内节点不太多时画边：整片可见时逐边连线 O(E) 会卡死，且必成乱麻。
                 var k = 0
-                while (k < visCount) {
-                    val i = visBuf[k]; k++
-                    val incident = nodeEdges[i]
-                    var j = 0
-                    while (j < incident.size) {
-                        val eIdx = incident[j]; j++
-                        val e = edges[eIdx]
-                        val a = e.aIndex; val b = e.bIndex
-                        // 去重：edge 由 a 端绘制；i==b 且 a 也可见时跳过（a 会画）
-                        if (i == b && visibleGen[a] == gen) continue
-                        val ci = e.type.cluster.ordinal
-                        val path = edgePaths[ci]
-                        path.moveTo(nodeX[a] * sc + trx, nodeY[a] * sc + tryy)
-                        path.lineTo(nodeX[b] * sc + trx, nodeY[b] * sc + tryy)
+                if (visCount <= EDGE_VISIBLE_BUDGET) {
+                    for (p in edgePaths) p.rewind()
+                    while (k < visCount) {
+                        val i = visBuf[k]; k++
+                        val incident = nodeEdges[i]
+                        var j = 0
+                        while (j < incident.size) {
+                            val eIdx = incident[j]; j++
+                            val e = edges[eIdx]
+                            val a = e.aIndex; val b = e.bIndex
+                            // 去重：edge 由 a 端绘制；i==b 且 a 也可见时跳过（a 会画）
+                            if (i == b && visibleGen[a] == gen) continue
+                            val ci = e.type.cluster.ordinal
+                            val path = edgePaths[ci]
+                            path.moveTo(nodeX[a] * sc + trx, nodeY[a] * sc + tryy)
+                            path.lineTo(nodeX[b] * sc + trx, nodeY[b] * sc + tryy)
+                        }
                     }
-                }
-                val edgeStroke = Stroke(width = 2f, cap = StrokeCap.Round)
-                for (ci in 0 until 5) {
-                    drawPath(edgePaths[ci], color = clusterColors[ci].copy(alpha = 0.45f), style = edgeStroke)
+                    val edgeStroke = Stroke(width = 2f, cap = StrokeCap.Round)
+                    for (ci in 0 until 5) {
+                        drawPath(edgePaths[ci], color = clusterColors[ci].copy(alpha = 0.45f), style = edgeStroke)
+                    }
                 }
 
                 // pass 3：可见节点
