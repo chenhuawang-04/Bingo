@@ -1,5 +1,6 @@
 package com.xty.englishhelper.domain.repository
 
+import com.xty.englishhelper.domain.model.EdgeNeighbor
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
@@ -59,6 +60,15 @@ interface WordPoolRepository {
 
     /** Graph adjacency: wordId -> Map<neighborId, Set<EdgeType>> */
     suspend fun getWordEdgeAdjacency(dictionaryId: Long): Map<Long, Map<Long, Set<EdgeType>>>
+
+    /**
+     * 富边邻接（头脑风暴选词 / 展示用）：wordId -> 该词全部关联邻居（[EdgeNeighbor] 携带
+     * strength / confidence / learningValue / status / reason / example / register / cefr / warning）。
+     * 双向定向：每条边在两端各出现一次，邻居取对端。仅跳过自环与未知类型，**不做质量过滤**——
+     * 阈值与排序交由上层选词逻辑决定。复用 [com.xty.englishhelper.data.local.dao.WordEdgeDao.getAllEdges]
+     * 投影，零新查询、零 DB 迁移。
+     */
+    suspend fun getWordEdgeAdjacencyDetailed(dictionaryId: Long): Map<Long, List<EdgeNeighbor>>
 
     /**
      * TEMPORARY: Classify words into entry_type (word/root/phrase) using AI.

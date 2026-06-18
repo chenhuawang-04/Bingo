@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import com.xty.englishhelper.domain.background.PoolBuildLiveMonitor
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.EdgeCluster
+import com.xty.englishhelper.domain.model.EdgeNeighbor
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolRetryMode
 import com.xty.englishhelper.domain.model.PoolStrategy
@@ -386,7 +387,46 @@ class WordPoolRepositoryImpl @Inject constructor(
         return adj
     }
 
-    // ── BALANCED build ──
+    override suspend fun getWordEdgeAdjacencyDetailed(dictionaryId: Long): Map<Long, List<EdgeNeighbor>> {
+        val edges = wordEdgeDao.getAllEdges(dictionaryId)
+        val adj = mutableMapOf<Long, MutableList<EdgeNeighbor>>()
+        edges.forEach { e ->
+            if (e.wordIdA == e.wordIdB) return@forEach
+            val type = EdgeType.fromDbValue(e.edgeType) ?: return@forEach
+            // 同一条边在两端各登记一次，邻居取对端 wordId。
+            adj.getOrPut(e.wordIdA) { mutableListOf() }.add(
+                EdgeNeighbor(
+                    neighborId = e.wordIdB,
+                    type = type,
+                    relationStrength = e.relationStrength,
+                    confidence = e.confidence,
+                    learningValue = e.learningValue,
+                    status = e.status,
+                    reason = e.reason,
+                    exampleSentence = e.exampleSentence,
+                    register = e.register,
+                    difficultyCefr = e.difficultyCefr,
+                    warningNote = e.warningNote
+                )
+            )
+            adj.getOrPut(e.wordIdB) { mutableListOf() }.add(
+                EdgeNeighbor(
+                    neighborId = e.wordIdA,
+                    type = type,
+                    relationStrength = e.relationStrength,
+                    confidence = e.confidence,
+                    learningValue = e.learningValue,
+                    status = e.status,
+                    reason = e.reason,
+                    exampleSentence = e.exampleSentence,
+                    register = e.register,
+                    difficultyCefr = e.difficultyCefr,
+                    warningNote = e.warningNote
+                )
+            )
+        }
+        return adj
+    }
 
     private suspend fun buildBalanced(
         words: List<WordWithDetails>,
