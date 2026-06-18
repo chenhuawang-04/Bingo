@@ -71,6 +71,8 @@ class SettingsDataStore @Inject constructor(
         val POOL_REQUESTS_PER_MINUTE = intPreferencesKey("pool_requests_per_minute")
         val POOL_RETRY_MODE = stringPreferencesKey("pool_retry_mode")
         val POOL_MANAGED_MODE = booleanPreferencesKey("pool_managed_mode")
+        val BRAINSTORM_CLUSTER_SIZE = intPreferencesKey("brainstorm_cluster_size")
+        val BRAINSTORM_QUALITY_MIN_CONFIDENCE = floatPreferencesKey("brainstorm_quality_min_confidence")
         val SCAN_RESCORE_AFTER_HOURS = intPreferencesKey("scan_rescore_after_hours")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
@@ -212,6 +214,16 @@ class SettingsDataStore @Inject constructor(
         prefs[POOL_MANAGED_MODE] ?: false
     }
 
+    /** 头脑风暴学习簇的目标大小（每个连贯小簇最多几个词，越大越"成片"背、越小越分散）。 */
+    val brainstormClusterSize: Flow<Int> = dataStore.data.map { prefs ->
+        (prefs[BRAINSTORM_CLUSTER_SIZE] ?: 6).coerceIn(2, 12)
+    }
+
+    /** 头脑风暴选词的关联边最低置信度门槛（低于此值的弱边不参与选词/展示）。 */
+    val brainstormQualityMinConfidence: Flow<Float> = dataStore.data.map { prefs ->
+        (prefs[BRAINSTORM_QUALITY_MIN_CONFIDENCE] ?: 0.3f).coerceIn(0f, 0.9f)
+    }
+
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
@@ -331,6 +343,24 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setPoolManagedMode(value: Boolean) {
         dataStore.edit { prefs -> prefs[POOL_MANAGED_MODE] = value }
+    }
+
+    suspend fun getBrainstormClusterSize(): Int {
+        val prefs = dataStore.data.first()
+        return (prefs[BRAINSTORM_CLUSTER_SIZE] ?: 6).coerceIn(2, 12)
+    }
+
+    suspend fun setBrainstormClusterSize(value: Int) {
+        dataStore.edit { prefs -> prefs[BRAINSTORM_CLUSTER_SIZE] = value.coerceIn(2, 12) }
+    }
+
+    suspend fun getBrainstormQualityMinConfidence(): Float {
+        val prefs = dataStore.data.first()
+        return (prefs[BRAINSTORM_QUALITY_MIN_CONFIDENCE] ?: 0.3f).coerceIn(0f, 0.9f)
+    }
+
+    suspend fun setBrainstormQualityMinConfidence(value: Float) {
+        dataStore.edit { prefs -> prefs[BRAINSTORM_QUALITY_MIN_CONFIDENCE] = value.coerceIn(0f, 0.9f) }
     }
 
     suspend fun getProviders(): List<AiProviderProfile> {

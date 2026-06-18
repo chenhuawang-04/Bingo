@@ -168,6 +168,15 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                BrainstormSettingsSection(
+                    clusterSize = state.brainstormClusterSize,
+                    qualityMinConfidence = state.brainstormQualityMinConfidence,
+                    onClusterSizeChange = viewModel::onBrainstormClusterSizeChange,
+                    onQualityMinConfidenceChange = viewModel::onBrainstormQualityMinConfidenceChange
+                )
+
+                HorizontalDivider()
+
                 ModelAdvancedSection(state, viewModel)
 
                 HorizontalDivider()
@@ -436,6 +445,80 @@ private fun PoolSettingsSection(
                 text = "$requestsPerMinute",
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.width(36.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun BrainstormSettingsSection(
+    clusterSize: Int,
+    qualityMinConfidence: Float,
+    onClusterSizeChange: (Int) -> Unit,
+    onQualityMinConfidenceChange: (Float) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("头脑风暴背词", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "「头脑风暴」模式按词与词的关联关系成片选词、排序。下面两项在下次「开始学习」时生效。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        // Cluster size
+        Text("学习簇大小：$clusterSize 个词", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "每个连贯小簇最多包含几个相关词。越大越「成片」背诵（同义/反义/形近/同根集中出现），越小越分散。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Slider(
+                value = clusterSize.toFloat(),
+                onValueChange = { onClusterSizeChange(it.toInt()) },
+                valueRange = 2f..12f,
+                steps = 9,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "$clusterSize",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.width(36.dp)
+            )
+        }
+
+        HorizontalDivider()
+
+        // Quality threshold
+        Text(
+            "关联质量门槛：${String.format("%.2f", qualityMinConfidence)}",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+            "只有 AI 置信度不低于此值的关联边才参与选词与展示。调高更精准（关联更可靠但更少），调低更丰富（关联更多但可能带噪声）。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Slider(
+                value = qualityMinConfidence,
+                onValueChange = onQualityMinConfidenceChange,
+                valueRange = 0f..0.9f,
+                steps = 17,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = String.format("%.2f", qualityMinConfidence),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.width(40.dp)
             )
         }
     }

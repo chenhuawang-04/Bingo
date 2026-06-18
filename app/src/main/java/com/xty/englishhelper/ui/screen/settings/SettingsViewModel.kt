@@ -161,6 +161,16 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.brainstormClusterSize.collect { value ->
+                _uiState.update { it.copy(brainstormClusterSize = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.brainstormQualityMinConfidence.collect { value ->
+                _uiState.update { it.copy(brainstormQualityMinConfidence = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.poolRetryMode.collect { value ->
                 _uiState.update { it.copy(poolRetryMode = value) }
             }
@@ -499,6 +509,16 @@ class SettingsViewModel @Inject constructor(
     fun onPoolManagedModeChange(value: Boolean) {
         _uiState.update { it.copy(poolManagedMode = value) }
         viewModelScope.launch { settingsDataStore.setPoolManagedMode(value) }
+    }
+
+    fun onBrainstormClusterSizeChange(value: Int) {
+        _uiState.update { it.copy(brainstormClusterSize = value) }
+        viewModelScope.launch { settingsDataStore.setBrainstormClusterSize(value) }
+    }
+
+    fun onBrainstormQualityMinConfidenceChange(value: Float) {
+        _uiState.update { it.copy(brainstormQualityMinConfidence = value) }
+        viewModelScope.launch { settingsDataStore.setBrainstormQualityMinConfidence(value) }
     }
 
     fun onImageCompressionEnabledChange(value: Boolean) {

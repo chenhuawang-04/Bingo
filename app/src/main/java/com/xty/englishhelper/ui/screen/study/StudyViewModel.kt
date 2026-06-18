@@ -12,9 +12,8 @@ import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.BrainstormDailyGoal
 import com.xty.englishhelper.domain.model.BrainstormProgressResult
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
-import com.xty.englishhelper.domain.repository.WordPoolRepository
-import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.study.Rating
+import com.xty.englishhelper.domain.usecase.brainstorm.BuildBrainstormSessionUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.CollectRelatedGroupUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.GetBrainstormDailyGoalUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.SaveBrainstormDailyGoalUseCase
@@ -51,8 +50,6 @@ class StudyViewModel @Inject constructor(
     private val getNewWords: GetNewWordsUseCase,
     private val reviewWord: ReviewWordUseCase,
     private val previewIntervals: PreviewIntervalsUseCase,
-    private val wordPoolRepository: WordPoolRepository,
-    private val wordRepository: WordRepository,
     private val getCloudWordExamples: GetCloudWordExamplesUseCase,
     private val settingsDataStore: SettingsDataStore,
     private val ttsManager: TtsManager,
@@ -60,7 +57,8 @@ class StudyViewModel @Inject constructor(
     private val getBrainstormDailyGoal: GetBrainstormDailyGoalUseCase,
     private val saveBrainstormDailyGoal: SaveBrainstormDailyGoalUseCase,
     private val updateBrainstormProgress: UpdateBrainstormProgressUseCase,
-    private val collectRelatedGroup: CollectRelatedGroupUseCase
+    private val collectRelatedGroup: CollectRelatedGroupUseCase,
+    private val buildBrainstormSession: BuildBrainstormSessionUseCase
 ) : ViewModel() {
 
     private val unitIdsStr: String = savedStateHandle["unitIds"] ?: ""
@@ -88,6 +86,8 @@ class StudyViewModel @Inject constructor(
     private var brainstormEdgeMap: Map<Long, Map<Long, Set<EdgeType>>> = emptyMap()
     // wordId -> spelling for displaying related words tag
     private var wordIdToSpelling: Map<Long, String> = emptyMap()
+    // wordId -> 簇下标（阶段B 选词产出；供阶段C 簇掌握度、阶段D 面包屑使用）
+    private var brainstormClusterOf: Map<Long, Int> = emptyMap()
     // Guard against re-rating during wait or while reviewWord is in-flight
     private var isProcessingRating = false
     private var cloudExamplesJob: Job? = null
@@ -146,57 +146,32 @@ class StudyViewModel @Inject constructor(
             sessionHasNewWords = newWords.isNotEmpty()
             sessionProgressTracked = false
 
-            // Build queue: due words first, then new words
             queue.clear()
-            val addedIds = mutableSetOf<Long>()
-            val orderedWords = mutableListOf<WordDetails>()
 
-            // Track due word IDs for progress counting
-            val dueIds = mutableSetOf<Long>()
+            val finalOrder: List<WordDetails> = if (studyMode == StudyMode.BRAINSTORM) {
+                // 阶段B：质量门槛 + 关联评分 + 学习簇装配 + 新词锚定已知词。
+                val clusterSize = settingsDataStore.getBrainstormClusterSize()
+                val minConfidence = settingsDataStore.getBrainstormQualityMinConfidence().toDouble()
+                val session = buildBrainstormSession(dueWords, newWords, clusterSize, minConfidence)
 
-            for (word in dueWords) {
-                if (word.id !in addedIds) {
-                    orderedWords.add(word)
-                    addedIds.add(word.id)
-                    dueIds.add(word.id)
+                brainstormClusterOf = session.clusterOf
+                val gated = session.gatedAdjacency
+                // 关联词标签（拼写）与边类型预览：均从会话内、已过滤的邻接派生。
+                brainstormRelated = gated.mapValues { (_, ns) -> ns.map { it.neighborId }.toSet() }
+                brainstormEdgeMap = gated.mapValues { (_, ns) ->
+                    ns.groupBy { it.neighborId }.mapValues { (_, list) -> list.map { it.type }.toSet() }
                 }
-            }
-
-            // Brainstorm mode: collect related words from due words as new words
-            if (studyMode == StudyMode.BRAINSTORM && dueWords.isNotEmpty()) {
-                val dictionaryId = dueWords.first().dictionaryId
-                val edgeMap = wordPoolRepository.getWordEdgeAdjacency(dictionaryId)
-                for (word in dueWords) {
-                    val neighbors = edgeMap[word.id]?.keys ?: emptySet()
-                    for (neighborId in neighbors) {
-                        if (neighborId !in addedIds) {
-                            val relatedWord = wordRepository.getWordById(neighborId)
-                            if (relatedWord != null) {
-                                orderedWords.add(relatedWord)
-                                addedIds.add(neighborId)
-                            }
-                        }
-                    }
-                }
-            }
-
-            for (word in newWords) {
-                if (word.id !in addedIds) {
-                    orderedWords.add(word)
-                    addedIds.add(word.id)
-                }
-            }
-
-            dueWordIds = dueIds.toSet()
-            brainstormAllWordIds = addedIds.toSet()
-            wordIdToSpelling = orderedWords.associate { it.id to it.spelling }
-
-            // Apply brainstorm reordering if needed
-            val finalOrder = if (studyMode == StudyMode.BRAINSTORM && orderedWords.isNotEmpty()) {
-                val dictionaryId = orderedWords.first().dictionaryId
-                applyBrainstormOrder(orderedWords, dictionaryId)
+                dueWordIds = dueWords.map { it.id }.toSet()
+                brainstormAllWordIds = session.orderedWords.map { it.id }.toSet()
+                wordIdToSpelling = session.orderedWords.associate { it.id to it.spelling }
+                session.orderedWords
             } else {
-                orderedWords
+                // NORMAL：到期词在前、新词在后，去重。
+                val seen = mutableSetOf<Long>()
+                val ordered = mutableListOf<WordDetails>()
+                for (word in dueWords) if (seen.add(word.id)) ordered.add(word)
+                for (word in newWords) if (seen.add(word.id)) ordered.add(word)
+                ordered
             }
 
             finalOrder.forEach { queue.addLast(QueueEntry(it)) }
@@ -221,77 +196,6 @@ class StudyViewModel @Inject constructor(
             }
         } catch (e: Exception) {
             _uiState.update { it.copy(error = e.message, phase = StudyPhase.Finished) }
-        }
-    }
-
-    private suspend fun applyBrainstormOrder(
-        words: List<WordDetails>,
-        dictionaryId: Long
-    ): List<WordDetails> {
-        return try {
-            // Load edge adjacency from word_edges table
-            val edgeMap = wordPoolRepository.getWordEdgeAdjacency(dictionaryId)
-            brainstormEdgeMap = edgeMap
-
-            // Build relatedMap from edges for tag display
-            val relatedMap = mutableMapOf<Long, MutableSet<Long>>()
-            edgeMap.forEach { (wordId, neighbors) ->
-                relatedMap[wordId] = neighbors.keys.toMutableSet()
-            }
-            brainstormRelated = relatedMap
-
-            // BFS layer-order traversal with priority sorting
-            val wordMap = words.associateBy { it.id }
-            val wordIds = words.map { it.id }.toSet()
-            val visited = mutableSetOf<Long>()
-            val output = mutableListOf<WordDetails>()
-
-            for (startId in words.map { it.id }) {
-                if (startId in visited) continue
-
-                var currentLevel = listOf(startId)
-                visited.add(startId)
-
-                while (currentLevel.isNotEmpty()) {
-                    // Output current level
-                    for (id in currentLevel) {
-                        wordMap[id]?.let { output.add(it) }
-                    }
-
-                    // Collect next-level candidates
-                    val nextCandidates = mutableSetOf<Long>()
-                    for (id in currentLevel) {
-                        val neighbors = edgeMap[id]?.keys ?: emptySet()
-                        for (neighborId in neighbors) {
-                            if (neighborId in wordIds && neighborId !in visited) {
-                                nextCandidates.add(neighborId)
-                            }
-                        }
-                    }
-
-                    // BUG 6 fix: use sortedWith for deterministic tie-breaking with stable sort
-                    currentLevel = nextCandidates.sortedWith(
-                        compareByDescending<Long> { candidateId ->
-                            val candidateNeighbors = edgeMap[candidateId]?.keys ?: emptySet()
-                            // Priority 1: overlap with other candidates in this level
-                            val overlap = candidateNeighbors.intersect(nextCandidates).size
-                            // Priority 2: fewer total neighbors = higher priority (rarer connections)
-                            val totalNeighbors = candidateNeighbors.size
-                            overlap * 10000 - totalNeighbors
-                        }.thenBy { candidateId ->
-                            // Priority 3: stable tertiary sort by word ID for deterministic ordering
-                            candidateId
-                        }
-                    )
-
-                    currentLevel.forEach { visited.add(it) }
-                }
-            }
-
-            output
-        } catch (e: Exception) {
-            // Fall back to original order if edge data unavailable
-            words
         }
     }
 
