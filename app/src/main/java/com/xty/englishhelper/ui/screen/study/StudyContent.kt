@@ -100,12 +100,12 @@ internal fun StudyingContent(
                     .fillMaxHeight()
             ) {
                 ProgressBar(state)
-                BrainstormTag(state)
 
                 if (!state.showAnswer) {
                     QuestionView(
                         spelling = word.spelling,
                         phonetic = word.phonetic,
+                        relatedEdges = state.currentWordEdges,
                         onRevealAnswer = onRevealAnswer,
                         modifier = Modifier.weight(1f)
                     )
@@ -117,6 +117,7 @@ internal fun StudyingContent(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        item { BrainstormTag(state) }
                         state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                         wordDetailItems(
                             word = word,
@@ -150,12 +151,12 @@ internal fun StudyingContent(
     } else {
         Column(modifier = modifier.fillMaxSize()) {
             ProgressBar(state)
-            BrainstormTag(state)
 
             if (!state.showAnswer) {
                 QuestionView(
                     spelling = word.spelling,
                     phonetic = word.phonetic,
+                    relatedEdges = state.currentWordEdges,
                     onRevealAnswer = onRevealAnswer,
                     modifier = Modifier.weight(1f)
                 )
@@ -167,6 +168,7 @@ internal fun StudyingContent(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    item { BrainstormTag(state) }
                     state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                     wordDetailItems(
                         word = word,
@@ -206,16 +208,27 @@ private fun ProgressBar(state: StudyUiState) {
             .padding(horizontal = 16.dp)
     )
 
-    // 阶段C：当前学习簇的掌握进度（仅在多词簇时显示）。
+    // 阶段D：当前学习簇的掌握进度——面包屑进度点（仅在多词簇时显示）。
     if (state.studyMode == com.xty.englishhelper.domain.model.StudyMode.BRAINSTORM &&
         state.brainstormClusterTotal > 1
     ) {
-        Text(
-            text = "本组 ${state.brainstormClusterLearned}/${state.brainstormClusterTotal} 已掌握",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "本组 ${state.brainstormClusterLearned}/${state.brainstormClusterTotal}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            ClusterDots(
+                learned = state.brainstormClusterLearned,
+                total = state.brainstormClusterTotal
+            )
+        }
     }
 }
 
@@ -232,7 +245,7 @@ private fun BrainstormTag(state: StudyUiState) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(vertical = 4.dp)
     ) {
         Text(
             text = "关联词：",
@@ -243,7 +256,7 @@ private fun BrainstormTag(state: StudyUiState) {
 
         if (hasEdges) {
             LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 items(edges) { edge ->
@@ -252,12 +265,21 @@ private fun BrainstormTag(state: StudyUiState) {
                         shape = MaterialTheme.shapes.small,
                         color = color.copy(alpha = 0.15f)
                     ) {
-                        Text(
-                            text = edge.spelling,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = color,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
+                        Column(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = edge.spelling,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = color
+                            )
+                            Text(
+                                text = edge.edgeType.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = color.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
             }
@@ -287,6 +309,7 @@ private fun BrainstormTag(state: StudyUiState) {
 private fun QuestionView(
     spelling: String,
     phonetic: String,
+    relatedEdges: List<WordEdgePreview>,
     onRevealAnswer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -307,6 +330,11 @@ private fun QuestionView(
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            // 阶段D：中心辐射星图——展示当前词的关联词（仅头脑风暴有边时）。
+            if (relatedEdges.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                WordConstellation(nodes = relatedEdges)
             }
         }
     }
