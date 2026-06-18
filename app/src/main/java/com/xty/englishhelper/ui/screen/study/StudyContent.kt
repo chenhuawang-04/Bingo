@@ -47,9 +47,22 @@ internal fun StudyingContent(
     onRevealAnswer: () -> Unit,
     onRate: (Rating) -> Unit,
     onCloudExampleSourceSelected: (CloudExampleSource) -> Unit,
+    onQuizAnswer: (Long) -> Unit,
+    onQuizContinue: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val word = state.currentWord ?: return
+
+    // 阶段C：关联主动回忆选择题——开启且当前词符合条件时，替代翻卡流程。
+    state.brainstormQuiz?.let { quiz ->
+        BrainstormQuizContent(
+            quiz = quiz,
+            onAnswer = onQuizAnswer,
+            onContinue = onQuizContinue,
+            modifier = modifier
+        )
+        return
+    }
     val windowWidthClass = currentWindowWidthClass()
     val isWide = windowWidthClass.isExpandedOrMedium()
     val semantic = EhTheme.semanticColors
@@ -104,6 +117,7 @@ internal fun StudyingContent(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                         wordDetailItems(
                             word = word,
                             cloudExampleSource = state.cloudExampleSource,
@@ -153,6 +167,7 @@ internal fun StudyingContent(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                     wordDetailItems(
                         word = word,
                         cloudExampleSource = state.cloudExampleSource,
@@ -190,6 +205,18 @@ private fun ProgressBar(state: StudyUiState) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     )
+
+    // 阶段C：当前学习簇的掌握进度（仅在多词簇时显示）。
+    if (state.studyMode == com.xty.englishhelper.domain.model.StudyMode.BRAINSTORM &&
+        state.brainstormClusterTotal > 1
+    ) {
+        Text(
+            text = "本组 ${state.brainstormClusterLearned}/${state.brainstormClusterTotal} 已掌握",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+        )
+    }
 }
 
 @Composable
@@ -404,6 +431,139 @@ internal fun FinishedContent(
         Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = onDone) {
             Text("完成")
+        }
+    }
+}
+
+/** 阶段C：关联主动回忆选择题——从同组词中选出当前词的正确关联词。 */
+@Composable
+private fun BrainstormQuizContent(
+    quiz: BrainstormQuiz,
+    onAnswer: (Long) -> Unit,
+    onContinue: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val semantic = EhTheme.semanticColors
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "主动回忆",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = quiz.targetSpelling,
+            style = MaterialTheme.typography.headlineLarge,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "选出它的「${quiz.relationLabel}」",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            quiz.options.forEach { option ->
+                val isCorrect = option.wordId == quiz.correctWordId
+                val isSelected = option.wordId == quiz.selectedWordId
+                val bg = when {
+                    !quiz.answered -> MaterialTheme.colorScheme.surfaceVariant
+                    isCorrect -> semantic.studyGood.copy(alpha = 0.20f)
+                    isSelected -> semantic.studyAgain.copy(alpha = 0.20f)
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                val fg = when {
+                    !quiz.answered -> MaterialTheme.colorScheme.onSurface
+                    isCorrect -> semantic.studyGood
+                    isSelected -> semantic.studyAgain
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Surface(
+                    onClick = { if (!quiz.answered) onAnswer(option.wordId) },
+                    enabled = !quiz.answered,
+                    shape = MaterialTheme.shapes.medium,
+                    color = bg,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = option.spelling,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = fg,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        if (quiz.answered) {
+            Text(
+                text = if (quiz.isCorrect) "答对了，记为「良好」" else "答错了，记为「重来」，稍后再练",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (quiz.isCorrect) semantic.studyGood else semantic.studyAgain
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onContinue,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("继续")
+            }
+        }
+    }
+}
+
+/** 阶段C：揭示答案时的记忆联想卡——展示最强关联词及其关系依据 / 例句。 */
+@Composable
+private fun HookCard(hook: BrainstormHook) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "记忆联想 · ${hook.relationLabel}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "关联词：${hook.relatedSpelling}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            hook.reason?.let {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            hook.example?.let {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "例：$it",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                )
+            }
         }
     }
 }

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
+import com.xty.englishhelper.domain.model.EdgeNeighbor
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
@@ -88,6 +89,13 @@ class StudyViewModel @Inject constructor(
     private var wordIdToSpelling: Map<Long, String> = emptyMap()
     // wordId -> 簇下标（阶段B 选词产出；供阶段C 簇掌握度、阶段D 面包屑使用）
     private var brainstormClusterOf: Map<Long, Int> = emptyMap()
+    // 阶段C：会话内富边邻接（reason/example 记忆钩子 + 选择题干扰项来源）
+    private var brainstormDetailedAdj: Map<Long, List<EdgeNeighbor>> = emptyMap()
+    // 阶段C：本会话是否开启「关联主动回忆」选择题
+    private var brainstormActiveRecall = false
+    // 阶段C：簇掌握度（会话内）——每簇总词数 / 已掌握数
+    private var clusterTotalsByIndex: Map<Int, Int> = emptyMap()
+    private val clusterLearnedByIndex = mutableMapOf<Int, Int>()
     // Guard against re-rating during wait or while reviewWord is in-flight
     private var isProcessingRating = false
     private var cloudExamplesJob: Job? = null
@@ -155,6 +163,12 @@ class StudyViewModel @Inject constructor(
                 val session = buildBrainstormSession(dueWords, newWords, clusterSize, minConfidence)
 
                 brainstormClusterOf = session.clusterOf
+                brainstormDetailedAdj = session.gatedAdjacency
+                brainstormActiveRecall = settingsDataStore.getBrainstormActiveRecall()
+                clusterTotalsByIndex = session.orderedWords
+                    .groupingBy { session.clusterOf[it.id] ?: -1 }
+                    .eachCount()
+                clusterLearnedByIndex.clear()
                 val gated = session.gatedAdjacency
                 // 关联词标签（拼写）与边类型预览：均从会话内、已过滤的邻接派生。
                 brainstormRelated = gated.mapValues { (_, ns) -> ns.map { it.neighborId }.toSet() }
@@ -250,6 +264,17 @@ class StudyViewModel @Inject constructor(
                 emptyList()
             }
 
+            // 阶段C：当前词所在簇的掌握进度 + 记忆钩子 + 是否出选择题
+            val clusterIdx = brainstormClusterOf[entry.word.id]
+            val clusterTotal = clusterIdx?.let { clusterTotalsByIndex[it] } ?: 0
+            val clusterLearned = clusterIdx?.let { clusterLearnedByIndex[it] } ?: 0
+            val hook = if (studyMode == StudyMode.BRAINSTORM) buildHook(entry.word.id) else null
+            val quiz = if (studyMode == StudyMode.BRAINSTORM && brainstormActiveRecall) {
+                buildQuiz(entry.word)
+            } else {
+                null
+            }
+
             _uiState.update {
                 it.copy(
                     phase = StudyPhase.Studying,
@@ -261,6 +286,10 @@ class StudyViewModel @Inject constructor(
                     stats = buildStats(),
                     currentWordRelatedSpellings = relatedSpellings,
                     currentWordEdges = edgePreviews,
+                    brainstormClusterLearned = clusterLearned,
+                    brainstormClusterTotal = clusterTotal,
+                    currentWordHook = hook,
+                    brainstormQuiz = quiz,
                     cloudExamplesLoading = false,
                     cloudExamples = emptyList(),
                     cloudExamplesError = null
@@ -337,12 +366,18 @@ class StudyViewModel @Inject constructor(
                 if (rating == Rating.Again) {
                     // Re-queue with the scheduled due time so the word waits
                     queue.addLast(QueueEntry(word, dueAt = result.due))
+                    // 阶段C：把最强关联词拉到队首，先以关联作记忆钩子复现，再回到这个难词
+                    if (studyMode == StudyMode.BRAINSTORM) pullStrongestAssociateForward(word.id)
                 } else {
                     // Mark as processed
                     processedWordIds.add(word.id)
 
                     // Brainstorm: update progress
                     if (studyMode == StudyMode.BRAINSTORM) {
+                        // 阶段C：簇掌握度 +1（每词仅在首次非「重来」时计入）
+                        brainstormClusterOf[word.id]?.let { idx ->
+                            clusterLearnedByIndex[idx] = (clusterLearnedByIndex[idx] ?: 0) + 1
+                        }
                         val isDueWord = word.id in dueWordIds
                         val progressResult = updateBrainstormProgress.onWordLearned(isDueWord)
                         val (learned, target) = when (progressResult) {
@@ -427,6 +462,98 @@ class StudyViewModel @Inject constructor(
             EdgeType.FAMILY_SAME_ROOT
         )
         return priority.firstOrNull { it in types } ?: types.first()
+    }
+
+    // ── 阶段C：记忆钩子 / 选择题 / Again 拉钩 ──
+
+    /** 关系的简短可读标签（用于钩子与选择题题干）。 */
+    private fun relationLabel(type: EdgeType): String = when (type) {
+        EdgeType.SEMANTIC_SYNONYM -> "近义词"
+        EdgeType.SEMANTIC_ANTONYM -> "反义词"
+        EdgeType.LEARNING_CONFUSABLE -> "易混词"
+        EdgeType.LEARNING_MISUSE_PAIR -> "易误用词"
+        EdgeType.FORM_SPELLING -> "形近词"
+        EdgeType.FORM_MINIMAL_PAIR -> "最小对立词"
+        EdgeType.FAMILY_SAME_ROOT -> "同根词"
+        EdgeType.FAMILY_DERIVATION -> "派生词"
+        else -> type.label
+    }
+
+    private fun hookScore(n: EdgeNeighbor): Double =
+        n.relationStrength.coerceIn(1, 5) * n.confidence.coerceIn(0.0, 1.0) * n.learningValue.coerceIn(1, 5)
+
+    /** 揭示答案时的记忆钩子：取当前词最强、且带关系依据 / 例句的关联。 */
+    private fun buildHook(wordId: Long): BrainstormHook? {
+        val best = brainstormDetailedAdj[wordId].orEmpty()
+            .filter { !it.reason.isNullOrBlank() || !it.exampleSentence.isNullOrBlank() }
+            .maxByOrNull { hookScore(it) } ?: return null
+        val spelling = wordIdToSpelling[best.neighborId] ?: return null
+        return BrainstormHook(
+            relatedSpelling = spelling,
+            relationLabel = relationLabel(best.type),
+            reason = best.reason?.takeIf { it.isNotBlank() },
+            example = best.exampleSentence?.takeIf { it.isNotBlank() }
+        )
+    }
+
+    /** 关联主动回忆选择题：对有明确近义 / 反义 / 易混 / 形近关联且能凑足 3 个干扰项的词出题。 */
+    private fun buildQuiz(word: WordDetails): BrainstormQuiz? {
+        val quizableTypes = setOf(
+            EdgeType.SEMANTIC_SYNONYM,
+            EdgeType.SEMANTIC_ANTONYM,
+            EdgeType.LEARNING_CONFUSABLE,
+            EdgeType.FORM_SPELLING
+        )
+        val correct = brainstormDetailedAdj[word.id].orEmpty()
+            .filter { it.type in quizableTypes && wordIdToSpelling.containsKey(it.neighborId) }
+            .maxByOrNull { hookScore(it) } ?: return null
+        val correctSpelling = wordIdToSpelling[correct.neighborId] ?: return null
+
+        // 干扰项：会话内其他词，排除目标词、正确项以及目标词的全部关联词（避免「也算对」歧义）。
+        val excluded = (brainstormRelated[word.id] ?: emptySet()) + word.id + correct.neighborId
+        val distractors = wordIdToSpelling.keys
+            .filter { it !in excluded }
+            .shuffled()
+            .take(3)
+            .mapNotNull { id -> wordIdToSpelling[id]?.let { BrainstormQuizOption(id, it) } }
+        if (distractors.size < 3) return null
+
+        val options = (distractors + BrainstormQuizOption(correct.neighborId, correctSpelling)).shuffled()
+        return BrainstormQuiz(
+            targetSpelling = word.spelling,
+            relationLabel = relationLabel(correct.type),
+            options = options,
+            correctWordId = correct.neighborId
+        )
+    }
+
+    /** 评「重来」后，把该词最强、尚未背过的关联词拉到队首先复现，作为记忆锚点。 */
+    private fun pullStrongestAssociateForward(wordId: Long) {
+        val bestNeighborId = brainstormDetailedAdj[wordId].orEmpty()
+            .filter { it.neighborId !in processedWordIds }
+            .maxByOrNull { hookScore(it) }
+            ?.neighborId ?: return
+        val idx = queue.indexOfFirst { it.word.id == bestNeighborId }
+        if (idx > 0) {
+            val entry = queue.removeAt(idx)
+            queue.addFirst(entry.copy(dueAt = 0))
+        }
+    }
+
+    /** 用户选中选择题选项（仅标记选择并显示对错，等「继续」再应用评分）。 */
+    fun onQuizAnswer(optionWordId: Long) {
+        val quiz = _uiState.value.brainstormQuiz ?: return
+        if (quiz.answered) return
+        _uiState.update { it.copy(brainstormQuiz = quiz.copy(selectedWordId = optionWordId)) }
+    }
+
+    /** 选择题答完后继续：答对记「良好」、答错记「重来」，按普通 FSRS 评分推进。 */
+    fun onQuizContinue() {
+        val quiz = _uiState.value.brainstormQuiz ?: return
+        if (!quiz.answered) return
+        val rating = if (quiz.isCorrect) Rating.Good else Rating.Again
+        _uiState.update { it.copy(brainstormQuiz = null) }
+        onRate(rating)
     }
 
     private fun buildStats(): StudyStats {

@@ -171,6 +171,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.brainstormActiveRecall.collect { value ->
+                _uiState.update { it.copy(brainstormActiveRecall = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.poolRetryMode.collect { value ->
                 _uiState.update { it.copy(poolRetryMode = value) }
             }
@@ -519,6 +524,11 @@ class SettingsViewModel @Inject constructor(
     fun onBrainstormQualityMinConfidenceChange(value: Float) {
         _uiState.update { it.copy(brainstormQualityMinConfidence = value) }
         viewModelScope.launch { settingsDataStore.setBrainstormQualityMinConfidence(value) }
+    }
+
+    fun onBrainstormActiveRecallChange(value: Boolean) {
+        _uiState.update { it.copy(brainstormActiveRecall = value) }
+        viewModelScope.launch { settingsDataStore.setBrainstormActiveRecall(value) }
     }
 
     fun onImageCompressionEnabledChange(value: Boolean) {

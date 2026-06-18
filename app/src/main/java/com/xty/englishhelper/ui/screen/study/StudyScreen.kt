@@ -83,6 +83,8 @@ fun StudyScreen(
                     onRevealAnswer = viewModel::onRevealAnswer,
                     onRate = viewModel::onRate,
                     onCloudExampleSourceSelected = viewModel::selectCloudExampleSource,
+                    onQuizAnswer = viewModel::onQuizAnswer,
+                    onQuizContinue = viewModel::onQuizContinue,
                     modifier = Modifier.padding(padding)
                 )
             }

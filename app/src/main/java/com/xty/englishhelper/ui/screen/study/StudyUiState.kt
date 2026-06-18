@@ -30,7 +30,39 @@ data class StudyUiState(
     val brainstormLearnedCount: Int = 0,
     val brainstormTargetCount: Int = 0,
     val brainstormDueLearned: Int = 0,
-    val brainstormNewLearned: Int = 0
+    val brainstormNewLearned: Int = 0,
+    // 阶段C：当前词所在学习簇的掌握进度（会话内）
+    val brainstormClusterLearned: Int = 0,
+    val brainstormClusterTotal: Int = 0,
+    // 阶段C：揭示答案时展示的记忆钩子（最强关联的关系依据/例句）
+    val currentWordHook: BrainstormHook? = null,
+    // 阶段C：关联主动回忆选择题（开启且当前词符合条件时，替代翻卡流程）
+    val brainstormQuiz: BrainstormQuiz? = null
+)
+
+/** 记忆钩子：当前词与某关联词的关系依据 / 例句，揭示答案时展示。 */
+data class BrainstormHook(
+    val relatedSpelling: String,
+    val relationLabel: String,
+    val reason: String?,
+    val example: String?
+)
+
+/** 关联主动回忆选择题：从同组词中选出当前词的正确关联词。 */
+data class BrainstormQuiz(
+    val targetSpelling: String,
+    val relationLabel: String,
+    val options: List<BrainstormQuizOption>,
+    val correctWordId: Long,
+    val selectedWordId: Long? = null
+) {
+    val answered: Boolean get() = selectedWordId != null
+    val isCorrect: Boolean get() = selectedWordId == correctWordId
+}
+
+data class BrainstormQuizOption(
+    val wordId: Long,
+    val spelling: String
 )
 
 data class WordEdgePreview(

@@ -73,6 +73,7 @@ class SettingsDataStore @Inject constructor(
         val POOL_MANAGED_MODE = booleanPreferencesKey("pool_managed_mode")
         val BRAINSTORM_CLUSTER_SIZE = intPreferencesKey("brainstorm_cluster_size")
         val BRAINSTORM_QUALITY_MIN_CONFIDENCE = floatPreferencesKey("brainstorm_quality_min_confidence")
+        val BRAINSTORM_ACTIVE_RECALL = booleanPreferencesKey("brainstorm_active_recall")
         val SCAN_RESCORE_AFTER_HOURS = intPreferencesKey("scan_rescore_after_hours")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
@@ -224,6 +225,11 @@ class SettingsDataStore @Inject constructor(
         (prefs[BRAINSTORM_QUALITY_MIN_CONFIDENCE] ?: 0.3f).coerceIn(0f, 0.9f)
     }
 
+    /** 头脑风暴「关联主动回忆」：开启后对有明确近义/反义/易混关联的词出选择题，主动检索替代翻卡。默认关。 */
+    val brainstormActiveRecall: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[BRAINSTORM_ACTIVE_RECALL] ?: false
+    }
+
     suspend fun setGuardianDetailConcurrency(value: Int) {
         dataStore.edit { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
@@ -361,6 +367,15 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setBrainstormQualityMinConfidence(value: Float) {
         dataStore.edit { prefs -> prefs[BRAINSTORM_QUALITY_MIN_CONFIDENCE] = value.coerceIn(0f, 0.9f) }
+    }
+
+    suspend fun getBrainstormActiveRecall(): Boolean {
+        val prefs = dataStore.data.first()
+        return prefs[BRAINSTORM_ACTIVE_RECALL] ?: false
+    }
+
+    suspend fun setBrainstormActiveRecall(value: Boolean) {
+        dataStore.edit { prefs -> prefs[BRAINSTORM_ACTIVE_RECALL] = value }
     }
 
     suspend fun getProviders(): List<AiProviderProfile> {

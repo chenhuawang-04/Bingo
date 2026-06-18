@@ -171,8 +171,10 @@ fun SettingsScreen(
                 BrainstormSettingsSection(
                     clusterSize = state.brainstormClusterSize,
                     qualityMinConfidence = state.brainstormQualityMinConfidence,
+                    activeRecall = state.brainstormActiveRecall,
                     onClusterSizeChange = viewModel::onBrainstormClusterSizeChange,
-                    onQualityMinConfidenceChange = viewModel::onBrainstormQualityMinConfidenceChange
+                    onQualityMinConfidenceChange = viewModel::onBrainstormQualityMinConfidenceChange,
+                    onActiveRecallChange = viewModel::onBrainstormActiveRecallChange
                 )
 
                 HorizontalDivider()
@@ -454,8 +456,10 @@ private fun PoolSettingsSection(
 private fun BrainstormSettingsSection(
     clusterSize: Int,
     qualityMinConfidence: Float,
+    activeRecall: Boolean,
     onClusterSizeChange: (Int) -> Unit,
-    onQualityMinConfidenceChange: (Float) -> Unit
+    onQualityMinConfidenceChange: (Float) -> Unit,
+    onActiveRecallChange: (Boolean) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("头脑风暴背词", style = MaterialTheme.typography.titleMedium)
@@ -521,6 +525,23 @@ private fun BrainstormSettingsSection(
                 modifier = Modifier.width(40.dp)
             )
         }
+
+        HorizontalDivider()
+
+        // Active recall (opt-in)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("关联主动回忆（选择题）", style = MaterialTheme.typography.bodyMedium)
+            Switch(checked = activeRecall, onCheckedChange = onActiveRecallChange)
+        }
+        Text(
+            "开启后，对有明确近义 / 反义 / 易混关联的词出选择题：从同组词中选出正确关联词。答对记为「良好」，答错记为「重来」并稍后重现。用主动检索强化记忆。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

@@ -41,6 +41,7 @@ data class SettingsUiState(
     val poolManagedMode: Boolean = false,
     val brainstormClusterSize: Int = 6,
     val brainstormQualityMinConfidence: Float = 0.3f,
+    val brainstormActiveRecall: Boolean = false,
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
     val scanRescoreAfterHours: Int = 24,
