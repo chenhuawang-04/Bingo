@@ -129,6 +129,11 @@ interface WordDao {
     @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId")
     suspend fun countAllWords(dictionaryId: Long): Int
 
+    // Lightweight projection for the relation-graph viewer: id + spelling only.
+    // Full word details (phonetic / meanings) are lazy-loaded per node on tap via getWordById.
+    @Query("SELECT id, spelling FROM words WHERE dictionary_id = :dictionaryId")
+    suspend fun getWordLabels(dictionaryId: Long): List<WordLabelProjection>
+
     @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId AND entry_type = :entryType")
     suspend fun countByEntryType(dictionaryId: Long, entryType: String): Int
 }
@@ -136,6 +141,7 @@ interface WordDao {
 data class WordIdSpelling(val id: Long, @ColumnInfo(name = "normalized_spelling") val normalizedSpelling: String)
 data class AssociationWithSpelling(val wordId: Long, val spelling: String, val similarity: Float, val commonSegmentsJson: String)
 data class WordDecompositionProjection(val id: Long, val decompositionJson: String)
+data class WordLabelProjection(val id: Long, val spelling: String)
 
 data class EntryTypeClassificationInput(
     val id: Long,

@@ -3,10 +3,21 @@ package com.xty.englishhelper.domain.repository
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
+import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordGraph
 import com.xty.englishhelper.domain.model.WordPool
 
 interface WordPoolRepository {
     suspend fun getPoolsForWord(wordId: Long): List<WordPool>
+
+    /**
+     * 装配整部词典的「关系图」用于可视化：全部词作节点、[com.xty.englishhelper.data.local.entity.WordEdgeEntity]
+     * 作彩色 typed 边、边图的连通分量作簇。节点只取轻量投影（id+拼写），释义点击时再用 [getWordDetail] 懒加载。
+     */
+    suspend fun getWordRelationGraph(dictionaryId: Long): WordGraph
+
+    /** 懒加载单个词的完整释义（点击关系图节点时取用）。 */
+    suspend fun getWordDetail(wordId: Long): WordDetails?
 
     suspend fun rebuildPools(
         dictionaryId: Long,

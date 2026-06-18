@@ -66,6 +66,12 @@ data class BatchImportRoute(val dictionaryId: Long)
 data class PoolBuildDetailRoute(val dictionaryId: Long)
 
 @Serializable
+data class PoolOverviewRoute(val dictionaryId: Long)
+
+@Serializable
+data class PoolGraphRoute(val dictionaryId: Long, val focusClusterId: Int = -1)
+
+@Serializable
 data object GuardianBrowseRoute
 
 @Serializable

@@ -20,6 +20,8 @@ import com.xty.englishhelper.ui.screen.plan.PlanScreen
 import com.xty.englishhelper.ui.screen.batchimport.BatchImportScreen
 import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
 import com.xty.englishhelper.ui.screen.dictionary.PoolBuildDetailScreen
+import com.xty.englishhelper.ui.screen.dictionary.pool.PoolGraphScreen
+import com.xty.englishhelper.ui.screen.dictionary.pool.PoolOverviewScreen
 import com.xty.englishhelper.ui.screen.home.HomeScreen
 import com.xty.englishhelper.ui.screen.importexport.ImportExportScreen
 import com.xty.englishhelper.ui.screen.main.MainScaffold
@@ -77,6 +79,9 @@ fun NavGraph(navController: NavHostController) {
                     },
                     onPoolBuildDetail = {
                         navController.navigate(PoolBuildDetailRoute(route.dictionaryId))
+                    },
+                    onViewPools = {
+                        navController.navigate(PoolOverviewRoute(route.dictionaryId))
                     }
                 )
             }
@@ -84,6 +89,26 @@ fun NavGraph(navController: NavHostController) {
             composable<PoolBuildDetailRoute> {
                 PoolBuildDetailScreen(
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<PoolOverviewRoute> { backStackEntry ->
+                val route = backStackEntry.toRoute<PoolOverviewRoute>()
+                PoolOverviewScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenGraph = { focusClusterId ->
+                        navController.navigate(PoolGraphRoute(route.dictionaryId, focusClusterId))
+                    }
+                )
+            }
+
+            composable<PoolGraphRoute> { backStackEntry ->
+                val route = backStackEntry.toRoute<PoolGraphRoute>()
+                PoolGraphScreen(
+                    onBack = { navController.popBackStack() },
+                    onWordClick = { wordId ->
+                        navController.navigate(WordDetailRoute(wordId, route.dictionaryId))
+                    }
                 )
             }
 

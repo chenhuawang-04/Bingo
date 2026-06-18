@@ -83,6 +83,7 @@ fun DictionaryScreen(
     onStudy: (dictionaryId: Long) -> Unit,
     onBatchImport: (dictionaryId: Long) -> Unit = {},
     onPoolBuildDetail: () -> Unit = {},
+    onViewPools: () -> Unit = {},
     viewModel: DictionaryViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -243,7 +244,8 @@ fun DictionaryScreen(
                         onWordClick = handleWordClick,
                         onUnitClick = onUnitClick,
                         selectedWordId = selectedWordId,
-                        onPoolBuildDetail = onPoolBuildDetail
+                        onPoolBuildDetail = onPoolBuildDetail,
+                        onViewPools = onViewPools
                     )
                 }
 
@@ -292,7 +294,8 @@ fun DictionaryScreen(
                     onWordClick = handleWordClick,
                     onUnitClick = onUnitClick,
                     selectedWordId = null,
-                    onPoolBuildDetail = onPoolBuildDetail
+                    onPoolBuildDetail = onPoolBuildDetail,
+                    onViewPools = onViewPools
                 )
             }
         }
@@ -505,7 +508,8 @@ private fun DictionaryListContent(
     onWordClick: (Long, Long) -> Unit,
     onUnitClick: (Long, Long) -> Unit,
     selectedWordId: Long?,
-    onPoolBuildDetail: () -> Unit = {}
+    onPoolBuildDetail: () -> Unit = {},
+    onViewPools: () -> Unit = {}
 ) {
     SearchBar(
         query = state.searchQuery,
@@ -662,11 +666,16 @@ private fun DictionaryListContent(
 
                     item {
                         val isBuilding = state.isRebuildingPools
+                        val canViewPools = !isBuilding && state.poolCount > 0
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .then(
-                                    if (isBuilding) Modifier.clickable { onPoolBuildDetail() } else Modifier
+                                    when {
+                                        isBuilding -> Modifier.clickable { onPoolBuildDetail() }
+                                        canViewPools -> Modifier.clickable { onViewPools() }
+                                        else -> Modifier
+                                    }
                                 )
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
@@ -717,6 +726,20 @@ private fun DictionaryListContent(
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(20.dp)
                                     )
+                                } else if (canViewPools) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "查看图谱",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Icon(
+                                            Icons.Default.ChevronRight,
+                                            contentDescription = "查看词池关系图谱",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                             if (isBuilding) {

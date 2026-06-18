@@ -27,13 +27,20 @@ import com.xty.englishhelper.data.repository.pool.RetryableEdgeException
 import java.util.concurrent.atomic.AtomicInteger
 import com.xty.englishhelper.domain.background.PoolBuildLiveMonitor
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.EdgeCluster
+import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolRetryMode
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordGraph
+import com.xty.englishhelper.domain.model.WordGraphCluster
+import com.xty.englishhelper.domain.model.WordGraphEdge
+import com.xty.englishhelper.domain.model.WordGraphNode
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.pool.BuiltPool
 import com.xty.englishhelper.domain.pool.MutableUnionFind
+import com.xty.englishhelper.domain.pool.UnionFind
 import com.xty.englishhelper.domain.pool.PoolCandidate
 import com.xty.englishhelper.domain.pool.WordPoolEngine
 import com.xty.englishhelper.domain.repository.WordPoolRepository
@@ -136,6 +143,108 @@ class WordPoolRepositoryImpl @Inject constructor(
                 members = memberDetails
             )
         }.filter { it.members.isNotEmpty() }
+    }
+
+    override suspend fun getWordDetail(wordId: Long): WordDetails? =
+        wordDao.getWordById(wordId)?.toDomain()
+
+    override suspend fun getWordRelationGraph(dictionaryId: Long): WordGraph {
+        val labels = wordDao.getWordLabels(dictionaryId)
+        val n = labels.size
+        if (n == 0) {
+            return WordGraph(emptyList(), emptyList(), emptyList(), emptyList(), 0, 0, emptyMap())
+        }
+
+        // wordId -> node index (node list preserves label order; edges/clusters reference these indices)
+        val indexById = HashMap<Long, Int>(n * 2)
+        labels.forEachIndexed { i, l -> indexById[l.id] = i }
+
+        val edgeProjections = wordEdgeDao.getAllEdges(dictionaryId)
+        val uf = UnionFind(n)
+        val degree = IntArray(n)
+        val clusterDistribution = HashMap<EdgeCluster, Int>()
+        val graphEdges = ArrayList<WordGraphEdge>(edgeProjections.size)
+
+        edgeProjections.forEach { e ->
+            val ai = indexById[e.wordIdA] ?: return@forEach
+            val bi = indexById[e.wordIdB] ?: return@forEach
+            if (ai == bi) return@forEach
+            val type = EdgeType.fromDbValue(e.edgeType) ?: return@forEach
+            uf.union(ai, bi)
+            degree[ai]++
+            degree[bi]++
+            clusterDistribution[type.cluster] = (clusterDistribution[type.cluster] ?: 0) + 1
+            graphEdges.add(
+                WordGraphEdge(
+                    aIndex = ai,
+                    bIndex = bi,
+                    type = type,
+                    relationStrength = e.relationStrength,
+                    confidence = e.confidence,
+                    status = e.status,
+                    reason = e.reason,
+                    exampleSentence = e.exampleSentence,
+                    register = e.register,
+                    difficultyCefr = e.difficultyCefr,
+                    warningNote = e.warningNote
+                )
+            )
+        }
+
+        // 把有边的节点按连通分量分组；孤立词（度数 0）另存。
+        val rootToNodes = LinkedHashMap<Int, MutableList<Int>>()
+        val isolated = ArrayList<Int>()
+        for (i in 0 until n) {
+            if (degree[i] == 0) {
+                isolated.add(i)
+            } else {
+                rootToNodes.getOrPut(uf.find(i)) { ArrayList() }.add(i)
+            }
+        }
+
+        // 每个分量内各关系类别的边数（卡片色点 / 聚合点主色）。
+        val rootRelationCounts = HashMap<Int, HashMap<EdgeCluster, Int>>()
+        graphEdges.forEach { e ->
+            val root = uf.find(e.aIndex)
+            val m = rootRelationCounts.getOrPut(root) { HashMap() }
+            m[e.type.cluster] = (m[e.type.cluster] ?: 0) + 1
+        }
+
+        // 簇按词数降序编号，得到稳定且自然的 cluster id。
+        val sortedRoots = rootToNodes.entries.sortedByDescending { it.value.size }
+        val clusterIdByRoot = HashMap<Int, Int>(sortedRoots.size * 2)
+        sortedRoots.forEachIndexed { cid, entry -> clusterIdByRoot[entry.key] = cid }
+
+        val clusterIdByNode = IntArray(n) { -1 }
+        rootToNodes.forEach { (root, members) ->
+            val cid = clusterIdByRoot.getValue(root)
+            members.forEach { clusterIdByNode[it] = cid }
+        }
+
+        val nodes = labels.mapIndexed { i, l ->
+            WordGraphNode(wordId = l.id, spelling = l.spelling, clusterId = clusterIdByNode[i], degree = degree[i])
+        }
+
+        val clusters = sortedRoots.map { (root, members) ->
+            // 核心 = 度数最高者；并列取下标最小者（稳定）。
+            val core = members.minWith(compareByDescending<Int> { degree[it] }.thenBy { it })
+            WordGraphCluster(
+                id = clusterIdByRoot.getValue(root),
+                coreNodeIndex = core,
+                nodeIndices = members,
+                relationCounts = rootRelationCounts[root] ?: emptyMap()
+            )
+        }
+
+        return WordGraph(
+            nodes = nodes,
+            edges = graphEdges,
+            clusters = clusters,
+            isolatedNodeIndices = isolated,
+            totalWords = n,
+            totalEdges = graphEdges.size,
+            clusterDistribution = clusterDistribution
+        )
     }
 
     override suspend fun rebuildPools(
