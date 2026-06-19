@@ -90,6 +90,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -103,6 +104,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.AnswerSource
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.QuestionItem
@@ -210,14 +212,14 @@ fun QuestionBankReaderScreen(
                     Text(
                         state.group?.sectionLabel
                             ?: state.group?.questionType?.displayName
-                            ?: "阅读",
+                            ?: stringResource(R.string.reader_reading),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -225,14 +227,14 @@ fun QuestionBankReaderScreen(
                     IconButton(onClick = { viewModel.toggleSpeakArticle() }) {
                         Icon(
                             if (ttsActive) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (ttsActive) "暂停" else "朗读"
+                            contentDescription = if (ttsActive) stringResource(R.string.common_pause) else stringResource(R.string.reader_read_aloud)
                         )
                     }
                     // Translation toggle
                     IconButton(onClick = { viewModel.toggleTranslation() }) {
                         Icon(
                             Icons.Default.Translate,
-                            contentDescription = "翻译",
+                            contentDescription = stringResource(R.string.reader_translate),
                             tint = if (state.translationEnabled)
                                 MaterialTheme.colorScheme.primary
                             else
@@ -259,7 +261,7 @@ fun QuestionBankReaderScreen(
                             ) {
                                 Icon(
                                     Icons.Outlined.CollectionsBookmark,
-                                    contentDescription = "收纳本",
+                                    contentDescription = stringResource(R.string.reader_notebook),
                                     tint = notebookTint,
                                     modifier = Modifier.graphicsLayer {
                                         scaleX = notebookPulseScale.value
@@ -270,7 +272,7 @@ fun QuestionBankReaderScreen(
                         } else {
                             Icon(
                                 Icons.Outlined.CollectionsBookmark,
-                                contentDescription = "收纳本",
+                                contentDescription = stringResource(R.string.reader_notebook),
                                 tint = notebookTint,
                                 modifier = Modifier.graphicsLayer {
                                     scaleX = notebookPulseScale.value
@@ -311,7 +313,7 @@ fun QuestionBankReaderScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text("题组不存在", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.reader_group_not_exists), style = MaterialTheme.typography.bodyLarge)
             }
         } else {
             val isCloze = state.group?.questionType == QuestionType.CLOZE
@@ -475,16 +477,16 @@ fun QuestionBankReaderScreen(
         val isSubheadingMatch = state.group?.questionType == QuestionType.SUBHEADING_MATCH
         val isInformationMatch = state.group?.questionType == QuestionType.INFORMATION_MATCH
         val dialogTitle = when {
-            isCommentOpinionMatch -> "补录观点选项"
-            isSubheadingMatch -> "补录小标题"
-            isInformationMatch -> "补录信息选项"
-            else -> "补录选项句子"
+            isCommentOpinionMatch -> stringResource(R.string.reader_options_title_opinion)
+            isSubheadingMatch -> stringResource(R.string.reader_options_title_subheading)
+            isInformationMatch -> stringResource(R.string.reader_options_title_info)
+            else -> stringResource(R.string.reader_options_title_sentence)
         }
         val dialogHint = when {
-            isCommentOpinionMatch -> "支持两种格式：每行一个观点，或一行粘贴 A. B. C. 格式（共 7 个）"
-            isSubheadingMatch -> "支持两种格式：每行一个标题，或一行粘贴 A. B. C. 格式（共 7 个）"
-            isInformationMatch -> "支持两种格式：每行一个信息，或一行粘贴 A. B. C. 格式（共 7 个）"
-            else -> "支持两种格式：每行一个句子，或一行粘贴 A. B. C. 格式（共 7 个）"
+            isCommentOpinionMatch -> stringResource(R.string.reader_options_hint_opinion)
+            isSubheadingMatch -> stringResource(R.string.reader_options_hint_subheading)
+            isInformationMatch -> stringResource(R.string.reader_options_hint_info)
+            else -> stringResource(R.string.reader_options_hint_sentence)
         }
         AlertDialog(
             onDismissRequest = { viewModel.dismissSentenceOptionsEditor() },
@@ -506,10 +508,10 @@ fun QuestionBankReaderScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.saveSentenceOptions() }) { Text("保存") }
+                TextButton(onClick = { viewModel.saveSentenceOptions() }) { Text(stringResource(R.string.common_save)) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissSentenceOptionsEditor() }) { Text("取消") }
+                TextButton(onClick = { viewModel.dismissSentenceOptionsEditor() }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
@@ -620,9 +622,9 @@ private fun ReaderContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("题目", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.reader_questions_title), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "(${state.items.size} 题)",
+                    stringResource(R.string.reader_question_count, state.items.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -685,23 +687,23 @@ private fun SourceStatusRow(
         ) {
             when (group.sourceVerified) {
                 SourceVerifyStatus.VERIFIED -> {
-                    Icon(Icons.Default.CheckCircle, "已验证", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                    Text("已验证", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.CheckCircle, stringResource(R.string.question_source_verified), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    Text(stringResource(R.string.question_source_verified), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     if (linkedArticleId != null) {
                         TextButton(onClick = onViewArticle, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.MenuBook, "查看原文", modifier = Modifier.size(14.dp))
+                            Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.reader_view_source), modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("查看原文", style = MaterialTheme.typography.labelSmall)
+                            Text(stringResource(R.string.reader_view_source), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
                 SourceVerifyStatus.FAILED -> {
-                    Icon(Icons.Default.Error, "验证失败", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                    Text("验证失败", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                    Icon(Icons.Default.Error, stringResource(R.string.question_source_verify_failed), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                    Text(stringResource(R.string.question_source_verify_failed), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 }
                 else -> {
-                    Icon(Icons.AutoMirrored.Filled.HelpOutline, "未验证", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                    Text("未验证", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.AutoMirrored.Filled.HelpOutline, stringResource(R.string.question_source_unverified), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                    Text(stringResource(R.string.question_source_unverified), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
@@ -724,14 +726,14 @@ private fun SourceStatusRow(
         if (group.sourceVerified != SourceVerifyStatus.VERIFIED) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                 TextButton(onClick = onShowSourceEditor, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                    Icon(Icons.Default.Edit, "编辑来源", modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Edit, stringResource(R.string.reader_edit_source), modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(if (group.sourceUrl.isNullOrBlank()) "输入来源 URL" else "编辑来源", style = MaterialTheme.typography.labelSmall)
+                    Text(if (group.sourceUrl.isNullOrBlank()) stringResource(R.string.reader_input_source_url) else stringResource(R.string.reader_edit_source), style = MaterialTheme.typography.labelSmall)
                 }
                 TextButton(onClick = onVerifySource, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                    Icon(Icons.Default.Search, "验证来源", modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Search, stringResource(R.string.reader_verify_source), modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("验证来源", style = MaterialTheme.typography.labelSmall)
+                    Text(stringResource(R.string.reader_verify_source), style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -745,13 +747,13 @@ private fun SourceStatusRow(
                 OutlinedTextField(
                     value = sourceUrlDraft,
                     onValueChange = onSourceUrlDraftChange,
-                    label = { Text("来源 URL") },
+                    label = { Text(stringResource(R.string.scan_source_url)) },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))
-                TextButton(onClick = onSaveSourceUrl) { Text("保存") }
-                TextButton(onClick = onCancelSourceEditor) { Text("取消") }
+                TextButton(onClick = onSaveSourceUrl) { Text(stringResource(R.string.common_save)) }
+                TextButton(onClick = onCancelSourceEditor) { Text(stringResource(R.string.common_cancel)) }
             }
         }
     }
@@ -849,11 +851,11 @@ private fun translationScoreColors(
     }
 }
 
-private fun answerSourceText(source: AnswerSource?): String {
+private fun answerSourceText(source: AnswerSource?, scannedText: String, essayText: String): String {
     return when (source) {
         AnswerSource.AI -> "(AI)"
-        AnswerSource.SCANNED -> "(扫描)"
-        AnswerSource.WEB -> "(范文)"
+        AnswerSource.SCANNED -> scannedText
+        AnswerSource.WEB -> essayText
         else -> ""
     }
 }
@@ -870,13 +872,13 @@ private fun PracticeResultRow(
             true -> {
                 Icon(
                     Icons.Default.CheckCircle,
-                    contentDescription = "正确",
+                    contentDescription = stringResource(R.string.reader_correct),
                     tint = statusColors.success,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    "正确",
+                    stringResource(R.string.reader_correct),
                     style = MaterialTheme.typography.labelSmall,
                     color = statusColors.success
                 )
@@ -884,27 +886,27 @@ private fun PracticeResultRow(
             false -> {
                 Icon(
                     Icons.Default.Error,
-                    contentDescription = "错误",
+                    contentDescription = stringResource(R.string.reader_wrong),
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    "错误，正确答案：$correctAnswer",
+                    stringResource(R.string.reader_wrong_answer, correctAnswer),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error
                 )
             }
             null -> {
                 Text(
-                    "答案：$correctAnswer",
+                    stringResource(R.string.reader_answer_label, correctAnswer),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
             }
         }
 
-        val sourceText = answerSourceText(answerSource)
+        val sourceText = answerSourceText(answerSource, stringResource(R.string.reader_source_scanned), stringResource(R.string.reader_source_essay))
         if (sourceText.isNotBlank()) {
             Spacer(Modifier.width(8.dp))
             Text(
@@ -1078,28 +1080,28 @@ private fun PracticeActionBar(
                     onClick = onSubmit,
                     enabled = hasAnswers && hasSelection,
                     modifier = Modifier.weight(1f)
-                ) { Text("提交答案") }
+                ) { Text(stringResource(R.string.reader_submit_answers)) }
 
                 // Show answers
                 if (hasAnswers) {
                     OutlinedButton(
                         onClick = onShowAnswers,
                         modifier = Modifier.weight(1f)
-                    ) { Text("查看答案") }
+                    ) { Text(stringResource(R.string.reader_show_answers)) }
                 }
             } else {
                 // Retry
                 Button(
                     onClick = onRetry,
                     modifier = Modifier.weight(1f)
-                ) { Text("重新做题") }
+                ) { Text(stringResource(R.string.reader_retry_practice)) }
 
                 // Stats
                 if (state.isSubmitted && state.practiceResults.isNotEmpty()) {
                     val correct = state.practiceResults.values.count { it }
                     val total = state.practiceResults.size
                     Text(
-                        "$correct / $total 正确",
+                        stringResource(R.string.reader_correct_count, correct, total),
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (correct == total) statusColors.success else MaterialTheme.colorScheme.error,
                         modifier = Modifier.align(Alignment.CenterVertically)
@@ -1116,7 +1118,7 @@ private fun PracticeActionBar(
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                 Text(
-                    "正在压缩图片…",
+                    stringResource(R.string.reader_compressing_answers),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1133,10 +1135,10 @@ private fun PracticeActionBar(
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(8.dp))
             } else {
-                Icon(Icons.Default.CameraAlt, "扫描答案", modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.CameraAlt, stringResource(R.string.reader_scan_answers), modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
             }
-            Text("扫描答案")
+            Text(stringResource(R.string.reader_scan_answers))
         }
     }
 }
@@ -1667,7 +1669,7 @@ private fun SentenceInsertionPassagePanel(
                 Spacer(Modifier.height(4.dp))
                 HorizontalDivider()
                 Text(
-                    "段落工具在每段末尾，可用于翻译或整理",
+                    stringResource(R.string.reader_paragraph_tools_hint),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp)
@@ -1906,17 +1908,17 @@ private fun SentenceInsertionAnswerPanel(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("可选句子", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = onEditSentenceOptions) { Text("补录/编辑") }
+                        Text(stringResource(R.string.reader_optional_sentences), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onEditSentenceOptions) { Text(stringResource(R.string.reader_add_edit)) }
                     }
                     if (options.isEmpty()) {
                         Text(
-                            "未识别到选项句子",
+                            stringResource(R.string.reader_unrecognized_sentences),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
                         Text(
-                            "可先选择字母作答，之后再补录选项句子",
+                            stringResource(R.string.reader_hint_first_sentences),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2001,7 +2003,7 @@ private fun SentenceInsertionQuestionCard(
                         modifier = Modifier.padding(end = 6.dp)
                     )
                     Text(
-                        item.questionText.ifBlank { "填空" },
+                        item.questionText.ifBlank { stringResource(R.string.reader_fill_blank) },
                         style = ArticleTypography.QuestionStem
                     )
                 }
@@ -2181,17 +2183,17 @@ private fun CommentOpinionMatchContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("可选观点", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = onEditMatchOptions) { Text("补录/编辑") }
+                        Text(stringResource(R.string.reader_optional_viewpoints), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onEditMatchOptions) { Text(stringResource(R.string.reader_add_edit)) }
                     }
                     if (options.isEmpty()) {
                         Text(
-                            "未识别到观点选项",
+                            stringResource(R.string.reader_unrecognized_opinions),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
                         Text(
-                            "可先选择字母作答，之后再补录选项",
+                            stringResource(R.string.reader_hint_first_options),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2356,17 +2358,17 @@ private fun SubheadingMatchContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("可选小标题", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = onEditMatchOptions) { Text("补录/编辑") }
+                        Text(stringResource(R.string.reader_optional_subtitles), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onEditMatchOptions) { Text(stringResource(R.string.reader_add_edit)) }
                     }
                     if (options.isEmpty()) {
                         Text(
-                            "未识别到小标题",
+                            stringResource(R.string.reader_unrecognized_subtitles),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
                         Text(
-                            "可先选择字母作答，之后再补录标题",
+                            stringResource(R.string.reader_hint_first_titles),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2404,7 +2406,7 @@ private fun SubheadingMatchContent(
                 showingAnswers = state.showingAnswers,
                 isCorrect = state.practiceResults[item.id],
                 onSelectAnswer = { answer -> onSelectAnswer(item.id, answer) },
-                fallbackTitle = "段落"
+                fallbackTitle = stringResource(R.string.reader_paragraph_label)
             )
         }
 
@@ -2492,8 +2494,8 @@ private fun InformationMatchContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("可选信息", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                TextButton(onClick = onEditMatchOptions) { Text("补录/编辑") }
+                Text(stringResource(R.string.reader_optional_info), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                TextButton(onClick = onEditMatchOptions) { Text(stringResource(R.string.reader_add_edit)) }
             }
         }
 
@@ -2530,7 +2532,7 @@ private fun InformationMatchContent(
                         val options = fallbackOptions
                         if (options.isEmpty()) {
                             Text(
-                                "未识别到信息选项",
+                                stringResource(R.string.reader_unrecognized_info),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error
                             )
@@ -2604,11 +2606,10 @@ private fun InfoMatchQuestionCard(
             }
 
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    "${item.questionNumber}. ${item.questionText}",
-                    style = ArticleTypography.QuestionStem,
-                    fontWeight = FontWeight.Bold
-                )
+                    Text(
+                        item.questionText.ifBlank { stringResource(R.string.reader_fill_blank) },
+                        style = ArticleTypography.QuestionStem
+                    )
 
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -2700,7 +2701,7 @@ private fun CommentOpinionQuestionCard(
     showingAnswers: Boolean,
     isCorrect: Boolean?,
     onSelectAnswer: (String) -> Unit,
-    fallbackTitle: String = "评论"
+    fallbackTitle: String = stringResource(R.string.reader_comment_label)
 ) {
     val wrongCount = item.wrongCount
     val statusColors = rememberPracticeStatusColors()
@@ -3013,9 +3014,9 @@ private fun TranslationAnswerPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("翻译", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.reader_translate), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "(${state.items.size} 题)",
+                    stringResource(R.string.reader_question_count, state.items.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -3081,7 +3082,7 @@ private fun TranslationQuestionCard(
             OutlinedTextField(
                 value = userAnswer,
                 onValueChange = onAnswerChange,
-                label = { Text("输入中文翻译") },
+                label = { Text(stringResource(R.string.question_input_translation)) },
                 enabled = !isSubmitted && !showingAnswers,
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 3,
@@ -3104,7 +3105,7 @@ private fun TranslationQuestionCard(
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                         Text(
-                            "AI 评分中…",
+                            stringResource(R.string.question_ai_scoring),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -3128,7 +3129,7 @@ private fun TranslationQuestionCard(
                         Column(modifier = Modifier.padding(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    "AI 评分: ",
+                                    stringResource(R.string.question_ai_score_label),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -3161,7 +3162,7 @@ private fun TranslationQuestionCard(
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Text(
-                                "参考译文",
+                                stringResource(R.string.question_reference_translation),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = statusColors.success
@@ -3175,7 +3176,7 @@ private fun TranslationQuestionCard(
                     }
                 } else if (!showingAnswers) {
                     Text(
-                        "参考译文生成中…",
+                        stringResource(R.string.question_generating_reference),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -3191,7 +3192,7 @@ private fun TranslationQuestionCard(
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Text(
-                                "翻译要点",
+                                stringResource(R.string.question_translation_notes),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold
                             )
@@ -3231,27 +3232,27 @@ private fun TranslationActionBar(
                     onClick = onSubmit,
                     enabled = hasSelection,
                     modifier = Modifier.weight(1f)
-                ) { Text("提交翻译") }
+                ) { Text(stringResource(R.string.question_submit_translation)) }
 
                 if (hasAnswers) {
                     OutlinedButton(
                         onClick = onShowAnswers,
                         modifier = Modifier.weight(1f)
-                    ) { Text("查看参考译文") }
+                    ) { Text(stringResource(R.string.question_view_reference)) }
                 }
             } else {
                 Button(
                     onClick = onRetry,
                     modifier = Modifier.weight(1f)
-                ) { Text("重新翻译") }
+                ) { Text(stringResource(R.string.question_retranslate)) }
             }
         }
 
         Text(
             if (!state.isSubmitted && !state.showingAnswers)
-                "提交后将显示参考译文"
+                stringResource(R.string.question_translation_hint_before)
             else
-                "翻译练习不计入错题统计",
+                stringResource(R.string.question_translation_hint_after),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth()
@@ -3424,10 +3425,10 @@ private fun ParagraphOrderAnswerPanel(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item(key = "para_order_answer_header") {
-            Text("作答", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.question_answer_section), style = MaterialTheme.typography.titleSmall)
             if (optionLetters.isEmpty()) {
                 Text(
-                    "未识别到段落选项，无法作答",
+                    stringResource(R.string.reader_no_paragraph_options),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -3502,7 +3503,7 @@ private fun ParagraphOrderQuestionCard(
                         modifier = Modifier.padding(end = 6.dp)
                     )
                     Text(
-                        item.questionText.ifBlank { "填空" },
+                        item.questionText.ifBlank { stringResource(R.string.reader_fill_blank) },
                         style = ArticleTypography.QuestionStem
                     )
                 }
@@ -3675,7 +3676,7 @@ private fun WritingPassagePanel(
         item(key = "writing_prompt") {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("题干", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.question_stem), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Text(
                         item?.questionText.orEmpty(),
                         style = ArticleTypography.QuestionStem
@@ -3684,7 +3685,7 @@ private fun WritingPassagePanel(
                         val sourceUrl = group.sourceUrl!!.trim()
                         val canOpen = isHttpUrl(sourceUrl)
                         Spacer(Modifier.height(6.dp))
-                        Text("题干来源", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.question_stem_source), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             sourceUrl,
                             style = MaterialTheme.typography.bodySmall,
@@ -3693,7 +3694,7 @@ private fun WritingPassagePanel(
                         )
                     } else {
                         Text(
-                            "未填写题干来源",
+                            stringResource(R.string.question_stem_source_empty),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -3705,15 +3706,15 @@ private fun WritingPassagePanel(
                         if (state.isSearchingWritingSource) {
                             CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                             Text(
-                                "检索中…",
+                                stringResource(R.string.question_searching),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         } else {
                             TextButton(onClick = onSearchPromptSource) {
-                                Icon(Icons.Default.Search, contentDescription = "搜索", modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.common_search), modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("重新补录来源")
+                                Text(stringResource(R.string.question_reenter_source))
                             }
                         }
                     }
@@ -3725,7 +3726,7 @@ private fun WritingPassagePanel(
             item(key = "writing_passage") {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("背景材料", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.question_background_material), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         Text(group.passageText, style = ArticleTypography.QuestionSupport)
                     }
                 }
@@ -3737,12 +3738,12 @@ private fun WritingPassagePanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("参考范文", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.question_reference_essay), style = MaterialTheme.typography.titleSmall)
                 if (state.isSearchingWritingSample) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                    Text("检索中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(stringResource(R.string.question_searching), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 } else {
-                    TextButton(onClick = onSearchSample) { Text("重新检索") }
+                    TextButton(onClick = onSearchSample) { Text(stringResource(R.string.question_research)) }
                 }
             }
         }
@@ -3773,13 +3774,13 @@ private fun WritingPassagePanel(
                         Text(sampleText, style = ArticleTypography.QuestionSupport)
                     } else if (!state.writingSampleError.isNullOrBlank()) {
                         Text(
-                            "检索失败：${state.writingSampleError}",
+                            stringResource(R.string.question_research_failed, state.writingSampleError),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
                     } else {
                         Text(
-                            "暂无范文，请检索或稍后再试",
+                            stringResource(R.string.question_no_sample),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -3811,12 +3812,12 @@ private fun WritingAnswerPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("作答", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.question_answer_section), style = MaterialTheme.typography.titleSmall)
                 if (state.isOcrWriting) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                    Text("OCR 中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(stringResource(R.string.question_ocr_processing), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 } else if (state.isCompressingWriting) {
-                    Text("压缩图片中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.question_compressing), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -3826,7 +3827,7 @@ private fun WritingAnswerPanel(
             OutlinedTextField(
                 value = state.selectedAnswers[item.id].orEmpty(),
                 onValueChange = { onSelectAnswer(item.id, it) },
-                label = { Text("输入作文") },
+                label = { Text(stringResource(R.string.question_input_essay)) },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 6,
                 maxLines = 12,
@@ -3844,9 +3845,9 @@ private fun WritingAnswerPanel(
                     modifier = Modifier.weight(1f),
                     enabled = !state.isSubmitted && !state.isOcrWriting
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "扫描", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.CameraAlt, contentDescription = stringResource(R.string.question_scan_cd), modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("扫描作文")
+                    Text(stringResource(R.string.question_scan_essay))
                 }
                 if (!state.isSubmitted) {
                     Button(
@@ -3861,12 +3862,12 @@ private fun WritingAnswerPanel(
                         },
                         modifier = Modifier.weight(1f),
                         enabled = item != null && !state.isOcrWriting && !state.isCompressingWriting
-                    ) { Text("提交批阅") }
+                    ) { Text(stringResource(R.string.question_submit_review)) }
                 } else {
                     Button(
                         onClick = onRetryPractice,
                         modifier = Modifier.weight(1f)
-                    ) { Text("重做") }
+                    ) { Text(stringResource(R.string.question_redo)) }
                 }
             }
         }
@@ -3879,7 +3880,7 @@ private fun WritingAnswerPanel(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text("批阅中…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.question_reviewing), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (score != null) {
@@ -3899,7 +3900,7 @@ private fun WritingScoreCard(score: WritingScore) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "评分：",
+                    stringResource(R.string.question_score_label),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -3911,28 +3912,28 @@ private fun WritingScoreCard(score: WritingScore) {
                 )
             }
             Text(
-                "字数：${score.wordCount}",
+                stringResource(R.string.question_word_count_format, score.wordCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("内容 ${score.subScores.content}", style = MaterialTheme.typography.bodySmall)
-                Text("语言 ${score.subScores.language}", style = MaterialTheme.typography.bodySmall)
-                Text("结构 ${score.subScores.structure}", style = MaterialTheme.typography.bodySmall)
-                Text("格式 ${score.subScores.format}", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.question_sub_content, score.subScores.content), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.question_sub_language, score.subScores.language), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.question_sub_structure, score.subScores.structure), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.question_sub_format, score.subScores.format), style = MaterialTheme.typography.bodySmall)
             }
             if (score.deductions.isNotEmpty()) {
-                Text("扣分项：", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.question_deductions), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 score.deductions.forEach { d ->
                     Text("${d.reason} (${d.score})", style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (score.summary.isNotBlank()) {
-                Text("总体评价", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.question_overall), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 Text(score.summary, style = MaterialTheme.typography.bodySmall)
             }
             if (score.suggestions.isNotEmpty()) {
-                Text("改进建议", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.question_suggestions), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 score.suggestions.forEach { s ->
                     Text("• $s", style = MaterialTheme.typography.bodySmall)
                 }

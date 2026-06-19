@@ -43,9 +43,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
@@ -69,11 +71,11 @@ fun QuestionBankListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("题库") })
+            TopAppBar(title = { Text(stringResource(R.string.question_bank)) })
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onScan) {
-                Icon(Icons.Default.CameraAlt, contentDescription = "扫描")
+                Icon(Icons.Default.CameraAlt, contentDescription = stringResource(R.string.question_scan))
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -91,10 +93,10 @@ fun QuestionBankListScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("暂无题目", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.question_no_questions), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "点击右下角按钮扫描试卷",
+                        stringResource(R.string.question_scan_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -102,7 +104,7 @@ fun QuestionBankListScreen(
             }
         } else {
             // Group by paper title
-            val grouped = state.groups.groupBy { it.examPaperTitle ?: "未命名试卷" }
+            val grouped = state.groups.groupBy { it.examPaperTitle ?: stringResource(R.string.question_unnamed_paper) }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -136,16 +138,16 @@ fun QuestionBankListScreen(
     state.deleteConfirmGroupId?.let {
         AlertDialog(
             onDismissRequest = { viewModel.cancelDelete() },
-            title = { Text("确认删除") },
-            text = { Text("删除该题组及其所有题目和做题记录？") },
+            title = { Text(stringResource(R.string.question_confirm_delete)) },
+            text = { Text(stringResource(R.string.question_confirm_delete_message)) },
             confirmButton = {
                 TextButton(onClick = { viewModel.confirmDelete() }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.cancelDelete() }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -203,14 +205,14 @@ private fun QuestionGroupCard(
             ) {
                 if (group.items.isNotEmpty()) {
                     Text(
-                        "${group.items.size} 题",
+                        stringResource(R.string.question_count_format, group.items.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 if (group.wordCount > 0) {
                     Text(
-                        "${group.wordCount} 词",
+                        stringResource(R.string.word_count_format, group.wordCount),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -237,32 +239,32 @@ private fun QuestionGroupCard(
                         SourceVerifyStatus.VERIFIED -> {
                             Icon(
                                 Icons.Default.CheckCircle,
-                                contentDescription = "已验证",
+                                contentDescription = stringResource(R.string.question_source_verified),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(Modifier.width(2.dp))
-                            Text("已验证", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.question_source_verified), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                         SourceVerifyStatus.FAILED -> {
                             Icon(
                                 Icons.Default.Error,
-                                contentDescription = "验证失败",
+                                contentDescription = stringResource(R.string.question_source_verify_failed),
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(Modifier.width(2.dp))
-                            Text("验证失败", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.question_source_verify_failed), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         }
                         else -> {
                             Icon(
                                 Icons.AutoMirrored.Filled.HelpOutline,
-                                contentDescription = "未验证",
+                                contentDescription = stringResource(R.string.question_source_unverified),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(Modifier.width(2.dp))
-                            Text("未验证", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.question_source_unverified), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -276,21 +278,21 @@ private fun QuestionGroupCard(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            if (group.questionType == QuestionType.WRITING) "范文检索中" else "答案生成中",
+                            if (group.questionType == QuestionType.WRITING) stringResource(R.string.question_generating_essay_sample) else stringResource(R.string.question_generating_answer),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
                 } else {
                     if (group.hasAiAnswer) {
-                        val label = if (group.questionType == QuestionType.WRITING) "范文" else "AI答案"
+                        val label = if (group.questionType == QuestionType.WRITING) stringResource(R.string.question_label_essay_sample) else stringResource(R.string.question_label_ai_answer)
                         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                     }
                     if (group.hasScannedAnswer) {
-                        Text("扫描答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                        Text(stringResource(R.string.question_scanned_answer), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                     }
                     if (!group.hasAiAnswer && !group.hasScannedAnswer) {
-                        Text("无答案", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.question_no_answer), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

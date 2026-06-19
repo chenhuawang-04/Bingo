@@ -38,8 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 
 enum class ArticleLengthFilter(
@@ -210,7 +212,7 @@ fun ArticleFilterActionButton(
                 ) {
                     Icon(
                         imageVector = Icons.Default.FilterList,
-                        contentDescription = "配置筛选与排序"
+                        contentDescription = stringResource(R.string.article_filter_config)
                     )
                 }
                 if (configuredCount > 0) {
@@ -243,9 +245,9 @@ fun ArticleFilterActionButton(
                             else -> Icons.Default.ArrowDropDown
                         },
                         contentDescription = when {
-                            isActive -> "关闭筛选"
-                            hasConfig -> "启用筛选"
-                            else -> "展开筛选菜单"
+                            isActive -> stringResource(R.string.article_filter_disable)
+                            hasConfig -> stringResource(R.string.article_filter_enable)
+                            else -> stringResource(R.string.article_filter_expand)
                         }
                     )
                 }
@@ -306,12 +308,12 @@ private fun ArticleFilterPopupContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("筛选与排序", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.article_filter_title), style = MaterialTheme.typography.titleSmall)
             Text(
                 when {
-                    !hasConfig -> "先配置条件，再用右侧按钮决定是否启用。"
-                    filterEnabled -> "当前筛选已生效，只影响当前可见文章。"
-                    else -> "条件已保存，但暂未生效。"
+                    !hasConfig -> stringResource(R.string.article_filter_hint_not_configured)
+                    filterEnabled -> stringResource(R.string.article_filter_hint_active)
+                    else -> stringResource(R.string.article_filter_hint_saved)
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = helperColor
@@ -319,7 +321,7 @@ private fun ArticleFilterPopupContent(
         }
 
         FilterSection(
-            title = "长度范围",
+            title = stringResource(R.string.article_filter_length_range),
             values = ArticleLengthFilter.entries,
             selected = lengthFilter,
             labelOf = { it.label },
@@ -327,7 +329,7 @@ private fun ArticleFilterPopupContent(
         )
 
         FilterSection(
-            title = "评分范围",
+            title = stringResource(R.string.article_filter_score_range),
             values = ArticleScoreFilter.entries,
             selected = scoreFilter,
             labelOf = { it.label },
@@ -335,7 +337,7 @@ private fun ArticleFilterPopupContent(
         )
 
         FilterSection(
-            title = "排序方式",
+            title = stringResource(R.string.article_filter_sort_method),
             values = ArticleSortOption.entries,
             selected = sortOption,
             labelOf = { it.label },
@@ -358,12 +360,12 @@ private fun ArticleFilterPopupContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(onClick = onReset) {
-                Text("重置")
+                Text(stringResource(R.string.common_reset))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (configuredCount > 0) {
                     Text(
-                        text = if (filterEnabled) "已启用 $configuredCount 项" else "已配置 $configuredCount 项",
+                        text = if (filterEnabled) stringResource(R.string.article_filter_enabled_count, configuredCount) else stringResource(R.string.article_filter_configured_count, configuredCount),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (filterEnabled) {
                             MaterialTheme.colorScheme.primary
@@ -377,10 +379,10 @@ private fun ArticleFilterPopupContent(
                     onClick = { onFilterEnabledChange(!filterEnabled && hasConfig) },
                     enabled = hasConfig
                 ) {
-                    Text(if (filterEnabled) "暂停应用" else "启用筛选")
+                    Text(if (filterEnabled) stringResource(R.string.article_filter_pause_apply) else stringResource(R.string.article_filter_enable))
                 }
                 TextButton(onClick = onDone) {
-                    Text("完成")
+                    Text(stringResource(R.string.common_done))
                 }
             }
         }

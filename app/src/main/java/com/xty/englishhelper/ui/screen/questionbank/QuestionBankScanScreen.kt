@@ -48,9 +48,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.QuestionType
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,13 +93,13 @@ fun QuestionBankScanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("扫描试卷") },
+                title = { Text(stringResource(R.string.question_scan_paper)) },
                 navigationIcon = {
                     IconButton(onClick = {
                         if (state.phase == ScanPhase.PREVIEW) viewModel.resetToSelect()
                         else onBack()
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -122,18 +124,18 @@ fun QuestionBankScanScreen(
                         Spacer(Modifier.height(16.dp))
                         if (state.isCompressing) {
                             Text(
-                                "正在压缩图片…",
+                                stringResource(R.string.scan_compressing),
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "压缩完成后将开始识别",
+                                stringResource(R.string.scan_compress_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(Modifier.height(10.dp))
                         } else {
-                            Text("正在识别试卷…", style = MaterialTheme.typography.bodyLarge)
+                            Text(stringResource(R.string.scan_recognizing), style = MaterialTheme.typography.bodyLarge)
                         }
                     }
                 }
@@ -166,25 +168,25 @@ private fun SelectPhaseContent(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.padding(32.dp)
         ) {
-            Text("选择试卷来源", style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.scan_select_source), style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
 
             Button(
                 onClick = onSelectImages,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.Image, contentDescription = "图片", modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Image, contentDescription = stringResource(R.string.scan_image), modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(8.dp))
-                Text("选择图片")
+                Text(stringResource(R.string.question_select_image))
             }
 
             OutlinedButton(
                 onClick = onSelectPdf,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.PictureAsPdf, contentDescription = "PDF", modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.PictureAsPdf, contentDescription = stringResource(R.string.scan_pdf), modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(8.dp))
-                Text("选择 PDF")
+                Text(stringResource(R.string.question_select_pdf))
             }
         }
     }
@@ -212,7 +214,7 @@ private fun PreviewPhaseContent(
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                     Text(
-                        "识别置信度较低（${(state.confidence * 100).toInt()}%），请核对扫描结果",
+                        stringResource(R.string.scan_confidence_warning, (state.confidence * 100).toInt()),
                         modifier = Modifier.padding(12.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onErrorContainer
@@ -226,7 +228,7 @@ private fun PreviewPhaseContent(
             OutlinedTextField(
                 value = state.paperTitle,
                 onValueChange = onTitleChange,
-                label = { Text("试卷名称") },
+                label = { Text(stringResource(R.string.scan_paper_name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -243,14 +245,14 @@ private fun PreviewPhaseContent(
                         onExpandedChange = { questionTypeExpanded = it }
                     ) {
                         OutlinedTextField(
-                            value = selectedQuestionType?.displayName
-                                ?: if (group.rawQuestionType.isNotBlank()) "未识别：${group.rawQuestionType}" else "请选择题型",
+                                value = selectedQuestionType?.displayName
+                                ?: if (group.rawQuestionType.isNotBlank()) stringResource(R.string.scan_unrecognized_type, group.rawQuestionType) else stringResource(R.string.scan_select_type),
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("题型") },
+                            label = { Text(stringResource(R.string.question_scan)) },
                             supportingText = {
                                 if (selectedQuestionType == null && group.rawQuestionType.isNotBlank()) {
-                                    Text("OCR 原始返回：${group.rawQuestionType}")
+                                    Text(stringResource(R.string.scan_ocr_raw, group.rawQuestionType))
                                 }
                             },
                             trailingIcon = {
@@ -282,8 +284,8 @@ private fun PreviewPhaseContent(
                     OutlinedTextField(
                         value = group.sectionLabel,
                         onValueChange = { onGroupSectionLabelChange(groupIndex, it) },
-                        label = { Text("节标签") },
-                        placeholder = { Text("如: Text 1") },
+                        label = { Text(stringResource(R.string.scan_section_label)) },
+                        placeholder = { Text(stringResource(R.string.scan_section_placeholder)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -292,8 +294,8 @@ private fun PreviewPhaseContent(
                     OutlinedTextField(
                         value = group.sourceUrl,
                         onValueChange = { onGroupSourceUrlChange(groupIndex, it) },
-                        label = { Text("来源 URL") },
-                        placeholder = { Text("来源链接（可选）") },
+                        label = { Text(stringResource(R.string.scan_source_url)) },
+                        placeholder = { Text(stringResource(R.string.scan_source_url_hint)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -301,7 +303,7 @@ private fun PreviewPhaseContent(
                     if (group.sourceUrl.isBlank()) {
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                             Text(
-                                "来源未识别，保存后可手动补充",
+                                stringResource(R.string.scan_source_not_identified),
                                 modifier = Modifier.padding(8.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -311,7 +313,7 @@ private fun PreviewPhaseContent(
 
                     // Passage preview
                     if (group.passageParagraphs.isNotEmpty()) {
-                        Text("文章预览", style = MaterialTheme.typography.labelMedium)
+                        Text(stringResource(R.string.scan_passage_preview), style = MaterialTheme.typography.labelMedium)
                         Text(
                             group.passageParagraphs.joinToString("\n").take(300) + if (group.passageParagraphs.joinToString("\n").length > 300) "…" else "",
                             style = MaterialTheme.typography.bodySmall,
@@ -323,10 +325,10 @@ private fun PreviewPhaseContent(
 
                     if (group.sentenceOptions.isNotEmpty()) {
                         val optionsLabel = when (group.questionType) {
-                            "COMMENT_OPINION_MATCH" -> "可选观点"
-                            "SUBHEADING_MATCH" -> "可选小标题"
-                            "INFORMATION_MATCH" -> "可选信息"
-                            else -> "可选句子"
+                            "COMMENT_OPINION_MATCH" -> stringResource(R.string.scan_optional_opinion)
+                            "SUBHEADING_MATCH" -> stringResource(R.string.scan_optional_subheading)
+                            "INFORMATION_MATCH" -> stringResource(R.string.scan_optional_info)
+                            else -> stringResource(R.string.scan_optional_sentence)
                         }
                         Text(optionsLabel, style = MaterialTheme.typography.labelMedium)
                         Text(
@@ -342,7 +344,7 @@ private fun PreviewPhaseContent(
                     HorizontalDivider()
 
                     // Questions
-                    Text("题目 (${group.questions.size})", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.scan_question_count, group.questions.size), style = MaterialTheme.typography.labelMedium)
                     group.questions.forEachIndexed { qIndex, question ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -358,7 +360,7 @@ private fun PreviewPhaseContent(
                                 OutlinedTextField(
                                     value = question.questionText,
                                     onValueChange = { onQuestionTextChange(groupIndex, qIndex, it) },
-                                    label = { Text("题干") },
+                                    label = { Text(stringResource(R.string.scan_question_stem)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     minLines = 1, maxLines = 3
                                 )
@@ -389,7 +391,7 @@ private fun PreviewPhaseContent(
                                     group.questionType != "INFORMATION_MATCH"
                                 ) {
                                     Text(
-                                        "此字段不能为空",
+                                        stringResource(R.string.scan_field_required),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.error
                                     )
@@ -417,7 +419,7 @@ private fun PreviewPhaseContent(
                     )
                     Spacer(Modifier.size(8.dp))
                 }
-                Text("保存")
+                Text(stringResource(R.string.common_save))
             }
             Spacer(Modifier.height(80.dp))
         }

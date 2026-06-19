@@ -69,11 +69,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,10 +104,10 @@ fun PoolBuildDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("词池构建详情") },
+                title = { Text(stringResource(R.string.pool_build_detail_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -176,8 +178,8 @@ fun PoolBuildDetailScreen(
                                 .padding(20.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(
-                                "正在准备…",
+                                Text(
+                                stringResource(R.string.pool_build_preparing),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -249,13 +251,13 @@ fun PoolBuildDetailScreen(
                         ) {
                             Icon(
                                 Icons.Default.Error,
-                                contentDescription = "错误",
+                                contentDescription = stringResource(R.string.common_error),
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(20.dp)
                             )
                             Column {
                                 Text(
-                                    "构建失败",
+                                    stringResource(R.string.pool_build_failed),
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
@@ -310,37 +312,37 @@ private fun StatusHeaderCard(
         BuildStatus.IDLE -> StatusInfo(
             Icons.Default.CheckCircle,
             MaterialTheme.colorScheme.onSurfaceVariant,
-            "空闲",
-            "当前没有构建任务"
+            stringResource(R.string.pool_build_idle),
+            stringResource(R.string.pool_build_idle_desc)
         )
         BuildStatus.RUNNING -> StatusInfo(
             Icons.Default.Refresh,
             MaterialTheme.colorScheme.primary,
-            "构建中",
+            stringResource(R.string.pool_build_running),
             strategyDisplayName(strategy)
         )
         BuildStatus.PAUSED -> StatusInfo(
             Icons.Default.Pause,
             MaterialTheme.colorScheme.tertiary,
-            "已暂停",
+            stringResource(R.string.pool_build_paused),
             strategyDisplayName(strategy)
         )
         BuildStatus.SUCCESS -> StatusInfo(
             Icons.Default.CheckCircle,
             MaterialTheme.colorScheme.tertiary,
-            "构建完成",
+            stringResource(R.string.pool_build_success),
             strategyDisplayName(strategy)
         )
         BuildStatus.FAILED -> StatusInfo(
             Icons.Default.Error,
             MaterialTheme.colorScheme.error,
-            "构建失败",
+            stringResource(R.string.pool_build_failed),
             strategyDisplayName(strategy)
         )
         BuildStatus.CANCELED -> StatusInfo(
             Icons.Default.Close,
             MaterialTheme.colorScheme.onSurfaceVariant,
-            "已取消",
+            stringResource(R.string.pool_build_canceled),
             strategyDisplayName(strategy)
         )
     }
@@ -404,13 +406,13 @@ private fun PoolModelCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "整理模型（全局）",
+                    stringResource(R.string.pool_build_model_global),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${providerName.ifBlank { "默认提供商" }} · ${model.ifBlank { "默认模型" }}",
+                    text = "${providerName.ifBlank { stringResource(R.string.pool_build_default_provider) }} · ${model.ifBlank { stringResource(R.string.pool_build_default_model) }}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 2,
@@ -418,13 +420,13 @@ private fun PoolModelCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    "切换后从下一次请求生效；全局保留。",
+                    stringResource(R.string.pool_build_switch_hint),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             FilledTonalButton(onClick = onSwitch) {
-                Text("切换")
+                Text(stringResource(R.string.pool_build_switch))
             }
         }
     }
@@ -451,13 +453,13 @@ private fun CurrentWordCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = if (isPaused) "已暂停" else "正在处理",
+                text = if (isPaused) stringResource(R.string.pool_build_paused) else stringResource(R.string.pool_build_processing),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = currentWord ?: "准备中…",
+                text = currentWord ?: stringResource(R.string.pool_build_preparing_word),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -470,14 +472,14 @@ private fun CurrentWordCard(
                 if (chunkTotal > 0) {
                     // 已完成的候选词对比组数（X / Y）
                     Text(
-                        text = "已对比候选组 $chunkCurrent / $chunkTotal",
+                        text = stringResource(R.string.pool_build_chunk_progress, chunkCurrent, chunkTotal),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                 }
                 Text(
-                    text = "已找到 $edgesFound 条语义关系",
+                    text = stringResource(R.string.pool_build_edges_found, edgesFound),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                 )
@@ -517,7 +519,7 @@ private fun ProgressCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "构建进度",
+                    stringResource(R.string.pool_build_progress_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium
                 )
@@ -547,15 +549,15 @@ private fun ProgressCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 StatItem(
-                    label = "已完成",
+                    label = stringResource(R.string.pool_build_done),
                     value = "$current"
                 )
                 StatItem(
-                    label = "剩余",
+                    label = stringResource(R.string.pool_build_remaining),
                     value = "$remaining"
                 )
                 StatItem(
-                    label = "进度",
+                    label = stringResource(R.string.pool_build_progress),
                     value = "${(animatedProgress * 100).toInt()}%"
                 )
             }
@@ -571,12 +573,12 @@ private fun ProgressCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "当前词对比进度",
+                        stringResource(R.string.pool_build_current_chunk),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "$chunkCurrent / $chunkTotal 组",
+                        stringResource(R.string.pool_build_chunk_group, chunkCurrent, chunkTotal),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.secondary
@@ -626,17 +628,17 @@ private fun ActionButtonsRow(
                     onClick = onPause,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Pause, contentDescription = "暂停", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Pause, contentDescription = stringResource(R.string.common_pause), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("暂停")
+                    Text(stringResource(R.string.common_pause))
                 }
                 OutlinedButton(
                     onClick = onCancel,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "取消", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_cancel), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
             BuildStatus.PAUSED -> {
@@ -644,17 +646,17 @@ private fun ActionButtonsRow(
                     onClick = onResume,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "继续", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.PlayArrow, contentDescription = stringResource(R.string.common_resume), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("继续")
+                    Text(stringResource(R.string.common_resume))
                 }
                 OutlinedButton(
                     onClick = onCancel,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "取消", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_cancel), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
             BuildStatus.FAILED, BuildStatus.CANCELED -> {
@@ -662,9 +664,9 @@ private fun ActionButtonsRow(
                     onClick = onRetry,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "重试", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_retry), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("重试")
+                    Text(stringResource(R.string.common_retry))
                 }
             }
             BuildStatus.SUCCESS, BuildStatus.IDLE -> {
@@ -703,19 +705,19 @@ private fun ErrorLogsCard(
                 ) {
                     Icon(
                         Icons.Default.Warning,
-                        contentDescription = "警告",
+                        contentDescription = stringResource(R.string.pool_build_warning),
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        "错误日志 (${logs.size})",
+                        stringResource(R.string.pool_build_error_log, logs.size),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
-                TextButton(onClick = onClear) {
-                    Text("清除", color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = onClear) {
+                        Text(stringResource(R.string.pool_build_clear_log), color = MaterialTheme.colorScheme.error)
                 }
             }
 
@@ -750,11 +752,12 @@ private data class StatusInfo(
     val subtitle: String
 )
 
+@Composable
 private fun strategyDisplayName(strategy: String?): String {
     return when (strategy) {
-        "BALANCED" -> "均衡·本地"
-        "BALANCED_WITH_AI" -> "均衡+AI"
-        "QUALITY_FIRST" -> "质量优先"
+        "BALANCED" -> stringResource(R.string.pool_build_strategy_balanced)
+        "BALANCED_WITH_AI" -> stringResource(R.string.pool_build_strategy_balanced_ai)
+        "QUALITY_FIRST" -> stringResource(R.string.pool_build_strategy_quality_first)
         else -> strategy ?: ""
     }
 }
@@ -784,7 +787,7 @@ private fun ChunkGridCard(
                 .padding(20.dp)
         ) {
             Text(
-                text = "本词分块整理" + (word?.let { " · $it" } ?: ""),
+                text = if (word != null) stringResource(R.string.pool_build_chunk_word) + " · $word" else stringResource(R.string.pool_build_chunk_word),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Medium
             )
@@ -792,9 +795,11 @@ private fun ChunkGridCard(
             val succeeded = chunks.count { it.status == ChunkBuildStatus.SUCCESS }
             Text(
                 text = if (fillableChunkIndex != null) {
-                    "共 ${chunks.size} 组 · 已成功 $succeeded · 构建停在第 ${fillableChunkIndex + 1} 组，点高亮块可手动填入"
+                    stringResource(R.string.pool_build_chunk_summary, chunks.size, succeeded,
+                        stringResource(R.string.pool_build_click_fillable, fillableChunkIndex + 1))
                 } else {
-                    "共 ${chunks.size} 组 · 已成功 $succeeded · 点击方块查看服务器返回"
+                    stringResource(R.string.pool_build_chunk_summary, chunks.size, succeeded,
+                        stringResource(R.string.pool_build_click_block))
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -847,12 +852,12 @@ private fun ChunkLegend() {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        LegendItem(ChunkBuildStatus.SUCCESS, "成功")
-        LegendItem(ChunkBuildStatus.FAILED_1, "失败1次")
-        LegendItem(ChunkBuildStatus.FAILED_2, "失败2次")
-        LegendItem(ChunkBuildStatus.FAILED_3, "失败3次")
-        LegendItem(ChunkBuildStatus.FAILED_4, "失败4次")
-        LegendItem(ChunkBuildStatus.NOT_STARTED, "未开始")
+        LegendItem(ChunkBuildStatus.SUCCESS, stringResource(R.string.pool_build_chunk_success))
+        LegendItem(ChunkBuildStatus.FAILED_1, stringResource(R.string.pool_build_chunk_fail_1))
+        LegendItem(ChunkBuildStatus.FAILED_2, stringResource(R.string.pool_build_chunk_fail_2))
+        LegendItem(ChunkBuildStatus.FAILED_3, stringResource(R.string.pool_build_chunk_fail_3))
+        LegendItem(ChunkBuildStatus.FAILED_4, stringResource(R.string.pool_build_chunk_fail_4))
+        LegendItem(ChunkBuildStatus.NOT_STARTED, stringResource(R.string.pool_build_chunk_not_started_label))
     }
 }
 
@@ -885,10 +890,10 @@ private fun ChunkDetailDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) }
         },
         title = {
-            Text("第 ${chunk.index + 1} 组 · ${chunkStatusLabel(chunk.status)}")
+            Text(stringResource(R.string.pool_build_chunk_detail_dialog, chunk.index + 1, chunkStatusLabel(chunk.status)))
         },
         text = {
             Column(
@@ -899,7 +904,7 @@ private fun ChunkDetailDialog(
             ) {
                 if (chunk.attempts.isEmpty()) {
                     Text(
-                        "该组尚未开始请求。",
+                        stringResource(R.string.pool_build_chunk_not_started),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -907,7 +912,8 @@ private fun ChunkDetailDialog(
                     chunk.attempts.forEach { att ->
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                "第 ${att.attempt} 次尝试 · ${if (att.success) "成功" else "失败"}",
+                                stringResource(R.string.pool_build_attempt_format, att.attempt,
+                                    if (att.success) stringResource(R.string.pool_build_attempt_success) else stringResource(R.string.pool_build_attempt_fail)),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = if (att.success) {
@@ -918,18 +924,18 @@ private fun ChunkDetailDialog(
                             )
                             if (att.error != null) {
                                 Text(
-                                    "原因：${att.error}",
+                                    stringResource(R.string.pool_build_attempt_reason, att.error),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error
                                 )
                             }
                             Text(
-                                "服务器返回：",
+                                stringResource(R.string.pool_build_server_response),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = att.response?.ifBlank { "（空）" } ?: "（无返回内容）",
+                                text = att.response?.ifBlank { stringResource(R.string.pool_build_empty_response) } ?: stringResource(R.string.pool_build_no_response),
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -956,13 +962,14 @@ private fun chunkColor(status: ChunkBuildStatus): Color = when (status) {
     ChunkBuildStatus.NOT_STARTED -> Color(0xFFFFFFFF)
 }
 
+@Composable
 private fun chunkStatusLabel(status: ChunkBuildStatus): String = when (status) {
-    ChunkBuildStatus.SUCCESS -> "成功"
-    ChunkBuildStatus.FAILED_1 -> "第 1 次失败"
-    ChunkBuildStatus.FAILED_2 -> "第 2 次失败"
-    ChunkBuildStatus.FAILED_3 -> "第 3 次失败"
-    ChunkBuildStatus.FAILED_4 -> "第 4 次失败（已达上限）"
-    ChunkBuildStatus.NOT_STARTED -> "未开始"
+    ChunkBuildStatus.SUCCESS -> stringResource(R.string.pool_build_chunk_status_success)
+    ChunkBuildStatus.FAILED_1 -> stringResource(R.string.pool_build_chunk_status_fail_1)
+    ChunkBuildStatus.FAILED_2 -> stringResource(R.string.pool_build_chunk_status_fail_2)
+    ChunkBuildStatus.FAILED_3 -> stringResource(R.string.pool_build_chunk_status_fail_3)
+    ChunkBuildStatus.FAILED_4 -> stringResource(R.string.pool_build_chunk_status_fail_4)
+    ChunkBuildStatus.NOT_STARTED -> stringResource(R.string.pool_build_chunk_status_not_started)
 }
 
 // ── 词池整理模型切换 UI ──
@@ -993,12 +1000,12 @@ private fun ModelSwitchDialog(
             TextButton(
                 onClick = onConfirm,
                 enabled = editingProviderName.isNotBlank() && editingModel.isNotBlank()
-            ) { Text("确定切换") }
+            ) { Text(stringResource(R.string.pool_build_confirm_switch)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
-        title = { Text("切换词池整理模型") },
+        title = { Text(stringResource(R.string.pool_build_switch_model_title)) },
         text = {
             Column(
                 modifier = Modifier
@@ -1007,13 +1014,13 @@ private fun ModelSwitchDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    "提供商",
+                    stringResource(R.string.pool_build_provider),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (providers.isEmpty()) {
                     Text(
-                        "暂无提供商，请先到设置中添加。",
+                        stringResource(R.string.pool_build_no_provider),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -1023,7 +1030,7 @@ private fun ModelSwitchDialog(
                             FilterChip(
                                 selected = p.name == editingProviderName,
                                 onClick = { onProviderChange(p.name) },
-                                label = { Text(if (p.hasApiKey) p.name else "${p.name}（无Key）") }
+                                label = { Text(if (p.hasApiKey) p.name else "${p.name}${stringResource(R.string.pool_build_no_key_suffix)}") }
                             )
                         }
                     }
@@ -1035,7 +1042,7 @@ private fun ModelSwitchDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "模型",
+                        stringResource(R.string.pool_build_model),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1043,7 +1050,7 @@ private fun ModelSwitchDialog(
                         onClick = onFetchModels,
                         enabled = !modelLoading && editingProviderName.isNotBlank()
                     ) {
-                        Text(if (modelLoading) "拉取中…" else "拉取模型")
+                        Text(if (modelLoading) stringResource(R.string.pool_build_fetching) else stringResource(R.string.pool_build_fetch_models))
                     }
                 }
                 if (modelOptions.isNotEmpty()) {
@@ -1060,7 +1067,7 @@ private fun ModelSwitchDialog(
                 OutlinedTextField(
                     value = editingModel,
                     onValueChange = onModelChange,
-                    label = { Text("模型名（可手动输入）") },
+                    label = { Text(stringResource(R.string.pool_build_model_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1073,13 +1080,13 @@ private fun ModelSwitchDialog(
                 }
                 if (selectedProvider != null && !selectedProvider.hasApiKey) {
                     Text(
-                        "该提供商未配置 API Key，切换后构建请求会失败，请先到设置中配置。",
+                        stringResource(R.string.pool_build_no_apikey),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
                 }
                 Text(
-                    "切换会写入全局「词池整理」模型并保留；构建途中切换从下一次请求（含失败重试）生效。",
+                    stringResource(R.string.pool_build_switch_global),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1109,7 +1116,7 @@ private fun InfoMessageCard(message: String, onDismiss: () -> Unit) {
                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                 modifier = Modifier.weight(1f)
             )
-            TextButton(onClick = onDismiss) { Text("知道了") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.pool_build_got_it)) }
         }
     }
 }
@@ -1135,15 +1142,15 @@ private fun ManualFillDialog(
             TextButton(
                 onClick = { onSubmit(json) },
                 enabled = !submitting && !loading && context != null
-            ) { Text(if (submitting) "提交中…" else "填入并标记成功") }
+            ) { Text(if (submitting) stringResource(R.string.pool_build_submitting) else stringResource(R.string.pool_build_fill_and_mark)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !submitting) { Text("取消") }
+            TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
         },
         title = {
             Text(
-                if (context != null) "手动填入第 ${context.chunkIndex + 1}/${context.totalChunks} 组"
-                else "手动填入"
+                if (context != null) stringResource(R.string.pool_build_manual_fill_chunk, context.chunkIndex + 1, context.totalChunks)
+                else stringResource(R.string.pool_build_manual_fill)
             )
         },
         text = {
@@ -1154,15 +1161,15 @@ private fun ManualFillDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 when {
-                    loading -> Text("正在加载候选词…", style = MaterialTheme.typography.bodyMedium)
+                    loading -> Text(stringResource(R.string.pool_build_loading_candidates), style = MaterialTheme.typography.bodyMedium)
                     context == null -> Text(
-                        error ?: "无法加载该块",
+                        error ?: stringResource(R.string.pool_build_cannot_load_chunk),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error
                     )
                     else -> {
                         Text(
-                            "目标词：${context.targetSpelling}",
+                            stringResource(R.string.pool_build_target_word, context.targetSpelling),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -1172,12 +1179,12 @@ private fun ManualFillDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "候选词（i. 词 [词性]: 释义）",
+                                stringResource(R.string.pool_build_candidates_label),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             TextButton(onClick = { clipboard.setText(AnnotatedString(context.promptText)) }) {
-                                Text("复制提示词")
+                                Text(stringResource(R.string.pool_build_copy_prompt))
                             }
                         }
                         context.candidates.forEach { c ->
@@ -1189,7 +1196,7 @@ private fun ManualFillDialog(
                         OutlinedTextField(
                             value = json,
                             onValueChange = { json = it },
-                            label = { Text("粘贴 JSON 数组（该块无边可填 [])") },
+                            label = { Text(stringResource(R.string.pool_build_paste_json)) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 120.dp)

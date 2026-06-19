@@ -45,7 +45,8 @@ data class SettingsUiState(
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
     val scanRescoreAfterHours: Int = 24,
-    val cloudSync: CloudSyncState = CloudSyncState()
+    val cloudSync: CloudSyncState = CloudSyncState(),
+    val appLocale: String = "system"
 )
 
 data class ProviderSummary(

@@ -28,7 +28,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Inflection
@@ -47,8 +49,8 @@ internal fun SectionHeader(title: String, onAdd: () -> Unit) {
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium)
         OutlinedButton(onClick = onAdd, contentPadding = PaddingValues(horizontal = 12.dp)) {
-            Icon(Icons.Default.Add, contentDescription = "添加", modifier = Modifier.size(16.dp))
-            Text(" 添加")
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.common_add), modifier = Modifier.size(16.dp))
+            Text(" " + stringResource(R.string.common_add))
         }
     }
 }
@@ -80,7 +82,7 @@ internal fun MeaningRow(
                     onPosChange(it)
                     expanded = true
                 },
-                label = { Text("词性") },
+                label = { Text(stringResource(R.string.word_part_of_speech)) },
                 singleLine = true,
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable)
@@ -111,13 +113,13 @@ internal fun MeaningRow(
         OutlinedTextField(
             value = meaning.definition,
             onValueChange = onDefChange,
-            label = { Text("释义") },
+            label = { Text(stringResource(R.string.word_definition)) },
             singleLine = true,
             modifier = Modifier.weight(0.6f)
         )
         if (showRemove) {
             IconButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
-                Icon(Icons.Default.Close, contentDescription = "删除")
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete))
             }
         }
     }
@@ -152,7 +154,7 @@ internal fun DecompositionPartRow(
         OutlinedTextField(
             value = part.segment,
             onValueChange = onSegmentChange,
-            label = { Text("成分") },
+            label = { Text(stringResource(R.string.addword_component)) },
             singleLine = true,
             modifier = Modifier.weight(0.25f)
         )
@@ -165,7 +167,7 @@ internal fun DecompositionPartRow(
                 value = roleLabel,
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("类型") },
+                label = { Text(stringResource(R.string.addword_type)) },
                 singleLine = true,
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -189,12 +191,12 @@ internal fun DecompositionPartRow(
         OutlinedTextField(
             value = part.meaning,
             onValueChange = onMeaningChange,
-            label = { Text("含义") },
+            label = { Text(stringResource(R.string.word_meaning)) },
             singleLine = true,
             modifier = Modifier.weight(0.35f)
         )
         IconButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
-            Icon(Icons.Default.Close, contentDescription = "删除")
+            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete))
         }
     }
 }
@@ -214,19 +216,19 @@ internal fun SynonymRow(
         OutlinedTextField(
             value = synonym.word,
             onValueChange = onWordChange,
-            label = { Text("近义词") },
+            label = { Text(stringResource(R.string.word_synonyms)) },
             singleLine = true,
             modifier = Modifier.weight(0.35f)
         )
         OutlinedTextField(
             value = synonym.explanation,
             onValueChange = onExplanationChange,
-            label = { Text("区分说明") },
+            label = { Text(stringResource(R.string.addword_distinction)) },
             singleLine = true,
             modifier = Modifier.weight(0.55f)
         )
         IconButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
-            Icon(Icons.Default.Close, contentDescription = "删除")
+            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete))
         }
     }
 }
@@ -248,25 +250,25 @@ internal fun SimilarWordRow(
             OutlinedTextField(
                 value = similarWord.word,
                 onValueChange = onWordChange,
-                label = { Text("形近词") },
+                label = { Text(stringResource(R.string.word_similar_words)) },
                 singleLine = true,
                 modifier = Modifier.weight(0.35f)
             )
             OutlinedTextField(
                 value = similarWord.meaning,
                 onValueChange = onMeaningChange,
-                label = { Text("含义") },
+                label = { Text(stringResource(R.string.word_meaning)) },
                 singleLine = true,
                 modifier = Modifier.weight(0.55f)
             )
             IconButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
-                Icon(Icons.Default.Close, contentDescription = "删除")
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete))
             }
         }
         OutlinedTextField(
             value = similarWord.explanation,
             onValueChange = onExplanationChange,
-            label = { Text("区分方法") },
+            label = { Text(stringResource(R.string.addword_distinction_method)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -290,25 +292,25 @@ internal fun CognateRow(
             OutlinedTextField(
                 value = cognate.word,
                 onValueChange = onWordChange,
-                label = { Text("同根词") },
+                label = { Text(stringResource(R.string.word_cognates)) },
                 singleLine = true,
                 modifier = Modifier.weight(0.35f)
             )
             OutlinedTextField(
                 value = cognate.meaning,
                 onValueChange = onMeaningChange,
-                label = { Text("含义") },
+                label = { Text(stringResource(R.string.word_meaning)) },
                 singleLine = true,
                 modifier = Modifier.weight(0.55f)
             )
             IconButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
-                Icon(Icons.Default.Close, contentDescription = "删除")
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete))
             }
         }
         OutlinedTextField(
             value = cognate.sharedRoot,
             onValueChange = onSharedRootChange,
-            label = { Text("共同词根") },
+            label = { Text(stringResource(R.string.word_shared_root)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -344,7 +346,7 @@ internal fun InflectionRow(
         OutlinedTextField(
             value = inflection.form,
             onValueChange = onFormChange,
-            label = { Text("变形") },
+            label = { Text(stringResource(R.string.addword_inflection_form)) },
             singleLine = true,
             modifier = Modifier.weight(0.4f)
         )
@@ -357,7 +359,7 @@ internal fun InflectionRow(
                 value = typeLabel,
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("类型") },
+                label = { Text(stringResource(R.string.addword_type)) },
                 singleLine = true,
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -379,7 +381,7 @@ internal fun InflectionRow(
             }
         }
         IconButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
-            Icon(Icons.Default.Close, contentDescription = "删除")
+            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete))
         }
     }
 }

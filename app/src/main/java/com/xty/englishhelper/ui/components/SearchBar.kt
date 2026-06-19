@@ -10,6 +10,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import com.xty.englishhelper.R
 
 @Composable
 fun SearchBar(
@@ -22,11 +24,11 @@ fun SearchBar(
         value = query,
         onValueChange = onQueryChange,
         placeholder = { Text(placeholder) },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.common_search)) },
         trailingIcon = {
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Default.Clear, contentDescription = "清除")
+                    Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.common_clear))
                 }
             }
         },

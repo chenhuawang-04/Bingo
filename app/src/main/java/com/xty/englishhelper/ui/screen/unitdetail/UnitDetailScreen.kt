@@ -42,9 +42,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.ui.components.ConfirmDialog
 import com.xty.englishhelper.ui.components.EmptyState
 import com.xty.englishhelper.ui.components.LoadingIndicator
@@ -71,41 +73,41 @@ fun UnitDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.unit?.name ?: "单元") },
+                title = { Text(state.unit?.name ?: stringResource(R.string.unit_default_name)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = viewModel::showAddWordsDialog) {
-                        Icon(Icons.Default.Add, contentDescription = "管理单词")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.unit_manage_words))
                     }
                     IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_more))
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(
-                            text = { Text("重命名") },
-                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = "重命名") },
+                            text = { Text(stringResource(R.string.unit_rename)) },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.unit_rename)) },
                             onClick = {
                                 showMenu = false
                                 viewModel.showRenameDialog()
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("设置重复次数") },
+                            text = { Text(stringResource(R.string.unit_set_repeat_count)) },
                             onClick = {
                                 showMenu = false
                                 viewModel.showRepeatCountDialog()
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("删除单元") },
+                            text = { Text(stringResource(R.string.unit_delete)) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Default.Delete,
-                                    contentDescription = "删除",
+                                    contentDescription = stringResource(R.string.common_delete),
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             },
@@ -127,7 +129,7 @@ fun UnitDetailScreen(
         ) {
             state.unit?.let { unit ->
                 Text(
-                    text = "重复次数：${unit.defaultRepeatCount}   单词数：${state.wordsInUnit.size}",
+                    text = stringResource(R.string.unit_repeat_and_word_count, unit.defaultRepeatCount, state.wordsInUnit.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -137,7 +139,7 @@ fun UnitDetailScreen(
             when {
                 state.isLoading -> LoadingIndicator()
                 state.wordsInUnit.isEmpty() -> EmptyState(
-                    message = "单元中还没有单词\n点击 + 添加单词"
+                    message = stringResource(R.string.unit_empty_hint)
                 )
                 else -> {
                     LazyColumn(
@@ -165,12 +167,12 @@ fun UnitDetailScreen(
     if (state.showRenameDialog) {
         AlertDialog(
             onDismissRequest = viewModel::dismissRenameDialog,
-            title = { Text("重命名单元") },
+            title = { Text(stringResource(R.string.unit_rename_title)) },
             text = {
                 OutlinedTextField(
                     value = state.renameText,
                     onValueChange = viewModel::onRenameTextChange,
-                    label = { Text("单元名称") },
+                    label = { Text(stringResource(R.string.unit_name_label)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -180,12 +182,12 @@ fun UnitDetailScreen(
                     onClick = viewModel::confirmRename,
                     enabled = state.renameText.isNotBlank()
                 ) {
-                    Text("确定")
+                    Text(stringResource(R.string.common_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = viewModel::dismissRenameDialog) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -195,12 +197,12 @@ fun UnitDetailScreen(
     if (state.showRepeatCountDialog) {
         AlertDialog(
             onDismissRequest = viewModel::dismissRepeatCountDialog,
-            title = { Text("设置重复次数") },
+            title = { Text(stringResource(R.string.unit_set_repeat_count)) },
             text = {
                 OutlinedTextField(
                     value = state.repeatCountText,
                     onValueChange = viewModel::onRepeatCountTextChange,
-                    label = { Text("重复次数") },
+                    label = { Text(stringResource(R.string.unit_repeat_count)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -210,12 +212,12 @@ fun UnitDetailScreen(
                     onClick = viewModel::confirmRepeatCount,
                     enabled = (state.repeatCountText.toIntOrNull() ?: 0) >= 1
                 ) {
-                    Text("确定")
+                    Text(stringResource(R.string.common_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = viewModel::dismissRepeatCountDialog) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -225,10 +227,10 @@ fun UnitDetailScreen(
     if (state.showAddWordsDialog) {
         AlertDialog(
             onDismissRequest = viewModel::dismissAddWordsDialog,
-            title = { Text("管理单词") },
+            title = { Text(stringResource(R.string.unit_manage_words)) },
             text = {
                 if (state.allWordsInDictionary.isEmpty()) {
-                    Text("辞书中没有单词")
+                    Text(stringResource(R.string.unit_no_words))
                 } else {
                     LazyColumn(
                         modifier = Modifier
@@ -269,12 +271,12 @@ fun UnitDetailScreen(
             },
             confirmButton = {
                 TextButton(onClick = viewModel::confirmAddWords) {
-                    Text("确定")
+                    Text(stringResource(R.string.common_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = viewModel::dismissAddWordsDialog) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -283,8 +285,8 @@ fun UnitDetailScreen(
     // Remove word confirm
     state.removeWordTarget?.let { word ->
         ConfirmDialog(
-            title = "移除单词",
-            message = "确定要从此单元移除「${word.spelling}」吗？（不会删除单词本身）",
+            title = stringResource(R.string.unit_remove_word),
+            message = stringResource(R.string.unit_remove_word_confirm, word.spelling),
             onConfirm = viewModel::confirmRemoveWord,
             onDismiss = viewModel::dismissRemoveWord
         )
@@ -293,8 +295,8 @@ fun UnitDetailScreen(
     // Delete unit confirm
     if (state.showDeleteConfirm) {
         ConfirmDialog(
-            title = "删除单元",
-            message = "确定要删除单元「${state.unit?.name}」吗？（不会删除单词本身）",
+            title = stringResource(R.string.unit_delete),
+            message = stringResource(R.string.unit_delete_confirm, state.unit?.name ?: ""),
             onConfirm = { viewModel.confirmDeleteUnit(onBack) },
             onDismiss = viewModel::dismissDeleteConfirm
         )

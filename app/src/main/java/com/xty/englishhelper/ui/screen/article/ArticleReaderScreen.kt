@@ -81,8 +81,10 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import coil.compose.AsyncImage
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleParagraph
@@ -147,10 +149,12 @@ fun ArticleReaderScreen(
 
     val selectedGenerate = generateOptions.firstOrNull { it.id == selectedGenerateId } ?: generateOptions.first()
 
+    val generatePrefix = stringResource(R.string.article_generate_questions)
+    val unnamedArticle = stringResource(R.string.article_unnamed)
     val defaultPaperTitle = remember(article?.title) {
-        val safeTitle = article?.title?.takeIf { it.isNotBlank() } ?: "未命名文章"
+        val safeTitle = article?.title?.takeIf { it.isNotBlank() } ?: unnamedArticle
         val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-        "文章出题 - $safeTitle - $date"
+        "$generatePrefix - $safeTitle - $date"
     }
 
     LaunchedEffect(Unit) {
@@ -215,7 +219,7 @@ fun ArticleReaderScreen(
     val canSpeak = article != null &&
         (uiState.paragraphs?.isNotEmpty() == true) &&
         uiState.ttsState.isReady
-    val topBarTitleText = article?.title?.takeIf { it.isNotBlank() } ?: "文章阅读"
+    val topBarTitleText = article?.title?.takeIf { it.isNotBlank() } ?: stringResource(R.string.article_reading)
 
     Scaffold(
         topBar = {
@@ -230,7 +234,7 @@ fun ArticleReaderScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -251,20 +255,20 @@ fun ArticleReaderScreen(
                     ) {
                         ReaderTopActionButton(
                             icon = if (isArticleSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isArticleSpeaking) "暂停朗读" else "朗读全文",
+                            contentDescription = if (isArticleSpeaking) stringResource(R.string.article_tts_pause) else stringResource(R.string.article_tts_play),
                             onClick = { viewModel.toggleSpeakArticle() },
                             enabled = canSpeak,
                             active = isArticleSpeaking
                         )
                         ReaderTopActionButton(
                             icon = Icons.Default.Translate,
-                            contentDescription = if (uiState.translationEnabled) "关闭全文翻译" else "全文翻译",
+                            contentDescription = if (uiState.translationEnabled) stringResource(R.string.article_translate_off) else stringResource(R.string.article_translate_toggle),
                             onClick = { viewModel.toggleTranslation() },
                             active = uiState.translationEnabled
                         )
                         ReaderTopActionButton(
                             icon = Icons.Default.AutoAwesome,
-                            contentDescription = if (uiState.isGeneratingQuestions) "后台出题中" else "文章出题",
+                            contentDescription = if (uiState.isGeneratingQuestions) stringResource(R.string.article_generating_questions) else stringResource(R.string.article_generate_questions),
                             onClick = { showGenerateDialog = true },
                             enabled = !uiState.isGeneratingQuestions,
                             active = uiState.isGeneratingQuestions
@@ -272,7 +276,7 @@ fun ArticleReaderScreen(
                         if (article?.isSaved == false) {
                             ReaderTopActionButton(
                                 icon = Icons.Default.Download,
-                                contentDescription = if (uiState.isSavingToLocal) "保存中" else "保存到本地",
+                                contentDescription = if (uiState.isSavingToLocal) stringResource(R.string.article_saving) else stringResource(R.string.article_save_to_local),
                                 onClick = { viewModel.saveToLocal() },
                                 enabled = !uiState.isSavingToLocal,
                                 active = uiState.isSavingToLocal
@@ -280,7 +284,7 @@ fun ArticleReaderScreen(
                         }
                         ReaderTopActionButton(
                             icon = Icons.AutoMirrored.Filled.MenuBook,
-                            contentDescription = "单词本",
+                            contentDescription = stringResource(R.string.article_notebook),
                             onClick = { viewModel.toggleNotebook() },
                             tint = notebookTint,
                             pulseScale = notebookPulseScale.value,
@@ -318,7 +322,7 @@ fun ArticleReaderScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text("加载中…", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.common_loading), style = MaterialTheme.typography.bodyLarge)
             }
         } else {
             ArticleReaderContent(
@@ -374,7 +378,7 @@ fun ArticleReaderScreen(
     if (showGenerateDialog) {
         AlertDialog(
             onDismissRequest = { showGenerateDialog = false },
-            title = { Text("文章出题") },
+            title = { Text(stringResource(R.string.article_generate_questions)) },
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -383,7 +387,7 @@ fun ArticleReaderScreen(
                     OutlinedTextField(
                         value = draftPaperTitle,
                         onValueChange = { draftPaperTitle = it },
-                        label = { Text("试卷名称") },
+                        label = { Text(stringResource(R.string.article_paper_title)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -424,10 +428,10 @@ fun ArticleReaderScreen(
                             variant = selectedGenerate.variant
                         )
                     }
-                ) { Text("开始出题") }
+                ) { Text(stringResource(R.string.article_start_generate)) }
             },
             dismissButton = {
-                TextButton(onClick = { showGenerateDialog = false }) { Text("取消") }
+                TextButton(onClick = { showGenerateDialog = false }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
@@ -463,13 +467,21 @@ private fun ArticleReaderContent(
     val coverUri = article.coverImageUri ?: article.coverImageUrl
     val displayWordCount = article.wordCount.takeIf { it > 0 }
         ?: statistics?.wordCount?.takeIf { it > 0 }
+    val wordCountText = displayWordCount?.let { stringResource(R.string.article_word_count_display, it) }
+    val parseStatusProcessingText = stringResource(R.string.article_parsing)
+    val parseStatusFailedText = stringResource(R.string.article_parse_failed)
     val metaParts = remember(article.author, article.source, article.domain, displayWordCount, article.parseStatus) {
         buildList {
             if (article.author.isNotBlank()) add(article.author)
             if (article.source.isNotBlank()) add(article.source)
             else if (article.domain.isNotBlank()) add(article.domain)
-            if (displayWordCount != null) add("$displayWordCount 词")
-            parseStatusText(article.parseStatus)?.let(::add)
+            if (wordCountText != null) add(wordCountText)
+            val statusText = when (article.parseStatus) {
+                ArticleParseStatus.PROCESSING -> parseStatusProcessingText
+                ArticleParseStatus.FAILED -> parseStatusFailedText
+                else -> null
+            }
+            statusText?.let(::add)
         }
     }
 
@@ -533,7 +545,7 @@ private fun ArticleReaderContent(
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "正在缓存朗读音频 $prewarmDone/${ttsState.prewarmTotal}",
+                            stringResource(R.string.article_tts_prewarm, prewarmDone, ttsState.prewarmTotal),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -593,7 +605,7 @@ private fun ReaderHeroCard(
         if (coverUri != null) {
             AsyncImage(
                 model = coverUri,
-                contentDescription = "封面",
+                contentDescription = stringResource(R.string.article_cover),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp),

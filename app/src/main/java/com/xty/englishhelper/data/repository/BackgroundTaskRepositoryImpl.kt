@@ -77,7 +77,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
                 dao.updateStatus(
                     entity.id,
                     BackgroundTaskStatus.FAILED.name,
-                    "浠诲姟鍙傛暟缂哄け",
+                    "Task payload missing",
                     System.currentTimeMillis()
                 )
                 continue

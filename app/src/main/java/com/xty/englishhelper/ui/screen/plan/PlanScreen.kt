@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.plan
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -58,8 +59,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.PlanDaySummary
 import com.xty.englishhelper.domain.model.PlanAutoEventLog
@@ -74,10 +77,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class PlanTab(val title: String) {
-    TODAY("今日"),
-    TEMPLATE("模板"),
-    STATS("统计")
+private enum class PlanTab(@StringRes val titleRes: Int) {
+    TODAY(R.string.plan_today),
+    TEMPLATE(R.string.plan_template),
+    STATS(R.string.plan_statistics)
 }
 
 private sealed interface PlanLogTarget {
@@ -106,7 +109,7 @@ fun PlanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("计划") }
+                title = { Text(stringResource(R.string.plan_title)) }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -121,7 +124,7 @@ fun PlanScreen(
                     Tab(
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
-                        text = { Text(tab.title) }
+                        text = { Text(stringResource(tab.titleRes)) }
                     )
                 }
             }
@@ -194,15 +197,15 @@ private fun TodayTab(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("今日进度", style = MaterialTheme.typography.titleMedium)
-                    Text("连续完成 $streakDays 天", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.plan_today_progress), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.plan_streak_days, streakDays), style = MaterialTheme.typography.labelMedium)
                 }
                 LinearProgressIndicator(
                     progress = { completionRate.coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(
-                    text = "完成率 ${(completionRate * 100).toInt()}%",
+                    text = stringResource(R.string.plan_completion_rate, (completionRate * 100).toInt()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -216,10 +219,10 @@ private fun TodayTab(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("自动联动记录", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.plan_auto_event_log), style = MaterialTheme.typography.titleSmall)
                 if (eventLogs.isEmpty()) {
                     Text(
-                        text = "今天还没有自动联动事件",
+                        text = stringResource(R.string.plan_no_auto_events),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -249,7 +252,7 @@ private fun TodayTab(
                                 )
                                 if (target != null) {
                                     Text(
-                                        text = "点击查看来源",
+                                        text = stringResource(R.string.plan_click_to_view_source),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
@@ -269,7 +272,7 @@ private fun TodayTab(
         if (tasks.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "当前模板没有任务，请先到“模板”中添加",
+                    text = stringResource(R.string.plan_no_tasks_hint),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -376,9 +379,9 @@ private fun TemplateTab(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("计划模板", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.plan_templates_title), style = MaterialTheme.typography.titleMedium)
             IconButton(onClick = { showCreateTemplateDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "新建模板")
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.plan_new_template))
             }
         }
 
@@ -394,7 +397,7 @@ private fun TemplateTab(
                     onClick = { onSetActive(template.id) },
                     label = { Text(template.name) },
                     trailingIcon = if (template.id == activeTemplate?.id) {
-                        { Text("当前") }
+                        { Text(stringResource(R.string.plan_current)) }
                     } else {
                         null
                     }
@@ -406,25 +409,25 @@ private fun TemplateTab(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 AssistChip(
                     onClick = { editTemplate = activeTemplate },
-                    label = { Text("重命名") },
-                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = "重命名") }
+                    label = { Text(stringResource(R.string.plan_rename)) },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.plan_rename)) }
                 )
                 AssistChip(
                     onClick = { onDeleteTemplate(activeTemplate.id) },
-                    label = { Text("删除模板") },
-                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = "删除") }
+                    label = { Text(stringResource(R.string.plan_delete_template)) },
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete)) }
                 )
                 AssistChip(
                     onClick = { showAddItemDialog = true },
-                    label = { Text("新增任务") },
-                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = "新增") }
+                    label = { Text(stringResource(R.string.plan_new_task)) },
+                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.common_add)) }
                 )
             }
         }
 
         if (items.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("该模板暂无任务", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.plan_no_template_tasks), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(
@@ -443,13 +446,13 @@ private fun TemplateTab(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(item.title, style = MaterialTheme.typography.titleSmall)
                                 Text(
-                                    text = "${planTaskTypeLabel(item.taskType)} · 目标 ${item.targetCount}",
+                                    text = stringResource(R.string.plan_task_type_target, planTaskTypeLabel(item.taskType), item.targetCount),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 if (item.autoEnabled && item.autoSource != null) {
                                     Text(
-                                        text = "自动联动：${planAutoSourceLabel(item.autoSource)}",
+                                        text = stringResource(R.string.plan_auto_link, planAutoSourceLabel(item.autoSource)),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
@@ -457,10 +460,10 @@ private fun TemplateTab(
                             }
                             Row {
                                 IconButton(onClick = { editItem = item }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "编辑任务")
+                                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.plan_edit_task))
                                 }
                                 IconButton(onClick = { onDeleteItem(item.id) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "删除任务")
+                                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.plan_delete_task))
                                 }
                             }
                         }
@@ -472,7 +475,7 @@ private fun TemplateTab(
 
     if (showCreateTemplateDialog) {
         TemplateNameDialog(
-            title = "新建模板",
+            title = stringResource(R.string.plan_new_template),
             initialName = "",
             onDismiss = { showCreateTemplateDialog = false },
             onConfirm = {
@@ -484,7 +487,7 @@ private fun TemplateTab(
 
     editTemplate?.let { template ->
         TemplateNameDialog(
-            title = "重命名模板",
+            title = stringResource(R.string.plan_rename_template),
             initialName = template.name,
             onDismiss = { editTemplate = null },
             onConfirm = {
@@ -496,7 +499,7 @@ private fun TemplateTab(
 
     if (showAddItemDialog) {
         ItemEditorDialog(
-            title = "新增任务",
+            title = stringResource(R.string.plan_new_task),
             initialType = PlanTaskType.CUSTOM,
             initialName = "",
             initialTarget = 1,
@@ -518,7 +521,7 @@ private fun TemplateTab(
 
     editItem?.let { item ->
         ItemEditorDialog(
-            title = "编辑任务",
+            title = stringResource(R.string.plan_edit_task),
             initialType = item.taskType,
             initialName = item.title,
             initialTarget = item.targetCount,
@@ -563,29 +566,29 @@ private fun StatsTab(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("今日完成视图", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.plan_today_view), style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = mode == PlanStatsMode.ALL,
                         onClick = { onModeChange(PlanStatsMode.ALL) },
-                        label = { Text("全部") }
+                        label = { Text(stringResource(R.string.plan_filter_all)) }
                     )
                     FilterChip(
                         selected = mode == PlanStatsMode.AUTO,
                         onClick = { onModeChange(PlanStatsMode.AUTO) },
-                        label = { Text("自动") }
+                        label = { Text(stringResource(R.string.plan_filter_auto)) }
                     )
                     FilterChip(
                         selected = mode == PlanStatsMode.MANUAL,
                         onClick = { onModeChange(PlanStatsMode.MANUAL) },
-                        label = { Text("手动") }
+                        label = { Text(stringResource(R.string.plan_filter_manual)) }
                     )
                 }
                 if (filteredTodayTasks.isEmpty()) {
-                    Text("暂无任务", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.plan_no_task_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     Text(
-                        text = "已完成 $filteredDone / ${filteredTodayTasks.size}",
+                        text = stringResource(R.string.plan_completed_format, filteredDone, filteredTodayTasks.size),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     LinearProgressIndicator(
@@ -603,9 +606,9 @@ private fun StatsTab(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("近14天完成趋势", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.plan_trend_14_days), style = MaterialTheme.typography.titleMedium)
                 if (recentDays.isEmpty()) {
-                    Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.common_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     Row(
                         modifier = Modifier
@@ -652,9 +655,9 @@ private fun StatsTab(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("任务类型完成率", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.plan_task_type_rate), style = MaterialTheme.typography.titleMedium)
                 if (typeSummaries.isEmpty()) {
-                    Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.common_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     typeSummaries.forEach { summary ->
                         val rate = summary.completionRate.coerceIn(0f, 1f)
@@ -684,9 +687,9 @@ private fun StatsTab(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("类型分布", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.plan_type_distribution), style = MaterialTheme.typography.titleMedium)
                 if (typeSummaries.isEmpty()) {
-                    Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.common_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     PieLikeDistribution(typeSummaries)
                 }
@@ -765,18 +768,18 @@ private fun TemplateNameDialog(
                 value = name,
                 onValueChange = { name = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("名称") },
+                label = { Text(stringResource(R.string.plan_name_label)) },
                 singleLine = true
             )
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(name) }) {
-                Text("确定")
+                Text(stringResource(R.string.common_confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )
@@ -820,18 +823,18 @@ private fun ItemEditorDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("任务名称") },
+                    label = { Text(stringResource(R.string.plan_task_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = targetText,
                     onValueChange = { targetText = it.filter { ch -> ch.isDigit() } },
-                    label = { Text("每日目标") },
+                    label = { Text(stringResource(R.string.plan_daily_target)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("任务类型", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.plan_task_type_label), style = MaterialTheme.typography.labelMedium)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -850,7 +853,7 @@ private fun ItemEditorDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("自动联动", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.plan_auto_link_label), style = MaterialTheme.typography.labelMedium)
                     Switch(
                         checked = autoEnabled && supportedAutoSources(type).isNotEmpty(),
                         enabled = supportedAutoSources(type).isNotEmpty(),
@@ -863,7 +866,7 @@ private fun ItemEditorDialog(
                     )
                 }
                 if (autoEnabled && supportedAutoSources(type).isNotEmpty()) {
-                    Text("联动来源", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.plan_link_source), style = MaterialTheme.typography.labelMedium)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -888,36 +891,38 @@ private fun ItemEditorDialog(
                     onConfirm(type, name, target, autoEnabled, autoSource)
                 }
             ) {
-                Text("确定")
+                Text(stringResource(R.string.common_confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )
 }
 
+@Composable
 private fun planTaskTypeLabel(type: PlanTaskType): String {
     return when (type) {
-        PlanTaskType.REVIEW_DUE_WORDS -> "复习到期单词"
-        PlanTaskType.STUDY_NEW_WORDS -> "学习新词"
-        PlanTaskType.READ_ARTICLE -> "阅读文章"
-        PlanTaskType.PRACTICE_QUESTIONS -> "题库练习"
-        PlanTaskType.BRAINSTORM_STUDY -> "头脑风暴背词"
-        PlanTaskType.CUSTOM -> "自定义"
+        PlanTaskType.REVIEW_DUE_WORDS -> stringResource(R.string.plan_type_review_due)
+        PlanTaskType.STUDY_NEW_WORDS -> stringResource(R.string.plan_type_study_new)
+        PlanTaskType.READ_ARTICLE -> stringResource(R.string.plan_type_read_article)
+        PlanTaskType.PRACTICE_QUESTIONS -> stringResource(R.string.plan_type_practice)
+        PlanTaskType.BRAINSTORM_STUDY -> stringResource(R.string.plan_type_brainstorm)
+        PlanTaskType.CUSTOM -> stringResource(R.string.plan_type_custom)
     }
 }
 
+@Composable
 private fun planAutoSourceLabel(source: PlanAutoSource): String {
     return when (source) {
-        PlanAutoSource.STUDY_DUE_SESSION -> "背词完成（到期复习）"
-        PlanAutoSource.STUDY_NEW_SESSION -> "背词完成（新词学习）"
-        PlanAutoSource.ARTICLE_OPEN -> "打开文章"
-        PlanAutoSource.ARTICLE_TTS_FINISHED -> "完成文章朗读"
-        PlanAutoSource.QUESTION_SUBMIT -> "提交题库答案"
-        PlanAutoSource.BRAINSTORM_SESSION -> "头脑风暴背词"
+        PlanAutoSource.STUDY_DUE_SESSION -> stringResource(R.string.plan_source_study_due)
+        PlanAutoSource.STUDY_NEW_SESSION -> stringResource(R.string.plan_source_study_new)
+        PlanAutoSource.ARTICLE_OPEN -> stringResource(R.string.plan_source_article_open)
+        PlanAutoSource.ARTICLE_TTS_FINISHED -> stringResource(R.string.plan_source_article_tts)
+        PlanAutoSource.QUESTION_SUBMIT -> stringResource(R.string.plan_source_question)
+        PlanAutoSource.BRAINSTORM_SESSION -> stringResource(R.string.plan_source_brainstorm)
     }
 }
 

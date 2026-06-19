@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.components
+package com.xty.englishhelper.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,8 +15,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.CloudWordExample
 
@@ -32,7 +34,7 @@ fun CloudExamplesSection(
 ) {
     val uriHandler = LocalUriHandler.current
     WordDetailSection(
-        title = "词典例句",
+        title = stringResource(R.string.cloud_examples_title),
         modifier = modifier
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -56,7 +58,7 @@ fun CloudExamplesSection(
 
                 error != null -> {
                     Text(
-                        text = "例句加载失败：$error",
+                        text = stringResource(R.string.cloud_examples_load_error, error),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -64,7 +66,7 @@ fun CloudExamplesSection(
 
                 examples.isEmpty() -> {
                     Text(
-                        text = "当前来源暂无例句",
+                        text = stringResource(R.string.cloud_examples_no_data),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -79,7 +81,7 @@ fun CloudExamplesSection(
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
-                                    text = "${example.sourceLabel} 词典",
+                                    text = stringResource(R.string.cloud_examples_source_dict, example.sourceLabel),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )

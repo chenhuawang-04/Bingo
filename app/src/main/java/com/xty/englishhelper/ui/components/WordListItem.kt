@@ -20,7 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.WordDetails
 
 @Composable
@@ -80,7 +82,7 @@ fun WordListItem(
         }
         Icon(
             Icons.Default.ChevronRight,
-            contentDescription = "详情",
+            contentDescription = stringResource(R.string.common_details),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

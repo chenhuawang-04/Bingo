@@ -20,8 +20,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 
 @Composable
 fun BrainstormGoalDialog(
@@ -36,19 +38,19 @@ fun BrainstormGoalDialog(
         onDismissRequest = { /* Cannot dismiss */ },
         title = {
             Text(
-                text = "头脑风暴 · 今日目标",
+                text = stringResource(R.string.study_goal_title),
                 style = MaterialTheme.typography.headlineSmall
             )
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "今天计划背多少个词？",
+                    text = stringResource(R.string.study_goal_question),
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "（包括复习词和新词）",
+                    text = stringResource(R.string.study_goal_hint),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -74,7 +76,7 @@ fun BrainstormGoalDialog(
                             targetText = newValue
                         }
                     },
-                    label = { Text("目标数量") },
+                    label = { Text(stringResource(R.string.study_goal_target)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
@@ -83,7 +85,7 @@ fun BrainstormGoalDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "达成目标后会背完当前关联词组才停止",
+                    text = stringResource(R.string.study_goal_reached_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -95,7 +97,7 @@ fun BrainstormGoalDialog(
                 onClick = { onConfirm(target) },
                 enabled = target > 0
             ) {
-                Text("确认")
+                Text(stringResource(R.string.common_confirm))
             }
         }
     )

@@ -29,7 +29,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -255,7 +257,7 @@ private fun CompactContent(
             OutlinedTextField(
                 value = state.spelling,
                 onValueChange = onSpellingChange,
-                label = { Text("单词拼写") },
+                label = { Text(stringResource(R.string.word_spelling)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -279,14 +281,14 @@ private fun CompactContent(
             OutlinedTextField(
                 value = state.phonetic,
                 onValueChange = onPhoneticChange,
-                label = { Text("音标") },
+                label = { Text(stringResource(R.string.word_phonetic)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
         }
 
         item {
-            SectionHeader(title = "词性与词义", onAdd = onAddMeaning)
+            SectionHeader(title = stringResource(R.string.word_meanings), onAdd = onAddMeaning)
         }
         itemsIndexed(state.meanings) { index, meaning ->
             MeaningRow(
@@ -302,14 +304,14 @@ private fun CompactContent(
             OutlinedTextField(
                 value = state.rootExplanation,
                 onValueChange = onRootExplanationChange,
-                label = { Text("词根解释") },
+                label = { Text(stringResource(R.string.word_root_explanation)) },
                 minLines = 2,
                 modifier = Modifier.fillMaxWidth()
             )
         }
 
         item {
-            SectionHeader(title = "词根拆解", onAdd = onAddDecompositionPart)
+            SectionHeader(title = stringResource(R.string.word_decomposition), onAdd = onAddDecompositionPart)
         }
         itemsIndexed(state.decomposition) { index, part ->
             DecompositionPartRow(
@@ -322,7 +324,7 @@ private fun CompactContent(
         }
 
         item {
-            SectionHeader(title = "词形变化", onAdd = onAddInflection)
+            SectionHeader(title = stringResource(R.string.word_inflections), onAdd = onAddInflection)
         }
         itemsIndexed(state.inflections) { index, inflection ->
             InflectionRow(
@@ -334,7 +336,7 @@ private fun CompactContent(
         }
 
         item {
-            SectionHeader(title = "近义词", onAdd = onAddSynonym)
+            SectionHeader(title = stringResource(R.string.word_synonyms), onAdd = onAddSynonym)
         }
         itemsIndexed(state.synonyms) { index, syn ->
             SynonymRow(
@@ -346,7 +348,7 @@ private fun CompactContent(
         }
 
         item {
-            SectionHeader(title = "形近词", onAdd = onAddSimilarWord)
+            SectionHeader(title = stringResource(R.string.word_similar_words), onAdd = onAddSimilarWord)
         }
         itemsIndexed(state.similarWords) { index, sim ->
             SimilarWordRow(
@@ -359,7 +361,7 @@ private fun CompactContent(
         }
 
         item {
-            SectionHeader(title = "同根词", onAdd = onAddCognate)
+            SectionHeader(title = stringResource(R.string.word_cognates), onAdd = onAddCognate)
         }
         itemsIndexed(state.cognates) { index, cog ->
             CognateRow(
@@ -392,7 +394,7 @@ private fun BasicFields(
     OutlinedTextField(
         value = state.spelling,
         onValueChange = onSpellingChange,
-        label = { Text("单词拼写") },
+        label = { Text(stringResource(R.string.word_spelling)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
@@ -408,12 +410,12 @@ private fun BasicFields(
     OutlinedTextField(
         value = state.phonetic,
         onValueChange = onPhoneticChange,
-        label = { Text("音标") },
+        label = { Text(stringResource(R.string.word_phonetic)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
 
-    SectionHeader(title = "词性与词义", onAdd = onAddMeaning)
+    SectionHeader(title = stringResource(R.string.word_meanings), onAdd = onAddMeaning)
     state.meanings.forEachIndexed { index, meaning ->
         MeaningRow(
             meaning = meaning,
@@ -427,7 +429,7 @@ private fun BasicFields(
     OutlinedTextField(
         value = state.rootExplanation,
         onValueChange = onRootExplanationChange,
-        label = { Text("词根解释") },
+        label = { Text(stringResource(R.string.word_root_explanation)) },
         minLines = 2,
         modifier = Modifier.fillMaxWidth()
     )
@@ -452,7 +454,7 @@ private fun RelationshipFields(
     onAddCognate: () -> Unit,
     onRemoveCognate: (Int) -> Unit
 ) {
-    SectionHeader(title = "词根拆解", onAdd = onAddDecompositionPart)
+    SectionHeader(title = stringResource(R.string.word_decomposition), onAdd = onAddDecompositionPart)
     state.decomposition.forEachIndexed { index, part ->
         DecompositionPartRow(
             part = part,
@@ -463,7 +465,7 @@ private fun RelationshipFields(
         )
     }
 
-    SectionHeader(title = "词形变化", onAdd = onAddInflection)
+    SectionHeader(title = stringResource(R.string.word_inflections), onAdd = onAddInflection)
     state.inflections.forEachIndexed { index, inflection ->
         InflectionRow(
             inflection = inflection,
@@ -473,7 +475,7 @@ private fun RelationshipFields(
         )
     }
 
-    SectionHeader(title = "近义词", onAdd = onAddSynonym)
+    SectionHeader(title = stringResource(R.string.word_synonyms), onAdd = onAddSynonym)
     state.synonyms.forEachIndexed { index, syn ->
         SynonymRow(
             synonym = syn,
@@ -483,7 +485,7 @@ private fun RelationshipFields(
         )
     }
 
-    SectionHeader(title = "形近词", onAdd = onAddSimilarWord)
+    SectionHeader(title = stringResource(R.string.word_similar_words), onAdd = onAddSimilarWord)
     state.similarWords.forEachIndexed { index, sim ->
         SimilarWordRow(
             similarWord = sim,
@@ -494,7 +496,7 @@ private fun RelationshipFields(
         )
     }
 
-    SectionHeader(title = "同根词", onAdd = onAddCognate)
+    SectionHeader(title = stringResource(R.string.word_cognates), onAdd = onAddCognate)
     state.cognates.forEachIndexed { index, cog ->
         CognateRow(
             cognate = cog,
@@ -510,7 +512,7 @@ private fun RelationshipFields(
 @Composable
 private fun UnitSelector(state: AddWordUiState, onToggleUnit: (Long) -> Unit) {
     Column {
-        Text("所属单元", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.addword_belonging_unit), style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -540,10 +542,10 @@ private fun AiOrganizeButton(state: AddWordUiState, onClick: () -> Unit) {
                 strokeWidth = 2.dp,
                 color = MaterialTheme.colorScheme.onPrimary
             )
-            Text("  ${state.aiLoadingMessage ?: "正在整理"}")
+            Text("  ${state.aiLoadingMessage ?: stringResource(R.string.addword_ai_organizing)}")
         } else {
-            Icon(Icons.Default.AutoAwesome, contentDescription = "AI 处理")
-            Text("  AI 自动整理")
+            Icon(Icons.Default.AutoAwesome, contentDescription = stringResource(R.string.addword_ai_processing))
+            Text("  " + stringResource(R.string.addword_ai_organize))
         }
     }
 }
@@ -554,7 +556,7 @@ private fun SaveAndOrganizeButton(state: AddWordUiState, onClick: () -> Unit) {
         enabled = !state.isSaving && !state.isAiLoading && state.spelling.isNotBlank(),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Icon(Icons.Default.CloudUpload, contentDescription = "保存并整理")
-        Text("  保存并后台整理")
+        Icon(Icons.Default.CloudUpload, contentDescription = stringResource(R.string.addword_save_and_organize))
+        Text("  " + stringResource(R.string.addword_save_bg_organize))
     }
 }

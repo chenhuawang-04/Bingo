@@ -13,6 +13,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.ui.res.stringResource
+import com.xty.englishhelper.R
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -72,7 +74,7 @@ fun EditorialThumbnail(
     if (imageModel != null) {
         AsyncImage(
             model = imageModel,
-                contentDescription = "操作",
+                contentDescription = stringResource(R.string.common_more),
             modifier = modifier.clip(ArticleShapes.Thumbnail),
             contentScale = ContentScale.Crop
         )
@@ -135,7 +137,7 @@ fun EditorialActionButton(
         ) {
             Icon(
                 imageVector = icon,
-            contentDescription = "文章缩略图",
+            contentDescription = stringResource(R.string.article_paragraph_image),
                 modifier = Modifier.size(18.dp)
             )
             Text(

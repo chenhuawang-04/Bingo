@@ -38,10 +38,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.EdgeCluster
 import com.xty.englishhelper.domain.model.WordGraph
 import com.xty.englishhelper.domain.model.WordGraphCluster
@@ -61,10 +63,10 @@ fun PoolOverviewScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("词池可视化") },
+                title = { Text(stringResource(R.string.pool_overview_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -77,12 +79,12 @@ fun PoolOverviewScreen(
             }
 
             state.error != null -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                Text("加载失败：${state.error}", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.pool_graph_load_failed, state.error ?: ""), color = MaterialTheme.colorScheme.error)
             }
 
             graph == null || graph.isEmpty -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
                 Text(
-                    "尚无关系数据。\n请先在词典页用「生成词池（质量优先）」整理出词与词之间的关系。",
+                    stringResource(R.string.pool_graph_no_data),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -115,11 +117,11 @@ private fun PoolOverviewContent(
                 DashboardCard(graph)
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = { onOpenGraph(-1) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("查看全图（拖动 / 缩放浏览全部词）")
+                    Text(stringResource(R.string.pool_overview_view_full))
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "词池簇 ${graph.clusters.size} 个",
+                    stringResource(R.string.pool_overview_cluster_count, graph.clusters.size),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -145,14 +147,14 @@ private fun DashboardCard(graph: WordGraph) {
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                StatItem("词池簇", graph.clusters.size.toString())
-                StatItem("覆盖词", covered.toString())
-                StatItem("关系边", graph.totalEdges.toString())
+                StatItem(stringResource(R.string.pool_overview_cluster_count_short), graph.clusters.size.toString())
+                StatItem(stringResource(R.string.pool_overview_covered), covered.toString())
+                StatItem(stringResource(R.string.pool_overview_edges), graph.totalEdges.toString())
             }
             if (graph.isolatedNodeIndices.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "另有 ${graph.isolatedNodeIndices.size} 个未关联词",
+                    stringResource(R.string.pool_overview_isolated_count, graph.isolatedNodeIndices.size),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -245,7 +247,7 @@ private fun ClusterCard(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                "${cluster.size} 词",
+                stringResource(R.string.pool_overview_cluster_word_count, cluster.size),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

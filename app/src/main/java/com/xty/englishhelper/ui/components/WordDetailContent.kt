@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.components
+package com.xty.englishhelper.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,9 +22,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.CloudWordExample
@@ -126,7 +128,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.basicWordItems(word: 
 
     if (word.meanings.isNotEmpty()) {
         item {
-            WordDetailSection(title = "词性与词义") {
+            WordDetailSection(title = stringResource(R.string.word_meanings)) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     word.meanings.forEach { meaning ->
                         DetailRow(label = meaning.pos, value = meaning.definition)
@@ -138,7 +140,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.basicWordItems(word: 
 
     if (word.decomposition.isNotEmpty() || word.rootExplanation.isNotBlank()) {
         item {
-            WordDetailSection(title = "词根解释") {
+            WordDetailSection(title = stringResource(R.string.word_root_explanation)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (word.decomposition.isNotEmpty()) {
                         DecompositionDisplay(parts = word.decomposition)
@@ -162,7 +164,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.basicWordItems(word: 
 
     if (word.inflections.isNotEmpty()) {
         item {
-            WordDetailSection(title = "词形变化") {
+            WordDetailSection(title = stringResource(R.string.word_inflections)) {
                 InflectionsDisplay(inflections = word.inflections)
             }
         }
@@ -186,7 +188,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
 ) {
     if (word.synonyms.isNotEmpty()) {
         item {
-            WordDetailSection(title = "近义词") {
+            WordDetailSection(title = stringResource(R.string.word_synonyms)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     word.synonyms.forEach { syn ->
                         ClickableWordRow(
@@ -204,7 +206,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
 
     if (word.similarWords.isNotEmpty()) {
         item {
-            WordDetailSection(title = "形近词") {
+            WordDetailSection(title = stringResource(R.string.word_similar_words)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     word.similarWords.forEach { sim ->
                         Column {
@@ -217,7 +219,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
                             )
                             if (sim.explanation.isNotBlank()) {
                                 Text(
-                                    text = "区分：${sim.explanation}",
+                                    text = stringResource(R.string.word_distinction_format, sim.explanation),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(start = 8.dp)
@@ -232,7 +234,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
 
     if (word.cognates.isNotEmpty()) {
         item {
-            WordDetailSection(title = "同根词") {
+            WordDetailSection(title = stringResource(R.string.word_cognates)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     word.cognates.forEach { cog ->
                         Column {
@@ -245,7 +247,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
                             )
                             if (cog.sharedRoot.isNotBlank()) {
                                 Text(
-                                    text = "词根：${cog.sharedRoot}",
+                                    text = stringResource(R.string.word_root_prefix, cog.sharedRoot),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(start = 8.dp)
@@ -260,7 +262,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
 
     if (associatedWords.isNotEmpty()) {
         item {
-            WordDetailSection(title = "联想词") {
+            WordDetailSection(title = stringResource(R.string.word_associated_words)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     associatedWords.forEach { assoc ->
                         Row(
@@ -302,7 +304,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
 
     pools.forEach { pool ->
         item {
-            val label = if (pool.strategy == "QUALITY_FIRST") "精准词池" else "关联词池"
+            val label = if (pool.strategy == "QUALITY_FIRST") stringResource(R.string.word_quality_pool) else stringResource(R.string.word_related_pool)
             WordDetailSection(title = label) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -326,7 +328,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
 
     if (examples.isNotEmpty()) {
         item {
-            WordDetailSection(title = "文章例句") {
+            WordDetailSection(title = stringResource(R.string.word_article_examples)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     examples.forEach { example ->
                         Card(

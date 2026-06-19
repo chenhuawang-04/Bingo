@@ -729,10 +729,10 @@ class WordPoolRepositoryImpl @Inject constructor(
                                 // 此刻连续前缀 [startChunkForWord, chunkIndex) 已全部入库并上报，续传点 = chunkIndex。
                                 // 抛出中止整个构建：coroutineScope 取消本波其余在算的块；已落库进度供修复后从当前词当前块续传。
                                 throw PoolBuildDataException(
-                                    "词池构建已停止：单词「${currentWord.spelling}」第 ${outcome.chunkIndex + 1}/${chunks.size} 组" +
-                                        "经 ${outcome.attempts} 次尝试后仍返回不合规数据。\n" +
-                                        "原因：${outcome.error}\n" +
-                                        "已保留已完成进度，请检查 AI 服务/模型配置后继续构建。"
+                                    "Pool build stopped: word '${currentWord.spelling}' chunk ${outcome.chunkIndex + 1}/${chunks.size} " +
+                                        "returned non-compliant data after ${outcome.attempts} attempts.\n" +
+                                        "Reason: ${outcome.error}\n" +
+                                        "Completed progress has been preserved. Please check your AI service/model configuration and resume."
                                 )
                             }
                         }
@@ -887,7 +887,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                 raw = callAi(prompt)
                 if (raw.isBlank()) {
                     Log.w("WordPoolRepo", "AI 返回空响应 (第 ${attempt + 1}/$MAX_EDGE_RETRIES 次)")
-                    lastError = "AI 返回空响应"
+                    lastError = "AI returned empty response"
                     onAttempt(attempt, raw, lastError, false)
                     waitAfterFailure(attempt, retryMode, failureTally, null)
                     continue
@@ -895,7 +895,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                 val normalized = EdgeParser.normalizeResponse(raw, unwrapEnabled, repairEnabled)
                 if (normalized.isBlank()) {
                     Log.w("WordPoolRepo", "响应归一化后为空 (第 ${attempt + 1}/$MAX_EDGE_RETRIES 次), raw=${raw.take(200)}")
-                    lastError = "响应归一化后为空"
+                    lastError = "Normalized response is empty"
                     onAttempt(attempt, raw, lastError, false)
                     waitAfterFailure(attempt, retryMode, failureTally, null)
                     continue
@@ -912,12 +912,12 @@ class WordPoolRepositoryImpl @Inject constructor(
                 onAttempt(attempt, raw, lastError, false)
                 // 积极模式：立即失败。宽松模式：照样重试（加间隔），仅在重试耗尽后失败。
                 if (retryMode == PoolRetryMode.AGGRESSIVE) {
-                    return EdgeCallResult.Failure(lastError ?: "不可重试的错误", attempt + 1)
+                    return EdgeCallResult.Failure(lastError ?: "Non-retryable error", attempt + 1)
                 }
                 waitAfterFailure(attempt, retryMode, failureTally, null)
             } catch (e: RetryableEdgeException) {
                 // 解析器判定响应格式不合规 —— 按定义可重试。
-                lastError = e.message?.take(200) ?: "响应格式不合规"
+                lastError = e.message?.take(200) ?: "Non-compliant response format"
                 Log.w("WordPoolRepo", "AI 响应格式不合规 (第 ${attempt + 1}/$MAX_EDGE_RETRIES 次)，重试中", e)
                 onAttempt(attempt, raw, lastError, false)
                 waitAfterFailure(attempt, retryMode, failureTally, null)
@@ -928,13 +928,13 @@ class WordPoolRepositoryImpl @Inject constructor(
                 onAttempt(attempt, raw, lastError, false)
                 // 积极模式遇不可重试错误立即失败；宽松模式一律重试。
                 if (retryMode == PoolRetryMode.AGGRESSIVE && !retryable) {
-                    return EdgeCallResult.Failure(lastError ?: "不可重试的错误", attempt + 1)
+                    return EdgeCallResult.Failure(lastError ?: "Non-retryable error", attempt + 1)
                 }
                 waitAfterFailure(attempt, retryMode, failureTally, if (retryable) e else null)
             }
         }
         Log.w("WordPoolRepo", "AI 调用在 $MAX_EDGE_RETRIES 次尝试后仍失败 (mode=$retryMode): $lastError")
-        return EdgeCallResult.Failure(lastError ?: "AI 调用失败（已重试 $MAX_EDGE_RETRIES 次）", MAX_EDGE_RETRIES)
+        return EdgeCallResult.Failure(lastError ?: "AI call failed (retried $MAX_EDGE_RETRIES times)", MAX_EDGE_RETRIES)
     }
 
     /**
@@ -1183,19 +1183,19 @@ class WordPoolRepositoryImpl @Inject constructor(
         json: String
     ): ManualFillResult {
         val chunkSize = settingsDataStore.getPoolWindowSize()
-        if (chunkSize <= 0) return ManualFillResult(false, error = "窗口大小无效")
+        if (chunkSize <= 0) return ManualFillResult(false, error = "Invalid window size")
         val allWords = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
         val wordIndex = allWords.indexOfFirst { it.spelling == wordSpelling }
-        if (wordIndex < 0) return ManualFillResult(false, error = "找不到断点词「$wordSpelling」")
+        if (wordIndex < 0) return ManualFillResult(false, error = "Resume word '$wordSpelling' not found")
         val expectedTotal = (wordIndex + chunkSize - 1) / chunkSize
         if (expectedTotal != totalChunks) {
-            return ManualFillResult(false, error = "窗口大小已变更，坐标系不一致，无法手动填入（请用一致的设置续传，或完全重建）")
+            return ManualFillResult(false, error = "Window size changed, coordinate mismatch. Cannot fill manually (resume with matching settings, or do a full rebuild).")
         }
-        if (chunkIndex !in 0 until totalChunks) return ManualFillResult(false, error = "块序号越界")
+        if (chunkIndex !in 0 until totalChunks) return ManualFillResult(false, error = "Chunk index out of bounds")
         val target = allWords[wordIndex]
         val from = chunkIndex * chunkSize
         val to = ((chunkIndex + 1) * chunkSize).coerceAtMost(wordIndex)
-        if (from >= to) return ManualFillResult(false, error = "该块无候选词")
+        if (from >= to) return ManualFillResult(false, error = "No candidates in this chunk")
         val window = allWords.subList(from, to)
 
         // 复用与 AI 完全相同的解析 / 校验链；空数组 [] 合法（该块判定无边，可直接跳过敏感块）。
@@ -1203,7 +1203,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
         val edges: List<WordEdgeEntity> = try {
             val normalized = EdgeParser.normalizeResponse(json, unwrapEnabled, repairEnabled)
-            if (normalized.isBlank()) return ManualFillResult(false, error = "内容为空")
+            if (normalized.isBlank()) return ManualFillResult(false, error = "Content is empty")
             val parsed = EdgeParser.parseAndValidateEdgeResponse(normalized, window.size)
             val filtered = EdgeParser.applyHardThresholds(parsed, target, window)
             filtered.mapNotNull { edge ->
@@ -1211,7 +1211,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                 toEdgeEntity(target, other, edge, dictionaryId)
             }
         } catch (e: Exception) {
-            return ManualFillResult(false, error = "JSON 解析失败：${e.message?.take(160) ?: e.javaClass.simpleName}")
+            return ManualFillResult(false, error = "JSON parse error: ${e.message?.take(160) ?: e.javaClass.simpleName}")
         }
 
         // 幂等：先删该块覆盖的前驱区残边（双向匹配，分批避开 SQLite 参数上限），再插入。
@@ -1226,7 +1226,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             word = wordSpelling,
             chunkIndex = chunkIndex,
             attempt = 0,
-            response = "（手动填入）\n$json",
+            response = "(Manual fill)\n$json",
             error = null,
             success = true
         )

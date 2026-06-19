@@ -131,19 +131,19 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
     private fun authHeader(): String {
         val pat = settingsDataStore.getGitHubPat()
-        if (pat.isBlank()) throw IllegalStateException("未配置 GitHub Token")
+        if (pat.isBlank()) throw IllegalStateException("GitHub Token not configured")
         return "Bearer $pat"
     }
 
     private suspend fun owner(): String {
         val o = settingsDataStore.githubOwner.first()
-        if (o.isBlank()) throw IllegalStateException("未配置 GitHub 用户名")
+        if (o.isBlank()) throw IllegalStateException("GitHub username not configured")
         return o
     }
 
     private suspend fun repo(): String {
         val r = settingsDataStore.githubRepo.first()
-        if (r.isBlank()) throw IllegalStateException("未配置仓库名")
+        if (r.isBlank()) throw IllegalStateException("Repository name not configured")
         return r
     }
 
@@ -164,7 +164,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         repo()
 
         // 1. Download cloud data
-        onProgress(SyncProgress("下载中", "正在下载云端数据...", 0, 4))
+        onProgress(SyncProgress("Downloading", "Downloading cloud data...", 0, 4))
         val cloudManifest = downloadJson("manifest.json", manifestAdapter)
         val cloudDicts = downloadCloudDictionaries(cloudManifest) { current, total, entry ->
             onProgress(
@@ -182,14 +182,14 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val cloudPlan = downloadJson("plan.json", planAdapter)
 
         // 2. Read local data
-        onProgress(SyncProgress("读取中", "正在读取本地数据...", 1, 4))
+        onProgress(SyncProgress("Reading", "Reading local data...", 1, 4))
         val localDicts = dictionaryRepository.getAllDictionaries().first()
         applyCloudCategoriesOnSync(cloudCategories)
         val localArticles = articleRepository.getAllArticles().first()
         val localPlanBackup = planRepository.exportBackup()
 
         // 3. Smart merge
-        onProgress(SyncProgress("合并中", "正在合并辞书...", 2, 4))
+        onProgress(SyncProgress("Merging", "Merging dictionaries...", 2, 4))
         val mergedDictJsons = mutableListOf<DictionaryJsonModel>()
 
         for (localDict in localDicts) {
@@ -208,7 +208,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         // Cloud-only dicts -> import to local
         for ((_, cloudDict) in cloudDicts) {
-            onProgress(SyncProgress("导入中", "正在导入云端辞书 ${cloudDict.name}...", 2, 4))
+            onProgress(SyncProgress("Importing", "Importing cloud dictionary ${cloudDict.name}...", 2, 4))
             importCloudDictionary(cloudDict)
             mergedDictJsons.add(cloudDict)
         }
@@ -282,17 +282,17 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         uploadJson("manifest.json", manifest, manifestAdapter)
 
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
-        onProgress(SyncProgress("完成", "同步完成", 4, 4))
+        onProgress(SyncProgress("Done", "Sync complete", 4, 4))
     }
 
     override suspend fun forceUpload(onProgress: (SyncProgress) -> Unit) {
-        onProgress(SyncProgress("上传中", "正在对比云端数据...", 0, 4))
+        onProgress(SyncProgress("Uploading", "Comparing cloud data...", 0, 4))
 
         // Download cloud manifest for comparison
         val previousManifest = downloadJson("manifest.json", manifestAdapter)
 
         // Phase 1: Upload dictionaries (incremental via content hash)
-        onProgress(SyncProgress("上传中", "正在同步辞书...", 1, 4))
+        onProgress(SyncProgress("Uploading", "Syncing dictionaries...", 1, 4))
         val localDicts = dictionaryRepository.getAllDictionaries().first()
         val finalDictJsons = localDicts.mapIndexed { i, dict ->
             exportLocalDictionary(dict)
@@ -303,7 +303,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
 
         // Phase 2: Upload articles (incremental via timestamp comparison)
-        onProgress(SyncProgress("上传中", "正在同步文章...", 2, 4))
+        onProgress(SyncProgress("Uploading", "Syncing articles...", 2, 4))
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudArticleMap = cloudArticles?.articles?.associateBy { it.articleUid } ?: emptyMap()
         val allArticles = articleRepository.getAllArticles().first()
@@ -322,7 +322,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
         // Phase 3: Upload categories, question bank, word examples, plan (always full)
-        onProgress(SyncProgress("上传中", "正在同步其他数据...", 3, 4))
+        onProgress(SyncProgress("Uploading", "Syncing other data...", 3, 4))
         val categoriesExport = exportArticleCategories()
         uploadJson("article_categories.json", categoriesExport, articleCategoriesAdapter)
 
@@ -336,7 +336,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         uploadJson("plan.json", planExport, planAdapter)
 
         // Phase 4: Upload manifest
-        onProgress(SyncProgress("上传中", "正在更新清单...", 4, 4))
+        onProgress(SyncProgress("Uploading", "Updating manifest...", 4, 4))
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
             schemaVersion = 6,
@@ -352,22 +352,22 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         uploadJson("manifest.json", manifest, manifestAdapter)
 
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
-        onProgress(SyncProgress("完成", "上传完成（增量：${articlesUpdated} 篇文章更新）", 4, 4))
+        onProgress(SyncProgress("Done", "Upload complete (incremental: $articlesUpdated articles updated)", 4, 4))
     }
 
     override suspend fun forceDownload(onProgress: (SyncProgress) -> Unit) {
-        onProgress(SyncProgress("下载中", "正在下载云端数据...", 0, 4))
+        onProgress(SyncProgress("Downloading", "Downloading cloud data...", 0, 4))
 
         val cloudManifest = downloadJson("manifest.json", manifestAdapter)
-            ?: throw IllegalStateException("云端没有同步数据")
+            ?: throw IllegalStateException("No cloud sync data")
 
         // Phase 1: Download dictionaries (incremental via content hash)
-        onProgress(SyncProgress("下载中", "正在同步辞书...", 1, 4))
+        onProgress(SyncProgress("Downloading", "Syncing dictionaries...", 1, 4))
         val cloudDicts = downloadCloudDictionaries(cloudManifest) { current, total, entry ->
             onProgress(
                 SyncProgress(
-                    "下载中",
-                    "下载辞书 ${entry.name.ifBlank { entry.path }}",
+                    "Downloading",
+                    "Downloading dictionary ${entry.name.ifBlank { entry.path }}",
                     current,
                     total.coerceAtLeast(1)
                 )
@@ -375,7 +375,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }.values.toList()
 
         // Phase 2: Download and merge articles (incremental via timestamp comparison)
-        onProgress(SyncProgress("下载中", "正在同步文章...", 2, 4))
+        onProgress(SyncProgress("Downloading", "Syncing articles...", 2, 4))
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
 
@@ -400,7 +400,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         normalizeArticleCategories()
 
         // Phase 3: Download question bank, word examples, plan
-        onProgress(SyncProgress("下载中", "正在同步其他数据...", 3, 4))
+        onProgress(SyncProgress("Downloading", "Syncing other data...", 3, 4))
         val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
         val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
         val cloudPlan = downloadJson("plan.json", planAdapter)
@@ -426,13 +426,13 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         // Phase 4: Import dictionaries
-        onProgress(SyncProgress("导入中", "正在导入辞书...", 4, 4))
+        onProgress(SyncProgress("Importing", "Importing dictionaries...", 4, 4))
         for (dict in cloudDicts) {
             importCloudDictionary(dict)
         }
 
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
-        onProgress(SyncProgress("完成", "下载完成（增量：${articlesImported} 篇新增，${articlesSkipped} 篇跳过）", 4, 4))
+        onProgress(SyncProgress("Done", "Download complete (incremental: $articlesImported imported, $articlesSkipped skipped)", 4, 4))
     }
 
     private data class DictionaryUploadResult(
@@ -455,7 +455,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
     private suspend fun downloadCloudDictionaries(
         manifest: SyncManifest?,
-        onEntry: (current: Int, total: Int, entry: DictionaryCloudEntryJsonModel) -> Unit = { _, _, _ -> }
+            onEntry: (current: Int, total: Int, entry: DictionaryCloudEntryJsonModel) -> Unit = { _, _, _ -> }
     ): Map<String, DictionaryJsonModel> {
         val entries = resolveDictionaryEntries(manifest)
         if (entries.isEmpty()) return emptyMap()
@@ -465,7 +465,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             onEntry(index + 1, entries.size, entry)
             val dictionary = downloadDictionaryEntry(entry)
             if (dictionaries.put(dictionary.name, dictionary) != null) {
-                throw IllegalStateException("云端同步清单中存在重复的辞书名称：${dictionary.name}")
+                throw IllegalStateException("Duplicate dictionary name in cloud sync manifest: ${dictionary.name}")
             }
         }
         return dictionaries
@@ -475,12 +475,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         return when (entry.format) {
             DictionaryCloudEntryJsonModel.FORMAT_SINGLE -> {
                 downloadJson(entry.path, dictAdapter)
-                    ?: throw IllegalStateException("云端同步清单引用了不存在的辞书文件：${entry.path}")
+                    ?: throw IllegalStateException("Cloud sync manifest references non-existent dictionary file: ${entry.path}")
             }
 
             DictionaryCloudEntryJsonModel.FORMAT_SHARDED -> {
                 val index = downloadJson(entry.path, dictionaryShardIndexAdapter)
-                    ?: throw IllegalStateException("云端同步清单引用了不存在的辞书索引：${entry.path}")
+                    ?: throw IllegalStateException("Cloud sync manifest references non-existent dictionary index: ${entry.path}")
                 if (entry.chunkCount > 0 && index.chunks.size != entry.chunkCount) {
                     throw IllegalStateException(
                         "Dictionary chunk count mismatch for ${entry.name}: expected=${entry.chunkCount} actual=${index.chunks.size}"
@@ -752,7 +752,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 ?.let(localWordsByUid::get)
                 ?: localWordsByNormalized[update.localNormalizedSpelling]
                 ?: throw IllegalStateException(
-                    "同步时找不到云端更新对应的本地单词：${cloudWord.spelling}"
+                    "Cloud update word not found locally: ${cloudWord.spelling}"
                 )
 
             if (
@@ -761,7 +761,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 cloudWord.wordUid != existing.wordUid
             ) {
                 throw IllegalStateException(
-                    "单词 ${cloudWord.spelling} 的云端标识与本地标识不一致，无法安全同步，请先手动处理该词条。"
+                    "Cloud UID differs from local for '${cloudWord.spelling}', cannot sync safely. Please resolve this entry manually first."
                 )
             }
 
@@ -788,7 +788,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         plan.temporaryRenameIds.forEach { wordId ->
             val existing = localWordsById[wordId]
-                ?: throw IllegalStateException("同步时找不到待改名的本地单词记录：$wordId")
+                ?: throw IllegalStateException("Local word record to rename not found during sync: $wordId")
             wordRepository.updateWord(
                 existing.copy(
                     normalizedSpelling = temporaryNormalizedSpelling(existing.id)
@@ -1154,7 +1154,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             for (word in words) {
                 val previous = map.put(word.wordUid, word.id)
                 if (previous != null && previous != word.id) {
-                    throw IllegalStateException("存在重复的全局 wordUid：${word.wordUid}")
+                    throw IllegalStateException("Duplicate global wordUid: ${word.wordUid}")
                 }
             }
         }
@@ -1243,18 +1243,18 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             val memberIds = memberUids.mapNotNull { wordUidToId[it] }.distinct()
             if (memberIds.size != memberUids.size) {
                 throw IllegalStateException(
-                    "词池策略 $strategy 引用了不存在的单词，无法安全同步。"
+                    "Pool strategy '$strategy' references non-existent words, cannot sync safely."
                 )
             }
             if (memberIds.size < 2) {
                 throw IllegalStateException(
-                    "词池策略 $strategy 存在成员数不足 2 的无效词池，无法安全同步。"
+                    "Pool strategy '$strategy' contains invalid pools with fewer than 2 members, cannot sync safely."
                 )
             }
 
             val focusId = pool.focusWordUid?.let { focusUid ->
                 wordUidToId[focusUid]
-                    ?: throw IllegalStateException("词池策略 $strategy 的焦点词不存在，无法安全同步。")
+                    ?: throw IllegalStateException("Pool strategy '$strategy' focus word not found, cannot sync safely.")
             }
             val algorithmVersion = pool.algorithmVersion.ifBlank { "${strategy}_v1" }
             val updatedAt = pool.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()
@@ -1333,7 +1333,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            throw IllegalStateException("导入辞书 ${cloudDict.name} 失败: ${e.message}", e)
+            throw IllegalStateException("Failed to import dictionary '${cloudDict.name}': ${e.message}", e)
         }
     }
 
@@ -1571,7 +1571,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         articleUidToId: Map<String, Long>
     ) {
         if (model.schemaVersion > 1) {
-            throw IllegalStateException("不支持的题库数据版本: ${model.schemaVersion}，请升级应用")
+            throw IllegalStateException("Unsupported question bank schema version: ${model.schemaVersion}, please upgrade the app")
         }
         transactionRunner.runInTransaction {
             for (paperJson in model.papers) {
@@ -1748,7 +1748,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val response = gitHubApi.getContent(authHeader(), owner(), repo(), path)
         if (!response.isSuccessful) {
             if (response.code() == 404) return null
-            throw IllegalStateException("GitHub API 错误: ${response.code()} ${response.message()}")
+            throw IllegalStateException("GitHub API error: ${response.code()} ${response.message()}")
         }
         val content = response.body() ?: return null
         val decoded = when {
@@ -1760,9 +1760,9 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             !content.downloadUrl.isNullOrBlank() -> {
                 val rawResponse = gitHubApi.downloadRaw(authHeader(), content.downloadUrl)
                 if (!rawResponse.isSuccessful) {
-                    throw IllegalStateException("下载失败: ${rawResponse.code()} ${rawResponse.message()}")
+                    throw IllegalStateException("Download failed: ${rawResponse.code()} ${rawResponse.message()}")
                 }
-                rawResponse.body()?.string() ?: throw IllegalStateException("下载失败: 空响应")
+                rawResponse.body()?.string() ?: throw IllegalStateException("Download failed: empty response")
             }
             else -> return null
         }
@@ -1820,7 +1820,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
         val putResponse = gitHubApi.putContent(authHeader(), owner(), repo(), path, putRequest)
         if (!putResponse.isSuccessful) {
-            throw IllegalStateException("上传失败: $path (${putResponse.code()} ${putResponse.message()})")
+            throw IllegalStateException("Upload failed: $path (${putResponse.code()} ${putResponse.message()})")
         }
     }
 }

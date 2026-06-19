@@ -20,9 +20,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,7 +37,7 @@ fun AiDebugDialogHost(viewModel: AiDebugViewModel = hiltViewModel()) {
     val timeText = rememberDebugTimestamp(current.timestamp)
     AlertDialog(
         onDismissRequest = viewModel::dismissCurrent,
-        title = { Text("AI 调试") },
+        title = { Text(stringResource(R.string.ai_debug_title)) },
         text = {
             Box(
                 modifier = Modifier
@@ -58,12 +60,12 @@ fun AiDebugDialogHost(viewModel: AiDebugViewModel = hiltViewModel()) {
         },
         confirmButton = {
             TextButton(onClick = viewModel::dismissCurrent) {
-                Text("关闭")
+                Text(stringResource(R.string.common_close))
             }
         },
         dismissButton = {
             TextButton(onClick = viewModel::clearAll) {
-                Text("清空队列")
+                Text(stringResource(R.string.ai_debug_clear_queue))
             }
         }
     )

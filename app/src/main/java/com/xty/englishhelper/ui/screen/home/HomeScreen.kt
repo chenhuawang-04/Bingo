@@ -49,8 +49,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
@@ -98,20 +100,20 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("我的辞书") },
+                title = { Text(stringResource(R.string.home_title)) },
                 actions = {
                     IconButton(onClick = onImportExport) {
-                        Icon(Icons.Default.ImportExport, contentDescription = "导入导出")
+                        Icon(Icons.Default.ImportExport, contentDescription = stringResource(R.string.home_import_export))
                     }
                     IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.common_settings))
                     }
                 }
             )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = viewModel::showCreateDialog) {
-                Icon(Icons.Default.Add, contentDescription = "创建辞书")
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.home_create_dictionary))
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -119,7 +121,7 @@ fun HomeScreen(
         when {
             state.isLoading -> LoadingIndicator(Modifier.padding(padding))
             state.dictionaries.isEmpty() -> EmptyState(
-                message = "还没有辞书\n点击 + 创建一个吧",
+                message = stringResource(R.string.home_empty_dictionaries),
                 modifier = Modifier.padding(padding)
             )
             else -> {
@@ -194,24 +196,24 @@ fun HomeScreen(
     if (state.showCreateDialog) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = viewModel::dismissCreateDialog,
-            title = { Text("创建辞书") },
+            title = { Text(stringResource(R.string.home_create_dictionary)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = state.newDictName,
                         onValueChange = viewModel::onNameChange,
-                        label = { Text("辞书名称") },
+                        label = { Text(stringResource(R.string.home_dictionary_name)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = state.newDictDesc,
                         onValueChange = viewModel::onDescChange,
-                        label = { Text("辞书描述（可选）") },
+                        label = { Text(stringResource(R.string.home_dictionary_description_optional)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Text("选择颜色", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.home_select_color), style = MaterialTheme.typography.labelMedium)
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -238,10 +240,10 @@ fun HomeScreen(
                 TextButton(
                     onClick = viewModel::confirmCreate,
                     enabled = state.newDictName.isNotBlank()
-                ) { Text("创建") }
+                ) { Text(stringResource(R.string.common_create)) }
             },
             dismissButton = {
-                TextButton(onClick = viewModel::dismissCreateDialog) { Text("取消") }
+                TextButton(onClick = viewModel::dismissCreateDialog) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
@@ -249,8 +251,8 @@ fun HomeScreen(
     // Delete confirm dialog
     state.deleteTarget?.let { dict ->
         ConfirmDialog(
-            title = "删除辞书",
-            message = "确定要删除辞书「${dict.name}」吗？其中的所有单词也将被删除。",
+            title = stringResource(R.string.home_delete_dictionary),
+            message = stringResource(R.string.home_delete_dictionary_confirm, dict.name),
             onConfirm = viewModel::confirmDelete,
             onDismiss = viewModel::dismissDelete
         )
@@ -271,7 +273,7 @@ private fun DashboardCard(stats: DashboardStats) {
 
     EhCard {
         Text(
-            text = "学习仪表板",
+            text = stringResource(R.string.home_learning_dashboard),
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(bottom = 12.dp)
         )
@@ -281,7 +283,7 @@ private fun DashboardCard(stats: DashboardStats) {
         ) {
             EhStatTile(
                 value = retentionText,
-                label = "留存率",
+                label = stringResource(R.string.home_retention_rate),
                 valueColor = retentionColor,
                 modifier = Modifier.weight(1f)
             )
@@ -298,13 +300,18 @@ private fun DashboardCard(stats: DashboardStats) {
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             EhStatTile(
+                value = stats.dueCount.toString(),
+                label = stringResource(R.string.home_due_words),
+                modifier = Modifier.weight(1f)
+            )
+            EhStatTile(
                 value = progressText,
-                label = "今日进度",
+                label = stringResource(R.string.home_today_progress),
                 modifier = Modifier.weight(1f)
             )
             EhStatTile(
                 value = clearText,
-                label = "清空预估",
+                label = stringResource(R.string.home_clear_estimate),
                 modifier = Modifier.weight(1f)
             )
         }
@@ -325,30 +332,30 @@ private fun DashboardPanel(stats: DashboardStats) {
 
     EhCard {
         Text(
-            text = "学习仪表板",
+            text = stringResource(R.string.home_learning_dashboard),
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(bottom = 12.dp)
         )
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             EhStatTile(
                 value = retentionText,
-                label = "留存率",
+                label = stringResource(R.string.home_retention_rate),
                 valueColor = retentionColor,
                 modifier = Modifier.fillMaxWidth()
             )
             EhStatTile(
                 value = stats.dueCount.toString(),
-                label = "到期词",
+                label = stringResource(R.string.home_due_words),
                 modifier = Modifier.fillMaxWidth()
             )
             EhStatTile(
                 value = progressText,
-                label = "今日进度",
+                label = stringResource(R.string.home_today_progress),
                 modifier = Modifier.fillMaxWidth()
             )
             EhStatTile(
                 value = clearText,
-                label = "清空预估",
+                label = stringResource(R.string.home_clear_estimate),
                 modifier = Modifier.fillMaxWidth()
             )
         }

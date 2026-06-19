@@ -38,8 +38,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 
@@ -94,10 +96,10 @@ fun ImportExportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("导入导出") },
+                title = { Text(stringResource(R.string.import_export_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -125,9 +127,9 @@ fun ImportExportScreen(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text("导入词书", style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.import_dict_title), style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "从 JSON 文件导入词书和单词数据",
+                                    stringResource(R.string.import_dict_desc),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -135,8 +137,8 @@ fun ImportExportScreen(
                                     onClick = { importDictionaryLauncher.launch("application/json") },
                                     enabled = !state.isLoading
                                 ) {
-                                    Icon(Icons.Default.Upload, contentDescription = "导入")
-                                    Text("  选择词书 JSON")
+                                    Icon(Icons.Default.Upload, contentDescription = stringResource(R.string.common_import))
+                                    Text("  " + stringResource(R.string.import_dict_select))
                                 }
                             }
                         }
@@ -148,9 +150,9 @@ fun ImportExportScreen(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text("导入计划", style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.import_plan_title), style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "从 JSON 文件导入计划模板、任务进度和自动记录",
+                                    stringResource(R.string.import_plan_desc),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -158,18 +160,18 @@ fun ImportExportScreen(
                                     onClick = { importPlanLauncher.launch("application/json") },
                                     enabled = !state.isLoading
                                 ) {
-                                    Icon(Icons.Default.Upload, contentDescription = "导入")
-                                    Text("  选择计划 JSON")
+                                    Icon(Icons.Default.Upload, contentDescription = stringResource(R.string.common_import))
+                                    Text("  " + stringResource(R.string.import_plan_select))
                                 }
                             }
                         }
                     }
 
                     item {
-                        Text("导出词书", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.export_dict_title), style = MaterialTheme.typography.titleMedium)
                         if (state.dictionaries.isEmpty()) {
                             Text(
-                                "没有可导出的词书",
+                                stringResource(R.string.export_no_dict),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -179,7 +181,7 @@ fun ImportExportScreen(
                     items(state.dictionaries) { dict ->
                         ListItem(
                             headlineContent = { Text(dict.name) },
-                            supportingContent = { Text("${dict.wordCount} 个单词") },
+                            supportingContent = { Text(stringResource(R.string.home_word_count, dict.wordCount)) },
                             trailingContent = {
                                 IconButton(
                                     onClick = {
@@ -188,7 +190,7 @@ fun ImportExportScreen(
                                     },
                                     enabled = !state.isLoading
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = "导出")
+                                    Icon(Icons.Default.Download, contentDescription = stringResource(R.string.common_export))
                                 }
                             },
                             modifier = Modifier.clickable(enabled = !state.isLoading) {
@@ -204,9 +206,9 @@ fun ImportExportScreen(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text("导出计划", style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.export_plan_title), style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "导出当前计划模板、任务进度和自动打卡日志",
+                                    stringResource(R.string.export_plan_desc),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -214,8 +216,8 @@ fun ImportExportScreen(
                                     onClick = { exportPlanLauncher.launch("plan_backup.json") },
                                     enabled = !state.isLoading
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = "导出")
-                                    Text("  导出计划 JSON")
+                                    Icon(Icons.Default.Download, contentDescription = stringResource(R.string.common_export))
+                                    Text("  " + stringResource(R.string.export_plan_button))
                                 }
                             }
                         }

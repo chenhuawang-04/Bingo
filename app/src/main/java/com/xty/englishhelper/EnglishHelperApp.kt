@@ -1,6 +1,8 @@
-﻿package com.xty.englishhelper
+package com.xty.englishhelper
 
 import android.app.Application
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import com.xty.englishhelper.data.debug.AiDebugManager
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.sync.AutoSyncScheduler
@@ -9,7 +11,9 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.Locale
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -28,6 +32,12 @@ class EnglishHelperApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Apply saved locale
+        appScope.launch {
+            val locale = settingsDataStore.appLocale.first()
+            applyLocale(locale)
+        }
 
         // One-time migration of plaintext API key to encrypted storage
         val prefs = getSharedPreferences("api_key_migration", MODE_PRIVATE)
@@ -49,6 +59,17 @@ class EnglishHelperApp : Application() {
         }
         appScope.launch {
             autoSyncScheduler.checkAndSync()
+        }
+    }
+
+    companion object {
+        fun applyLocale(locale: String) {
+            val localeList = if (locale == "system") {
+                LocaleListCompat.getEmptyLocaleList()
+            } else {
+                LocaleListCompat.forLanguageTags(locale)
+            }
+            AppCompatDelegate.setApplicationLocales(localeList)
         }
     }
 }

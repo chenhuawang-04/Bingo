@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.study
+package com.xty.englishhelper.ui.screen.study
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,8 +26,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.study.Rating
@@ -69,22 +71,22 @@ internal fun StudyingContent(
 
     val ratingOptions = listOf(
         RatingOption(
-            label = "重来",
+            label = stringResource(R.string.study_again),
             intervalText = state.previewIntervals[Rating.Again]?.let { formatInterval(it) },
             color = semantic.studyAgain
         ),
         RatingOption(
-            label = "困难",
+            label = stringResource(R.string.study_hard),
             intervalText = state.previewIntervals[Rating.Hard]?.let { formatInterval(it) },
             color = semantic.studyHard
         ),
         RatingOption(
-            label = "良好",
+            label = stringResource(R.string.study_good),
             intervalText = state.previewIntervals[Rating.Good]?.let { formatInterval(it) },
             color = semantic.studyGood
         ),
         RatingOption(
-            label = "简单",
+            label = stringResource(R.string.study_easy),
             intervalText = state.previewIntervals[Rating.Easy]?.let { formatInterval(it) },
             color = semantic.studyEasy
         )
@@ -220,7 +222,7 @@ private fun ProgressBar(state: StudyUiState) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "本组 ${state.brainstormClusterLearned}/${state.brainstormClusterTotal}",
+                text = stringResource(R.string.study_group_progress, state.brainstormClusterLearned, state.brainstormClusterTotal),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -248,7 +250,7 @@ private fun BrainstormTag(state: StudyUiState) {
             .padding(vertical = 4.dp)
     ) {
         Text(
-            text = "关联词：",
+            text = stringResource(R.string.study_related_words),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -344,7 +346,7 @@ private fun QuestionView(
             .fillMaxWidth()
             .padding(16.dp)
     ) {
-        Text("显示答案")
+        Text(stringResource(R.string.study_show_answer))
     }
 }
 
@@ -363,13 +365,13 @@ private fun StudySidePanel(
     ) {
         EhCard {
             Text(
-                text = "学习进度",
+                text = stringResource(R.string.study_progress),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             EhStatTile(
                 value = "${state.progress}/${state.total}",
-                label = "当前进度",
+                label = stringResource(R.string.study_current_progress),
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -377,17 +379,17 @@ private fun StudySidePanel(
         if (state.showAnswer) {
             EhCard {
                 Text(
-                    text = "下一间隔预览",
+                    text = stringResource(R.string.study_next_interval_preview),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     state.previewIntervals.forEach { (rating, interval) ->
                         val label = when (rating) {
-                            Rating.Again -> "重来"
-                            Rating.Hard -> "困难"
-                            Rating.Good -> "良好"
-                            Rating.Easy -> "简单"
+                            Rating.Again -> stringResource(R.string.study_again)
+                            Rating.Hard -> stringResource(R.string.study_hard)
+                            Rating.Good -> stringResource(R.string.study_good)
+                            Rating.Easy -> stringResource(R.string.study_easy)
                         }
                         val color = when (rating) {
                             Rating.Again -> semantic.studyAgain
@@ -408,15 +410,15 @@ private fun StudySidePanel(
 
         EhCard {
             Text(
-                text = "已学统计",
+                text = stringResource(R.string.study_learned_stats),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                StatRow("重来", state.stats.againCount.toString(), semantic.studyAgain)
-                StatRow("困难", state.stats.hardCount.toString(), semantic.studyHard)
-                StatRow("良好", state.stats.goodCount.toString(), semantic.studyGood)
-                StatRow("简单", state.stats.easyCount.toString(), semantic.studyEasy)
+                StatRow(stringResource(R.string.study_again), state.stats.againCount.toString(), semantic.studyAgain)
+                StatRow(stringResource(R.string.study_hard), state.stats.hardCount.toString(), semantic.studyHard)
+                StatRow(stringResource(R.string.study_good), state.stats.goodCount.toString(), semantic.studyGood)
+                StatRow(stringResource(R.string.study_easy), state.stats.easyCount.toString(), semantic.studyEasy)
             }
         }
     }
@@ -437,28 +439,28 @@ internal fun FinishedContent(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "学习完成",
+            text = stringResource(R.string.study_complete),
             style = MaterialTheme.typography.headlineMedium
         )
         Spacer(modifier = Modifier.height(24.dp))
 
         if (stats.totalWords == 0) {
             Text(
-                text = "没有需要学习的单词",
+                text = stringResource(R.string.study_no_words),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
-            StatRow("总计单词", stats.totalWords.toString())
-            StatRow("重来", stats.againCount.toString(), semantic.studyAgain)
-            StatRow("困难", stats.hardCount.toString(), semantic.studyHard)
-            StatRow("良好", stats.goodCount.toString(), semantic.studyGood)
-            StatRow("简单", stats.easyCount.toString(), semantic.studyEasy)
+            StatRow(stringResource(R.string.study_total_words), stats.totalWords.toString())
+            StatRow(stringResource(R.string.study_again), stats.againCount.toString(), semantic.studyAgain)
+            StatRow(stringResource(R.string.study_hard), stats.hardCount.toString(), semantic.studyHard)
+            StatRow(stringResource(R.string.study_good), stats.goodCount.toString(), semantic.studyGood)
+            StatRow(stringResource(R.string.study_easy), stats.easyCount.toString(), semantic.studyEasy)
         }
 
         Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = onDone) {
-            Text("完成")
+            Text(stringResource(R.string.study_done))
         }
     }
 }
@@ -480,7 +482,7 @@ private fun BrainstormQuizContent(
     ) {
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "主动回忆",
+            text = stringResource(R.string.study_active_recall),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary
         )
@@ -492,7 +494,7 @@ private fun BrainstormQuizContent(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "选出它的「${quiz.relationLabel}」",
+            text = stringResource(R.string.study_select_relation, stringResource(quiz.relationLabel)),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -541,7 +543,7 @@ private fun BrainstormQuizContent(
 
         if (quiz.answered) {
             Text(
-                text = if (quiz.isCorrect) "答对了，记为「良好」" else "答错了，记为「重来」，稍后再练",
+                text = if (quiz.isCorrect) stringResource(R.string.study_correct_answer) else stringResource(R.string.study_wrong_answer),
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (quiz.isCorrect) semantic.studyGood else semantic.studyAgain
             )
@@ -550,7 +552,7 @@ private fun BrainstormQuizContent(
                 onClick = onContinue,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("继续")
+                Text(stringResource(R.string.common_resume))
             }
         }
     }
@@ -566,13 +568,13 @@ private fun HookCard(hook: BrainstormHook) {
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = "记忆联想 · ${hook.relationLabel}",
+                text = stringResource(R.string.study_memory_hook, stringResource(hook.relationLabel)),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "关联词：${hook.relatedSpelling}",
+                text = stringResource(R.string.study_related_word_prefix, hook.relatedSpelling),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
@@ -587,7 +589,7 @@ private fun HookCard(hook: BrainstormHook) {
             hook.example?.let {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "例：$it",
+                    text = stringResource(R.string.study_example_prefix, it),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
                 )

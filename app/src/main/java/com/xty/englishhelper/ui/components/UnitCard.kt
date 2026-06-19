@@ -16,7 +16,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.StudyUnit
 
 @Composable
@@ -48,14 +50,14 @@ fun UnitCard(
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    text = "${unit.wordCount} 个单词",
+                    text = stringResource(R.string.home_word_count, unit.wordCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Icon(
                 Icons.Default.ChevronRight,
-                contentDescription = "详情",
+                contentDescription = stringResource(R.string.common_details),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

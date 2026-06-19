@@ -32,7 +32,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
@@ -55,14 +57,14 @@ fun ScanDetailScreen(
 
     val scanTask = uiState.scanTask
     val status = scanTask?.status
-    val (statusLabel, statusColor) = when (status) {
-        null -> "未运行" to MaterialTheme.colorScheme.onSurfaceVariant
-        BackgroundTaskStatus.PENDING -> "等待中" to MaterialTheme.colorScheme.secondary
-        BackgroundTaskStatus.RUNNING -> "扫描中" to MaterialTheme.colorScheme.primary
-        BackgroundTaskStatus.PAUSED -> "已暂停" to MaterialTheme.colorScheme.tertiary
-        BackgroundTaskStatus.SUCCESS -> "已完成" to MaterialTheme.colorScheme.primary
-        BackgroundTaskStatus.FAILED -> "失败" to MaterialTheme.colorScheme.error
-        BackgroundTaskStatus.CANCELED -> "已停止" to MaterialTheme.colorScheme.onSurfaceVariant
+    val (statusLabelRes, statusColor) = when (status) {
+        null -> R.string.scan_not_running to MaterialTheme.colorScheme.onSurfaceVariant
+        BackgroundTaskStatus.PENDING -> R.string.scan_waiting to MaterialTheme.colorScheme.secondary
+        BackgroundTaskStatus.RUNNING -> R.string.scan_running to MaterialTheme.colorScheme.primary
+        BackgroundTaskStatus.PAUSED -> R.string.scan_paused to MaterialTheme.colorScheme.tertiary
+        BackgroundTaskStatus.SUCCESS -> R.string.scan_completed to MaterialTheme.colorScheme.primary
+        BackgroundTaskStatus.FAILED -> R.string.scan_failed to MaterialTheme.colorScheme.error
+        BackgroundTaskStatus.CANCELED -> R.string.scan_stopped to MaterialTheme.colorScheme.onSurfaceVariant
     }
     val isActive = status == BackgroundTaskStatus.PENDING || status == BackgroundTaskStatus.RUNNING
     val isPaused = status == BackgroundTaskStatus.PAUSED
@@ -73,10 +75,10 @@ fun ScanDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("在线文章扫描") },
+                title = { Text(stringResource(R.string.scan_detail)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -119,14 +121,14 @@ fun ScanDetailScreen(
                                     color = statusColor.copy(alpha = 0.12f)
                                 ) {
                                     Text(
-                                        text = statusLabel,
+                                        text = stringResource(statusLabelRes),
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = statusColor
                                     )
                                 }
                                 Text(
-                                    text = "扫描状态",
+                                    text = stringResource(R.string.scan_status),
                                     style = MaterialTheme.typography.titleSmall
                                 )
                             }
@@ -144,7 +146,7 @@ fun ScanDetailScreen(
                                     }
                                 )
                                 Text(
-                                    text = "进度 ${task.progressCurrent}/${task.progressTotal}",
+                                    text = stringResource(R.string.scan_progress_detail, task.progressCurrent, task.progressTotal),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -166,7 +168,7 @@ fun ScanDetailScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (status == null || isTerminal) {
                                 Button(onClick = viewModel::triggerScan) {
-                                    Text("开始扫描")
+                                    Text(stringResource(R.string.scan_start))
                                 }
                             }
                             if (isActive) {
@@ -176,25 +178,25 @@ fun ScanDetailScreen(
                                         containerColor = MaterialTheme.colorScheme.error
                                     )
                                 ) {
-                                    Text("停止")
+                                    Text(stringResource(R.string.common_stop))
                                 }
                             }
                             if (isPaused) {
                                 Button(onClick = viewModel::resumeScan) {
-                                    Text("继续")
+                                    Text(stringResource(R.string.common_resume))
                                 }
                                 TextButton(onClick = viewModel::deleteScanTask) {
-                                    Text("清除")
+                                    Text(stringResource(R.string.common_clear))
                                 }
                             }
                             if (isActive) {
                                 TextButton(onClick = viewModel::pauseScan) {
-                                    Text("暂停")
+                                    Text(stringResource(R.string.common_pause))
                                 }
                             }
                             if (status == BackgroundTaskStatus.FAILED || status == BackgroundTaskStatus.CANCELED) {
                                 TextButton(onClick = viewModel::deleteScanTask) {
-                                    Text("清除")
+                                    Text(stringResource(R.string.common_clear))
                                 }
                             }
                         }
@@ -202,7 +204,7 @@ fun ScanDetailScreen(
                 }
 
                 Text(
-                    text = "评分设置请在「设置 → 在线文章自动评分」中调整",
+                    text = stringResource(R.string.scan_config_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -40,9 +40,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
@@ -68,10 +70,10 @@ fun BackgroundTaskScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("后台任务管理") },
+                title = { Text(stringResource(R.string.task_management)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -107,7 +109,7 @@ fun BackgroundTaskScreen(
                 val filtered = state.tasks.filter(viewModel::matchesFilter)
                 if (filtered.isEmpty()) {
                     Text(
-                        "暂无任务",
+                        stringResource(R.string.task_no_tasks),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -167,28 +169,28 @@ private fun BatchActions(
     ) {
         AssistChip(
             onClick = onPauseAll,
-            label = { Text("全部暂停") },
-            leadingIcon = { Icon(Icons.Default.Pause, contentDescription = "暂停") }
+            label = { Text(stringResource(R.string.task_pause_all)) },
+            leadingIcon = { Icon(Icons.Default.Pause, contentDescription = stringResource(R.string.common_pause)) }
         )
         AssistChip(
             onClick = onCancelAll,
-            label = { Text("全部停止") },
-            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = "停止") }
+            label = { Text(stringResource(R.string.task_stop_all)) },
+            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = stringResource(R.string.common_stop)) }
         )
         AssistChip(
             onClick = onResumeAll,
-            label = { Text("全部继续") },
-            leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = "继续") }
+            label = { Text(stringResource(R.string.task_resume_all)) },
+            leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = stringResource(R.string.common_resume)) }
         )
         AssistChip(
             onClick = onRetryFailed,
-            label = { Text("重试失败") },
-            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = "重试") }
+            label = { Text(stringResource(R.string.task_retry_failed)) },
+            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_retry)) }
         )
         AssistChip(
             onClick = onClearFinished,
-            label = { Text("清除已结束") },
-            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = "清除") }
+            label = { Text(stringResource(R.string.task_clear_finished)) },
+            leadingIcon = { Icon(Icons.Default.Stop, contentDescription = stringResource(R.string.common_clear)) }
         )
     }
 }
@@ -225,11 +227,10 @@ private fun TaskCard(
 
             if (task.progressTotal > 0) {
                 val progress = task.progressCurrent.coerceAtMost(task.progressTotal)
-                Text(
-                    "进度 $progress/${task.progressTotal}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    Text(stringResource(R.string.task_progress_format, progress, task.progressTotal),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 LinearProgressIndicator(
                     progress = { progress.toFloat() / task.progressTotal.toFloat() },
                     modifier = Modifier.fillMaxWidth()
@@ -242,7 +243,7 @@ private fun TaskCard(
                     )
                     Spacer(Modifier.size(6.dp))
                     Text(
-                        "处理中",
+                        stringResource(R.string.task_processing),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -278,18 +279,18 @@ private fun ActionRow(
     ) {
         when (task.status) {
             BackgroundTaskStatus.PENDING, BackgroundTaskStatus.RUNNING -> {
-                TextButton(onClick = onCancel) { Text("停止") }
+                TextButton(onClick = onCancel) { Text(stringResource(R.string.common_stop)) }
             }
             BackgroundTaskStatus.PAUSED -> {
-                TextButton(onClick = onResume) { Text("继续") }
-                TextButton(onClick = onDelete) { Text("清除") }
+                TextButton(onClick = onResume) { Text(stringResource(R.string.common_resume)) }
+                TextButton(onClick = onDelete) { Text(stringResource(R.string.common_clear)) }
             }
             BackgroundTaskStatus.FAILED -> {
-                TextButton(onClick = onRestart) { Text("重启") }
-                TextButton(onClick = onDelete) { Text("清除") }
+                TextButton(onClick = onRestart) { Text(stringResource(R.string.common_restart)) }
+                TextButton(onClick = onDelete) { Text(stringResource(R.string.common_clear)) }
             }
             BackgroundTaskStatus.SUCCESS, BackgroundTaskStatus.CANCELED -> {
-                TextButton(onClick = onDelete) { Text("清除") }
+                TextButton(onClick = onDelete) { Text(stringResource(R.string.common_clear)) }
             }
         }
     }
@@ -299,32 +300,32 @@ private fun ActionRow(
 private fun StatusChip(status: BackgroundTaskStatus) {
     val (label, containerColor, contentColor) = when (status) {
         BackgroundTaskStatus.PENDING -> Triple(
-            "等待中",
+            stringResource(R.string.task_status_pending),
             MaterialTheme.colorScheme.surfaceVariant,
             MaterialTheme.colorScheme.onSurfaceVariant
         )
         BackgroundTaskStatus.RUNNING -> Triple(
-            "进行中",
+            stringResource(R.string.task_status_running),
             MaterialTheme.colorScheme.primaryContainer,
             MaterialTheme.colorScheme.onPrimaryContainer
         )
         BackgroundTaskStatus.PAUSED -> Triple(
-            "已暂停",
+            stringResource(R.string.task_status_paused),
             MaterialTheme.colorScheme.secondaryContainer,
             MaterialTheme.colorScheme.onSecondaryContainer
         )
         BackgroundTaskStatus.SUCCESS -> Triple(
-            "已完成",
+            stringResource(R.string.task_status_completed),
             MaterialTheme.colorScheme.secondaryContainer,
             MaterialTheme.colorScheme.onSecondaryContainer
         )
         BackgroundTaskStatus.FAILED -> Triple(
-            "失败",
+            stringResource(R.string.task_status_failed),
             MaterialTheme.colorScheme.errorContainer,
             MaterialTheme.colorScheme.onErrorContainer
         )
         BackgroundTaskStatus.CANCELED -> Triple(
-            "已停止",
+            stringResource(R.string.task_status_canceled),
             MaterialTheme.colorScheme.surfaceVariant,
             MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -342,27 +343,29 @@ private fun StatusChip(status: BackgroundTaskStatus) {
     }
 }
 
+@Composable
 private fun taskTitle(task: BackgroundTask): String {
     return when (task.type) {
-        BackgroundTaskType.WORD_ORGANIZE -> "单词整理"
-        BackgroundTaskType.WORD_POOL_REBUILD -> "词池重建"
-        BackgroundTaskType.WORD_POOL_REVIEW -> "词池审核"
-        BackgroundTaskType.QUESTION_GENERATE -> "文章出题"
-        BackgroundTaskType.QUESTION_ANSWER_GENERATE -> "题库答案生成"
-        BackgroundTaskType.QUESTION_SOURCE_VERIFY -> "题库来源验证"
-        BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> "作文范文检索"
-        BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> "在线文章批量评分"
-        BackgroundTaskType.CLOUD_SYNC -> "云同步"
-        BackgroundTaskType.UNKNOWN -> "未知任务"
+        BackgroundTaskType.WORD_ORGANIZE -> stringResource(R.string.task_word_organize)
+        BackgroundTaskType.WORD_POOL_REBUILD -> stringResource(R.string.task_pool_rebuild)
+        BackgroundTaskType.WORD_POOL_REVIEW -> stringResource(R.string.task_pool_review)
+        BackgroundTaskType.QUESTION_GENERATE -> stringResource(R.string.task_question_generate)
+        BackgroundTaskType.QUESTION_ANSWER_GENERATE -> stringResource(R.string.task_answer_generate)
+        BackgroundTaskType.QUESTION_SOURCE_VERIFY -> stringResource(R.string.task_source_verify)
+        BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> stringResource(R.string.task_writing_sample)
+        BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> stringResource(R.string.task_online_scan)
+        BackgroundTaskType.CLOUD_SYNC -> stringResource(R.string.task_cloud_sync)
+        BackgroundTaskType.UNKNOWN -> stringResource(R.string.task_unknown)
     }
 }
 
+@Composable
 private fun taskSubtitle(task: BackgroundTask): String {
     val payload = task.payload
     return when (payload) {
         is WordOrganizePayload -> payload.spelling
         is WordPoolRebuildPayload -> buildString {
-            append("词典 ")
+            append(stringResource(R.string.task_subtitle_dict))
             append(payload.dictionaryId)
             if (payload.strategy.isNotBlank()) {
                 append(" · ")
@@ -370,7 +373,7 @@ private fun taskSubtitle(task: BackgroundTask): String {
             }
         }
         is WordPoolReviewPayload -> buildString {
-            append("词典 ")
+            append(stringResource(R.string.task_subtitle_dict))
             append(payload.dictionaryId)
             if (payload.strategy.isNotBlank()) {
                 append(" · ")
@@ -390,7 +393,7 @@ private fun taskSubtitle(task: BackgroundTask): String {
                 if (isNotEmpty()) append(" · ")
                 append(variant)
             }
-            if (isEmpty()) append("文章 ${payload.articleId}")
+            if (isEmpty()) append(stringResource(R.string.task_subtitle_article) + payload.articleId)
         }
         is QuestionAnswerGeneratePayload -> buildString {
             if (payload.paperTitle.isNotBlank()) append(payload.paperTitle)
@@ -398,7 +401,7 @@ private fun taskSubtitle(task: BackgroundTask): String {
                 if (isNotEmpty()) append(" · ")
                 append(payload.sectionLabel)
             }
-            if (isEmpty()) append("题组 ${payload.groupId}")
+            if (isEmpty()) append(stringResource(R.string.task_subtitle_group) + payload.groupId)
         }
         is QuestionSourceVerifyPayload -> buildString {
             if (payload.paperTitle.isNotBlank()) append(payload.paperTitle)
@@ -410,7 +413,7 @@ private fun taskSubtitle(task: BackgroundTask): String {
                 if (isNotEmpty()) append(" · ")
                 append(payload.sourceUrlOverride)
             }
-            if (isEmpty()) append("题组 ${payload.groupId}")
+            if (isEmpty()) append(stringResource(R.string.task_subtitle_group) + payload.groupId)
         }
         is QuestionWritingSamplePayload -> buildString {
             if (payload.paperTitle.isNotBlank()) append(payload.paperTitle)
@@ -418,23 +421,24 @@ private fun taskSubtitle(task: BackgroundTask): String {
                 if (isNotEmpty()) append(" · ")
                 append(snippet)
             }
-            if (isEmpty()) append("题组 ${payload.groupId}")
+            if (isEmpty()) append(stringResource(R.string.task_subtitle_group) + payload.groupId)
         }
         is OnlineArticleScanScorePayload -> {
-            "全来源全栏目扫描，重评间隔 ${payload.rescoreAfterHours}h"
+            stringResource(R.string.task_subtitle_scan_format, payload.rescoreAfterHours)
         }
-        else -> "任务 ${task.id}"
+        else -> stringResource(R.string.task_subtitle_task_id, task.id)
     }
 }
 
+@Composable
 private fun filterLabel(filter: TaskFilter): String {
     return when (filter) {
-        TaskFilter.ALL -> "全部"
-        TaskFilter.PENDING -> "等待"
-        TaskFilter.RUNNING -> "进行中"
-        TaskFilter.PAUSED -> "已暂停"
-        TaskFilter.FAILED -> "失败"
-        TaskFilter.SUCCESS -> "已完成"
-        TaskFilter.CANCELED -> "已停止"
+        TaskFilter.ALL -> stringResource(R.string.task_filter_all)
+        TaskFilter.PENDING -> stringResource(R.string.task_filter_pending)
+        TaskFilter.RUNNING -> stringResource(R.string.task_filter_running)
+        TaskFilter.PAUSED -> stringResource(R.string.task_filter_paused)
+        TaskFilter.FAILED -> stringResource(R.string.task_filter_failed)
+        TaskFilter.SUCCESS -> stringResource(R.string.task_filter_success)
+        TaskFilter.CANCELED -> stringResource(R.string.task_filter_canceled)
     }
 }

@@ -55,9 +55,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
@@ -78,9 +80,9 @@ fun GuardianBrowseScreen(
     val displayArticles = if (uiState.isHomePage) uiState.topArticles else uiState.articles
     val visibleEvaluatingCount = displayArticles.count { it.isEvaluating }
     val currentSectionLabel = if (uiState.isHomePage) {
-        "精选首页"
+        stringResource(R.string.guardian_featured_home)
     } else {
-        uiState.sections.firstOrNull { it.key == uiState.selectedSection }?.label ?: "首页"
+        uiState.sections.firstOrNull { it.key == uiState.selectedSection }?.label ?: stringResource(R.string.guardian_home)
     }
     var showScopeSheet by rememberSaveable { mutableStateOf(false) }
 
@@ -94,10 +96,10 @@ fun GuardianBrowseScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("在线阅读") },
+                title = { Text(stringResource(R.string.article_online_reading)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -111,7 +113,7 @@ fun GuardianBrowseScreen(
                         onScoreFilterChange = viewModel::setScoreFilter,
                         onSortOptionChange = viewModel::setSortOption,
                         onReset = viewModel::resetFilters,
-                        helperText = "自动评估只会作用于当前已筛出的文章；已评过的文章不会重复评估。"
+                        helperText = stringResource(R.string.guardian_filter_hint)
                     )
                 }
             )
@@ -162,8 +164,8 @@ fun GuardianBrowseScreen(
                             EmptyOnlineArticleState(
                                 modifier = Modifier.align(Alignment.Center),
                                 hasSourceArticles = false,
-                                title = "加载失败",
-                                message = "当前栏目暂时无法读取文章，可以刷新或切换其他来源与栏目。",
+                                title = stringResource(R.string.guardian_load_failed),
+                                message = stringResource(R.string.guardian_load_failed_msg),
                                 onAdjustScope = { showScopeSheet = true },
                                 onRetry = { viewModel.refresh() },
                                 error = true
@@ -198,7 +200,7 @@ fun GuardianBrowseScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     CircularProgressIndicator()
-                                    Text("正在打开文章", style = MaterialTheme.typography.bodyMedium)
+                                    Text(stringResource(R.string.guardian_opening_article), style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
                         }
@@ -246,7 +248,7 @@ private fun OnlineBrowseOverviewCard(
         ) {
             Column {
                 Text(
-                    text = if (isHomePage) "首页推荐" else selectedSource.label,
+                    text = if (isHomePage) stringResource(R.string.guardian_homepage_recommend) else selectedSource.label,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -258,10 +260,10 @@ private fun OnlineBrowseOverviewCard(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onRefresh) {
-                    Text("刷新", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.common_refresh), style = MaterialTheme.typography.labelMedium)
                 }
                 TextButton(onClick = onOpenScopeSheet) {
-                    Text("切换栏目", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.guardian_switch_column), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -272,20 +274,20 @@ private fun OnlineBrowseOverviewCard(
         ) {
             if (visibleEvaluatingCount > 0) {
                 Text(
-                    text = "评估中 $visibleEvaluatingCount/$totalVisibleCount",
+                    text = stringResource(R.string.guardian_evaluating_count, visibleEvaluatingCount, totalVisibleCount),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
             } else {
                 Text(
-                    text = "共 $totalVisibleCount 篇",
+                    text = stringResource(R.string.guardian_article_count, totalVisibleCount),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             if (filterEnabled) {
                 Text(
-                    text = "· 筛选已开启",
+                    text = stringResource(R.string.guardian_filter_active),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -321,18 +323,18 @@ private fun OnlineScopeSheet(
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Text(
-                text = "选择文章来源与栏目",
+                text = stringResource(R.string.guardian_scope_title),
                 style = MaterialTheme.typography.headlineSmall
             )
             Text(
-                text = "把来源和栏目都收进这里，主列表只保留真正需要阅读的内容。",
+                text = stringResource(R.string.guardian_scope_desc),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "文章来源",
+                    text = stringResource(R.string.guardian_article_source),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -347,7 +349,7 @@ private fun OnlineScopeSheet(
 
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "栏目范围",
+                    text = stringResource(R.string.guardian_column_scope),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -372,9 +374,9 @@ private fun ScopeSourceCard(
     onClick: () -> Unit
 ) {
     val description = when (source) {
-        OnlineReadingSource.GUARDIAN -> "新闻覆盖广，适合筛选高频考研题源。"
-        OnlineReadingSource.CSMONITOR -> "分析性更强，议题集中，适合练习深度阅读。"
-        OnlineReadingSource.ATLANTIC -> "篇幅更长，评论性更强，适合高阶素材积累。"
+        OnlineReadingSource.GUARDIAN -> stringResource(R.string.guardian_desc_guardian)
+        OnlineReadingSource.CSMONITOR -> stringResource(R.string.guardian_desc_csmonitor)
+        OnlineReadingSource.ATLANTIC -> stringResource(R.string.guardian_desc_atlantic)
     }
 
     Surface(
@@ -465,11 +467,11 @@ private fun EmptyOnlineArticleState(
     hasSourceArticles: Boolean,
     onAdjustScope: () -> Unit,
     onRetry: () -> Unit,
-    title: String = if (hasSourceArticles) "当前范围没有文章" else "还没有抓到文章",
+    title: String = if (hasSourceArticles) stringResource(R.string.guardian_empty_has_source) else stringResource(R.string.guardian_empty_no_source),
     message: String = if (hasSourceArticles) {
-        "可以先放宽来源与栏目，或关闭筛选条件，再决定要保留哪一批文章。"
+        stringResource(R.string.guardian_empty_has_source_msg)
     } else {
-        "尝试切换到其他来源或栏目，系统会在进入列表后自动评估当前可见文章。"
+        stringResource(R.string.guardian_empty_no_source_msg)
     },
     error: Boolean = false
 ) {
@@ -496,7 +498,7 @@ private fun EmptyOnlineArticleState(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 EditorialPill(
-                    text = if (error) "读取异常" else "列表为空",
+                    text = if (error) stringResource(R.string.guardian_error_pill) else stringResource(R.string.guardian_empty_pill),
                     emphasized = true
                 )
                 Text(
@@ -516,7 +518,7 @@ private fun EmptyOnlineArticleState(
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     ) {
                         Text(
-                            text = "调整范围",
+                            text = stringResource(R.string.guardian_adjust_scope),
                             modifier = Modifier
                                 .clickable(onClick = onAdjustScope)
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -529,7 +531,7 @@ private fun EmptyOnlineArticleState(
                         contentColor = MaterialTheme.colorScheme.onSurface
                     ) {
                         Text(
-                            text = "重试",
+                            text = stringResource(R.string.guardian_retry),
                             modifier = Modifier
                                 .clickable(onClick = onRetry)
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -575,9 +577,9 @@ private fun ArticlePreviewCard(
 ) {
     val imageUrl = article.coverImageUrl ?: article.thumbnailUrl
     val scoreText = when {
-        article.isEvaluating -> "评估中"
-        article.suitabilityScore != null -> "${article.suitabilityScore}分"
-        else -> "未评分"
+        article.isEvaluating -> stringResource(R.string.article_evaluating)
+        article.suitabilityScore != null -> stringResource(R.string.article_score_format, article.suitabilityScore)
+        else -> stringResource(R.string.article_no_score)
     }
     val sourceLine = buildList {
         add(article.source?.label ?: "Online")
@@ -644,7 +646,7 @@ private fun ArticlePreviewCard(
                 ) {
                     if (article.wordCount != null && article.wordCount > 0) {
                         Text(
-                            text = "${article.wordCount}词",
+                            text = stringResource(R.string.guardian_word_count_format, article.wordCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

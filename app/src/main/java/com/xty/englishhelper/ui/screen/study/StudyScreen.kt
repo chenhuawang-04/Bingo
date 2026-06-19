@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.study
+package com.xty.englishhelper.ui.screen.study
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
@@ -14,7 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.ui.components.LoadingIndicator
 
@@ -55,18 +57,18 @@ fun StudyScreen(
                     if (state.phase == StudyPhase.Studying || state.phase == StudyPhase.WaitingForNext) {
                         if (state.studyMode == StudyMode.BRAINSTORM && state.brainstormTargetCount > 0) {
                             // Show daily goal progress
-                            Text("风暴 ${state.brainstormLearnedCount}/${state.brainstormTargetCount}")
+                            Text(stringResource(R.string.study_storm_progress, state.brainstormLearnedCount, state.brainstormTargetCount))
                         } else {
                             val prefix = if (state.studyMode == StudyMode.BRAINSTORM) "风暴 " else ""
                             Text("$prefix${state.progress}/${state.total}")
                         }
                     } else {
-                        Text("学习完成")
+                        Text(stringResource(R.string.study_complete))
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.Close, contentDescription = "关闭")
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close))
                     }
                 }
             )

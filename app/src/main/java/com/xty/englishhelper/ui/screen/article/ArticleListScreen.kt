@@ -52,8 +52,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
@@ -91,10 +93,10 @@ fun ArticleListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("文章阅读") },
+                title = { Text(stringResource(R.string.article_reading)) },
                 actions = {
                     IconButton(onClick = onGuardianBrowse) {
-                        Icon(Icons.Default.Language, contentDescription = "在线阅读")
+                        Icon(Icons.Default.Language, contentDescription = stringResource(R.string.article_online_reading))
                     }
                     ArticleFilterActionButton(
                         filterEnabled = uiState.filterEnabled,
@@ -108,14 +110,14 @@ fun ArticleListScreen(
                         onReset = viewModel::resetFilters
                     )
                     IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.common_settings))
                     }
                 }
             )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onCreateArticle) {
-                Icon(Icons.Default.Add, contentDescription = "新建文章")
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.article_create))
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -196,12 +198,12 @@ fun ArticleListScreen(
                 showCreateCategoryDialog = false
                 newCategoryName = ""
             },
-            title = { Text("新建分类") },
+            title = { Text(stringResource(R.string.article_new_category)) },
             text = {
                 OutlinedTextField(
                     value = newCategoryName,
                     onValueChange = { newCategoryName = it },
-                    label = { Text("分类名称") },
+                    label = { Text(stringResource(R.string.article_category_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -214,7 +216,7 @@ fun ArticleListScreen(
                         newCategoryName = ""
                     }
                 ) {
-                    Text("确定")
+                    Text(stringResource(R.string.common_confirm))
                 }
             },
             dismissButton = {
@@ -222,7 +224,7 @@ fun ArticleListScreen(
                     showCreateCategoryDialog = false
                     newCategoryName = ""
                 }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -242,7 +244,7 @@ private fun CategoryTabRow(
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             CategoryTab(
-                text = "全部",
+                text = stringResource(R.string.article_all),
                 selected = selectedCategoryId == null,
                 onClick = { onSelectCategory(null) }
             )
@@ -254,7 +256,7 @@ private fun CategoryTabRow(
                 )
             }
             TextButton(onClick = onCreateCategory) {
-                Text("+ 新建", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.article_new_tab), style = MaterialTheme.typography.labelMedium)
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -319,7 +321,7 @@ private fun FilterRow(
     ) {
         Box {
             Text(
-                text = "评分 ${if (scoreFilter != ArticleScoreFilter.ALL) "▾" else "▾"}",
+                text = stringResource(R.string.article_filter_with_arrow),
                 style = MaterialTheme.typography.labelMedium,
                 color = if (scoreFilter != ArticleScoreFilter.ALL) {
                     MaterialTheme.colorScheme.secondary
@@ -343,7 +345,7 @@ private fun FilterRow(
 
         Box {
             Text(
-                text = "长度 ${if (lengthFilter != ArticleLengthFilter.ALL) "▾" else "▾"}",
+                text = stringResource(R.string.article_length_with_arrow),
                 style = MaterialTheme.typography.labelMedium,
                 color = if (lengthFilter != ArticleLengthFilter.ALL) {
                     MaterialTheme.colorScheme.secondary
@@ -367,7 +369,7 @@ private fun FilterRow(
 
         Box {
             Text(
-                text = "排序 ${if (sortOption != ArticleSortOption.DEFAULT) "▾" else "▾"}",
+                text = stringResource(R.string.article_sort_with_arrow),
                 style = MaterialTheme.typography.labelMedium,
                 color = if (sortOption != ArticleSortOption.DEFAULT) {
                     MaterialTheme.colorScheme.secondary
@@ -393,7 +395,7 @@ private fun FilterRow(
 
         if (hasFilterConfig) {
             Text(
-                text = "重置",
+                text = stringResource(R.string.article_reset_filter),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.clickable {
@@ -438,8 +440,8 @@ private fun ScanProgressRow(
         }
         Text(
             text = if (scanTask != null) {
-                "${scanTask.progressCurrent}/${scanTask.progressTotal} 在线扫描"
-            } else "在线扫描",
+                stringResource(R.string.article_scan_progress, scanTask.progressCurrent, scanTask.progressTotal)
+            } else stringResource(R.string.article_online_scan),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -462,9 +464,9 @@ private fun EmptyArticleState(
     ) {
         Text(
             text = when {
-                hasSourceArticles && filterEnabled -> "当前筛选条件下没有文章"
-                hasSourceArticles -> "当前分类下暂时没有文章"
-                else -> "还没有文章进入这个分类"
+                hasSourceArticles && filterEnabled -> stringResource(R.string.article_empty_filtered)
+                hasSourceArticles -> stringResource(R.string.article_empty_category)
+                else -> stringResource(R.string.article_empty)
             },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -473,12 +475,12 @@ private fun EmptyArticleState(
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             if (!hasSourceArticles) {
                 TextButton(onClick = onCreateArticle) {
-                    Text("新建文章")
+                    Text(stringResource(R.string.article_create))
                 }
             }
             if (hasSourceArticles && filterEnabled) {
                 TextButton(onClick = onResetFilters) {
-                    Text("重置筛选")
+                    Text(stringResource(R.string.article_reset_filter_selection))
                 }
             }
         }
@@ -512,9 +514,9 @@ private fun ArticleCard(
         }.joinToString(" · ")
     }
     val scoreText = when {
-        isEvaluating -> "评估中"
-        article.suitabilityScore != null -> "${article.suitabilityScore}分"
-        else -> "未评分"
+        isEvaluating -> stringResource(R.string.article_evaluating)
+        article.suitabilityScore != null -> stringResource(R.string.article_score_format, article.suitabilityScore)
+        else -> stringResource(R.string.article_no_score)
     }
     val coverModel = article.coverImageUri ?: article.coverImageUrl
     val placeholderSeed = article.title.firstOrNull()?.uppercase() ?: "A"
@@ -577,7 +579,7 @@ private fun ArticleCard(
                 ) {
                     if (article.wordCount > 0) {
                         Text(
-                            text = "${article.wordCount}词",
+                            text = stringResource(R.string.article_word_count_unit, article.wordCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -614,8 +616,8 @@ private fun ArticleCard(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除文章") },
-            text = { Text("确定删除《${article.title}》吗？") },
+            title = { Text(stringResource(R.string.article_delete_title)) },
+            text = { Text(stringResource(R.string.article_delete_confirm, article.title)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -623,12 +625,12 @@ private fun ArticleCard(
                         showDeleteConfirm = false
                     }
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.common_delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -637,7 +639,7 @@ private fun ArticleCard(
     if (showMoveDialog) {
         AlertDialog(
             onDismissRequest = { showMoveDialog = false },
-            title = { Text("移动分类") },
+            title = { Text(stringResource(R.string.article_move_category)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     categories.forEach { category ->
@@ -664,12 +666,12 @@ private fun ArticleCard(
                         showMoveDialog = false
                     }
                 ) {
-                    Text("确定")
+                    Text(stringResource(R.string.common_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showMoveDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -690,26 +692,26 @@ private fun ArticleCardMenu(
         IconButton(onClick = onExpand) {
             Icon(
                 imageVector = Icons.Default.MoreVert,
-                contentDescription = "文章操作"
+                contentDescription = stringResource(R.string.article_actions)
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
             DropdownMenuItem(
-                text = { Text("重新评估") },
+                text = { Text(stringResource(R.string.article_re_evaluate)) },
                 onClick = {
                     onDismiss()
                     onReevaluate()
                 }
             )
             DropdownMenuItem(
-                text = { Text("移动分类") },
+                text = { Text(stringResource(R.string.article_move_category)) },
                 onClick = {
                     onDismiss()
                     onMoveCategory()
                 }
             )
             DropdownMenuItem(
-                text = { Text("删除") },
+                text = { Text(stringResource(R.string.common_delete)) },
                 onClick = {
                     onDismiss()
                     onDelete()

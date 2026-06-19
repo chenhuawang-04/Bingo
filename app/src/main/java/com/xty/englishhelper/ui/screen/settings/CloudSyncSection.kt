@@ -38,8 +38,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.annotation.StringRes
+import com.xty.englishhelper.R
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -63,17 +66,17 @@ fun CloudSyncSection(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.Default.Cloud,
-                contentDescription = "云同步",
+                contentDescription = stringResource(R.string.cloud_sync_cd),
                 tint = MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.width(8.dp))
-            Text("云同步 (GitHub)", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.cloud_sync_title), style = MaterialTheme.typography.titleMedium)
         }
 
         OutlinedTextField(
             value = state.githubOwner,
             onValueChange = onOwnerChange,
-            label = { Text("GitHub 用户名") },
+            label = { Text(stringResource(R.string.cloud_github_username)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -81,7 +84,7 @@ fun CloudSyncSection(
         OutlinedTextField(
             value = state.githubRepo,
             onValueChange = onRepoChange,
-            label = { Text("仓库名") },
+            label = { Text(stringResource(R.string.cloud_repo_name)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -102,7 +105,7 @@ fun CloudSyncSection(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             OutlinedButton(onClick = onTestConnection) {
-                Text("测试连接")
+                Text(stringResource(R.string.settings_test_connection))
             }
             if (state.connectionTestResult != null) {
                 Text(
@@ -126,25 +129,25 @@ fun CloudSyncSection(
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        "云端数据",
+                        stringResource(R.string.cloud_data),
                         style = MaterialTheme.typography.labelLarge
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${state.cloudManifest.dictionaryCount} 本辞书" +
-                                if (state.cloudManifest.hasArticles) ", 含文章" else "",
+                        stringResource(R.string.cloud_dict_count, state.cloudManifest.dictionaryCount) +
+                                if (state.cloudManifest.hasArticles) stringResource(R.string.cloud_has_articles) else "",
                         style = MaterialTheme.typography.bodySmall
                     )
                     if (state.cloudManifest.syncedAt > 0) {
                         Text(
-                            "上次同步: ${formatTime(state.cloudManifest.syncedAt)}",
+                            stringResource(R.string.cloud_last_sync, formatTime(state.cloudManifest.syncedAt)),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (state.cloudManifest.deviceName.isNotBlank()) {
                         Text(
-                            "设备: ${state.cloudManifest.deviceName}",
+                            stringResource(R.string.cloud_device, state.cloudManifest.deviceName),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -156,7 +159,7 @@ fun CloudSyncSection(
         // Last local sync time
         if (state.lastSyncAt > 0) {
             Text(
-                "本机上次同步: ${formatTime(state.lastSyncAt)}",
+                stringResource(R.string.cloud_local_last_sync, formatTime(state.lastSyncAt)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -168,9 +171,9 @@ fun CloudSyncSection(
             enabled = !state.isSyncing && state.pat.isNotBlank() && state.githubOwner.isNotBlank() && state.githubRepo.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Default.Sync, contentDescription = "同步", modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.Sync, contentDescription = stringResource(R.string.cloud_sync_cd), modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("智能同步")
+            Text(stringResource(R.string.settings_smart_sync))
         }
 
         // Progress
@@ -194,7 +197,7 @@ fun CloudSyncSection(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(8.dp))
-                Text("同步中...", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.cloud_syncing), style = MaterialTheme.typography.bodySmall)
             }
         }
 
@@ -217,11 +220,11 @@ fun CloudSyncSection(
         ) {
             Icon(
                 if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (showAdvanced) "收起高级选项" else "展开高级选项",
+                contentDescription = if (showAdvanced) stringResource(R.string.cloud_collapse_advanced) else stringResource(R.string.cloud_expand_advanced),
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(4.dp))
-            Text("高级选项", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.settings_advanced_options), style = MaterialTheme.typography.bodyMedium)
         }
 
         AnimatedVisibility(visible = showAdvanced) {
@@ -234,9 +237,9 @@ fun CloudSyncSection(
                     enabled = !state.isSyncing,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.CloudUpload, contentDescription = "强制上传", modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.CloudUpload, contentDescription = stringResource(R.string.settings_force_upload), modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("强制上传")
+                    Text(stringResource(R.string.settings_force_upload))
                 }
                 OutlinedButton(
                     onClick = { confirmDialog = ConfirmAction.FORCE_DOWNLOAD },
@@ -246,9 +249,9 @@ fun CloudSyncSection(
                     ),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = "强制下载", modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.CloudDownload, contentDescription = stringResource(R.string.settings_force_download), modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("强制下载")
+                    Text(stringResource(R.string.settings_force_download))
                 }
             }
         }
@@ -258,8 +261,8 @@ fun CloudSyncSection(
     confirmDialog?.let { action ->
         AlertDialog(
             onDismissRequest = { confirmDialog = null },
-            title = { Text(action.title) },
-            text = { Text(action.message) },
+            title = { Text(stringResource(action.titleRes)) },
+            text = { Text(stringResource(action.messageRes)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDialog = null
@@ -269,30 +272,30 @@ fun CloudSyncSection(
                         ConfirmAction.FORCE_DOWNLOAD -> onForceDownload()
                     }
                 }) {
-                    Text("确定")
+                    Text(stringResource(R.string.common_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDialog = null }) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
     }
 }
 
-private enum class ConfirmAction(val title: String, val message: String) {
+private enum class ConfirmAction(@StringRes val titleRes: Int, @StringRes val messageRes: Int) {
     SYNC(
-        "智能同步",
-        "将与云端数据智能合并（新增的词汇/文章会被添加，修改过的内容保留更新的版本）。确定继续？"
+        R.string.cloud_sync_confirm_title,
+        R.string.cloud_sync_confirm_msg
     ),
     FORCE_UPLOAD(
-        "强制上传",
-        "将用本地数据完全覆盖云端。确定？"
+        R.string.settings_force_upload,
+        R.string.cloud_force_upload_confirm
     ),
     FORCE_DOWNLOAD(
-        "强制下载",
-        "将用云端数据完全覆盖本地，本地独有的数据会丢失。确定？"
+        R.string.settings_force_download,
+        R.string.cloud_force_download_confirm
     )
 }
 

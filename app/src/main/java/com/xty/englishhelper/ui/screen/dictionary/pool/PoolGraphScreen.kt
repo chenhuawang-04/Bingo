@@ -53,6 +53,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import com.xty.englishhelper.R
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -98,10 +100,10 @@ fun PoolGraphScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("关系大图") },
+                title = { Text(stringResource(R.string.pool_graph_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -109,7 +111,7 @@ fun PoolGraphScreen(
                     IconButton(onClick = { viewModel.setIncludeIsolated(!incl) }) {
                         Icon(
                             imageVector = if (incl) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                            contentDescription = if (incl) "隐藏未关联词" else "显示未关联词"
+                            contentDescription = if (incl) stringResource(R.string.pool_graph_hide_unlinked) else stringResource(R.string.pool_graph_show_unlinked)
                         )
                     }
                 }
@@ -124,12 +126,12 @@ fun PoolGraphScreen(
                 }
 
                 state.error != null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    Text("加载失败：${state.error}", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.pool_graph_load_failed, state.error ?: ""), color = MaterialTheme.colorScheme.error)
                 }
 
                 layout == null || layout.graph.isEmpty -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     Text(
-                        "尚无关系数据。\n请先在词典页用「生成词池（质量优先）」整理出词与词之间的关系。",
+                        stringResource(R.string.pool_graph_no_data),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -435,9 +437,9 @@ private fun PoolGraphContent(
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            ZoomButton(Icons.Filled.Add, "放大") { zoomBy(1.6f) }
-            ZoomButton(Icons.Filled.Remove, "缩小") { zoomBy(0.62f) }
-            ZoomButton(Icons.AutoMirrored.Filled.ArrowBack, "回到全图", rotate = true) { fitWorld() }
+            ZoomButton(Icons.Filled.Add, stringResource(R.string.pool_graph_zoom_in)) { zoomBy(1.6f) }
+            ZoomButton(Icons.Filled.Remove, stringResource(R.string.pool_graph_zoom_out)) { zoomBy(0.62f) }
+            ZoomButton(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.pool_graph_fit_all), rotate = true) { fitWorld() }
         }
     }
 
@@ -517,11 +519,11 @@ private fun NodeSheetContent(
             detail == null -> Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.size(8.dp))
-                Text("加载释义…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.pool_graph_loading_def), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             detail.meanings.isEmpty() -> Text(
-                "（无释义）",
+                stringResource(R.string.pool_graph_no_def),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -545,14 +547,14 @@ private fun NodeSheetContent(
 
         Spacer(Modifier.height(12.dp))
         Button(onClick = onWordClick, modifier = Modifier.fillMaxWidth()) {
-            Text("查看完整词详情")
+            Text(stringResource(R.string.pool_graph_view_detail))
         }
 
         Spacer(Modifier.height(12.dp))
         HorizontalDivider()
         Spacer(Modifier.height(8.dp))
-        Text(
-            "关联关系 ${selected.relations.size} 条（点击查看依据）",
+            Text(
+                stringResource(R.string.pool_graph_relation_count, selected.relations.size),
             style = MaterialTheme.typography.titleSmall
         )
         Spacer(Modifier.height(4.dp))
@@ -584,7 +586,7 @@ private fun NodeSheetContent(
                     )
                     Spacer(Modifier.size(8.dp))
                     Text(
-                        "强度 ${rel.relationStrength}",
+                        stringResource(R.string.pool_graph_strength, rel.relationStrength.toString()),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -603,7 +605,7 @@ private fun EdgeDetailDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(12.dp).clip(CircleShape).background(edgeTypeColor(edge.type)))
@@ -621,14 +623,14 @@ private fun EdgeDetailDialog(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                DetailLine("关系强度", edge.relationStrength.toString())
-                DetailLine("置信度", String.format("%.2f", edge.confidence))
-                edge.difficultyCefr?.takeIf { it.isNotBlank() }?.let { DetailLine("难度", it) }
-                edge.register?.takeIf { it.isNotBlank() }?.let { DetailLine("语域", it) }
-                edge.reason?.takeIf { it.isNotBlank() }?.let { DetailLine("依据", it) }
-                edge.exampleSentence?.takeIf { it.isNotBlank() }?.let { DetailLine("例句", it) }
+                DetailLine(stringResource(R.string.pool_graph_relation_strength), edge.relationStrength.toString())
+                DetailLine(stringResource(R.string.pool_graph_confidence), String.format("%.2f", edge.confidence))
+                edge.difficultyCefr?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_difficulty), it) }
+                edge.register?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_register), it) }
+                edge.reason?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_reason), it) }
+                edge.exampleSentence?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_example), it) }
                 edge.warningNote?.takeIf { it.isNotBlank() }?.let {
-                    DetailLine("注意", it, valueColor = MaterialTheme.colorScheme.error)
+                    DetailLine(stringResource(R.string.pool_graph_caution), it, valueColor = MaterialTheme.colorScheme.error)
                 }
             }
         }

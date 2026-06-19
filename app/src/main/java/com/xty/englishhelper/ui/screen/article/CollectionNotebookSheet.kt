@@ -37,9 +37,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.CollectedWord
 import com.xty.englishhelper.domain.model.StudyUnit
@@ -75,12 +77,12 @@ fun CollectionNotebookSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "收纳本 (${collectedWords.size})",
+                    stringResource(R.string.article_notebook_count, collectedWords.size),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "关闭")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close))
                 }
             }
 
@@ -88,7 +90,7 @@ fun CollectionNotebookSheet(
 
             if (collectedWords.isEmpty()) {
                 Text(
-                    "点击文章中的非词库词即可收集到此处",
+                    stringResource(R.string.article_notebook_empty_hint),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 24.dp)
@@ -153,7 +155,7 @@ private fun CollectedWordCard(
                 IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "移除",
+                        contentDescription = stringResource(R.string.common_remove),
                         modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -168,7 +170,7 @@ private fun CollectedWordCard(
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "分析中…",
+                        stringResource(R.string.article_analyzing),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -201,7 +203,7 @@ private fun CollectedWordCard(
                 // Context meaning
                 if (a.contextMeaning.isNotBlank()) {
                     Text(
-                        "上下文含义：${a.contextMeaning}",
+                        stringResource(R.string.article_context_meaning, a.contextMeaning),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = 4.dp)
                     )
@@ -210,7 +212,7 @@ private fun CollectedWordCard(
                 // Common meanings
                 if (a.commonMeanings.isNotEmpty()) {
                     Text(
-                        "常见含义：${a.commonMeanings.joinToString("; ")}",
+                        stringResource(R.string.article_common_meanings, a.commonMeanings.joinToString("; ")),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp)
@@ -248,7 +250,7 @@ private fun CollectedWordCard(
                     onClick = onAddToDict,
                     enabled = !entry.isAnalyzing
                 ) {
-                    Text("加入词典", style = MaterialTheme.typography.labelSmall)
+                    Text(stringResource(R.string.article_add_to_dict), style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

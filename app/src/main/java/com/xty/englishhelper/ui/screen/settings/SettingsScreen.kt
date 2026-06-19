@@ -48,12 +48,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.annotation.StringRes
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiScopeConfig
 import com.xty.englishhelper.domain.model.AiSettingsScope
@@ -92,10 +95,10 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设置") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -192,6 +195,13 @@ fun SettingsScreen(
 
                 HorizontalDivider()
 
+                LocaleSection(
+                    currentLocale = state.appLocale,
+                    onLocaleChange = viewModel::onLocaleChange
+                )
+
+                HorizontalDivider()
+
                 AutoScanSection(
                     rescoreAfterHours = state.scanRescoreAfterHours,
                     onRescoreAfterHoursChange = viewModel::onScanRescoreAfterHoursChange
@@ -235,7 +245,7 @@ fun SettingsScreen(
                     onClick = onTtsDiagnostics,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("语音诊断")
+                    Text(stringResource(R.string.settings_voice_diagnostics))
                 }
             }
         }
@@ -250,9 +260,9 @@ private fun WordOrganizeSection(
     onSourceChange: (WordReferenceSource) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("单词整理增强", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_word_organize_enhance), style = MaterialTheme.typography.titleMedium)
         Text(
-            "高质量整理模式会先检索网络上的易混词、同义词、同根词和形近词摘要，再交给主模型整理。单个整理和后台批量整理都会生效。",
+            stringResource(R.string.settings_word_organize_enhance_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -263,9 +273,9 @@ private fun WordOrganizeSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("高质量整理模式", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_high_quality_mode), style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "会增加耗时与 token 消耗，但能补充考研高频易混点。参考步骤不可用时会回退为常规整理。",
+                    stringResource(R.string.settings_high_quality_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -277,23 +287,23 @@ private fun WordOrganizeSection(
         }
 
         Text(
-            "参考来源",
+            stringResource(R.string.settings_reference_source),
             style = MaterialTheme.typography.bodyMedium
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = source == WordReferenceSource.FAST,
                 onClick = { onSourceChange(WordReferenceSource.FAST) },
-                label = { Text("快速模型") }
+                label = { Text(stringResource(R.string.settings_fast_model)) }
             )
             FilterChip(
                 selected = source == WordReferenceSource.SEARCH,
                 onClick = { onSourceChange(WordReferenceSource.SEARCH) },
-                label = { Text("搜索模型") }
+                label = { Text(stringResource(R.string.settings_search_model)) }
             )
         }
         Text(
-            "默认使用快速模型；如果你切到搜索模型，会改用“搜索模型”作用域进行参考检索。",
+            stringResource(R.string.settings_reference_source_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -314,39 +324,39 @@ private fun PoolSettingsSection(
     onManagedModeChange: (Boolean) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("词池整理", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_pool_organize), style = MaterialTheme.typography.titleMedium)
         Text(
-            "质量优先模式的词池构建参数。窗口大小决定每个词与前面多少个词分批比较；并发和速率控制影响后台整理速度与 API 压力。",
+            stringResource(R.string.settings_pool_organize_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         // Retry mode
-        Text("重试模式", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.settings_retry_mode), style = MaterialTheme.typography.bodyMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = retryMode == PoolRetryMode.AGGRESSIVE,
                 onClick = { onRetryModeChange(PoolRetryMode.AGGRESSIVE) },
-                label = { Text("积极") }
+                label = { Text(stringResource(R.string.settings_retry_aggressive)) }
             )
             FilterChip(
                 selected = retryMode == PoolRetryMode.LENIENT,
                 onClick = { onRetryModeChange(PoolRetryMode.LENIENT) },
-                label = { Text("宽松") }
+                label = { Text(stringResource(R.string.settings_retry_lenient)) }
             )
         }
         Text(
             text = when (retryMode) {
                 PoolRetryMode.AGGRESSIVE ->
-                    "积极：可重试错误短延迟后重试；遇到不可重试的错误立即中止整本构建。"
+                    stringResource(R.string.settings_retry_aggressive_desc)
                 PoolRetryMode.LENIENT ->
-                    "宽松：任何失败都继续重试，仅在重试耗尽后才中止。重试间隔 = 当前词累计失败次数 × 10 秒（上限 2 分钟），失败越多等得越久，给限流/过载更多恢复时间。"
+                    stringResource(R.string.settings_retry_lenient_desc)
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            "修改后从「下一个词」起生效（与并发设置一致）。",
+            stringResource(R.string.settings_retry_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -359,11 +369,11 @@ private fun PoolSettingsSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("托管模式", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.settings_managed_mode), style = MaterialTheme.typography.bodyMedium)
             Switch(checked = managedMode, onCheckedChange = onManagedModeChange)
         }
         Text(
-            "开启后，词池构建因重试失败而中止时，将在中止 10 分钟后自动续传，无上限（适合夜间无人值守）。仍可随时手动取消或填块。",
+            stringResource(R.string.settings_managed_mode_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -371,9 +381,9 @@ private fun PoolSettingsSection(
         HorizontalDivider()
 
         // Window size
-        Text("每批候选词数：$windowSize", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.settings_window_size, windowSize), style = MaterialTheme.typography.bodyMedium)
         Text(
-            "每个词与前面的词比较时，每批发送给 AI 的候选词数量。例如设为50，则 AI 每次收到 1个目标词 + 50个候选词。越大单次 AI 调用越慢但覆盖更广。",
+            stringResource(R.string.settings_window_size_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -399,9 +409,9 @@ private fun PoolSettingsSection(
         HorizontalDivider()
 
         // Max concurrent requests
-        Text("最大并发请求数：$maxConcurrent", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.settings_max_concurrent, maxConcurrent), style = MaterialTheme.typography.bodyMedium)
         Text(
-            "同时发起的 AI 请求数上限。增大可加速整理，但会占用更多网络和 API 配额。",
+            stringResource(R.string.settings_max_concurrent_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -425,9 +435,9 @@ private fun PoolSettingsSection(
         }
 
         // Requests per minute
-        Text("每分钟请求数上限：$requestsPerMinute", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.settings_rpm_limit, requestsPerMinute), style = MaterialTheme.typography.bodyMedium)
         Text(
-            "限制每分钟提交的 AI 请求数量，避免触发 API 速率限制。",
+            stringResource(R.string.settings_rpm_limit_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -462,17 +472,17 @@ private fun BrainstormSettingsSection(
     onActiveRecallChange: (Boolean) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("头脑风暴背词", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_brainstorm), style = MaterialTheme.typography.titleMedium)
         Text(
-            "「头脑风暴」模式按词与词的关联关系成片选词、排序。下面两项在下次「开始学习」时生效。",
+            stringResource(R.string.settings_brainstorm_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         // Cluster size
-        Text("学习簇大小：$clusterSize 个词", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.settings_cluster_size, clusterSize), style = MaterialTheme.typography.bodyMedium)
         Text(
-            "每个连贯小簇最多包含几个相关词。越大越「成片」背诵（同义/反义/形近/同根集中出现），越小越分散。",
+            stringResource(R.string.settings_cluster_size_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -499,11 +509,11 @@ private fun BrainstormSettingsSection(
 
         // Quality threshold
         Text(
-            "关联质量门槛：${String.format("%.2f", qualityMinConfidence)}",
+            stringResource(R.string.settings_quality_threshold, String.format("%.2f", qualityMinConfidence)),
             style = MaterialTheme.typography.bodyMedium
         )
         Text(
-            "只有 AI 置信度不低于此值的关联边才参与选词与展示。调高更精准（关联更可靠但更少），调低更丰富（关联更多但可能带噪声）。",
+            stringResource(R.string.settings_quality_threshold_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -534,11 +544,11 @@ private fun BrainstormSettingsSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("关联主动回忆（选择题）", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.settings_active_recall), style = MaterialTheme.typography.bodyMedium)
             Switch(checked = activeRecall, onCheckedChange = onActiveRecallChange)
         }
         Text(
-            "开启后，对有明确近义 / 反义 / 易混关联的词出选择题：从同组词中选出正确关联词。答对记为「良好」，答错记为「重来」并稍后重现。用主动检索强化记忆。",
+            stringResource(R.string.settings_active_recall_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -554,22 +564,22 @@ private fun ProviderListSection(state: SettingsUiState, viewModel: SettingsViewM
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text("AI 提供商", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.settings_ai_providers), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "管理不同的 AI 服务提供商，支持 OpenAI 兼容与 Anthropic 格式。",
+                    stringResource(R.string.settings_provider_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Button(onClick = viewModel::startCreateProvider) {
-                Icon(Icons.Default.Add, contentDescription = "新增提供商")
-                Text("新增")
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.settings_add_provider_cd))
+                Text(stringResource(R.string.settings_add_provider))
             }
         }
 
         if (state.providers.isEmpty()) {
             Text(
-                "暂无提供商配置。",
+                stringResource(R.string.settings_no_providers),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -590,12 +600,12 @@ private fun ProviderListSection(state: SettingsUiState, viewModel: SettingsViewM
                         Column(modifier = Modifier.weight(1f)) {
                             Text(provider.name, style = MaterialTheme.typography.titleSmall)
                             Text(
-                                "${providerLabel(provider.format)}  ·  ${provider.baseUrl}",
+                                "${stringResource(providerLabel(provider.format))}  ·  ${provider.baseUrl}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                if (provider.hasApiKey) "API Key 已配置" else "API Key 未配置",
+                                if (provider.hasApiKey) stringResource(R.string.settings_api_key_configured) else stringResource(R.string.settings_api_key_not_configured),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (provider.hasApiKey) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.error
@@ -605,16 +615,16 @@ private fun ProviderListSection(state: SettingsUiState, viewModel: SettingsViewM
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (provider.name != state.defaultProviderName) {
                                     TextButton(onClick = { viewModel.setDefaultProvider(provider.name) }) {
-                                        Text("设为默认")
+                                        Text(stringResource(R.string.settings_set_default))
                                     }
                                 } else {
-                                    Text("默认", style = MaterialTheme.typography.labelMedium)
+                                    Text(stringResource(R.string.settings_default_label), style = MaterialTheme.typography.labelMedium)
                                 }
                                 IconButton(onClick = { viewModel.startEditProvider(provider.name) }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "编辑")
+                                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
                                 }
                                 IconButton(onClick = { viewModel.requestDeleteProvider(provider.name) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "删除")
+                                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete))
                                 }
                             }
                         }
@@ -636,7 +646,7 @@ private fun ProviderEditorSection(state: SettingsUiState, viewModel: SettingsVie
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                if (editor.mode == ProviderEditorMode.CREATE) "新增提供商" else "编辑提供商",
+                if (editor.mode == ProviderEditorMode.CREATE) stringResource(R.string.settings_create_provider) else stringResource(R.string.settings_edit_provider),
                 style = MaterialTheme.typography.titleMedium
             )
 
@@ -644,8 +654,8 @@ private fun ProviderEditorSection(state: SettingsUiState, viewModel: SettingsVie
                 value = editor.name,
                 onValueChange = viewModel::onProviderNameChange,
                 enabled = nameEditable,
-                label = { Text("唯一名称") },
-                placeholder = { Text("例如: OpenAI 国内节点") },
+                label = { Text(stringResource(R.string.settings_provider_name)) },
+                placeholder = { Text(stringResource(R.string.settings_provider_name_hint)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -659,16 +669,16 @@ private fun ProviderEditorSection(state: SettingsUiState, viewModel: SettingsVie
                 FilterChip(
                     selected = editor.format == AiProvider.OPENAI_COMPATIBLE,
                     onClick = { viewModel.onProviderFormatChange(AiProvider.OPENAI_COMPATIBLE) },
-                    label = { Text("OpenAI 兼容") }
+                    label = { Text(stringResource(R.string.settings_openai_compatible)) }
                 )
             }
 
             OutlinedTextField(
                 value = editor.baseUrl,
                 onValueChange = viewModel::onProviderBaseUrlChange,
-                label = { Text("Base URL") },
+                label = { Text(stringResource(R.string.settings_base_url)) },
                 placeholder = { Text(defaultBaseUrlHint(editor.format)) },
-                supportingText = { Text("本地服务可使用 http://IP:端口") },
+                supportingText = { Text(stringResource(R.string.settings_base_url_hint)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -676,7 +686,7 @@ private fun ProviderEditorSection(state: SettingsUiState, viewModel: SettingsVie
             OutlinedTextField(
                 value = editor.apiKey,
                 onValueChange = viewModel::onProviderApiKeyChange,
-                label = { Text("API Key") },
+                label = { Text(stringResource(R.string.settings_api_key)) },
                 placeholder = { Text(apiKeyHint(editor.format)) },
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
@@ -688,13 +698,13 @@ private fun ProviderEditorSection(state: SettingsUiState, viewModel: SettingsVie
                     onClick = viewModel::saveProvider,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("保存")
+                    Text(stringResource(R.string.common_save))
                 }
                 TextButton(
                     onClick = viewModel::cancelProviderEditor,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
 
@@ -710,17 +720,17 @@ private fun ProviderEditorSection(state: SettingsUiState, viewModel: SettingsVie
                             strokeWidth = 2.dp,
                             color = MaterialTheme.colorScheme.onPrimary
                         )
-                        Text("  测试中")
+                        Text("  ${stringResource(R.string.settings_testing)}")
                     } else {
-                        Text("测试连接")
+                        Text(stringResource(R.string.settings_test_connection))
                     }
                 }
                 TextButton(
                     onClick = viewModel::fetchModelsForEditor,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "拉取模型列表")
-                    Text("拉取模型")
+                    Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.settings_refresh_models_cd))
+                    Text(stringResource(R.string.settings_fetch_models))
                 }
             }
 
@@ -739,81 +749,45 @@ private fun ProviderEditorSection(state: SettingsUiState, viewModel: SettingsVie
 @Composable
 private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("模型作用域", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_model_scopes), style = MaterialTheme.typography.titleMedium)
         Text(
-            "为不同功能选择提供商与模型，支持手动输入模型或从接口拉取列表。",
+            stringResource(R.string.settings_model_scopes_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         val scopeItems = listOf(
             ScopeItem(
-                AiSettingsScope.MAIN, "主模型", "常规对话与主任务使用",
-                details = "使用场景：\n" +
-                    "· 单词 AI 整理（自动填充音标、释义、词根拆解、近义词等）\n" +
-                    "· 文章段落 AI 翻译\n" +
-                    "· 文章段落 AI 分析（语法点、关键词汇、句子拆解）\n" +
-                    "· 题库 AI 答案生成与解析\n" +
-                    "· 后台批量任务（单词整理、答案生成等）\n\n" +
-                    "注意：出题功能已独立为「出题模型」作用域。"
+                AiSettingsScope.MAIN, stringResource(R.string.settings_scope_main), stringResource(R.string.settings_scope_main_desc),
+                details = stringResource(R.string.scope_main_details)
             ),
             ScopeItem(
-                AiSettingsScope.FAST, "快速模型", "朗读、词链与实时交互使用",
-                details = "使用场景：\n" +
-                    "· 文章适配度评分（评估是否适合考研出题，0-100 分）\n" +
-                    "· 在线文章批量评分（后台任务）\n" +
-                    "· 题库翻译评分（逐句对比参考译文）\n" +
-                    "· 题库写作批改（五档评分 + 扣分明细）\n" +
-                    "· 文章生词快速分析\n" +
-                    "· 即时查词与词链高亮\n\n" +
-                    "建议选用响应快、成本低的模型。"
+                AiSettingsScope.FAST, stringResource(R.string.settings_scope_fast), stringResource(R.string.settings_scope_fast_desc),
+                details = stringResource(R.string.scope_fast_details)
             ),
             ScopeItem(
-                AiSettingsScope.OCR, "OCR 模型", "OCR 识别与题库扫描",
-                details = "使用场景：\n" +
-                    "· 拍照批量导入单词（识别手写/印刷体）\n" +
-                    "· 试卷扫描识别（题型、文章、题目、选项）\n" +
-                    "· 答案页扫描提取\n" +
-                    "· 文章 OCR 录入（拍照提取标题、正文）\n\n" +
-                    "需要支持视觉/多模态输入的模型。"
+                AiSettingsScope.OCR, stringResource(R.string.settings_scope_ocr), stringResource(R.string.settings_scope_ocr_desc),
+                details = stringResource(R.string.scope_ocr_details)
             ),
             ScopeItem(
-                AiSettingsScope.POOL, "词池整理", "词池整理与批量处理",
-                details = "使用场景：\n" +
-                    "· 质量优先模式词池构建（逐词 AI 精确比对）\n" +
-                    "· 词池条目类型分类\n\n" +
-                    "构建途中可在此处热切换模型，下一个请求即生效。"
+                AiSettingsScope.POOL, stringResource(R.string.settings_scope_pool), stringResource(R.string.settings_scope_pool_desc),
+                details = stringResource(R.string.scope_pool_details)
             ),
             ScopeItem(
-                AiSettingsScope.ARTICLE, "文章解析", "段落与语法解析",
-                details = "使用场景：\n" +
-                    "· 文章段落 AI 分析（中文翻译、语法点、关键词汇、句子拆解）\n\n" +
-                    "与主模型的段落分析共用，但可独立配置以使用更适合长文理解的模型。"
+                AiSettingsScope.ARTICLE, stringResource(R.string.settings_scope_article), stringResource(R.string.settings_scope_article_desc),
+                details = stringResource(R.string.scope_article_details)
             ),
             ScopeItem(
-                AiSettingsScope.SEARCH, "搜索模型", "题库来源验证与搜索",
-                details = "使用场景：\n" +
-                    "· 阅读理解来源验证（联网搜索原文出处）\n" +
-                    "· 范文检索（搜索模型范文与链接）\n" +
-                    "· 单词整理增强模式的参考检索（当参考来源选'搜索模型'时）\n\n" +
-                    "需要支持联网搜索/工具调用的模型。"
+                AiSettingsScope.SEARCH, stringResource(R.string.settings_scope_search), stringResource(R.string.settings_scope_search_desc),
+                details = stringResource(R.string.scope_search_details)
             ),
             ScopeItem(
-                AiSettingsScope.REVIEWER, "词池审核", "审核与评分词池质量",
-                details = "使用场景：\n" +
-                    "· 词池质量审核（检查分组合理性）\n" +
-                    "· 词池评分\n\n" +
-                    "作为独立手动任务触发，不影响自动构建流程。"
+                AiSettingsScope.REVIEWER, stringResource(R.string.settings_scope_reviewer), stringResource(R.string.settings_scope_reviewer_desc),
+                details = stringResource(R.string.scope_reviewer_details)
             ),
             ScopeItem(
-                AiSettingsScope.QUESTION_GENERATE, "出题模型", "文章出题与试卷生成",
-                details = "使用场景：\n" +
-                    "· 阅读理解出题（5 题 · 400-500 词）\n" +
-                    "· 完形填空出题（20 空 · 280-360 词）\n" +
-                    "· 翻译题出题（英语一/二）\n" +
-                    "· 写作出题（小作文/大作文）\n" +
-                    "· 新题型出题（段落排序/句子插入/匹配题）\n\n" +
-                    "需要支持长文本理解和复杂推理的模型。"
+                AiSettingsScope.QUESTION_GENERATE, stringResource(R.string.settings_scope_question_generate), stringResource(R.string.settings_scope_question_generate_desc),
+                details = stringResource(R.string.scope_question_generate_details)
             )
         )
 
@@ -840,9 +814,9 @@ private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewMo
 @Composable
 private fun ModelAdvancedSection(state: SettingsUiState, viewModel: SettingsViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("模型高级选项", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_model_advanced), style = MaterialTheme.typography.titleMedium)
         Text(
-            "高级调试与解析选项，影响所有模型请求。",
+            stringResource(R.string.settings_model_advanced_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -853,9 +827,9 @@ private fun ModelAdvancedSection(state: SettingsUiState, viewModel: SettingsView
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("调试模式", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_debug_mode), style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "开启后每次 AI 请求都会弹窗展示 JSON。",
+                    stringResource(R.string.settings_debug_mode_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -872,9 +846,9 @@ private fun ModelAdvancedSection(state: SettingsUiState, viewModel: SettingsView
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("响应脱壳", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_response_unwrap), style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "当服务返回完整响应 JSON 时自动提取内容。",
+                    stringResource(R.string.settings_response_unwrap_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -891,9 +865,9 @@ private fun ModelAdvancedSection(state: SettingsUiState, viewModel: SettingsView
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("修复 JSON", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_json_repair), style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "检测到未转义引号等错误时自动修复再解析。",
+                    stringResource(R.string.settings_json_repair_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -924,9 +898,9 @@ private fun ImageCompressionSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("图片压缩", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_image_compression), style = MaterialTheme.typography.titleMedium)
         Text(
-            "自动压缩 OCR/扫描图片以减少请求体积，默认约 1MB。",
+            stringResource(R.string.settings_image_compress_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -937,9 +911,9 @@ private fun ImageCompressionSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("启用图片压缩", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_enable_image_compress), style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "关闭后将上传原始图片。",
+                    stringResource(R.string.settings_image_compress_off_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -963,9 +937,9 @@ private fun ImageCompressionSection(
                 }
             },
             enabled = enabled,
-            label = { Text("目标大小 (KB)") },
+            label = { Text(stringResource(R.string.settings_target_size_kb)) },
             placeholder = { Text("1024") },
-            supportingText = { Text("建议 800-1500 KB") },
+            supportingText = { Text(stringResource(R.string.settings_target_size_hint)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
@@ -989,9 +963,9 @@ private fun BackgroundTaskSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("后台任务", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_background_task), style = MaterialTheme.typography.titleMedium)
         Text(
-            "查看与管理后台整理、题库答案生成等任务，并控制后台并发。",
+            stringResource(R.string.settings_bg_task_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1011,9 +985,9 @@ private fun BackgroundTaskSection(
                     onConcurrencyChange(clamped)
                 }
             },
-            label = { Text("后台并发") },
+            label = { Text(stringResource(R.string.settings_bg_concurrency)) },
             placeholder = { Text("2") },
-            supportingText = { Text("建议 2-4，过高可能挤占 OCR 与朗读资源") },
+            supportingText = { Text(stringResource(R.string.settings_bg_concurrency_hint)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
@@ -1023,7 +997,7 @@ private fun BackgroundTaskSection(
             onClick = onManage,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("打开后台任务管理")
+            Text(stringResource(R.string.settings_open_bg_task_mgmt))
         }
     }
 }
@@ -1057,7 +1031,7 @@ private fun ScopeConfigCard(
             },
             confirmButton = {
                 TextButton(onClick = { showDetailsDialog = false }) {
-                    Text("知道了")
+                    Text(stringResource(R.string.settings_got_it))
                 }
             }
         )
@@ -1084,7 +1058,7 @@ private fun ScopeConfigCard(
                 IconButton(onClick = { showDetailsDialog = true }) {
                     Icon(
                         Icons.Outlined.Info,
-                        contentDescription = "查看使用场景",
+                        contentDescription = stringResource(R.string.settings_view_scenarios_cd),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1098,7 +1072,7 @@ private fun ScopeConfigCard(
                     value = config.providerName,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("提供商") },
+                    label = { Text(stringResource(R.string.settings_provider_label)) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerExpanded) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1130,8 +1104,8 @@ private fun ScopeConfigCard(
                         onModelChange(it)
                         modelExpanded = true
                     },
-                    label = { Text("模型") },
-                    placeholder = { Text("手动输入或选择模型") },
+                    label = { Text(stringResource(R.string.settings_model_label)) },
+                    placeholder = { Text(stringResource(R.string.settings_model_input_hint)) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
                     singleLine = true,
                     modifier = Modifier
@@ -1170,7 +1144,7 @@ private fun ScopeConfigCard(
                     )
                 } else {
                     Text(
-                        text = if (isLoadingModels) "模型列表加载中..." else "模型列表可手动刷新",
+                        text = if (isLoadingModels) stringResource(R.string.settings_models_loading) else stringResource(R.string.settings_models_manual_refresh),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1179,7 +1153,7 @@ private fun ScopeConfigCard(
                     if (isLoadingModels) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新模型")
+                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.settings_refresh_models_cd))
                     }
                 }
             }
@@ -1194,23 +1168,24 @@ private fun DeleteProviderDialog(
     onDismiss: () -> Unit
 ) {
     val scopesText = if (pending.affectedScopes.isEmpty()) {
-        "该提供商未被任何作用域使用。"
+        stringResource(R.string.settings_provider_not_used)
     } else {
-        "受影响的作用域: " + pending.affectedScopes.joinToString("、") { scopeLabel(it) }
+        val scopeLabels = pending.affectedScopes.map { stringResource(scopeLabel(it)) }.joinToString("、")
+        stringResource(R.string.settings_affected_scopes, scopeLabels)
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除提供商") },
-        text = { Text("删除后会自动回退到默认提供商。$scopesText") },
+        title = { Text(stringResource(R.string.settings_delete_provider)) },
+        text = { Text(stringResource(R.string.settings_delete_fallback, scopesText)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("确认删除")
+                Text(stringResource(R.string.settings_confirm_delete))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )
@@ -1234,9 +1209,9 @@ private fun OnlineReadingSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("在线阅读", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.article_online_reading), style = MaterialTheme.typography.titleMedium)
         Text(
-            "设置默认阅读源与在线文章详情并发加载数量。",
+            stringResource(R.string.settings_online_reading_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1266,12 +1241,75 @@ private fun OnlineReadingSection(
                     onConcurrencyChange(clamped)
                 }
             },
-            label = { Text("详情并发") },
+            label = { Text(stringResource(R.string.settings_detail_concurrency)) },
             placeholder = { Text("5") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LocaleSection(
+    currentLocale: String,
+    onLocaleChange: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val locales = listOf(
+        "system" to stringResource(R.string.locale_system),
+        "zh" to "中文",
+        "en" to "English",
+        "ja" to "日本語",
+        "ko" to "한국어",
+        "de" to "Deutsch",
+        "ru" to "Русский",
+        "es" to "Español",
+        "fr" to "Français",
+        "pt" to "Português",
+        "ar" to "العربية"
+    )
+
+    val currentLabel = locales.find { it.first == currentLocale }?.second ?: stringResource(R.string.locale_system)
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.settings_app_locale), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.settings_app_locale_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it }
+        ) {
+            OutlinedTextField(
+                value = currentLabel,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text(stringResource(R.string.settings_app_locale)) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                locales.forEach { (code, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            onLocaleChange(code)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1290,9 +1328,9 @@ private fun AutoScanSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("在线文章自动评分", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_auto_scan), style = MaterialTheme.typography.titleMedium)
         Text(
-            "扫描在线文章源（Guardian/The Atlantic/CS Monitor），自动评估是否适合考研出题。已评分且未过期的文章会被跳过。",
+            stringResource(R.string.settings_auto_scan_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1312,9 +1350,9 @@ private fun AutoScanSection(
                     onRescoreAfterHoursChange(clamped)
                 }
             },
-            label = { Text("重评间隔（小时）") },
+            label = { Text(stringResource(R.string.settings_rescore_interval)) },
             placeholder = { Text("24") },
-            supportingText = { Text("已评分文章在此间隔内不会重复评分，建议 24-168") },
+            supportingText = { Text(stringResource(R.string.settings_rescore_hint)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
@@ -1339,9 +1377,9 @@ private fun TtsSection(
     onTest: () -> Unit
 ) {
     val locales = listOf(
-        "system" to "跟随系统",
-        "en-US" to "英语(美式)",
-        "en-GB" to "英语(英式)"
+        "system" to stringResource(R.string.settings_tts_follow_system),
+        "en-US" to stringResource(R.string.settings_tts_en_us),
+        "en-GB" to stringResource(R.string.settings_tts_en_gb)
     )
 
     var prewarmConcurrencyInput by remember { mutableStateOf(prewarmConcurrency.toString()) }
@@ -1361,21 +1399,21 @@ private fun TtsSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("语音播报", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_tts), style = MaterialTheme.typography.titleMedium)
         Text(
-            "使用系统 TTS 朗读单词与文章，可调整语速与音调。",
+            stringResource(R.string.settings_tts_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Text("语速: ${"%.2f".format(rate)}x", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.settings_tts_rate_value, "%.2f".format(rate)), style = MaterialTheme.typography.bodySmall)
         Slider(
             value = rate,
             onValueChange = onRateChange,
             valueRange = 0.5f..2.0f
         )
 
-        Text("音调: ${"%.2f".format(pitch)}x", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.settings_tts_pitch_value, "%.2f".format(pitch)), style = MaterialTheme.typography.bodySmall)
         Slider(
             value = pitch,
             onValueChange = onPitchChange,
@@ -1398,9 +1436,9 @@ private fun TtsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("背词自动朗读", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_tts_auto_study), style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "每弹出一个单词自动播放发音。",
+                    stringResource(R.string.settings_tts_auto_study_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1413,9 +1451,9 @@ private fun TtsSection(
 
         HorizontalDivider()
 
-        Text("TTS 预热", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.settings_tts_prewarm), style = MaterialTheme.typography.titleSmall)
         Text(
-            "控制段落缓存的并发与重试次数。",
+            stringResource(R.string.settings_tts_prewarm_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1435,7 +1473,7 @@ private fun TtsSection(
                     onPrewarmConcurrencyChange(clamped)
                 }
             },
-            label = { Text("预热并发") },
+            label = { Text(stringResource(R.string.settings_tts_prewarm_concurrency)) },
             placeholder = { Text("2") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1457,7 +1495,7 @@ private fun TtsSection(
                     onPrewarmRetryChange(clamped)
                 }
             },
-            label = { Text("预热重试") },
+            label = { Text(stringResource(R.string.settings_tts_prewarm_retry)) },
             placeholder = { Text("2") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1468,7 +1506,7 @@ private fun TtsSection(
             onClick = onTest,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("播放示例")
+            Text(stringResource(R.string.settings_play_sample))
         }
     }
 }
@@ -1480,10 +1518,10 @@ private data class ScopeItem(
     val details: String
 )
 
-private fun providerLabel(provider: AiProvider): String {
+private fun providerLabel(provider: AiProvider): Int {
     return when (provider) {
-        AiProvider.ANTHROPIC -> "Anthropic"
-        AiProvider.OPENAI_COMPATIBLE -> "OpenAI 兼容"
+        AiProvider.ANTHROPIC -> R.string.settings_anthropic
+        AiProvider.OPENAI_COMPATIBLE -> R.string.settings_openai_compatible
     }
 }
 
@@ -1509,15 +1547,15 @@ private fun defaultModelForFallback(providerName: String, providers: List<Provid
     }
 }
 
-private fun scopeLabel(scope: AiSettingsScope): String {
+private fun scopeLabel(scope: AiSettingsScope): Int {
     return when (scope) {
-        AiSettingsScope.MAIN -> "主模型"
-        AiSettingsScope.FAST -> "快速模型"
-        AiSettingsScope.OCR -> "OCR"
-        AiSettingsScope.POOL -> "词池整理"
-        AiSettingsScope.ARTICLE -> "文章解析"
-        AiSettingsScope.SEARCH -> "搜索"
-        AiSettingsScope.REVIEWER -> "词池审核"
-        AiSettingsScope.QUESTION_GENERATE -> "出题模型"
+        AiSettingsScope.MAIN -> R.string.settings_scope_main
+        AiSettingsScope.FAST -> R.string.settings_scope_fast
+        AiSettingsScope.OCR -> R.string.settings_scope_ocr
+        AiSettingsScope.POOL -> R.string.settings_scope_pool
+        AiSettingsScope.ARTICLE -> R.string.settings_scope_article
+        AiSettingsScope.SEARCH -> R.string.settings_scope_search
+        AiSettingsScope.REVIEWER -> R.string.settings_scope_reviewer
+        AiSettingsScope.QUESTION_GENERATE -> R.string.settings_scope_question_generate
     }
 }

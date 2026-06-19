@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.batchimport
+package com.xty.englishhelper.ui.screen.batchimport
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -46,8 +46,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,7 +78,7 @@ fun BatchImportScreen(
 
     LaunchedEffect(state.importDone) {
         if (state.importDone) {
-            snackbarHostState.showSnackbar("导入完成，后台整理已启动")
+            snackbarHostState.showSnackbar(context.getString(R.string.import_complete))
             onBack()
         }
     }
@@ -84,10 +86,10 @@ fun BatchImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("拍照批量导入") },
+                title = { Text(stringResource(R.string.batch_import_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -108,9 +110,9 @@ fun BatchImportScreen(
                 ) {
                     Text(
                         if (state.imageUris.isEmpty()) {
-                            "选择图片"
+                            stringResource(R.string.batch_import_select_images)
                         } else {
-                            "已选 ${state.imageUris.size} 张图片，点击添加更多"
+                            stringResource(R.string.batch_import_selected_images, state.imageUris.size)
                         }
                     )
                 }
@@ -123,12 +125,12 @@ fun BatchImportScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "图片 ${index + 1}",
+                        text = stringResource(R.string.batch_import_image_number, index + 1),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = { viewModel.removeImage(index) }) {
-                        Icon(Icons.Default.Close, contentDescription = "移除")
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.batch_import_remove))
                     }
                 }
             }
@@ -137,14 +139,14 @@ fun BatchImportScreen(
                 OutlinedTextField(
                     value = state.conditions,
                     onValueChange = viewModel::onConditionsChange,
-                    label = { Text("提取条件（识别单词模式必填）") },
-                    placeholder = { Text("如：蓝色字体、黑体、标题中的词") },
+                    label = { Text(stringResource(R.string.batch_import_conditions)) },
+                    placeholder = { Text(stringResource(R.string.batch_import_conditions_hint)) },
                     supportingText = {
                         Text(
                             if (state.scanMode == BatchScanMode.FULL_SCAN) {
-                                "可选。留空时将扫描全部可见英文单词。"
+                                stringResource(R.string.batch_import_full_scan_optional)
                             } else {
-                                "描述需要提取的单词特征。"
+                                stringResource(R.string.batch_import_word_list_hint)
                             }
                         )
                     },
@@ -161,12 +163,12 @@ fun BatchImportScreen(
                     FilterChip(
                         selected = state.scanMode == BatchScanMode.WORD_LIST,
                         onClick = { viewModel.onScanModeChange(BatchScanMode.WORD_LIST) },
-                        label = { Text("识别单词") }
+                        label = { Text(stringResource(R.string.batch_import_word_list)) }
                     )
                     FilterChip(
                         selected = state.scanMode == BatchScanMode.FULL_SCAN,
                         onClick = { viewModel.onScanModeChange(BatchScanMode.FULL_SCAN) },
-                        label = { Text("完全扫描") }
+                        label = { Text(stringResource(R.string.batch_import_full_scan)) }
                     )
                 }
             }
@@ -174,9 +176,9 @@ fun BatchImportScreen(
             item {
                 Text(
                     text = if (state.scanMode == BatchScanMode.FULL_SCAN) {
-                        "完全扫描会额外提取每个词在图片中的关联片段，并在后台整理时作为参考。"
+                        stringResource(R.string.batch_import_full_scan_desc)
                     } else {
-                        "识别单词仅返回词列表，速度更快。"
+                        stringResource(R.string.batch_import_word_list_desc)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -211,9 +213,9 @@ fun BatchImportScreen(
                             strokeWidth = 2.dp,
                             color = MaterialTheme.colorScheme.onPrimary
                         )
-                        Text("  AI 提取中…")
+                        Text("  ${stringResource(R.string.batch_import_ai_extracting)}")
                     } else {
-                        Text("AI 提取")
+                        Text(stringResource(R.string.batch_import_ai_extract))
                     }
                 }
             }
@@ -227,7 +229,7 @@ fun BatchImportScreen(
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                         Text(
-                            "正在压缩图片…",
+                            stringResource(R.string.scan_compressing),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -243,7 +245,7 @@ fun BatchImportScreen(
                 item {
                     val checkedCount = state.extractedWords.count { it.checked }
                     Text(
-                        "提取到 ${state.extractedWords.size} 个单词（已选 $checkedCount 个）",
+                        stringResource(R.string.batch_import_extract_result, state.extractedWords.size, checkedCount),
                         style = MaterialTheme.typography.titleSmall
                     )
                 }
@@ -273,7 +275,7 @@ fun BatchImportScreen(
                         }
                         if (word.references.isNotEmpty()) {
                             Text(
-                                text = "参考：${word.references.joinToString("；")}",
+                                text = stringResource(R.string.batch_import_reference, word.references.joinToString("；")),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 48.dp, end = 4.dp, bottom = 6.dp)
@@ -315,9 +317,9 @@ fun BatchImportScreen(
                                 strokeWidth = 2.dp,
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
-                            Text("  导入中…")
+                            Text("  ${stringResource(R.string.batch_import_importing)}")
                         } else {
-                            Text("全部导入")
+                            Text(stringResource(R.string.batch_import_all_import))
                         }
                     }
                 }
@@ -337,7 +339,7 @@ private fun UnitSelector(
     onToggleUnit: (Long) -> Unit
 ) {
     Column {
-        Text("新增单词所属单元", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.batch_import_unit_title), style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),

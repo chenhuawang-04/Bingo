@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.study
 
+import androidx.annotation.StringRes
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
@@ -43,7 +44,7 @@ data class StudyUiState(
 /** 记忆钩子：当前词与某关联词的关系依据 / 例句，揭示答案时展示。 */
 data class BrainstormHook(
     val relatedSpelling: String,
-    val relationLabel: String,
+    @StringRes val relationLabel: Int,
     val reason: String?,
     val example: String?
 )
@@ -51,7 +52,7 @@ data class BrainstormHook(
 /** 关联主动回忆选择题：从同组词中选出当前词的正确关联词。 */
 data class BrainstormQuiz(
     val targetSpelling: String,
-    val relationLabel: String,
+    @StringRes val relationLabel: Int,
     val options: List<BrainstormQuizOption>,
     val correctWordId: Long,
     val selectedWordId: Long? = null

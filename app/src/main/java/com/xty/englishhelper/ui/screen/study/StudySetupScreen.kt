@@ -33,8 +33,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.ui.components.EmptyState
 import com.xty.englishhelper.ui.components.LoadingIndicator
@@ -59,10 +61,10 @@ fun StudySetupScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("背单词") },
+                title = { Text(stringResource(R.string.study_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -76,7 +78,7 @@ fun StudySetupScreen(
         ) {
             when {
                 state.isLoading -> LoadingIndicator()
-                state.unitItems.isEmpty() -> EmptyState(message = "还没有单元\n请先在辞书中创建单元并添加单词")
+                state.unitItems.isEmpty() -> EmptyState(message = stringResource(R.string.dict_no_units))
                 else -> {
                     LazyColumn(
                         modifier = Modifier.weight(1f),
@@ -102,7 +104,7 @@ fun StudySetupScreen(
                                         style = MaterialTheme.typography.titleSmall
                                     )
                                     Text(
-                                        text = "共 ${item.wordCount} 词 | 到期 ${item.dueCount} | 新词 ${item.newCount}",
+                                        text = stringResource(R.string.study_unit_detail, item.wordCount, item.dueCount, item.newCount),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -132,17 +134,17 @@ fun StudySetupScreen(
                             FilterChip(
                                 selected = state.selectedMode == StudyMode.NORMAL,
                                 onClick = { viewModel.setMode(StudyMode.NORMAL) },
-                                label = { Text("普通") }
+                                label = { Text(stringResource(R.string.study_normal_mode)) }
                             )
                             FilterChip(
                                 selected = state.selectedMode == StudyMode.BRAINSTORM,
                                 onClick = { viewModel.setMode(StudyMode.BRAINSTORM) },
-                                label = { Text("头脑风暴") }
+                                label = { Text(stringResource(R.string.study_brainstorm_mode)) }
                             )
                         }
 
                         Text(
-                            text = "到期词 $totalDue + 新词 $totalNew = ${totalDue + totalNew}",
+                            text = stringResource(R.string.study_start_summary, totalDue, totalNew, totalDue + totalNew),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Button(
@@ -157,7 +159,7 @@ fun StudySetupScreen(
                                 .fillMaxWidth()
                                 .padding(top = 8.dp)
                         ) {
-                            Text("开始学习")
+                            Text(stringResource(R.string.dict_start_study))
                         }
                     }
                 }

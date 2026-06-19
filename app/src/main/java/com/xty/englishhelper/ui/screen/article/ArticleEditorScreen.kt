@@ -55,9 +55,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 
@@ -111,10 +113,10 @@ fun ArticleEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (state.isEditing) "编辑文章" else "创建文章") },
+                title = { Text(if (state.isEditing) stringResource(R.string.article_edit) else stringResource(R.string.article_create_new)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -124,7 +126,7 @@ fun ArticleEditorScreen(
                             state.title.isNotBlank() &&
                             state.paragraphs.any { it.text.isNotBlank() }
                     ) {
-                        Text("保存")
+                        Text(stringResource(R.string.common_save))
                     }
                 }
             )
@@ -147,13 +149,13 @@ fun ArticleEditorScreen(
                 ) {
                     item {
                         EditorSectionCard(
-                            title = "基本信息",
-                            description = "先填写标题、来源和封面，便于后续列表展示与分类。"
+                            title = stringResource(R.string.article_basic_info),
+                            description = stringResource(R.string.article_basic_info_desc)
                         ) {
                             OutlinedTextField(
                                 value = state.title,
                                 onValueChange = viewModel::onTitleChange,
-                                label = { Text("标题") },
+                                label = { Text(stringResource(R.string.article_title_label)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -161,7 +163,7 @@ fun ArticleEditorScreen(
                             OutlinedTextField(
                                 value = state.summary,
                                 onValueChange = viewModel::onSummaryChange,
-                                label = { Text("梗概（可选）") },
+                                label = { Text(stringResource(R.string.article_summary_optional)) },
                                 minLines = 2,
                                 maxLines = 4,
                                 modifier = Modifier.fillMaxWidth()
@@ -173,7 +175,7 @@ fun ArticleEditorScreen(
                                     OutlinedTextField(
                                         value = state.author,
                                         onValueChange = viewModel::onAuthorChange,
-                                        label = { Text("作者") },
+                                        label = { Text(stringResource(R.string.article_author)) },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
@@ -182,7 +184,7 @@ fun ArticleEditorScreen(
                                     OutlinedTextField(
                                         value = state.source,
                                         onValueChange = viewModel::onSourceChange,
-                                        label = { Text("来源") },
+                                        label = { Text(stringResource(R.string.article_source)) },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
@@ -192,7 +194,7 @@ fun ArticleEditorScreen(
                             OutlinedTextField(
                                 value = state.domain,
                                 onValueChange = viewModel::onDomainChange,
-                                label = { Text("领域（可选）") },
+                                label = { Text(stringResource(R.string.article_domain_optional)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -202,18 +204,18 @@ fun ArticleEditorScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(onClick = { coverPickerLauncher.launch("image/*") }) {
-                                    Icon(Icons.Default.Image, contentDescription = "选择封面", modifier = Modifier.size(18.dp))
-                                    Text("  选择封面")
+                                    Icon(Icons.Default.Image, contentDescription = stringResource(R.string.article_select_cover), modifier = Modifier.size(18.dp))
+                                    Text("  ${stringResource(R.string.article_select_cover)}")
                                 }
                                 if (state.coverImageUri != null) {
                                     InputChip(
                                         selected = false,
                                         onClick = { viewModel.onCoverImageSelected(null) },
-                                        label = { Text("已选封面") },
+                                        label = { Text(stringResource(R.string.article_cover_selected)) },
                                         trailingIcon = {
                                             Icon(
                                                 Icons.Default.Close,
-                                                contentDescription = "移除",
+                                                contentDescription = stringResource(R.string.common_remove),
                                                 modifier = Modifier.size(16.dp)
                                             )
                                         }
@@ -225,11 +227,11 @@ fun ArticleEditorScreen(
 
                     item {
                         EditorSectionCard(
-                            title = "正文结构",
-                            description = "段落会按当前顺序保存；可逐段插图，也可以直接粘贴全文后再细调。"
+                            title = stringResource(R.string.article_body_structure),
+                            description = stringResource(R.string.article_body_structure_desc)
                         ) {
                             Text(
-                                "正文段落将按下方顺序逐项渲染，长文也能保持流畅编辑。",
+                                stringResource(R.string.article_body_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -266,8 +268,8 @@ fun ArticleEditorScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(onClick = viewModel::addParagraph) {
-                                    Icon(Icons.Default.Add, contentDescription = "添加段落", modifier = Modifier.size(18.dp))
-                                    Text("  添加段落")
+                                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.article_add_paragraph), modifier = Modifier.size(18.dp))
+                                    Text("  ${stringResource(R.string.article_add_paragraph)}")
                                 }
                                 OutlinedButton(
                                     onClick = {
@@ -277,8 +279,8 @@ fun ArticleEditorScreen(
                                         }
                                     }
                                 ) {
-                                    Icon(Icons.Default.ContentPaste, contentDescription = "粘贴", modifier = Modifier.size(18.dp))
-                                    Text("  粘贴全文")
+                                    Icon(Icons.Default.ContentPaste, contentDescription = stringResource(R.string.article_paste_full), modifier = Modifier.size(18.dp))
+                                    Text("  ${stringResource(R.string.article_paste_full)}")
                                 }
                             }
                         }
@@ -286,16 +288,16 @@ fun ArticleEditorScreen(
 
                     item {
                         EditorSectionCard(
-                            title = "图片 OCR",
-                            description = "适合从试卷、截图或扫描件快速提取文章内容。"
+                            title = stringResource(R.string.article_image_ocr),
+                            description = stringResource(R.string.article_ocr_desc)
                         ) {
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(onClick = { imagePickerLauncher.launch("image/*") }) {
-                                    Icon(Icons.Default.Image, contentDescription = "选择图片")
-                                    Text("  选择图片")
+                                    Icon(Icons.Default.Image, contentDescription = stringResource(R.string.article_select_image))
+                                    Text("  ${stringResource(R.string.article_select_image)}")
                                 }
                                 Button(
                                     onClick = {
@@ -312,10 +314,10 @@ fun ArticleEditorScreen(
                                             strokeWidth = 2.dp,
                                             color = MaterialTheme.colorScheme.onPrimary
                                         )
-                                        Text("  识别中…")
+                                        Text("  ${stringResource(R.string.article_ocr_recognizing)}")
                                     } else {
-                                        Icon(Icons.Default.AutoAwesome, contentDescription = "AI 处理")
-                                        Text("  AI 识别并填充")
+                                        Icon(Icons.Default.AutoAwesome, contentDescription = stringResource(R.string.article_ai_process))
+                                        Text("  ${stringResource(R.string.article_ai_ocr_fill)}")
                                     }
                                 }
                             }
@@ -330,7 +332,7 @@ fun ArticleEditorScreen(
                                         strokeWidth = 2.dp
                                     )
                                     Text(
-                                        "正在压缩图片…",
+                                        stringResource(R.string.article_compressing_image),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -346,11 +348,11 @@ fun ArticleEditorScreen(
                                         InputChip(
                                             selected = false,
                                             onClick = { viewModel.removeImage(index) },
-                                            label = { Text("图片 ${index + 1}") },
+                                            label = { Text(stringResource(R.string.article_image_number, index + 1)) },
                                             trailingIcon = {
                                                 Icon(
                                                     Icons.Default.Close,
-                                                    contentDescription = "移除",
+                                                    contentDescription = stringResource(R.string.common_remove),
                                                     modifier = Modifier.size(16.dp)
                                                 )
                                             }
@@ -465,7 +467,7 @@ private fun ParagraphEditorCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "段落 ${index + 1}",
+                    stringResource(R.string.article_paragraph_number, index + 1),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -477,14 +479,14 @@ private fun ParagraphEditorCard(
                         onClick = onPickImage,
                         modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(Icons.Default.PhotoCamera, contentDescription = "插图", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.PhotoCamera, contentDescription = stringResource(R.string.article_insert_image), modifier = Modifier.size(18.dp))
                     }
                     if (onRemoveParagraph != null) {
                         IconButton(
                             onClick = onRemoveParagraph,
                             modifier = Modifier.size(32.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "删除段落", modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.article_delete_paragraph), modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -493,7 +495,7 @@ private fun ParagraphEditorCard(
             OutlinedTextField(
                 value = paragraphText,
                 onValueChange = onTextChange,
-                placeholder = { Text("输入段落内容…") },
+                placeholder = { Text(stringResource(R.string.article_paragraph_placeholder)) },
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -502,9 +504,9 @@ private fun ParagraphEditorCard(
                 InputChip(
                     selected = false,
                     onClick = onRemoveImage,
-                    label = { Text("已添加段落插图") },
+                    label = { Text(stringResource(R.string.article_paragraph_image_added)) },
                     trailingIcon = {
-                        Icon(Icons.Default.Close, contentDescription = "移除", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_delete), modifier = Modifier.size(16.dp))
                     }
                 )
             }

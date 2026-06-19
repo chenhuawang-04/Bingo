@@ -24,6 +24,7 @@ import com.xty.englishhelper.domain.usecase.study.GetDueWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.GetNewWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.PreviewIntervalsUseCase
 import com.xty.englishhelper.domain.usecase.study.ReviewWordUseCase
+import com.xty.englishhelper.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -467,16 +468,16 @@ class StudyViewModel @Inject constructor(
     // ── 阶段C：记忆钩子 / 选择题 / Again 拉钩 ──
 
     /** 关系的简短可读标签（用于钩子与选择题题干）。 */
-    private fun relationLabel(type: EdgeType): String = when (type) {
-        EdgeType.SEMANTIC_SYNONYM -> "近义词"
-        EdgeType.SEMANTIC_ANTONYM -> "反义词"
-        EdgeType.LEARNING_CONFUSABLE -> "易混词"
-        EdgeType.LEARNING_MISUSE_PAIR -> "易误用词"
-        EdgeType.FORM_SPELLING -> "形近词"
-        EdgeType.FORM_MINIMAL_PAIR -> "最小对立词"
-        EdgeType.FAMILY_SAME_ROOT -> "同根词"
-        EdgeType.FAMILY_DERIVATION -> "派生词"
-        else -> type.label
+    private fun relationLabel(type: EdgeType): Int = when (type) {
+        EdgeType.SEMANTIC_SYNONYM -> R.string.edge_type_synonym
+        EdgeType.SEMANTIC_ANTONYM -> R.string.edge_type_antonym
+        EdgeType.LEARNING_CONFUSABLE -> R.string.edge_type_confusable
+        EdgeType.LEARNING_MISUSE_PAIR -> R.string.edge_type_misuse
+        EdgeType.FORM_SPELLING -> R.string.edge_type_spelling
+        EdgeType.FORM_MINIMAL_PAIR -> R.string.edge_type_minimal_pair
+        EdgeType.FAMILY_SAME_ROOT -> R.string.edge_type_same_root
+        EdgeType.FAMILY_DERIVATION -> R.string.edge_type_derivation
+        else -> R.string.common_error
     }
 
     private fun hookScore(n: EdgeNeighbor): Double =

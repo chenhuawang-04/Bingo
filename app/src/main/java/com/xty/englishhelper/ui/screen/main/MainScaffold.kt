@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.main
+package com.xty.englishhelper.ui.screen.main
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -30,11 +30,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.window.core.layout.WindowWidthSizeClass
+import com.xty.englishhelper.R
 import com.xty.englishhelper.ui.components.dictionary.QuickDictionarySheet
 import com.xty.englishhelper.ui.debug.AiDebugDialogHost
 import com.xty.englishhelper.ui.navigation.AddWordRoute
@@ -163,25 +165,25 @@ fun MainScaffold(
                                 selected = isInDictionaryTab,
                                 onClick = ::navigateToDictionaryTab,
                                 icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null) },
-                                label = { Text("辞书") }
+                                label = { Text(stringResource(R.string.nav_dictionary)) }
                             )
                             NavigationBarItem(
                                 selected = isInArticleTab,
                                 onClick = ::navigateToArticleTab,
                                 icon = { Icon(Icons.AutoMirrored.Outlined.Article, null) },
-                                label = { Text("文章") }
+                                label = { Text(stringResource(R.string.nav_article)) }
                             )
                             NavigationBarItem(
                                 selected = isInQuestionBankTab,
                                 onClick = ::navigateToQuestionBankTab,
                                 icon = { Icon(Icons.Outlined.Quiz, null) },
-                                label = { Text("题库") }
+                                label = { Text(stringResource(R.string.question_bank)) }
                             )
                             NavigationBarItem(
                                 selected = isInPlanTab,
                                 onClick = ::navigateToPlanTab,
                                 icon = { Icon(Icons.Outlined.DateRange, null) },
-                                label = { Text("计划") }
+                                label = { Text(stringResource(R.string.nav_plan)) }
                             )
                         }
                     }
@@ -197,7 +199,7 @@ fun MainScaffold(
                     .align(Alignment.BottomEnd)
                     .padding(end = 16.dp, bottom = launcherBottomPadding)
             ) {
-                Icon(Icons.Default.Translate, contentDescription = "快捷查词")
+                Icon(Icons.Default.Translate, contentDescription = stringResource(R.string.quick_dictionary))
             }
         }
     } else {
@@ -209,25 +211,25 @@ fun MainScaffold(
                             selected = isInDictionaryTab,
                             onClick = ::navigateToDictionaryTab,
                             icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null) },
-                            label = { Text("辞书") }
+                                label = { Text(stringResource(R.string.nav_dictionary)) }
                         )
                         NavigationRailItem(
                             selected = isInArticleTab,
                             onClick = ::navigateToArticleTab,
                             icon = { Icon(Icons.AutoMirrored.Outlined.Article, null) },
-                            label = { Text("文章") }
+                            label = { Text(stringResource(R.string.nav_article)) }
                         )
                         NavigationRailItem(
                             selected = isInQuestionBankTab,
                             onClick = ::navigateToQuestionBankTab,
                             icon = { Icon(Icons.Outlined.Quiz, null) },
-                            label = { Text("题库") }
+                            label = { Text(stringResource(R.string.question_bank)) }
                         )
                         NavigationRailItem(
                             selected = isInPlanTab,
                             onClick = ::navigateToPlanTab,
                             icon = { Icon(Icons.Outlined.DateRange, null) },
-                            label = { Text("计划") }
+                            label = { Text(stringResource(R.string.nav_plan)) }
                         )
                     }
                 }
@@ -240,7 +242,7 @@ fun MainScaffold(
                     .align(Alignment.BottomEnd)
                     .padding(end = 20.dp, bottom = launcherBottomPadding)
             ) {
-                Icon(Icons.Default.Translate, contentDescription = "快捷查词")
+                Icon(Icons.Default.Translate, contentDescription = stringResource(R.string.quick_dictionary))
             }
         }
 

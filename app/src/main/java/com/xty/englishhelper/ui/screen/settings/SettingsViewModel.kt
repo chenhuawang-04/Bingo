@@ -200,6 +200,11 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(scanRescoreAfterHours = value) }
             }
         }
+        viewModelScope.launch {
+            settingsDataStore.appLocale.collect { value ->
+                _uiState.update { it.copy(appLocale = value) }
+            }
+        }
         initCloudSync()
     }
 
@@ -563,6 +568,12 @@ class SettingsViewModel @Inject constructor(
         val clamped = value.coerceIn(1, 720)
         _uiState.update { it.copy(scanRescoreAfterHours = clamped) }
         viewModelScope.launch { settingsDataStore.setScanRescoreAfterHours(clamped) }
+    }
+
+    fun onLocaleChange(locale: String) {
+        _uiState.update { it.copy(appLocale = locale) }
+        viewModelScope.launch { settingsDataStore.setAppLocale(locale) }
+        com.xty.englishhelper.EnglishHelperApp.applyLocale(locale)
     }
 
     fun playTtsSample() {

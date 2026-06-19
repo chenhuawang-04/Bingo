@@ -22,7 +22,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -51,9 +53,9 @@ fun ParagraphAnalysisCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("分析结果", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.article_analysis_result), style = MaterialTheme.typography.labelMedium)
                     Text(
-                        if (expanded) "点击收起详细整理结果" else "点击展开逐句翻译、语法和重点词汇",
+                        if (expanded) stringResource(R.string.article_analysis_collapse) else stringResource(R.string.article_analysis_expand),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -61,7 +63,7 @@ fun ParagraphAnalysisCard(
                 IconButton(onClick = onToggleExpanded) {
                     Icon(
                         imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "收起" else "展开"
+                        contentDescription = if (expanded) stringResource(R.string.article_collapse) else stringResource(R.string.article_expand)
                     )
                 }
             }
@@ -69,7 +71,7 @@ fun ParagraphAnalysisCard(
             if (expanded) {
                 // Sentence breakdowns
                 if (analysis.sentenceBreakdowns.isNotEmpty()) {
-                    Text("逐句翻译", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.article_sentence_translation), style = MaterialTheme.typography.labelMedium)
                     analysis.sentenceBreakdowns.forEach { breakdown ->
                         Column(
                             modifier = Modifier.padding(start = 8.dp),
@@ -104,7 +106,7 @@ fun ParagraphAnalysisCard(
                 // Grammar points
                 if (analysis.grammarPoints.isNotEmpty()) {
                     HorizontalDivider()
-                    Text("语法要点", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.article_grammar_points), style = MaterialTheme.typography.labelMedium)
                     analysis.grammarPoints.forEach { point ->
                         Row(
                             modifier = Modifier.padding(start = 8.dp),
@@ -131,7 +133,7 @@ fun ParagraphAnalysisCard(
                 // Key vocabulary
                 if (analysis.keyVocabulary.isNotEmpty()) {
                     HorizontalDivider()
-                    Text("重点词汇", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.article_key_vocabulary), style = MaterialTheme.typography.labelMedium)
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)

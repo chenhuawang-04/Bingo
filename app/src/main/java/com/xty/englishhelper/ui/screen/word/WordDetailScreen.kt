@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.ui.screen.word
+package com.xty.englishhelper.ui.screen.word
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -23,8 +23,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.ui.components.ConfirmDialog
 import com.xty.englishhelper.ui.components.LoadingIndicator
 import com.xty.englishhelper.ui.components.WordDetailContent
@@ -55,7 +57,7 @@ fun WordDetailScreen(
                 title = { Text(word?.spelling ?: "") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -70,7 +72,7 @@ fun WordDetailScreen(
                         ) {
                             Icon(
                                 if (isSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isSpeaking) "暂停朗读" else "朗读"
+                                contentDescription = if (isSpeaking) stringResource(R.string.word_tts_pause) else stringResource(R.string.word_tts_play)
                             )
                         }
                         TextButton(
@@ -86,12 +88,12 @@ fun WordDetailScreen(
                             Text("UK")
                         }
                         IconButton(onClick = { onEdit(word.dictionaryId, word.id) }) {
-                            Icon(Icons.Default.Edit, contentDescription = "编辑")
+                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
                         }
                         IconButton(onClick = viewModel::showDeleteDialog) {
                             Icon(
                                 Icons.Default.Delete,
-                                contentDescription = "删除",
+                                contentDescription = stringResource(R.string.common_delete),
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
@@ -104,7 +106,7 @@ fun WordDetailScreen(
         when {
             state.isLoading -> LoadingIndicator(Modifier.padding(padding))
             word == null -> Text(
-                "单词不存在",
+                stringResource(R.string.word_not_exists),
                 modifier = Modifier
                     .padding(padding)
                     .padding(16.dp)
@@ -132,8 +134,8 @@ fun WordDetailScreen(
 
     if (state.showDeleteDialog) {
         ConfirmDialog(
-            title = "删除单词",
-            message = "确定要删除单词「${word?.spelling}」吗？",
+            title = stringResource(R.string.word_delete_title),
+            message = stringResource(R.string.dict_delete_word_confirm, word?.spelling ?: ""),
             onConfirm = { viewModel.confirmDelete(onBack) },
             onDismiss = viewModel::dismissDeleteDialog
         )

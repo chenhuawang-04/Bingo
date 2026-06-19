@@ -50,10 +50,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.QuickDictionaryEntry
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 import com.xty.englishhelper.ui.screen.dictionary.QuickDictionaryViewModel
@@ -95,15 +97,15 @@ fun QuickDictionarySheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("快捷查词", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.quick_dictionary), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "支持中->英候选词 + Cambridge/OED 词条",
+                        stringResource(R.string.dict_quick_lookup_desc),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "关闭")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close))
                 }
             }
 
@@ -138,8 +140,8 @@ fun QuickDictionarySheet(
                 onValueChange = viewModel::updateQuery,
                 label = {
                     Text(
-                        if (state.mode == QuickLookupMode.ZH_TO_EN) "输入中文含义（如：白色的）"
-                        else "输入英语单词（如：white）"
+                        if (state.mode == QuickLookupMode.ZH_TO_EN) stringResource(R.string.dict_input_zh_hint)
+                        else stringResource(R.string.dict_input_en_hint)
                     )
                 },
                 singleLine = true,
@@ -164,7 +166,7 @@ fun QuickDictionarySheet(
                             onClick = viewModel::submitQuery,
                             enabled = state.query.isNotBlank()
                         ) {
-                            Icon(Icons.Default.Search, contentDescription = "搜索")
+                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.common_search))
                         }
                     }
                 }
@@ -181,7 +183,7 @@ fun QuickDictionarySheet(
             if (state.suggestions.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        "候选词",
+                        stringResource(R.string.dict_suggestions),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -281,14 +283,14 @@ private fun GroupCard(
                         )
                     }
                     Text(
-                        text = "${entries.size} 个词条版本",
+                        text = stringResource(R.string.dict_entry_count_format, entries.size),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "收起" else "展开"
+                    contentDescription = if (expanded) stringResource(R.string.article_collapse) else stringResource(R.string.article_expand)
                 )
             }
 
@@ -338,7 +340,7 @@ private fun EntrySummaryRow(entry: QuickDictionaryEntry, onClick: () -> Unit) {
                     }
                 }
                 TextButton(onClick = { uriHandler.openUri(entry.sourceUrl) }) {
-                    Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = "打开链接")
+                    Icon(Icons.AutoMirrored.Filled.Launch, contentDescription = stringResource(R.string.common_open_link))
                     Spacer(Modifier.width(4.dp))
                     Text(entry.sourceLabel)
                 }
@@ -412,7 +414,7 @@ private fun EntryDetailDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "来源：${entry.sourceLabel}",
+                    text = stringResource(R.string.dict_source_format, entry.sourceLabel),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -420,16 +422,16 @@ private fun EntryDetailDialog(
                     Text(entry.pronunciation ?: "", style = MaterialTheme.typography.bodyMedium)
                 }
                 if (!entry.timeRange.isNullOrBlank()) {
-                    Text("时间范围：${entry.timeRange}", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.dict_time_range, entry.timeRange ?: ""), style = MaterialTheme.typography.bodySmall)
                 }
                 if (entry.tags.isNotEmpty()) {
-                    Text("标签：${entry.tags.joinToString(" / ")}", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.dict_tags, entry.tags.joinToString(" / ")), style = MaterialTheme.typography.bodySmall)
                 }
                 if (!entry.etymologySummary.isNullOrBlank()) {
-                    Text("词源：${entry.etymologySummary}", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.dict_etymology, entry.etymologySummary ?: ""), style = MaterialTheme.typography.bodySmall)
                 }
                 if (entry.summary.isNotBlank()) {
-                    Text("摘要：${entry.summary}", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.dict_summary_format, entry.summary), style = MaterialTheme.typography.bodyMedium)
                 }
                 entry.senses.forEachIndexed { index, sense ->
                     Text("${index + 1}. $sense", style = MaterialTheme.typography.bodySmall)
@@ -438,12 +440,12 @@ private fun EntryDetailDialog(
         },
         confirmButton = {
             TextButton(onClick = { uriHandler.openUri(entry.sourceUrl) }) {
-                Text("打开原词典")
+                Text(stringResource(R.string.dict_open_original))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(stringResource(R.string.common_close))
             }
         }
     )

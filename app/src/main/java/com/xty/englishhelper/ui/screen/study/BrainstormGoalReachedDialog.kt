@@ -16,8 +16,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import kotlin.math.max
 
 @Composable
@@ -35,7 +37,7 @@ fun BrainstormGoalReachedDialog(
         onDismissRequest = { /* Cannot dismiss */ },
         title = {
             Text(
-                text = "今日目标达成！",
+                text = stringResource(R.string.study_goal_reached_title),
                 style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center
@@ -59,7 +61,7 @@ fun BrainstormGoalReachedDialog(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "目标 $target",
+                            text = stringResource(R.string.study_goal_target_label, target),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -72,18 +74,18 @@ fun BrainstormGoalReachedDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    GoalStat(label = "复习", value = dueLearned)
-                    GoalStat(label = "新词", value = newLearned)
+                    GoalStat(label = stringResource(R.string.study_goal_review), value = dueLearned)
+                    GoalStat(label = stringResource(R.string.study_goal_new), value = newLearned)
                 }
             }
         },
         confirmButton = {
             Row {
                 TextButton(onClick = onExit) {
-                    Text("结束今日")
+                    Text(stringResource(R.string.study_goal_end_today))
                 }
                 TextButton(onClick = onContinue) {
-                    Text("继续背词")
+                    Text(stringResource(R.string.study_goal_continue))
                 }
             }
         }

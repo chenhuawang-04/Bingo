@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
@@ -127,12 +129,12 @@ fun ParagraphBlock(
                     if (imageUri != null) {
                         AsyncImage(
                             model = imageUri,
-                            contentDescription = "段落图片",
-                            modifier = Modifier.fillMaxWidth(),
-                            contentScale = ContentScale.FillWidth
-                        )
-                    }
-                    if (paragraph.text.isNotBlank()) {
+                        contentDescription = stringResource(R.string.article_paragraph_image),
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.FillWidth
+                    )
+                }
+                if (paragraph.text.isNotBlank()) {
                         Text(
                             paragraph.text,
                             style = MaterialTheme.typography.labelSmall,
@@ -171,7 +173,7 @@ fun ParagraphBlock(
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "翻译中…",
+                        stringResource(R.string.article_translating),
                         style = MaterialTheme.typography.bodySmall,
                         color = readerColors.meta
                     )
@@ -186,7 +188,7 @@ fun ParagraphBlock(
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                         modifier = Modifier.padding(start = 10.dp)
                     ) {
-                        Text("重试翻译", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.article_retry_translate), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
@@ -197,7 +199,7 @@ fun ParagraphBlock(
             if (paraImage != null && paragraph.paragraphType != ParagraphType.IMAGE) {
                 AsyncImage(
                     model = paraImage,
-                    contentDescription = "段落图片",
+                    contentDescription = stringResource(R.string.article_paragraph_image),
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(4.dp)),
@@ -225,7 +227,7 @@ fun ParagraphBlock(
                         strokeWidth = 2.dp
                     )
                 }
-                Text(if (analysis != null) "重新整理" else "整理", style = MaterialTheme.typography.labelSmall)
+                Text(if (analysis != null) stringResource(R.string.article_reanalyze) else stringResource(R.string.article_analyze), style = MaterialTheme.typography.labelSmall)
             }
         }
 
@@ -265,30 +267,30 @@ fun TtsPlaybackBar(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "朗读 ${currentIndex + 1}/$total",
+                    stringResource(R.string.article_tts_current, currentIndex + 1, total),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = onToggleFollow) {
-                    Text(if (followEnabled) "跟随" else "手动")
+                    Text(if (followEnabled) stringResource(R.string.article_tts_follow) else stringResource(R.string.article_tts_manual))
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onPrev, enabled = currentIndex > 0) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "上一段")
+                    Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(R.string.article_tts_prev))
                 }
                 IconButton(onClick = onPlayPause) {
                     Icon(
                         if (isSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isSpeaking) "暂停" else "播放"
+                        contentDescription = if (isSpeaking) stringResource(R.string.common_pause) else stringResource(R.string.article_tts_play_label)
                     )
                 }
                 IconButton(onClick = onNext, enabled = currentIndex < total - 1) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "下一段")
+                    Icon(Icons.Default.SkipNext, contentDescription = stringResource(R.string.article_tts_next))
                 }
                 IconButton(onClick = onStop) {
-                    Icon(Icons.Default.Stop, contentDescription = "停止")
+                    Icon(Icons.Default.Stop, contentDescription = stringResource(R.string.common_stop))
                 }
             }
         }

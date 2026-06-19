@@ -75,6 +75,7 @@ class SettingsDataStore @Inject constructor(
         val BRAINSTORM_QUALITY_MIN_CONFIDENCE = floatPreferencesKey("brainstorm_quality_min_confidence")
         val BRAINSTORM_ACTIVE_RECALL = booleanPreferencesKey("brainstorm_active_recall")
         val SCAN_RESCORE_AFTER_HOURS = intPreferencesKey("scan_rescore_after_hours")
+        val APP_LOCALE = stringPreferencesKey("app_locale")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
     }
@@ -687,8 +688,14 @@ class SettingsDataStore @Inject constructor(
 
     val scanRescoreAfterHours: Flow<Int> = dataStore.data.map { (it[SCAN_RESCORE_AFTER_HOURS] ?: 24).coerceIn(1, 720) }
 
+    val appLocale: Flow<String> = dataStore.data.map { it[APP_LOCALE] ?: "system" }
+
     suspend fun setScanRescoreAfterHours(value: Int) {
         dataStore.edit { it[SCAN_RESCORE_AFTER_HOURS] = value.coerceIn(1, 720) }
+    }
+
+    suspend fun setAppLocale(locale: String) {
+        dataStore.edit { it[APP_LOCALE] = locale }
     }
 
     suspend fun setGitHubOwner(owner: String) {

@@ -1,4 +1,4 @@
-﻿package com.xty.englishhelper.data.repository
+package com.xty.englishhelper.data.repository
 
 import com.xty.englishhelper.data.local.dao.PlanDao
 import com.xty.englishhelper.data.local.entity.PlanDayRecordEntity
@@ -150,7 +150,7 @@ class PlanRepositoryImpl @Inject constructor(
         val now = System.currentTimeMillis()
         val templateId = dao.insertTemplate(
             PlanTemplateEntity(
-                name = "默认计划",
+                name = "Default Plan",
                 isActive = 1,
                 createdAt = now,
                 updatedAt = now
@@ -160,7 +160,7 @@ class PlanRepositoryImpl @Inject constructor(
             PlanItemEntity(
                 templateId = templateId,
                 type = PlanTaskType.REVIEW_DUE_WORDS.name,
-                title = "复习到期单词",
+                title = "Review Due Words",
                 targetCount = 1,
                 autoEnabled = 1,
                 autoSource = PlanAutoSource.STUDY_DUE_SESSION.name,
@@ -171,7 +171,7 @@ class PlanRepositoryImpl @Inject constructor(
             PlanItemEntity(
                 templateId = templateId,
                 type = PlanTaskType.STUDY_NEW_WORDS.name,
-                title = "学习新词单元",
+                title = "Study New Words",
                 targetCount = 1,
                 autoEnabled = 1,
                 autoSource = PlanAutoSource.STUDY_NEW_SESSION.name,
@@ -182,7 +182,7 @@ class PlanRepositoryImpl @Inject constructor(
             PlanItemEntity(
                 templateId = templateId,
                 type = PlanTaskType.READ_ARTICLE.name,
-                title = "阅读文章",
+                title = "Read Article",
                 targetCount = 1,
                 autoEnabled = 1,
                 autoSource = PlanAutoSource.ARTICLE_OPEN.name,
@@ -193,7 +193,7 @@ class PlanRepositoryImpl @Inject constructor(
             PlanItemEntity(
                 templateId = templateId,
                 type = PlanTaskType.PRACTICE_QUESTIONS.name,
-                title = "题库练习",
+                title = "Question Practice",
                 targetCount = 1,
                 autoEnabled = 1,
                 autoSource = PlanAutoSource.QUESTION_SUBMIT.name,

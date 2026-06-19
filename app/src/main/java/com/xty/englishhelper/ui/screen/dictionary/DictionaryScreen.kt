@@ -57,8 +57,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.organize.OrganizeTaskStatus
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
@@ -122,10 +124,10 @@ fun DictionaryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.dictionary?.name ?: "辞书") },
+                title = { Text(state.dictionary?.name ?: stringResource(R.string.nav_dictionary)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -133,7 +135,7 @@ fun DictionaryScreen(
                         IconButton(onClick = viewModel::showFilterDialog) {
                             Icon(
                                 Icons.Default.FilterList,
-                                contentDescription = "筛选",
+                                contentDescription = stringResource(R.string.dict_filter),
                                 tint = if (state.hasActiveWordFilter) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
@@ -142,21 +144,21 @@ fun DictionaryScreen(
                             )
                         }
                         TextButton(onClick = viewModel::toggleBatchMode) {
-                            Text(if (state.isBatchMode) "退出批量" else "批量")
+                            Text(if (state.isBatchMode) stringResource(R.string.dict_exit_batch) else stringResource(R.string.dict_batch_mode))
                         }
                         IconButton(onClick = { onStudy(dict.id) }) {
-                            Icon(Icons.Default.School, contentDescription = "背单词")
+                            Icon(Icons.Default.School, contentDescription = stringResource(R.string.study_title))
                         }
                         Box {
                             IconButton(onClick = { showPoolMenu = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_more))
                             }
                             DropdownMenu(
                                 expanded = showPoolMenu,
                                 onDismissRequest = { showPoolMenu = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("生成词池（均衡·本地）") },
+                                    text = { Text(stringResource(R.string.dict_pool_balanced)) },
                                     onClick = {
                                         showPoolMenu = false
                                         viewModel.requestRebuildPools(PoolStrategy.BALANCED)
@@ -164,7 +166,7 @@ fun DictionaryScreen(
                                     enabled = !state.isRebuildingPools
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("生成词池（均衡+AI）") },
+                                    text = { Text(stringResource(R.string.dict_pool_balanced_ai)) },
                                     onClick = {
                                         showPoolMenu = false
                                         viewModel.requestRebuildPools(PoolStrategy.BALANCED_WITH_AI)
@@ -172,7 +174,7 @@ fun DictionaryScreen(
                                     enabled = !state.isRebuildingPools
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("生成词池（质量优先·高消耗）") },
+                                    text = { Text(stringResource(R.string.dict_pool_quality_first)) },
                                     onClick = {
                                         showPoolMenu = false
                                         viewModel.requestRebuildPools(PoolStrategy.QUALITY_FIRST)
@@ -180,7 +182,7 @@ fun DictionaryScreen(
                                     enabled = !state.isRebuildingPools
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("审核词池（AI 复查·质量优先）") },
+                                    text = { Text(stringResource(R.string.dict_pool_review)) },
                                     onClick = {
                                         showPoolMenu = false
                                         viewModel.requestReviewPools()
@@ -199,21 +201,21 @@ fun DictionaryScreen(
             state.dictionary?.let { dict ->
                 Box {
                     FloatingActionButton(onClick = { showFabMenu = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "添加单词")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.dict_add_word))
                     }
                     DropdownMenu(
                         expanded = showFabMenu,
                         onDismissRequest = { showFabMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("手动添加") },
+                            text = { Text(stringResource(R.string.dict_manual_add)) },
                             onClick = {
                                 showFabMenu = false
                                 onAddWord(dict.id)
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("拍照批量导入") },
+                            text = { Text(stringResource(R.string.dict_photo_batch_import)) },
                             onClick = {
                                 showFabMenu = false
                                 onBatchImport(dict.id)
@@ -273,7 +275,7 @@ fun DictionaryScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "选择一个单词查看详情",
+                                text = stringResource(R.string.dict_select_word_hint),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -303,8 +305,8 @@ fun DictionaryScreen(
 
     state.deleteTarget?.let { word ->
         ConfirmDialog(
-            title = "删除单词",
-            message = "确定要删除单词「${word.spelling}」吗？",
+            title = stringResource(R.string.dict_delete_word),
+            message = stringResource(R.string.dict_delete_word_confirm, word.spelling),
             onConfirm = viewModel::confirmDelete,
             onDismiss = viewModel::dismissDelete
         )
@@ -313,12 +315,12 @@ fun DictionaryScreen(
     if (state.showCreateUnitDialog) {
         AlertDialog(
             onDismissRequest = viewModel::dismissCreateUnitDialog,
-            title = { Text("新建单元") },
+            title = { Text(stringResource(R.string.dict_new_unit)) },
             text = {
                 OutlinedTextField(
                     value = state.newUnitName,
                     onValueChange = viewModel::onNewUnitNameChange,
-                    label = { Text("单元名称") },
+                    label = { Text(stringResource(R.string.dict_unit_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -328,12 +330,12 @@ fun DictionaryScreen(
                     onClick = viewModel::confirmCreateUnit,
                     enabled = state.newUnitName.isNotBlank()
                 ) {
-                    Text("创建")
+                    Text(stringResource(R.string.common_create))
                 }
             },
             dismissButton = {
                 TextButton(onClick = viewModel::dismissCreateUnitDialog) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -356,8 +358,8 @@ fun DictionaryScreen(
 
     if (state.showBatchDeleteConfirm) {
         ConfirmDialog(
-            title = "批量删除单词",
-            message = "确定要删除已选的 ${state.selectedWordIds.size} 个单词吗？此操作不可撤销。",
+            title = stringResource(R.string.dict_batch_delete_title),
+            message = stringResource(R.string.dict_batch_delete_confirm, state.selectedWordIds.size),
             onConfirm = viewModel::confirmDeleteSelectedWords,
             onDismiss = viewModel::dismissBatchDeleteConfirm
         )
@@ -368,21 +370,21 @@ fun DictionaryScreen(
         val estimatedTokens = state.qfWordCount * 600
         AlertDialog(
             onDismissRequest = viewModel::dismissQfConfirmDialog,
-            title = { Text("质量优先策略确认") },
+            title = { Text(stringResource(R.string.dict_qf_confirm_title)) },
             text = {
                 Column {
-                    Text("将对词典中 ${state.qfWordCount} 个词各发起一次 AI 请求")
+                    Text(stringResource(R.string.dict_qf_confirm_detail, state.qfWordCount))
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("预计消耗约 ${state.qfWordCount} x 600 = $estimatedTokens tokens")
+                    Text(stringResource(R.string.dict_qf_confirm_tokens, state.qfWordCount, estimatedTokens))
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "增量构建：从上次中断处继续，保留已有进度。支持暂停/恢复。",
+                        stringResource(R.string.dict_qf_incremental),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        "完全重建：清除所有已有边数据，从头开始。",
+                        stringResource(R.string.dict_qf_full_rebuild),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -391,16 +393,16 @@ fun DictionaryScreen(
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = viewModel::confirmQfFullRebuild) {
-                        Text("完全重建")
+                        Text(stringResource(R.string.dict_qf_full_rebuild_btn))
                     }
                     TextButton(onClick = viewModel::confirmQfRebuild) {
-                        Text("增量构建")
+                        Text(stringResource(R.string.dict_qf_incremental_btn))
                     }
                 }
             },
             dismissButton = {
                 TextButton(onClick = viewModel::dismissQfConfirmDialog) {
-                    Text("取消")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -410,11 +412,11 @@ fun DictionaryScreen(
     if (state.showOrganizeDetailDialog) {
         AlertDialog(
             onDismissRequest = viewModel::dismissOrganizeDetailDialog,
-            title = { Text("后台整理任务") },
+            title = { Text(stringResource(R.string.dict_organize_detail_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.organizeTasks.isEmpty()) {
-                        Text("暂无任务")
+                        Text(stringResource(R.string.dict_organize_no_tasks))
                     } else {
                         state.organizeTasks.values.forEach { task ->
                             Row(
@@ -433,24 +435,24 @@ fun DictionaryScreen(
                                     )
                                     when (task.status) {
                                         OrganizeTaskStatus.ORGANIZING -> Text(
-                                            "整理中…",
+                                            stringResource(R.string.dict_organize_organizing),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                         OrganizeTaskStatus.SUCCESS -> Text(
-                                            "完成",
+                                            stringResource(R.string.dict_organize_done),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.tertiary
                                         )
                                         OrganizeTaskStatus.FAILED -> Text(
-                                            task.error ?: "失败",
+                                            task.error ?: stringResource(R.string.common_failed),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.error,
                                             maxLines = 1,
                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                         )
                                         OrganizeTaskStatus.PAUSED -> Text(
-                                            "已暂停",
+                                            stringResource(R.string.dict_organize_paused),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -460,11 +462,11 @@ fun DictionaryScreen(
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         if (task.status == OrganizeTaskStatus.PAUSED) {
                                             TextButton(onClick = { viewModel.resumeOrganizeTask(task.wordId) }) {
-                                                Text("继续")
+                                                Text(stringResource(R.string.common_resume))
                                             }
                                         }
                                         TextButton(onClick = { viewModel.dismissOrganizeTask(task.wordId) }) {
-                                            Text("清除")
+                                            Text(stringResource(R.string.common_clear))
                                         }
                                     }
                                 }
@@ -475,24 +477,24 @@ fun DictionaryScreen(
             },
             confirmButton = {
                 TextButton(onClick = viewModel::dismissOrganizeDetailDialog) {
-                    Text("关闭")
+                    Text(stringResource(R.string.common_close))
                 }
             },
             dismissButton = {
                 Row {
                     if (state.organizeTasks.any { it.value.status == OrganizeTaskStatus.FAILED }) {
                         TextButton(onClick = viewModel::retryAllFailedOrganizeTasks) {
-                            Text("重试全部失败")
+                            Text(stringResource(R.string.dict_retry_all_failed))
                         }
                     }
                     if (state.organizeTasks.any { it.value.status == OrganizeTaskStatus.PAUSED }) {
                         TextButton(onClick = viewModel::resumeAllPausedOrganizeTasks) {
-                            Text("继续全部暂停")
+                            Text(stringResource(R.string.dict_resume_all_paused))
                         }
                     }
                     if (state.organizeTasks.any { it.value.status != OrganizeTaskStatus.ORGANIZING }) {
                         TextButton(onClick = viewModel::dismissAllOrganizeTasks) {
-                            Text("清除已完成")
+                            Text(stringResource(R.string.dict_clear_finished))
                         }
                     }
                 }
@@ -514,7 +516,7 @@ private fun DictionaryListContent(
     SearchBar(
         query = state.searchQuery,
         onQueryChange = viewModel::onSearchQueryChange,
-        placeholder = "搜索单词…",
+        placeholder = stringResource(R.string.dict_search_words),
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
     )
 
@@ -527,19 +529,19 @@ private fun DictionaryListContent(
     ) {
         Text(
             text = if (state.hasActiveWordFilter) {
-                "筛选后 ${state.filteredWords.size}/${state.words.size} 词"
+                stringResource(R.string.dict_words_filtered, state.filteredWords.size, state.words.size)
             } else {
-                "共 ${state.words.size} 词"
+                stringResource(R.string.dict_words_total, state.words.size)
             },
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (state.hasActiveWordFilter) {
-                TextButton(onClick = viewModel::resetWordFilter) { Text("清除筛选") }
+                TextButton(onClick = viewModel::resetWordFilter) { Text(stringResource(R.string.dict_clear_filter)) }
             }
             if (state.isBatchMode) {
-                TextButton(onClick = viewModel::selectAllFilteredWords) { Text("全选筛选结果") }
+                TextButton(onClick = viewModel::selectAllFilteredWords) { Text(stringResource(R.string.dict_select_all_filtered)) }
             }
         }
     }
@@ -553,19 +555,19 @@ private fun DictionaryListContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "已选 ${state.selectedWordIds.size} 个",
+                stringResource(R.string.dict_selected_count, state.selectedWordIds.size),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-            TextButton(onClick = viewModel::clearBatchSelection) { Text("清空") }
+            TextButton(onClick = viewModel::clearBatchSelection) { Text(stringResource(R.string.dict_clear_selection)) }
             TextButton(
                 onClick = viewModel::deleteSelectedWords,
                 enabled = state.selectedWordIds.isNotEmpty()
-            ) { Text("删除") }
+            ) { Text(stringResource(R.string.common_delete)) }
             TextButton(
                 onClick = viewModel::reorganizeSelectedWords,
                 enabled = state.selectedWordIds.isNotEmpty()
-            ) { Text("重新整理") }
+            ) { Text(stringResource(R.string.dict_reorganize)) }
         }
     }
 
@@ -573,7 +575,7 @@ private fun DictionaryListContent(
         state.isLoading -> LoadingIndicator()
         state.searchQuery.isNotEmpty() -> {
             if (state.filteredWords.isEmpty()) {
-                EmptyState(message = "未找到匹配的单词")
+                EmptyState(message = stringResource(R.string.dict_no_match))
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
@@ -597,7 +599,7 @@ private fun DictionaryListContent(
                             totalPages = state.totalPages,
                             onPrevious = viewModel::previousPage,
                             onNext = viewModel::nextPage,
-                            sectionLabel = "单词"
+                            sectionLabel = stringResource(R.string.dict_word_section)
                         )
                     }
                 }
@@ -619,12 +621,12 @@ private fun DictionaryListContent(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "单元 (${state.units.size})",
+                                    text = stringResource(R.string.dict_unit_count, state.units.size),
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                                 TextButton(onClick = viewModel::showCreateUnitDialog) {
-                                    Text("新建单元")
+                                    Text(stringResource(R.string.dict_new_unit))
                                 }
                             }
                         }
@@ -633,7 +635,7 @@ private fun DictionaryListContent(
                     if (state.units.isEmpty()) {
                         item {
                             Text(
-                                text = "还没有单元，点击「新建单元」创建",
+                                text = stringResource(R.string.dict_no_units),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -658,7 +660,7 @@ private fun DictionaryListContent(
                                     totalPages = state.totalUnitPages,
                                     onPrevious = viewModel::previousUnitPage,
                                     onNext = viewModel::nextUnitPage,
-                                    sectionLabel = "单元"
+                                    sectionLabel = stringResource(R.string.dict_unit_section)
                                 )
                             }
                         }
@@ -689,13 +691,13 @@ private fun DictionaryListContent(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
-                                        text = "词池 ${state.poolCount} 个",
+                                        text = stringResource(R.string.dict_pool_count, state.poolCount),
                                         style = MaterialTheme.typography.titleSmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     if (state.outdatedStrategies.isNotEmpty()) {
                                         Text(
-                                            text = "算法已更新，建议重建",
+                                            text = stringResource(R.string.dict_algorithm_updated),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.error
                                         )
@@ -722,20 +724,20 @@ private fun DictionaryListContent(
                                 if (isBuilding) {
                                     Icon(
                                         Icons.Default.ChevronRight,
-                                        contentDescription = "查看详情",
+                                        contentDescription = stringResource(R.string.common_view_detail),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 } else if (canViewPools) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            text = "查看图谱",
+                                            text = stringResource(R.string.dict_view_graph),
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                         Icon(
                                             Icons.Default.ChevronRight,
-                                            contentDescription = "查看词池关系图谱",
+                                            contentDescription = stringResource(R.string.dict_view_pool_graph),
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(20.dp)
                                         )
@@ -771,13 +773,13 @@ private fun DictionaryListContent(
                                             if (state.isBuildPaused) viewModel.resumeRebuild() else viewModel.pauseRebuild()
                                         }
                                     ) {
-                                        Text(if (state.isBuildPaused) "继续" else "暂停")
+                                        Text(if (state.isBuildPaused) stringResource(R.string.common_resume) else stringResource(R.string.common_pause))
                                     }
                                     TextButton(onClick = viewModel::cancelRebuild) {
-                                        Text("取消")
+                                        Text(stringResource(R.string.common_cancel))
                                     }
                                     TextButton(onClick = onPoolBuildDetail) {
-                                        Text("详情")
+                                        Text(stringResource(R.string.common_details))
                                     }
                                 }
                             }
@@ -792,7 +794,7 @@ private fun DictionaryListContent(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
-                                        text = if (state.isReviewPaused) "审核已暂停" else "审核中",
+                                        text = if (state.isReviewPaused) stringResource(R.string.dict_review_paused) else stringResource(R.string.dict_reviewing),
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.tertiary
                                     )
@@ -832,10 +834,10 @@ private fun DictionaryListContent(
                                             if (state.isReviewPaused) viewModel.resumeReview() else viewModel.pauseReview()
                                         }
                                     ) {
-                                        Text(if (state.isReviewPaused) "继续" else "暂停")
+                                        Text(if (state.isReviewPaused) stringResource(R.string.common_resume) else stringResource(R.string.common_pause))
                                     }
                                     TextButton(onClick = viewModel::cancelReview) {
-                                        Text("取消")
+                                        Text(stringResource(R.string.common_cancel))
                                     }
                                 }
                             }
@@ -856,18 +858,18 @@ private fun DictionaryListContent(
                                 val success = state.organizeTasks.count { it.value.status == OrganizeTaskStatus.SUCCESS }
                                 val paused = state.organizeTasks.count { it.value.status == OrganizeTaskStatus.PAUSED }
                                 val label = buildString {
-                                    if (organizing > 0) append("整理中: ${organizing}个")
+                                    if (organizing > 0) append(stringResource(R.string.dict_organizing_count, organizing))
                                     if (success > 0) {
                                         if (isNotEmpty()) append("  ")
-                                        append("已完成: ${success}个")
+                                        append(stringResource(R.string.dict_organized_count, success))
                                     }
                                     if (failed > 0) {
                                         if (isNotEmpty()) append("  ")
-                                        append("失败: ${failed}个")
+                                        append(stringResource(R.string.dict_failed_count, failed))
                                     }
                                     if (paused > 0) {
                                         if (isNotEmpty()) append("  ")
-                                        append("已暂停: ${paused}个")
+                                        append(stringResource(R.string.dict_paused_count, paused))
                                     }
                                 }
                                 if (label.isNotEmpty()) {
@@ -881,7 +883,7 @@ private fun DictionaryListContent(
 
                     item {
                         Text(
-                            text = "全部单词 (${state.filteredWords.size})",
+                            text = stringResource(R.string.dict_all_words, state.filteredWords.size),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -892,9 +894,9 @@ private fun DictionaryListContent(
                         item {
                             EmptyState(
                                 message = if (state.hasActiveWordFilter || state.searchQuery.isNotBlank()) {
-                                    "当前筛选下没有单词"
+                                    stringResource(R.string.dict_no_words_in_filter)
                                 } else {
-                                    "辞书中还没有单词\n点击 + 添加一个吧"
+                                    stringResource(R.string.dict_empty_words)
                                 }
                             )
                         }
@@ -917,7 +919,7 @@ private fun DictionaryListContent(
                         totalPages = state.totalPages,
                         onPrevious = viewModel::previousPage,
                         onNext = viewModel::nextPage,
-                        sectionLabel = "单词"
+                        sectionLabel = stringResource(R.string.dict_word_section)
                     )
                 }
             }
@@ -993,13 +995,13 @@ private fun DictionaryFilterDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("筛选单词") },
+        title = { Text(stringResource(R.string.dict_filter_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = startsWith,
                     onValueChange = { startsWith = it.take(1) },
-                    label = { Text("首字母") },
+                    label = { Text(stringResource(R.string.dict_filter_first_letter)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1007,38 +1009,38 @@ private fun DictionaryFilterDialog(
                     OutlinedTextField(
                         value = minLen,
                         onValueChange = { minLen = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("最短长度") },
+                        label = { Text(stringResource(R.string.dict_filter_min_length)) },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
                         value = maxLen,
                         onValueChange = { maxLen = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("最长长度") },
+                        label = { Text(stringResource(R.string.dict_filter_max_length)) },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
                 if (!lengthValid) {
                     Text(
-                        text = "长度区间无效：最短长度不能大于最长长度",
+                        text = stringResource(R.string.dict_filter_length_invalid),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
                 }
-                Text("词条存在情况", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.dict_filter_entry_presence), style = MaterialTheme.typography.labelMedium)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    PresenceChip("音标", phonetic) { phonetic = it }
-                    PresenceChip("释义", meanings) { meanings = it }
-                    PresenceChip("词根解释", rootExplanation) { rootExplanation = it }
-                    PresenceChip("构词拆解", decomposition) { decomposition = it }
-                    PresenceChip("近义词", synonyms) { synonyms = it }
-                    PresenceChip("形近词", similarWords) { similarWords = it }
-                    PresenceChip("同根词", cognates) { cognates = it }
-                    PresenceChip("词形变化", inflections) { inflections = it }
+                    PresenceChip(stringResource(R.string.dict_filter_phonetic), phonetic) { phonetic = it }
+                    PresenceChip(stringResource(R.string.dict_filter_meanings), meanings) { meanings = it }
+                    PresenceChip(stringResource(R.string.dict_filter_root_explanation), rootExplanation) { rootExplanation = it }
+                    PresenceChip(stringResource(R.string.dict_filter_decomposition), decomposition) { decomposition = it }
+                    PresenceChip(stringResource(R.string.dict_filter_synonyms), synonyms) { synonyms = it }
+                    PresenceChip(stringResource(R.string.dict_filter_similar_words), similarWords) { similarWords = it }
+                    PresenceChip(stringResource(R.string.dict_filter_cognates), cognates) { cognates = it }
+                    PresenceChip(stringResource(R.string.dict_filter_inflections), inflections) { inflections = it }
                 }
             }
         },
@@ -1062,12 +1064,12 @@ private fun DictionaryFilterDialog(
                     )
                 },
                 enabled = lengthValid
-            ) { Text("应用") }
+            ) { Text(stringResource(R.string.common_apply)) }
         },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onReset) { Text("重置") }
-                TextButton(onClick = onDismiss) { Text("取消") }
+                TextButton(onClick = onReset) { Text(stringResource(R.string.common_reset)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
             }
         }
     )
@@ -1080,9 +1082,9 @@ private fun PresenceChip(
     onChange: (EntryPresenceFilter) -> Unit
 ) {
     val text = when (value) {
-        EntryPresenceFilter.ANY -> "$label: 不限"
-        EntryPresenceFilter.PRESENT -> "$label: 有"
-        EntryPresenceFilter.MISSING -> "$label: 无"
+        EntryPresenceFilter.ANY -> "$label: ${stringResource(R.string.dict_filter_any)}"
+        EntryPresenceFilter.PRESENT -> "$label: ${stringResource(R.string.dict_filter_present)}"
+        EntryPresenceFilter.MISSING -> "$label: ${stringResource(R.string.dict_filter_missing)}"
     }
     FilterChip(
         selected = value != EntryPresenceFilter.ANY,
@@ -1115,15 +1117,15 @@ private fun PaginationBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onPrevious, enabled = currentPage > 0) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "上一页")
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(R.string.common_previous_page))
         }
         Text(
-            text = "$sectionLabel 第 ${currentPage + 1}/$totalPages 页",
+            text = stringResource(R.string.common_page_format, sectionLabel, currentPage + 1, totalPages),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
         IconButton(onClick = onNext, enabled = currentPage < totalPages - 1) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下一页")
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.common_next_page))
         }
     }
 }
@@ -1156,12 +1158,12 @@ private fun DetailPane(
                 horizontalArrangement = Arrangement.End
             ) {
                 IconButton(onClick = { onEdit(word.dictionaryId, word.id) }) {
-                    Icon(Icons.Default.Edit, contentDescription = "编辑")
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
                 }
                 IconButton(onClick = detailViewModel::showDeleteDialog) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "删除",
+                        contentDescription = stringResource(R.string.common_delete),
                         tint = MaterialTheme.colorScheme.error
                     )
                 }
@@ -1177,7 +1179,7 @@ private fun DetailPane(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "单词不存在",
+                        text = stringResource(R.string.word_not_exists),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1197,8 +1199,8 @@ private fun DetailPane(
 
     if (detailState.showDeleteDialog) {
         ConfirmDialog(
-            title = "删除单词",
-            message = "确定要删除单词「${detailState.word?.spelling}」吗？",
+            title = stringResource(R.string.word_delete_title),
+            message = stringResource(R.string.dict_delete_word_confirm, detailState.word?.spelling ?: ""),
             onConfirm = { detailViewModel.confirmDelete(onDeleted) },
             onDismiss = detailViewModel::dismissDeleteDialog
         )

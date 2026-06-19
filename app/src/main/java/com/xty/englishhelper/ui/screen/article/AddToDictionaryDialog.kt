@@ -28,8 +28,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.StudyUnit
 
@@ -46,6 +49,7 @@ fun AddToDictionaryDialog(
     var units by remember { mutableStateOf<List<StudyUnit>>(emptyList()) }
     var isLoadingUnits by remember { mutableStateOf(false) }
     var unitLoadError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     // Auto-select first dictionary when list arrives asynchronously
     LaunchedEffect(dictionaries) {
@@ -63,7 +67,7 @@ fun AddToDictionaryDialog(
                 units = onLoadUnits(selectedDictId)
             } catch (_: Exception) {
                 units = emptyList()
-                unitLoadError = "加载单元失败"
+                unitLoadError = context.getString(R.string.article_load_units_failed)
             } finally {
                 isLoadingUnits = false
             }
@@ -77,19 +81,19 @@ fun AddToDictionaryDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("将「$word」加入词典")
+            Text(stringResource(R.string.article_add_word_to_dict, word))
         },
         text = {
             Column {
                 if (dictionaries.isEmpty()) {
                     Text(
-                        "暂无辞书，请先创建一本辞书",
+                        stringResource(R.string.article_no_dicts_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error
                     )
                 } else {
                     Text(
-                        "选择辞书",
+                        stringResource(R.string.article_select_dict),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -124,7 +128,7 @@ fun AddToDictionaryDialog(
                             ) {
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                 Spacer(Modifier.width(8.dp))
-                                Text("加载单元中…", style = MaterialTheme.typography.bodySmall)
+                                Text(stringResource(R.string.article_loading_units), style = MaterialTheme.typography.bodySmall)
                             }
                         } else if (unitLoadError != null) {
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -138,7 +142,7 @@ fun AddToDictionaryDialog(
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                             Text(
-                                "选择单元（可选）",
+                                stringResource(R.string.article_select_unit_optional),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold
                             )
@@ -159,7 +163,7 @@ fun AddToDictionaryDialog(
                                             onClick = { selectedUnitId = null }
                                         )
                                         Spacer(Modifier.width(8.dp))
-                                        Text("不指定", style = MaterialTheme.typography.bodyMedium)
+                                        Text(stringResource(R.string.article_no_unit), style = MaterialTheme.typography.bodyMedium)
                                     }
                                 }
                                 items(units) { unit ->
@@ -189,12 +193,12 @@ fun AddToDictionaryDialog(
                 onClick = { onConfirm(selectedDictId, selectedUnitId) },
                 enabled = selectedDictId != 0L && dictionaries.isNotEmpty()
             ) {
-                Text("确认")
+                Text(stringResource(R.string.common_confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )

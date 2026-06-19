@@ -38,8 +38,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.R
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -62,15 +64,15 @@ fun TtsDiagnosticsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("语音诊断") },
+                title = { Text(stringResource(R.string.settings_voice_diagnostics)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = viewModel::refresh) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh))
                     }
                 }
             )
@@ -86,7 +88,7 @@ fun TtsDiagnosticsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Status
-            Text("初始化状态", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.tts_diag_init_status), style = MaterialTheme.typography.titleMedium)
             Text(
                 state.initMessage,
                 color = if (state.initSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
@@ -95,18 +97,19 @@ fun TtsDiagnosticsScreen(
             HorizontalDivider()
 
             // App settings
-            Text("应用设置", style = MaterialTheme.typography.titleMedium)
-            Text("语速：${"%.2f".format(state.ttsRate)}x")
-            Text("音调：${"%.2f".format(state.ttsPitch)}x")
-            Text("口音：${state.ttsLocale}")
+            Text(stringResource(R.string.tts_diag_app_settings), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.tts_diag_rate_value, "%.2f".format(state.ttsRate)))
+            Text(stringResource(R.string.tts_diag_pitch_value, "%.2f".format(state.ttsPitch)))
+            Text(stringResource(R.string.tts_diag_locale, state.ttsLocale))
 
             HorizontalDivider()
 
             // Engine info
-            Text("语音引擎", style = MaterialTheme.typography.titleMedium)
-            Text("默认引擎：${state.defaultEngine.ifBlank { "未知" }}")
+            Text(stringResource(R.string.tts_diag_engine), style = MaterialTheme.typography.titleMedium)
+            val unknownLabel = stringResource(R.string.tts_diag_unknown)
+            Text(stringResource(R.string.tts_diag_default_engine, state.defaultEngine.ifBlank { unknownLabel }))
             if (state.engines.isEmpty()) {
-                Text("未发现可用引擎", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.tts_diag_no_engine), color = MaterialTheme.colorScheme.error)
             } else {
                 state.engines.forEach { engine ->
                     Row(
@@ -119,7 +122,7 @@ fun TtsDiagnosticsScreen(
                             Text(engine.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (engine.isDefault) {
-                            Text("默认", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.tts_diag_default_label), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -129,9 +132,9 @@ fun TtsDiagnosticsScreen(
             HorizontalDivider()
 
             // Language support
-            Text("语言支持", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.tts_diag_lang_support), style = MaterialTheme.typography.titleMedium)
             if (state.languageChecks.isEmpty()) {
-                Text("暂无法获取语言支持信息", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.tts_diag_no_lang_info), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 state.languageChecks.forEach { lang ->
                     Row(
@@ -153,7 +156,7 @@ fun TtsDiagnosticsScreen(
             }
 
             if (state.englishLanguages.isNotEmpty()) {
-                Text("英语语音包（已安装）", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.tts_diag_english_packs), style = MaterialTheme.typography.titleMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     state.englishLanguages.take(12).forEach { tag ->
                         Text(
@@ -176,6 +179,7 @@ fun TtsDiagnosticsScreen(
             ) {
                 OutlinedButton(
                     onClick = {
+                        val ttsSettingsError = context.getString(R.string.data_tts_cannot_open_settings)
                         val actions = listOf(
                             "android.settings.TEXT_TO_SPEECH_SETTINGS",
                             "android.settings.TTS_SETTINGS",
@@ -191,19 +195,19 @@ fun TtsDiagnosticsScreen(
                             if (result.isSuccess) break
                         }
                         if (!opened) {
-                            scope.launch { snackbarHostState.showSnackbar("无法打开系统语音设置") }
+                            scope.launch { snackbarHostState.showSnackbar(ttsSettingsError) }
                         }
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("打开系统语音设置")
+                    Text(stringResource(R.string.tts_diag_open_tts_settings))
                 }
                 Spacer(Modifier.width(12.dp))
                 Button(
                     onClick = viewModel::refresh,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("重新诊断")
+                    Text(stringResource(R.string.tts_diag_re_diagnose))
                 }
             }
         }
