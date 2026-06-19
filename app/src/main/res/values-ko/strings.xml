@@ -458,6 +458,18 @@
     <string name="pool_graph_example">예시</string>
     <string name="pool_graph_caution">주의</string>
 
+    <!-- Pool Build -->
+    <string name="pool_build_current_chunk_progress">현재 단어 비교 진행률</string>
+
+    <!-- Question Bank -->
+    <string name="question_overview">문제 개요</string>
+
+    <!-- Task -->
+    <string name="task_writing_sample_search">글쓰기 샘플 검색</string>
+
+    <!-- Data layer -->
+    <string name="word_root_explication">어근 설명</string>
+
     <!-- ==================== Data layer ==================== -->
     <string name="data_github_token_missing">GitHub Token이 구성되지 않았습니다</string>
     <string name="data_github_owner_missing">GitHub 사용자 이름이 구성되지 않았습니다</string>

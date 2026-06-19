@@ -458,6 +458,19 @@
     <string name="pool_graph_example">例</string>
     <string name="pool_graph_caution">注意</string>
 
+    <!-- Pool Build -->
+    <string name="pool_build_current_chunk_progress">現在の単語比較の進捗</string>
+
+    <!-- Question Bank -->
+    <string name="question_overview">問題概要</string>
+
+    <!-- Task -->
+    <string name="task_writing_sample_search">作文サンプル検索</string>
+
+    <!-- Data layer -->
+    <string name="data_sync_pool_focus_focus_invalid">プール戦略 %s のフォーカス単語が存在しません。</string>
+    <string name="word_root_explication">語根解説</string>
+
     <!-- ==================== Data layer ==================== -->
     <string name="data_github_token_missing">GitHub Tokenが設定されていません</string>
     <string name="data_github_owner_missing">GitHubユーザー名が設定されていません</string>

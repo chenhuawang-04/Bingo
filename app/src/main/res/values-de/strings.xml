@@ -458,6 +458,19 @@
     <string name="pool_graph_example">Beispiel</string>
     <string name="pool_graph_caution">Vorsicht</string>
 
+    <!-- Pool Build -->
+    <string name="pool_build_current_chunk_progress">Aktueller Wortvergleichsfortschritt</string>
+
+    <!-- Question Bank -->
+    <string name="question_overview">Fragenübersicht</string>
+
+    <!-- Task -->
+    <string name="task_writing_sample_search">Muster-Aufsatzsuche</string>
+
+    <!-- Data layer -->
+    <string name="data_sync_pool_focus_focus_invalid">Pool-Strategie %s Fokusswort existiert nicht.</string>
+    <string name="word_root_explication">Wurzelerklärung</string>
+
     <!-- ==================== Data layer ==================== -->
     <string name="data_github_token_missing">GitHub-Token nicht konfiguriert</string>
     <string name="data_github_owner_missing">GitHub-Benutzername nicht konfiguriert</string>

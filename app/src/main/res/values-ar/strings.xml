@@ -458,6 +458,10 @@
     <string name="pool_graph_example">مثال</string>
     <string name="pool_graph_caution">تحذير</string>
 
+    <!-- Data layer -->
+    <string name="data_sync_pool_focus_focus_invalid">الكلمة المركزية لاستراتيجية المجموعة %s غير موجودة.</string>
+    <string name="word_root_explication">شرح الجذر</string>
+
     <!-- ==================== Data layer ==================== -->
     <string name="data_github_token_missing">لم يتم تكوين رمز GitHub</string>
     <string name="data_github_owner_missing">لم يتم تكوين اسم مستخدم GitHub</string>

@@ -458,6 +458,16 @@
     <string name="pool_graph_example">Пример</string>
     <string name="pool_graph_caution">Внимание</string>
 
+    <!-- Pool Build -->
+    <string name="pool_build_current_chunk_progress">Текущий прогресс сравнения слов</string>
+
+    <!-- Question Bank -->
+    <string name="question_overview">Обзор вопросов</string>
+
+    <!-- Data layer -->
+    <string name="data_sync_pool_focus_focus_invalid">Фокусное слово стратегии пула %s не существует.</string>
+    <string name="word_root_explication">Этимология</string>
+
     <!-- ==================== Data layer ==================== -->
     <string name="data_github_token_missing">GitHub-токен не настроен</string>
     <string name="data_github_owner_missing">Имя пользователя GitHub не настроено</string>
