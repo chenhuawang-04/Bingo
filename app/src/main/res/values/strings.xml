@@ -643,6 +643,20 @@
     <string name="pool_graph_example">例句</string>
     <string name="pool_graph_caution">注意</string>
 
+    <!-- Pool Build (additional) -->
+    <string name="pool_build_current_chunk_progress">当前词对比进度</string>
+    <string name="pool_build_chunk_progress">%1$d / %2$d 组已对比</string>
+
+    <!-- Question Bank (additional) -->
+    <string name="question_overview">题目概览</string>
+
+    <!-- Task (additional) -->
+    <string name="task_writing_sample_search">作文范文检索</string>
+
+    <!-- Data layer (additional) -->
+    <string name="data_sync_pool_focus_focus_invalid">词池策略 %s 的焦点词不存在。</string>
+    <string name="word_root_explication">词根解释</string>
+
     <!-- ==================== Data layer ==================== -->
     <string name="data_github_token_missing">未配置 GitHub Token</string>
     <string name="data_github_owner_missing">未配置 GitHub 用户名</string>

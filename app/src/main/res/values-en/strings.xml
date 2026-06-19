@@ -463,6 +463,20 @@
     <string name="pool_graph_example">Example</string>
     <string name="pool_graph_caution">Caution</string>
 
+    <!-- Pool Build (additional) -->
+    <string name="pool_build_current_chunk_progress">Current word comparison progress</string>
+    <string name="pool_build_chunk_progress">Compared %1$d / %2$d candidate groups</string>
+
+    <!-- Question Bank (additional) -->
+    <string name="question_overview">Question Overview</string>
+
+    <!-- Task (additional) -->
+    <string name="task_writing_sample_search">Writing Sample Search</string>
+
+    <!-- Data layer (additional) -->
+    <string name="data_sync_pool_focus_focus_invalid">Pool strategy %s focus word does not exist.</string>
+    <string name="word_root_explication">Root Explanation</string>
+
     <!-- ==================== Data layer ==================== -->
     <string name="data_github_token_missing">GitHub Token not configured</string>
     <string name="data_github_owner_missing">GitHub username not configured</string>
