@@ -613,7 +613,9 @@
 
     <!-- ==================== Pool Overview ==================== -->
     <string name="pool_overview_title">词池可视化</string>
+    <string name="pool_overview_no_data">暂无词池数据</string>
     <string name="pool_overview_view_full">查看全图（拖动 / 缩放浏览全部词）</string>
+    <string name="pool_overview_view_full_graph">查看全图</string>
     <string name="pool_overview_cluster_count">词池簇 %d 个</string>
     <string name="pool_overview_cluster_count_short">词池簇</string>
     <string name="pool_overview_covered">覆盖词</string>
