@@ -465,7 +465,6 @@
 
     <!-- Pool Build (additional) -->
     <string name="pool_build_current_chunk_progress">Current word comparison progress</string>
-    <string name="pool_build_chunk_progress">Compared %1$d / %2$d candidate groups</string>
 
     <!-- Question Bank (additional) -->
     <string name="question_overview">Question Overview</string>

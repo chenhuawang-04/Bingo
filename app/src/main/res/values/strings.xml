@@ -645,7 +645,6 @@
 
     <!-- Pool Build (additional) -->
     <string name="pool_build_current_chunk_progress">当前词对比进度</string>
-    <string name="pool_build_chunk_progress">%1$d / %2$d 组已对比</string>
 
     <!-- Question Bank (additional) -->
     <string name="question_overview">题目概览</string>
