@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.xty.englishhelper.ui.screen.settings.sections
 
 import androidx.compose.foundation.layout.Arrangement
@@ -58,7 +60,6 @@ import com.xty.englishhelper.util.Constants
  * AI 设置区块
  * 包含：提供商列表、提供商编辑器、作用域配置、模型高级设置
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AiSettingsSection(
     state: SettingsUiState,

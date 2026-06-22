@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.xty.englishhelper.ui.screen.settings.sections
 
 import androidx.compose.foundation.layout.Arrangement
@@ -42,7 +44,6 @@ import com.xty.englishhelper.ui.screen.settings.components.SettingsTextFieldRow
  * 系统与同步设置区块
  * 包含：语言设置、后台任务、云同步、语音合成
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SystemSettingsSection(
     state: SettingsUiState,
