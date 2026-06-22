@@ -58,6 +58,12 @@ android {
         buildConfig = true
     }
 
+    sourceSets {
+        getByName("androidTest") {
+            assets.srcDirs("$projectDir/schemas")
+        }
+    }
+
     room {
         schemaDirectory("$projectDir/schemas")
     }
