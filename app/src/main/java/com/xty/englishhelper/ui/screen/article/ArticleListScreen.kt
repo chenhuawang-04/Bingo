@@ -442,18 +442,21 @@ private fun ScanProgressRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (isActive && scanTask != null) {
-            LinearProgressIndicator(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(3.dp),
-                progress = {
-                    if (scanTask.progressTotal > 0) {
-                        scanTask.progressCurrent.toFloat() / scanTask.progressTotal
-                    } else 0f
-                },
-                color = MaterialTheme.colorScheme.secondary
-            )
+        if (isActive) {
+            // isActive 为 true 时 scanTask 必不为 null（因为 status 来自 scanTask?.status）
+            scanTask!!.let { task ->
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(3.dp),
+                    progress = {
+                        if (task.progressTotal > 0) {
+                            task.progressCurrent.toFloat() / task.progressTotal
+                        } else 0f
+                    },
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
         } else {
             Spacer(modifier = Modifier.weight(1f))
         }

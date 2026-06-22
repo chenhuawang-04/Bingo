@@ -1,6 +1,7 @@
 package com.xty.englishhelper.ui.components.article
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -262,7 +263,7 @@ private fun ArticleCardMenu(
     onDelete: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    androidx.compose.foundation.layout.Box(modifier = modifier) {
+    Box(modifier = modifier) {
         IconButton(onClick = onExpand) {
             Icon(
                 imageVector = Icons.Default.MoreVert,
