@@ -18,8 +18,8 @@ android {
         applicationId = "com.xty.englishhelper"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "3.0.1"
+        versionCode = 6
+        versionName = "8.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
