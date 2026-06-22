@@ -688,4 +688,9 @@
     <string name="dict_open_original">Abrir original</string>
     <string name="common_import">Importar</string>
     <string name="common_export">Exportar</string>
+    <string name="settings_online_reading_desc">Configure la fuente de lectura predeterminada y el número de cargas simultáneas para los detalles de artículos en línea.</string>
+    <string name="settings_default_source">Fuente predeterminada</string>
+    <string name="settings_detail_concurrency">Concurrencia de detalles</string>
+    <string name="settings_delete_provider_title">Eliminar proveedor</string>
+    <string name="settings_delete_provider_confirm">¿Está seguro de que desea eliminar el proveedor "%1$s"?</string>
 </resources>

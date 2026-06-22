@@ -677,4 +677,9 @@
     <string name="dict_open_original">فتح الأصلي</string>
     <string name="common_import">استيراد</string>
     <string name="common_export">تصدير</string>
+    <string name="settings_online_reading_desc">قم بتكوين مصدر القراءة الافتراضي وعدد التحميلات المتزامنة لتفاصيل المقالات عبر الإنترنت.</string>
+    <string name="settings_default_source">المصدر الافتراضي</string>
+    <string name="settings_detail_concurrency">التزامن التفصيلي</string>
+    <string name="settings_delete_provider_title">حذف المزود</string>
+    <string name="settings_delete_provider_confirm">هل أنت متأكد أنك تريد حذف المزود "%1$s"؟</string>
 </resources>

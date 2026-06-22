@@ -387,6 +387,11 @@
     <!-- Locale -->
     <string name="settings_app_locale">App Language</string>
     <string name="settings_app_locale_desc">Select the app interface language. Restart required to apply.</string>
+    <string name="settings_online_reading_desc">Configure default reading source and concurrent loading count for online article details.</string>
+    <string name="settings_default_source">Default Source</string>
+    <string name="settings_detail_concurrency">Detail Concurrency</string>
+    <string name="settings_delete_provider_title">Delete Provider</string>
+    <string name="settings_delete_provider_confirm">Are you sure you want to delete provider "%1$s"?</string>
     <string name="locale_system">Follow System</string>
 
     <!-- ==================== Background Task ==================== -->

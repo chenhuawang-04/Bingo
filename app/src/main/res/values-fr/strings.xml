@@ -688,4 +688,9 @@
     <string name="dict_etymology">Étymologie : %s</string>
     <string name="dict_summary_format">Résumé : %s</string>
     <string name="dict_open_original">Ouvrir l\'original</string>
+    <string name="settings_online_reading_desc">Configurez la source de lecture par défaut et le nombre de chargements simultanés pour les détails des articles en ligne.</string>
+    <string name="settings_default_source">Source par défaut</string>
+    <string name="settings_detail_concurrency">Concurrence des détails</string>
+    <string name="settings_delete_provider_title">Supprimer le fournisseur</string>
+    <string name="settings_delete_provider_confirm">Voulez-vous vraiment supprimer le fournisseur "%1$s" ?</string>
 </resources>

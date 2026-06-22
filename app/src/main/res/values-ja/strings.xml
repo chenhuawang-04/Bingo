@@ -686,4 +686,9 @@
     <string name="dict_open_original">オリジナルを開く</string>
     <string name="common_import">インポート</string>
     <string name="common_export">エクスポート</string>
+    <string name="settings_online_reading_desc">デフォルトの読書ソースとオンライン記事の詳細の同時読み込み数を設定します。</string>
+    <string name="settings_default_source">デフォルトソース</string>
+    <string name="settings_detail_concurrency">詳細同時実行数</string>
+    <string name="settings_delete_provider_title">プロバイダーを削除</string>
+    <string name="settings_delete_provider_confirm">プロバイダー「%1$s」を削除してもよろしいですか？</string>
 </resources>

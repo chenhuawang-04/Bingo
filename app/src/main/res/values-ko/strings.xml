@@ -685,4 +685,9 @@
     <string name="dict_open_original">원본 열기</string>
     <string name="common_import">가져오기</string>
     <string name="common_export">내보내기</string>
+    <string name="settings_online_reading_desc">기본 읽기 소스 및 온라인 기사 세부정보 동시 로드 수를 설정합니다.</string>
+    <string name="settings_default_source">기본 소스</string>
+    <string name="settings_detail_concurrency">세부정보 동시 실행 수</string>
+    <string name="settings_delete_provider_title">공급자 삭제</string>
+    <string name="settings_delete_provider_confirm">공급자 "%1$s"을(를) 삭제하시겠습니까?</string>
 </resources>

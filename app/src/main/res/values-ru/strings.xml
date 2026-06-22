@@ -683,4 +683,9 @@
     <string name="dict_open_original">Открыть оригинал</string>
     <string name="common_import">Импорт</string>
     <string name="common_export">Экспорт</string>
+    <string name="settings_online_reading_desc">Настройте источник чтения по умолчанию и количество одновременных загрузок для деталей онлайн-статей.</string>
+    <string name="settings_default_source">Источник по умолчанию</string>
+    <string name="settings_detail_concurrency">Одновременная загрузка деталей</string>
+    <string name="settings_delete_provider_title">Удалить провайдера</string>
+    <string name="settings_delete_provider_confirm">Вы уверены, что хотите удалить провайдера "%1$s"?</string>
 </resources>

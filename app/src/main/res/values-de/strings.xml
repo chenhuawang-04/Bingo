@@ -686,4 +686,9 @@
     <string name="dict_open_original">Original öffnen</string>
     <string name="common_import">Import</string>
     <string name="common_export">Export</string>
+    <string name="settings_online_reading_desc">Konfigurieren Sie die Standardlesquelle und die Anzahl gleichzeitiger Ladevorgänge für Online-Artikeldetails.</string>
+    <string name="settings_default_source">Standardquelle</string>
+    <string name="settings_detail_concurrency">Detail-Parallelität</string>
+    <string name="settings_delete_provider_title">Anbieter löschen</string>
+    <string name="settings_delete_provider_confirm">Möchten Sie den Anbieter "%1$s" wirklich löschen?</string>
 </resources>
