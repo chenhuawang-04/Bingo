@@ -67,6 +67,7 @@ import com.xty.englishhelper.ui.screen.article.ArticleFilterActionButton
 import com.xty.englishhelper.ui.screen.article.EditorialActionButton
 import com.xty.englishhelper.ui.screen.article.EditorialPill
 import com.xty.englishhelper.ui.screen.article.EditorialThumbnail
+import com.xty.englishhelper.ui.components.article.UnifiedArticleCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -555,109 +556,38 @@ private fun ArticleList(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(articles, key = { it.url }) { article ->
-            ArticlePreviewCard(
-                article = article,
-                onClick = {
+            val sourceLine = buildList {
+                add(article.source?.label ?: "Online")
+                article.sectionLabel?.takeIf { it.isNotBlank() }?.let { add(it) }
+                if (!article.author.isNullOrBlank()) add(article.author)
+            }.joinToString(" · ")
+
+            UnifiedArticleCard(
+                title = article.title,
+                sourceLine = sourceLine,
+                snippet = article.trailText.orEmpty(),
+                coverModel = article.coverImageUrl ?: article.thumbnailUrl,
+                placeholderSeed = article.title.firstOrNull()?.uppercase() ?: "A",
+                wordCount = article.wordCount,
+                scoreText = when {
+                    article.isEvaluating -> stringResource(R.string.article_evaluating)
+                    article.suitabilityScore != null -> stringResource(R.string.article_score_format, article.suitabilityScore)
+                    else -> stringResource(R.string.article_no_score)
+                },
+                suitabilityReason = article.suitabilityReason?.takeIf { it.isNotBlank() },
+                categoryName = null,
+                isEvaluating = article.isEvaluating,
+                onRead = {
                     if (!isLoadingArticle) {
                         onArticleClick(article)
                     }
                 },
-                onReevaluate = { onReevaluate(article.url) }
+                onReevaluate = { onReevaluate(article.url) },
+                onDelete = null,
+                onMoveCategory = null,
+                categories = null,
+                categoryId = null
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ArticlePreviewCard(
-    article: GuardianBrowseItem,
-    onClick: () -> Unit,
-    onReevaluate: () -> Unit
-) {
-    val imageUrl = article.coverImageUrl ?: article.thumbnailUrl
-    val scoreText = when {
-        article.isEvaluating -> stringResource(R.string.article_evaluating)
-        article.suitabilityScore != null -> stringResource(R.string.article_score_format, article.suitabilityScore)
-        else -> stringResource(R.string.article_no_score)
-    }
-    val sourceLine = buildList {
-        add(article.source?.label ?: "Online")
-        article.sectionLabel?.takeIf { it.isNotBlank() }?.let { add(it) }
-        if (!article.author.isNullOrBlank()) add(article.author)
-    }.joinToString(" · ")
-    val placeholderSeed = article.title.firstOrNull()?.uppercase() ?: "A"
-
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = ArticleShapes.Card,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            EditorialThumbnail(
-                imageModel = imageUrl,
-                fallbackSeed = placeholderSeed,
-                modifier = Modifier
-                    .width(92.dp)
-                    .aspectRatio(0.76f)
-            )
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (sourceLine.isNotBlank()) {
-                    Text(
-                        text = sourceLine,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                Text(
-                    text = article.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                if (!article.trailText.isNullOrBlank()) {
-                    Text(
-                        text = article.trailText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (article.wordCount != null && article.wordCount > 0) {
-                        Text(
-                            text = stringResource(R.string.guardian_word_count_format, article.wordCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Text(
-                        text = scoreText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
         }
     }
 }

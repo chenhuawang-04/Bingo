@@ -61,6 +61,7 @@ import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
+import com.xty.englishhelper.ui.components.article.UnifiedArticleCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -173,17 +174,35 @@ fun ArticleListScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(articles, key = { it.id }) { article ->
-                            ArticleCard(
-                                article = article,
-                                categoryName = uiState.categories.firstOrNull { it.id == article.categoryId }?.name,
-                                categories = uiState.categories,
+                            val categoryName = uiState.categories.firstOrNull { it.id == article.categoryId }?.name
+                            val isEvaluating = uiState.evaluatingIds.contains(article.id)
+
+                            UnifiedArticleCard(
+                                title = article.title,
+                                sourceLine = buildList {
+                                    if (article.author.isNotBlank()) add(article.author)
+                                    if (article.source.isNotBlank()) add(article.source)
+                                }.joinToString(" · "),
+                                snippet = buildArticleSnippet(article.summary, article.content),
+                                coverModel = article.coverImageUri ?: article.coverImageUrl,
+                                placeholderSeed = article.title.firstOrNull()?.uppercase() ?: "A",
+                                wordCount = article.wordCount.takeIf { it > 0 },
+                                scoreText = when {
+                                    isEvaluating -> stringResource(R.string.article_evaluating)
+                                    article.suitabilityScore != null -> stringResource(R.string.article_score_format, article.suitabilityScore)
+                                    else -> stringResource(R.string.article_no_score)
+                                },
+                                suitabilityReason = article.suitabilityReason.takeIf { it.isNotBlank() },
+                                categoryName = categoryName,
+                                isEvaluating = isEvaluating,
                                 onRead = { onReadArticle(article.id) },
-                                onDelete = { viewModel.deleteArticle(article.id) },
                                 onReevaluate = { viewModel.reEvaluateArticle(article.id) },
-                                isEvaluating = uiState.evaluatingIds.contains(article.id),
-                                onMoveCategory = { categoryId ->
-                                    viewModel.moveArticleToCategory(article.id, categoryId)
-                                }
+                                onDelete = { viewModel.deleteArticle(article.id) },
+                                onMoveCategory = { targetCategoryId ->
+                                    viewModel.moveArticleToCategory(article.id, targetCategoryId)
+                                },
+                                categories = uiState.categories,
+                                categoryId = article.categoryId
                             )
                         }
                     }
@@ -487,239 +506,6 @@ private fun EmptyArticleState(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ArticleCard(
-    article: Article,
-    categoryName: String?,
-    categories: List<ArticleCategory>,
-    onRead: () -> Unit,
-    onDelete: () -> Unit,
-    onReevaluate: () -> Unit,
-    isEvaluating: Boolean,
-    onMoveCategory: (Long) -> Unit
-) {
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-    var showMenu by remember { mutableStateOf(false) }
-    var showMoveDialog by remember { mutableStateOf(false) }
-    var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
-
-    val snippet = remember(article.summary, article.content) {
-        buildArticleSnippet(article.summary, article.content)
-    }
-    val sourceLine = remember(article.author, article.source) {
-        buildList {
-            if (article.author.isNotBlank()) add(article.author)
-            if (article.source.isNotBlank()) add(article.source)
-        }.joinToString(" · ")
-    }
-    val scoreText = when {
-        isEvaluating -> stringResource(R.string.article_evaluating)
-        article.suitabilityScore != null -> stringResource(R.string.article_score_format, article.suitabilityScore)
-        else -> stringResource(R.string.article_no_score)
-    }
-    val coverModel = article.coverImageUri ?: article.coverImageUrl
-    val placeholderSeed = article.title.firstOrNull()?.uppercase() ?: "A"
-
-    Card(
-        onClick = onRead,
-        modifier = Modifier.fillMaxWidth(),
-        shape = ArticleShapes.Card,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            EditorialThumbnail(
-                imageModel = coverModel,
-                fallbackSeed = placeholderSeed,
-                modifier = Modifier
-                    .width(92.dp)
-                    .aspectRatio(0.76f)
-            )
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (sourceLine.isNotBlank()) {
-                    Text(
-                        text = sourceLine,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                Text(
-                    text = article.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                if (snippet.isNotBlank()) {
-                    Text(
-                        text = snippet,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (article.wordCount > 0) {
-                        Text(
-                            text = stringResource(R.string.article_word_count_unit, article.wordCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Text(
-                        text = scoreText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    if (!categoryName.isNullOrBlank()) {
-                        Text(
-                            text = categoryName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            ArticleCardMenu(
-                expanded = showMenu,
-                onExpand = { showMenu = true },
-                onDismiss = { showMenu = false },
-                onReevaluate = onReevaluate,
-                onMoveCategory = {
-                    selectedCategoryId = article.categoryId
-                    showMoveDialog = true
-                },
-                onDelete = { showDeleteConfirm = true }
-            )
-        }
-    }
-
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(stringResource(R.string.article_delete_title)) },
-            text = { Text(stringResource(R.string.article_delete_confirm, article.title)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDelete()
-                        showDeleteConfirm = false
-                    }
-                ) {
-                    Text(stringResource(R.string.common_delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            }
-        )
-    }
-
-    if (showMoveDialog) {
-        AlertDialog(
-            onDismissRequest = { showMoveDialog = false },
-            title = { Text(stringResource(R.string.article_move_category)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    categories.forEach { category ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedCategoryId = category.id },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            RadioButton(
-                                selected = selectedCategoryId == category.id,
-                                onClick = { selectedCategoryId = category.id }
-                            )
-                            Text(category.name)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        selectedCategoryId?.let(onMoveCategory)
-                        showMoveDialog = false
-                    }
-                ) {
-                    Text(stringResource(R.string.common_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showMoveDialog = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun ArticleCardMenu(
-    expanded: Boolean,
-    onExpand: () -> Unit,
-    onDismiss: () -> Unit,
-    onReevaluate: () -> Unit,
-    onMoveCategory: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(modifier = modifier) {
-        IconButton(onClick = onExpand) {
-            Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = stringResource(R.string.article_actions)
-            )
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.article_re_evaluate)) },
-                onClick = {
-                    onDismiss()
-                    onReevaluate()
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.article_move_category)) },
-                onClick = {
-                    onDismiss()
-                    onMoveCategory()
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.common_delete)) },
-                onClick = {
-                    onDismiss()
-                    onDelete()
-                }
-            )
-        }
-    }
-}
 
 private fun buildArticleSnippet(summary: String, content: String): String {
     val preferred = summary.takeIf { it.isNotBlank() } ?: content
