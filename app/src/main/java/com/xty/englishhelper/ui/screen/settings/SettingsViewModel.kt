@@ -572,8 +572,12 @@ class SettingsViewModel @Inject constructor(
 
     fun onLocaleChange(locale: String) {
         _uiState.update { it.copy(appLocale = locale) }
-        viewModelScope.launch { settingsDataStore.setAppLocale(locale) }
-        com.xty.englishhelper.EnglishHelperApp.applyLocale(locale)
+        viewModelScope.launch {
+            settingsDataStore.setAppLocale(locale)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                com.xty.englishhelper.EnglishHelperApp.applyLocale(locale)
+            }
+        }
     }
 
     fun playTtsSample() {

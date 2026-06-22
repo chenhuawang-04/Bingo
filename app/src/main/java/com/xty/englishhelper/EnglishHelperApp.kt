@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import javax.inject.Inject
 
@@ -36,7 +37,9 @@ class EnglishHelperApp : Application() {
         // Apply saved locale
         appScope.launch {
             val locale = settingsDataStore.appLocale.first()
-            applyLocale(locale)
+            withContext(Dispatchers.Main) {
+                applyLocale(locale)
+            }
         }
 
         // One-time migration of plaintext API key to encrypted storage
