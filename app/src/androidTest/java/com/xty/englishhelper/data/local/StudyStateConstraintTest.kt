@@ -25,6 +25,7 @@ class StudyStateConstraintTest {
         val db = helper.createDatabase(testDbName, 2)
         db.close()
         val migratedDb = helper.runMigrationsAndValidate(testDbName, 3, true, AppDatabase.MIGRATION_2_3)
+        migratedDb.execSQL("PRAGMA foreign_keys = ON")
         return migratedDb
     }
 
