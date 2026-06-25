@@ -4,7 +4,7 @@ package com.xty.englishhelper.domain.model
  * 词典的「关系图」装配结果——可视化词池的底层数据。
  *
  * 节点 = 词典里的全部词（轻量：仅 id + 拼写，释义按需懒加载）；
- * 边 = [com.xty.englishhelper.data.local.entity.WordEdgeEntity] 携带的 typed 彩色关系；
+ * 边 = [com.xty.englishhelper.data.local.entity.WordEdgeEntity] 的轻量 typed 彩色关系；
  * 簇 = 边图的连通分量（即「词池/关系簇」），每簇内可做同心辐射布局。
  *
  * 边的端点用「节点下标」（指向 [nodes]）表示而非 wordId，便于布局/渲染时直接索引扁平数组。
@@ -34,10 +34,19 @@ data class WordGraphNode(
     val degree: Int
 )
 
-/** 关系图中的一条边；[aIndex]/[bIndex] 指向 [WordGraph.nodes]。携带完整 AI 依据供点击查看。 */
+/** 关系图中的一条轻量边；[aIndex]/[bIndex] 指向 [WordGraph.nodes]，完整 AI 依据按 [edgeId] 懒加载。 */
 data class WordGraphEdge(
+    val edgeId: Long,
     val aIndex: Int,
     val bIndex: Int,
+    val type: EdgeType,
+    val relationStrength: Int,
+    val confidence: Double
+)
+
+/** 关系图弹窗按需加载的一条边详情。 */
+data class WordGraphEdgeDetail(
+    val edgeId: Long,
     val type: EdgeType,
     val relationStrength: Int,
     val confidence: Double,

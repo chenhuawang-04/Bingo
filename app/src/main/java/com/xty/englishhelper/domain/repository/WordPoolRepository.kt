@@ -6,6 +6,7 @@ import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordGraph
+import com.xty.englishhelper.domain.model.WordGraphEdgeDetail
 import com.xty.englishhelper.domain.model.WordPool
 
 interface WordPoolRepository {
@@ -19,6 +20,9 @@ interface WordPoolRepository {
 
     /** 懒加载单个词的完整释义（点击关系图节点时取用）。 */
     suspend fun getWordDetail(wordId: Long): WordDetails?
+
+    /** 懒加载关系图中单条边的完整解释信息（点击关系边时取用）。 */
+    suspend fun getWordGraphEdgeDetail(edgeId: Long): WordGraphEdgeDetail?
 
     suspend fun rebuildPools(
         dictionaryId: Long,

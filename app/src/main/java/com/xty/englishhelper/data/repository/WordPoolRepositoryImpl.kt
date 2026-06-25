@@ -3,6 +3,7 @@ package com.xty.englishhelper.data.repository
 import android.util.Log
 import androidx.room.withTransaction
 import com.xty.englishhelper.data.local.AppDatabase
+import com.xty.englishhelper.data.local.dao.GraphEdgeProjection
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
@@ -38,6 +39,7 @@ import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordGraph
 import com.xty.englishhelper.domain.model.WordGraphCluster
 import com.xty.englishhelper.domain.model.WordGraphEdge
+import com.xty.englishhelper.domain.model.WordGraphEdgeDetail
 import com.xty.englishhelper.domain.model.WordGraphNode
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.pool.BuiltPool
@@ -54,7 +56,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -64,6 +68,12 @@ private data class BuiltPoolWithWordIds(
     val focusWordId: Long?,
     val memberWordIds: List<Long>,
     val qualityScore: Int? = null
+)
+
+private data class CachedWordGraph(
+    val dictionaryId: Long,
+    val loadedAtMs: Long,
+    val graph: WordGraph
 )
 
 /**
@@ -108,6 +118,8 @@ class WordPoolRepositoryImpl @Inject constructor(
 ) : WordPoolRepository {
 
     private val engine = WordPoolEngine()
+    private val graphCacheMutex = Mutex()
+    private var graphCache: CachedWordGraph? = null
 
     companion object {
         private const val MAX_EDGE_RETRIES = 4
@@ -115,8 +127,10 @@ class WordPoolRepositoryImpl @Inject constructor(
         private const val LENIENT_RETRY_UNIT_MS = 10_000L
         private const val LENIENT_RETRY_MAX_MS = 120_000L
         private const val REBUILD_EDGE_PAGE_SIZE = 2_000
+        private const val GRAPH_EDGE_PAGE_SIZE = 5_000
         private const val SIGNIFICANT_EDGE_MIN_CONFIDENCE = 0.3
         private const val EXCLUDED_POOL_EDGE_STATUS = "optional"
+        private const val GRAPH_CACHE_TTL_MS = 30_000L
     }
 
     override suspend fun getPoolsForWord(wordId: Long): List<WordPool> {
@@ -153,7 +167,44 @@ class WordPoolRepositoryImpl @Inject constructor(
     override suspend fun getWordDetail(wordId: Long): WordDetails? =
         wordDao.getWordById(wordId)?.toDomain()
 
-    override suspend fun getWordRelationGraph(dictionaryId: Long): WordGraph {
+    override suspend fun getWordGraphEdgeDetail(edgeId: Long): WordGraphEdgeDetail? {
+        val edge = wordEdgeDao.getEdgeDetail(edgeId) ?: return null
+        val type = EdgeType.fromDbValue(edge.edgeType) ?: return null
+        return WordGraphEdgeDetail(
+            edgeId = edge.id,
+            type = type,
+            relationStrength = edge.relationStrength,
+            confidence = edge.confidence,
+            status = edge.status,
+            reason = edge.reason,
+            exampleSentence = edge.exampleSentence,
+            register = edge.register,
+            difficultyCefr = edge.difficultyCefr,
+            warningNote = edge.warningNote
+        )
+    }
+
+    override suspend fun getWordRelationGraph(dictionaryId: Long): WordGraph =
+        graphCacheMutex.withLock {
+            val now = System.currentTimeMillis()
+            val cached = graphCache
+            if (cached != null &&
+                cached.dictionaryId == dictionaryId &&
+                now - cached.loadedAtMs <= GRAPH_CACHE_TTL_MS
+            ) {
+                cached.graph
+            } else {
+                val graph = buildWordRelationGraph(dictionaryId)
+                graphCache = CachedWordGraph(
+                    dictionaryId = dictionaryId,
+                    loadedAtMs = System.currentTimeMillis(),
+                    graph = graph
+                )
+                graph
+            }
+        }
+
+    private suspend fun buildWordRelationGraph(dictionaryId: Long): WordGraph {
         val labels = wordDao.getWordLabels(dictionaryId)
         val n = labels.size
         if (n == 0) {
@@ -164,34 +215,28 @@ class WordPoolRepositoryImpl @Inject constructor(
         val indexById = HashMap<Long, Int>(n * 2)
         labels.forEachIndexed { i, l -> indexById[l.id] = i }
 
-        val edgeProjections = wordEdgeDao.getAllEdges(dictionaryId)
         val uf = UnionFind(n)
         val degree = IntArray(n)
         val clusterDistribution = HashMap<EdgeCluster, Int>()
-        val graphEdges = ArrayList<WordGraphEdge>(edgeProjections.size)
+        val graphEdges = ArrayList<WordGraphEdge>(wordEdgeDao.countEdges(dictionaryId))
 
-        edgeProjections.forEach { e ->
-            val ai = indexById[e.wordIdA] ?: return@forEach
-            val bi = indexById[e.wordIdB] ?: return@forEach
-            if (ai == bi) return@forEach
-            val type = EdgeType.fromDbValue(e.edgeType) ?: return@forEach
+        forEachGraphEdge(dictionaryId) { e ->
+            val ai = indexById[e.wordIdA] ?: return@forEachGraphEdge
+            val bi = indexById[e.wordIdB] ?: return@forEachGraphEdge
+            if (ai == bi) return@forEachGraphEdge
+            val type = EdgeType.fromDbValue(e.edgeType) ?: return@forEachGraphEdge
             uf.union(ai, bi)
             degree[ai]++
             degree[bi]++
             clusterDistribution[type.cluster] = (clusterDistribution[type.cluster] ?: 0) + 1
             graphEdges.add(
                 WordGraphEdge(
+                    edgeId = e.id,
                     aIndex = ai,
                     bIndex = bi,
                     type = type,
                     relationStrength = e.relationStrength,
-                    confidence = e.confidence,
-                    status = e.status,
-                    reason = e.reason,
-                    exampleSentence = e.exampleSentence,
-                    register = e.register,
-                    difficultyCefr = e.difficultyCefr,
-                    warningNote = e.warningNote
+                    confidence = e.confidence
                 )
             )
         }
@@ -252,6 +297,24 @@ class WordPoolRepositoryImpl @Inject constructor(
         )
     }
 
+    private suspend fun forEachGraphEdge(
+        dictionaryId: Long,
+        action: (GraphEdgeProjection) -> Unit
+    ) {
+        var lastEdgeId = 0L
+        while (true) {
+            val edgePage = wordEdgeDao.getGraphEdgesPage(
+                dictionaryId = dictionaryId,
+                lastId = lastEdgeId,
+                limit = GRAPH_EDGE_PAGE_SIZE
+            )
+            if (edgePage.isEmpty()) break
+            edgePage.forEach(action)
+            lastEdgeId = edgePage.last().id
+            coroutineContext.ensureActive()
+        }
+    }
+
     override suspend fun rebuildPools(
         dictionaryId: Long,
         strategy: PoolStrategy,
@@ -279,6 +342,7 @@ class WordPoolRepositoryImpl @Inject constructor(
 
         // Single transaction write
         persistPools(dictionaryId, strategy, pools)
+        invalidateGraphCache(dictionaryId)
     }
 
     /** 把构建好的词池在单事务内落库（先删该策略旧池再插入新池+成员）。整理与审核共用。 */
@@ -368,7 +432,16 @@ class WordPoolRepositoryImpl @Inject constructor(
         val pools = rebuildPoolsFromDictionaryEdges(dictionaryId)
         coroutineContext.ensureActive()
         persistPools(dictionaryId, strategy, pools)
+        invalidateGraphCache(dictionaryId)
         liveMonitor.clear()
+    }
+
+    private suspend fun invalidateGraphCache(dictionaryId: Long) {
+        graphCacheMutex.withLock {
+            if (graphCache?.dictionaryId == dictionaryId) {
+                graphCache = null
+            }
+        }
     }
 
     override suspend fun getPoolCount(dictionaryId: Long): Int =
@@ -397,10 +470,9 @@ class WordPoolRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getWordEdgeAdjacency(dictionaryId: Long): Map<Long, Map<Long, Set<com.xty.englishhelper.domain.model.EdgeType>>> {
-        val edges = wordEdgeDao.getAllEdges(dictionaryId)
         val adj = mutableMapOf<Long, MutableMap<Long, MutableSet<com.xty.englishhelper.domain.model.EdgeType>>>()
-        edges.forEach { e ->
-            val type = com.xty.englishhelper.domain.model.EdgeType.fromDbValue(e.edgeType) ?: return@forEach
+        forEachGraphEdge(dictionaryId) { e ->
+            val type = com.xty.englishhelper.domain.model.EdgeType.fromDbValue(e.edgeType) ?: return@forEachGraphEdge
             adj.getOrPut(e.wordIdA) { mutableMapOf() }
                 .getOrPut(e.wordIdB) { mutableSetOf() }
                 .add(type)
@@ -1277,6 +1349,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             wordEdgeDao.deleteEdgesForWordAgainst(dictionaryId, target.id, batch)
         }
         if (edges.isNotEmpty()) wordEdgeDao.insertEdges(edges)
+        invalidateGraphCache(dictionaryId)
 
         // 刷新实时网格（仅当现场正是该词时生效；进程重启后网格为空则 no-op，续传会重填）。
         liveMonitor.recordAttempt(

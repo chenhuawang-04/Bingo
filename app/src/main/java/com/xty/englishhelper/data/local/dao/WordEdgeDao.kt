@@ -70,8 +70,22 @@ interface WordEdgeDao {
     @Query("SELECT COUNT(*) FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun countEdges(dictionaryId: Long): Int
 
-    @Query("SELECT word_id_a, word_id_b, edge_type, status, learning_value, relation_strength, confidence, reason, warning_note, evidence_source, register, example_sentence, difficulty_cefr FROM word_edges WHERE dictionary_id = :dictionaryId")
+    @Query("SELECT id, word_id_a, word_id_b, edge_type, relation_strength, confidence FROM word_edges WHERE dictionary_id = :dictionaryId")
+    suspend fun getGraphEdges(dictionaryId: Long): List<GraphEdgeProjection>
+
+    @Query(
+        "SELECT id, word_id_a, word_id_b, edge_type, relation_strength, confidence " +
+            "FROM word_edges " +
+            "WHERE dictionary_id = :dictionaryId AND id > :lastId " +
+            "ORDER BY id ASC LIMIT :limit"
+    )
+    suspend fun getGraphEdgesPage(dictionaryId: Long, lastId: Long, limit: Int): List<GraphEdgeProjection>
+
+    @Query("SELECT id, word_id_a, word_id_b, edge_type, status, learning_value, relation_strength, confidence, reason, warning_note, evidence_source, register, example_sentence, difficulty_cefr FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdges(dictionaryId: Long): List<EdgeProjection>
+
+    @Query("SELECT id, word_id_a, word_id_b, edge_type, status, learning_value, relation_strength, confidence, reason, warning_note, evidence_source, register, example_sentence, difficulty_cefr FROM word_edges WHERE id = :edgeId LIMIT 1")
+    suspend fun getEdgeDetail(edgeId: Long): EdgeProjection?
 
     @Query("UPDATE word_edges SET status = :status, confidence = :confidence WHERE id = :id")
     suspend fun updateEdgeStatus(id: Long, status: String, confidence: Double)
@@ -86,7 +100,17 @@ interface WordEdgeDao {
     suspend fun deleteExcludedByDictionary(dictionaryId: Long)
 }
 
+data class GraphEdgeProjection(
+    val id: Long,
+    @ColumnInfo(name = "word_id_a") val wordIdA: Long,
+    @ColumnInfo(name = "word_id_b") val wordIdB: Long,
+    @ColumnInfo(name = "edge_type") val edgeType: String,
+    @ColumnInfo(name = "relation_strength") val relationStrength: Int,
+    @ColumnInfo(name = "confidence") val confidence: Double
+)
+
 data class EdgeProjection(
+    val id: Long,
     @ColumnInfo(name = "word_id_a") val wordIdA: Long,
     @ColumnInfo(name = "word_id_b") val wordIdB: Long,
     @ColumnInfo(name = "edge_type") val edgeType: String,

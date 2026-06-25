@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordGraph
+import com.xty.englishhelper.domain.model.WordGraphEdgeDetail
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,7 @@ class PoolGraphViewModel @Inject constructor(
     private val focusClusterId: Int = savedStateHandle["focusClusterId"] ?: -1
 
     private var graph: WordGraph? = null
+    private var layoutGeneration = 0
 
     private val _uiState = MutableStateFlow(PoolGraphUiState(initialFocusClusterId = focusClusterId))
     val uiState: StateFlow<PoolGraphUiState> = _uiState.asStateFlow()
@@ -57,9 +59,17 @@ class PoolGraphViewModel @Inject constructor(
     fun setIncludeIsolated(include: Boolean) {
         val g = graph ?: return
         if (_uiState.value.includeIsolated == include) return
+        val generation = ++layoutGeneration
+        _uiState.update { it.copy(includeIsolated = include) }
         viewModelScope.launch {
             val layout = withContext(Dispatchers.Default) { PoolGraphLayout.build(g, includeIsolated = include) }
-            _uiState.update { it.copy(includeIsolated = include, layout = layout) }
+            _uiState.update { st ->
+                if (generation == layoutGeneration && st.includeIsolated == include) {
+                    st.copy(layout = layout)
+                } else {
+                    st
+                }
+            }
         }
     }
 
@@ -90,7 +100,7 @@ class PoolGraphViewModel @Inject constructor(
                     detail = null,
                     relations = relations
                 ),
-                selectedEdgeIndex = -1
+                selectedEdge = null
             )
         }
 
@@ -107,9 +117,53 @@ class PoolGraphViewModel @Inject constructor(
 
     fun clearSelection() = _uiState.update { it.copy(selectedNode = null) }
 
-    fun selectEdge(edgeIndex: Int) = _uiState.update { it.copy(selectedEdgeIndex = edgeIndex) }
+    fun selectEdge(edgeIndex: Int) {
+        val g = graph ?: return
+        if (edgeIndex !in g.edges.indices) return
+        val edgeId = g.edges[edgeIndex].edgeId
+        _uiState.update {
+            it.copy(
+                selectedEdge = SelectedEdgeState(
+                    edgeIndex = edgeIndex,
+                    isLoading = true
+                )
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { wordPoolRepository.getWordGraphEdgeDetail(edgeId) }
+            }.onSuccess { detail ->
+                _uiState.update { st ->
+                    val selected = st.selectedEdge
+                    if (selected != null && selected.edgeIndex == edgeIndex) {
+                        selected.copy(
+                            detail = detail,
+                            isLoading = false,
+                            error = if (detail == null) "关系详情不存在" else null
+                        ).let { st.copy(selectedEdge = it) }
+                    } else {
+                        st
+                    }
+                }
+            }.onFailure { error ->
+                _uiState.update { st ->
+                    val selected = st.selectedEdge
+                    if (selected != null && selected.edgeIndex == edgeIndex) {
+                        st.copy(
+                            selectedEdge = selected.copy(
+                                isLoading = false,
+                                error = error.message ?: "加载失败"
+                            )
+                        )
+                    } else {
+                        st
+                    }
+                }
+            }
+        }
+    }
 
-    fun clearEdge() = _uiState.update { it.copy(selectedEdgeIndex = -1) }
+    fun clearEdge() = _uiState.update { it.copy(selectedEdge = null) }
 }
 
 data class PoolGraphUiState(
@@ -119,8 +173,8 @@ data class PoolGraphUiState(
     val includeIsolated: Boolean = true,
     val initialFocusClusterId: Int = -1,
     val selectedNode: SelectedNodeState? = null,
-    /** 当前查看详情的关系边下标（指向 layout.graph.edges），-1 表示无。 */
-    val selectedEdgeIndex: Int = -1
+    /** 当前查看详情的关系边（edgeIndex 指向 layout.graph.edges）。 */
+    val selectedEdge: SelectedEdgeState? = null
 )
 
 data class SelectedNodeState(
@@ -136,4 +190,11 @@ data class RelationRow(
     val otherSpelling: String,
     val type: EdgeType,
     val relationStrength: Int
+)
+
+data class SelectedEdgeState(
+    val edgeIndex: Int,
+    val detail: WordGraphEdgeDetail? = null,
+    val isLoading: Boolean = false,
+    val error: String? = null
 )

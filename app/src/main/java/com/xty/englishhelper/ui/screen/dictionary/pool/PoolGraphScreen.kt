@@ -69,10 +69,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.xty.englishhelper.domain.model.WordGraphEdgeDetail
 import com.xty.englishhelper.domain.model.WordGraphEdge
 import com.xty.englishhelper.ui.components.pool.clusterColor
 import com.xty.englishhelper.ui.components.pool.edgeClusterLegend
 import com.xty.englishhelper.ui.components.pool.edgeTypeColor
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
@@ -460,12 +462,16 @@ private fun PoolGraphContent(
     }
 
     // ── 关系边详情：对话框 ──
-    val edgeIdx = state.selectedEdgeIndex
-    if (edgeIdx in edges.indices) {
+    val selectedEdge = state.selectedEdge
+    val edgeIdx = selectedEdge?.edgeIndex ?: -1
+    if (selectedEdge != null && edgeIdx in edges.indices) {
         EdgeDetailDialog(
             edge = edges[edgeIdx],
+            detail = selectedEdge.detail,
             aSpelling = nodes[edges[edgeIdx].aIndex].spelling,
             bSpelling = nodes[edges[edgeIdx].bIndex].spelling,
+            isLoading = selectedEdge.isLoading,
+            error = selectedEdge.error,
             onDismiss = onClearEdge
         )
     }
@@ -599,10 +605,15 @@ private fun NodeSheetContent(
 @Composable
 private fun EdgeDetailDialog(
     edge: WordGraphEdge,
+    detail: WordGraphEdgeDetail?,
     aSpelling: String,
     bSpelling: String,
+    isLoading: Boolean,
+    error: String?,
     onDismiss: () -> Unit
 ) {
+    val relationStrength = detail?.relationStrength ?: edge.relationStrength
+    val confidence = detail?.confidence ?: edge.confidence
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
@@ -623,14 +634,28 @@ private fun EdgeDetailDialog(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                DetailLine(stringResource(R.string.pool_graph_relation_strength), edge.relationStrength.toString())
-                DetailLine(stringResource(R.string.pool_graph_confidence), String.format("%.2f", edge.confidence))
-                edge.difficultyCefr?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_difficulty), it) }
-                edge.register?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_register), it) }
-                edge.reason?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_reason), it) }
-                edge.exampleSentence?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_example), it) }
-                edge.warningNote?.takeIf { it.isNotBlank() }?.let {
-                    DetailLine(stringResource(R.string.pool_graph_caution), it, valueColor = MaterialTheme.colorScheme.error)
+                DetailLine(stringResource(R.string.pool_graph_relation_strength), relationStrength.toString())
+                DetailLine(stringResource(R.string.pool_graph_confidence), String.format(Locale.US, "%.2f", confidence))
+                when {
+                    isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            stringResource(R.string.pool_graph_loading_def),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    error != null -> Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    detail != null -> {
+                        detail.difficultyCefr?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_difficulty), it) }
+                        detail.register?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_register), it) }
+                        detail.reason?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_reason), it) }
+                        detail.exampleSentence?.takeIf { it.isNotBlank() }?.let { DetailLine(stringResource(R.string.pool_graph_example), it) }
+                        detail.warningNote?.takeIf { it.isNotBlank() }?.let {
+                            DetailLine(stringResource(R.string.pool_graph_caution), it, valueColor = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             }
         }
