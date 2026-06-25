@@ -4,6 +4,7 @@ import com.xty.englishhelper.data.local.entity.UnitEntity
 import com.xty.englishhelper.data.local.entity.WordStudyStateEntity
 import com.xty.englishhelper.data.local.relation.UnitWithWordCount
 import com.xty.englishhelper.domain.model.StudyUnit
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordStudyState
 
 fun UnitEntity.toDomain(wordCount: Int = 0) = StudyUnit(
@@ -34,6 +35,7 @@ fun StudyUnit.toEntity() = UnitEntity(
 
 fun WordStudyStateEntity.toDomain() = WordStudyState(
     wordId = wordId,
+    studyMode = runCatching { StudyMode.valueOf(studyMode) }.getOrDefault(StudyMode.NORMAL),
     state = state,
     step = step,
     stability = stability,
@@ -46,6 +48,7 @@ fun WordStudyStateEntity.toDomain() = WordStudyState(
 
 fun WordStudyState.toEntity() = WordStudyStateEntity(
     wordId = wordId,
+    studyMode = studyMode.name,
     state = state,
     step = step,
     stability = stability,

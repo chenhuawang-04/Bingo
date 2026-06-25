@@ -65,6 +65,7 @@ import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.SimilarWordInfo
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
@@ -586,22 +587,25 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                             wordUid = word.wordUid
                         )
                         val wordId = wordRepository.insertWord(wordWithDict)
-                        // Import study state if available
-                        val stateData = importResult.studyStates.find { it.wordUid == word.wordUid }
-                        if (stateData != null) {
-                            studyRepository.upsertStudyState(
-                                WordStudyState(
-                                    wordId = wordId,
-                                    state = stateData.state,
-                                    step = stateData.step,
-                                    stability = stateData.stability,
-                                    difficulty = stateData.difficulty,
-                                    due = stateData.due,
-                                    lastReviewAt = stateData.lastReviewAt,
-                                    reps = stateData.reps,
-                                    lapses = stateData.lapses
+                        // Import study states if available
+                        val stateData = importResult.studyStates.filter { it.wordUid == word.wordUid }
+                        if (stateData.isNotEmpty()) {
+                            stateData.forEach { importedState ->
+                                studyRepository.upsertStudyState(
+                                    WordStudyState(
+                                        wordId = wordId,
+                                        studyMode = importedState.studyMode,
+                                        state = importedState.state,
+                                        step = importedState.step,
+                                        stability = importedState.stability,
+                                        difficulty = importedState.difficulty,
+                                        due = importedState.due,
+                                        lastReviewAt = importedState.lastReviewAt,
+                                        reps = importedState.reps,
+                                        lapses = importedState.lapses
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
                 }
@@ -629,10 +633,13 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         // For study states, keep the more recent lastReviewAt
-        val cloudStudyByUid = cloudJson.studyStates.associateBy { it.wordUid }
-        val localStudyByUid = localJson.studyStates.associateBy { it.wordUid }
-        val allStudyUids = (cloudStudyByUid.keys + localStudyByUid.keys)
-            .filter { it.isNotBlank() }
+        val cloudStudyByUid = cloudJson.studyStates
+            .filter { it.wordUid.isNotBlank() }
+            .associateBy { it.wordUid to normalizeStudyModeName(it.mode) }
+        val localStudyByUid = localJson.studyStates
+            .filter { it.wordUid.isNotBlank() }
+            .associateBy { it.wordUid to normalizeStudyModeName(it.mode) }
+        val allStudyKeys = (cloudStudyByUid.keys + localStudyByUid.keys)
             .toSet()
 
         // Get local word mapping after word imports/updates
@@ -658,42 +665,18 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             }
         }
 
-        for (uid in allStudyUids) {
-            val cloud = cloudStudyByUid[uid]
-            val local = localStudyByUid[uid]
-            val wordId = wordUidToId[uid] ?: continue
+        for (key in allStudyKeys) {
+            val cloud = cloudStudyByUid[key]
+            val local = localStudyByUid[key]
+            val wordId = wordUidToId[key.first] ?: continue
 
             if (local == null && cloud != null) {
                 // Cloud-only study state
-                studyRepository.upsertStudyState(
-                    WordStudyState(
-                        wordId = wordId,
-                        state = cloud.state,
-                        step = cloud.step,
-                        stability = cloud.stability,
-                        difficulty = cloud.difficulty,
-                        due = cloud.due,
-                        lastReviewAt = cloud.lastReviewAt,
-                        reps = cloud.reps,
-                        lapses = cloud.lapses
-                    )
-                )
+                studyRepository.upsertStudyState(cloud.toDomain(wordId))
             } else if (local != null && cloud != null) {
                 // Both exist -> keep the one with more recent lastReviewAt
                 if (cloud.lastReviewAt > local.lastReviewAt) {
-                    studyRepository.upsertStudyState(
-                        WordStudyState(
-                            wordId = wordId,
-                            state = cloud.state,
-                            step = cloud.step,
-                            stability = cloud.stability,
-                            difficulty = cloud.difficulty,
-                            due = cloud.due,
-                            lastReviewAt = cloud.lastReviewAt,
-                            reps = cloud.reps,
-                            lapses = cloud.lapses
-                        )
-                    )
+                    studyRepository.upsertStudyState(cloud.toDomain(wordId))
                 }
             }
         }
@@ -1315,6 +1298,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         studyRepository.upsertStudyState(
                             WordStudyState(
                                 wordId = wordId,
+                                studyMode = stateData.studyMode,
                                 state = stateData.state,
                                 step = stateData.step,
                                 stability = stateData.stability,
@@ -1804,6 +1788,27 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             updatedAt = updatedAt.takeIf { it > 0 } ?: fallbackUpdatedAt
         )
     }
+
+    private fun StudyStateJsonModel.toDomain(wordId: Long): WordStudyState {
+        return WordStudyState(
+            wordId = wordId,
+            studyMode = parseStudyModeName(mode),
+            state = state,
+            step = step,
+            stability = stability,
+            difficulty = difficulty,
+            due = due,
+            lastReviewAt = lastReviewAt,
+            reps = reps,
+            lapses = lapses
+        )
+    }
+
+    private fun normalizeStudyModeName(raw: String): String =
+        raw.trim().ifBlank { StudyMode.NORMAL.name }.uppercase()
+
+    private fun parseStudyModeName(raw: String): StudyMode =
+        StudyMode.entries.firstOrNull { it.name == normalizeStudyModeName(raw) } ?: StudyMode.NORMAL
 
     private suspend fun <T> uploadJson(path: String, data: T, adapter: com.squareup.moshi.JsonAdapter<T>) {
         val json = adapter.toJson(data)

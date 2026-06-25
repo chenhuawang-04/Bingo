@@ -9,6 +9,7 @@ import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.SimilarWordInfo
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
@@ -52,7 +53,7 @@ class JsonImportExporter @Inject constructor(
         val model = DictionaryJsonModel(
             name = dictionary.name,
             description = dictionary.description,
-            schemaVersion = 6,
+            schemaVersion = 7,
             words = words.map { word ->
                 WordJsonModel(
                     spelling = word.spelling,
@@ -88,6 +89,7 @@ class JsonImportExporter @Inject constructor(
                 val uid = wordIdToUid[state.wordId] ?: return@mapNotNull null
                 StudyStateJsonModel(
                     wordUid = uid,
+                    mode = state.studyMode.name,
                     state = state.state,
                     step = state.step,
                     stability = state.stability,
@@ -106,8 +108,8 @@ class JsonImportExporter @Inject constructor(
         val parsedModel = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
 
         // Validate schema version
-        if (parsedModel.schemaVersion !in listOf(4, 5, 6)) {
-            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5 或 6）")
+        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7)) {
+            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5、6 或 7）")
         }
 
         // Validate no empty spellings
@@ -142,6 +144,9 @@ class JsonImportExporter @Inject constructor(
             if (state.state !in validStates) {
                 throw IllegalArgumentException("第 ${index + 1} 个学习状态的 state 值无效：${state.state}（需要 1/2/3）")
             }
+            parseStudyMode(state.mode) ?: throw IllegalArgumentException(
+                "第 ${index + 1} 个学习状态的 mode 值无效：${state.mode}"
+            )
         }
 
         val dictionary = Dictionary(
@@ -192,6 +197,7 @@ class JsonImportExporter @Inject constructor(
             studyStates = model.studyStates.map {
                 DictionaryImportExporter.ImportedStudyState(
                     wordUid = it.wordUid,
+                    studyMode = parseStudyMode(it.mode) ?: StudyMode.NORMAL,
                     state = it.state,
                     step = it.step,
                     stability = it.stability,
@@ -204,4 +210,7 @@ class JsonImportExporter @Inject constructor(
             }
         )
     }
+
+    private fun parseStudyMode(raw: String): StudyMode? =
+        StudyMode.entries.firstOrNull { it.name.equals(raw.trim(), ignoreCase = true) }
 }

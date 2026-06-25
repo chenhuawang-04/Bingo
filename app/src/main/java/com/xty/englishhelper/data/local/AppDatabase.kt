@@ -94,7 +94,7 @@ import java.util.UUID
         BrainstormDailyGoalEntity::class,
         BrainstormSettingsEntity::class
     ],
-    version = 29,
+    version = 30,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1037,6 +1037,41 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+            }
+        }
+
+        val MIGRATION_29_30 = object : Migration(29, 30) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_study_state_new` (
+                        `word_id` INTEGER NOT NULL,
+                        `study_mode` TEXT NOT NULL DEFAULT 'NORMAL',
+                        `state` INTEGER NOT NULL DEFAULT 2,
+                        `step` INTEGER,
+                        `stability` REAL NOT NULL DEFAULT 0.0,
+                        `difficulty` REAL NOT NULL DEFAULT 0.0,
+                        `due` INTEGER NOT NULL DEFAULT 0,
+                        `last_review_at` INTEGER NOT NULL DEFAULT 0,
+                        `reps` INTEGER NOT NULL DEFAULT 0,
+                        `lapses` INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(`word_id`, `study_mode`),
+                        FOREIGN KEY(`word_id`) REFERENCES `words`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO word_study_state_new (
+                        word_id, study_mode, state, step, stability, difficulty, due, last_review_at, reps, lapses
+                    )
+                    SELECT
+                        word_id, 'NORMAL', state, step, stability, difficulty, due, last_review_at, reps, lapses
+                    FROM word_study_state
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE word_study_state")
+                db.execSQL("ALTER TABLE word_study_state_new RENAME TO word_study_state")
             }
         }
     }

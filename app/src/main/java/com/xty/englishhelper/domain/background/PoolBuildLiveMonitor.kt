@@ -1,5 +1,6 @@
 package com.xty.englishhelper.domain.background
 
+import com.xty.englishhelper.domain.model.BackgroundTaskType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,6 +45,7 @@ data class ChunkProgress(
 /** “正在整理的这一个词”的全部分块网格。 */
 data class LiveWordProgress(
     val dictionaryId: Long,
+    val taskType: BackgroundTaskType,
     val word: String,
     val chunks: List<ChunkProgress>
 )
@@ -71,7 +73,13 @@ class PoolBuildLiveMonitor @Inject constructor() {
      * 开始处理一个新词：用 [chunkCount] 个方块初始化网格。
      * 续传时 [alreadyCommitted] 个前缀块已在之前的构建中完成，直接置为成功（绿），其余为未开始（白）。
      */
-    fun startWord(dictionaryId: Long, word: String, chunkCount: Int, alreadyCommitted: Int) {
+    fun startWord(
+        dictionaryId: Long,
+        taskType: BackgroundTaskType,
+        word: String,
+        chunkCount: Int,
+        alreadyCommitted: Int
+    ) {
         val committed = alreadyCommitted.coerceIn(0, chunkCount)
         val chunks = (0 until chunkCount).map { i ->
             if (i < committed) {
@@ -84,7 +92,7 @@ class PoolBuildLiveMonitor @Inject constructor() {
                 ChunkProgress(index = i)
             }
         }
-        _liveWord.value = LiveWordProgress(dictionaryId, word, chunks)
+        _liveWord.value = LiveWordProgress(dictionaryId, taskType, word, chunks)
     }
 
     /**
@@ -93,6 +101,7 @@ class PoolBuildLiveMonitor @Inject constructor() {
      */
     fun recordAttempt(
         dictionaryId: Long,
+        taskType: BackgroundTaskType,
         word: String,
         chunkIndex: Int,
         attempt: Int,
@@ -102,7 +111,12 @@ class PoolBuildLiveMonitor @Inject constructor() {
     ) {
         _liveWord.update { cur ->
             // 词边界有结构化并发栅栏，正常不会收到非当前词的回调；不匹配则原样返回（不触发 emission）。
-            if (cur == null || cur.dictionaryId != dictionaryId || cur.word != word) return@update cur
+            if (
+                cur == null ||
+                cur.dictionaryId != dictionaryId ||
+                cur.taskType != taskType ||
+                cur.word != word
+            ) return@update cur
             if (chunkIndex !in cur.chunks.indices) return@update cur
 
             val old = cur.chunks[chunkIndex]

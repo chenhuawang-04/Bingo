@@ -14,11 +14,11 @@ interface StudyDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertStudyState(state: WordStudyStateEntity)
 
-    @Query("SELECT * FROM word_study_state WHERE word_id = :wordId")
-    suspend fun getStudyState(wordId: Long): WordStudyStateEntity?
+    @Query("SELECT * FROM word_study_state WHERE word_id = :wordId AND study_mode = :studyMode")
+    suspend fun getStudyState(wordId: Long, studyMode: String): WordStudyStateEntity?
 
-    @Query("DELETE FROM word_study_state WHERE word_id = :wordId")
-    suspend fun deleteStudyState(wordId: Long)
+    @Query("DELETE FROM word_study_state WHERE word_id = :wordId AND study_mode = :studyMode")
+    suspend fun deleteStudyState(wordId: Long, studyMode: String)
 
     /**
      * Get due words for given unit IDs: words that have a study state with due <= now.
@@ -28,13 +28,13 @@ interface StudyDao {
         """
         SELECT DISTINCT w.* FROM words w
         INNER JOIN unit_word_cross_ref ref ON w.id = ref.word_id
-        INNER JOIN word_study_state s ON w.id = s.word_id
+        INNER JOIN word_study_state s ON w.id = s.word_id AND s.study_mode = :studyMode
         WHERE ref.unit_id IN (:unitIds)
           AND s.due <= :now
         ORDER BY s.due ASC
         """
     )
-    suspend fun getDueWords(unitIds: List<Long>, now: Long): List<WordWithDetails>
+    suspend fun getDueWords(unitIds: List<Long>, now: Long, studyMode: String): List<WordWithDetails>
 
     /**
      * Get new words for given unit IDs: words that have NO study state yet.
@@ -44,13 +44,13 @@ interface StudyDao {
         """
         SELECT DISTINCT w.* FROM words w
         INNER JOIN unit_word_cross_ref ref ON w.id = ref.word_id
-        LEFT JOIN word_study_state s ON w.id = s.word_id
+        LEFT JOIN word_study_state s ON w.id = s.word_id AND s.study_mode = :studyMode
         WHERE ref.unit_id IN (:unitIds)
           AND s.word_id IS NULL
         ORDER BY w.spelling ASC
         """
     )
-    suspend fun getNewWords(unitIds: List<Long>): List<WordWithDetails>
+    suspend fun getNewWords(unitIds: List<Long>, studyMode: String): List<WordWithDetails>
 
     /**
      * Count due words for a single unit.
@@ -59,12 +59,12 @@ interface StudyDao {
         """
         SELECT COUNT(DISTINCT w.id) FROM words w
         INNER JOIN unit_word_cross_ref ref ON w.id = ref.word_id
-        INNER JOIN word_study_state s ON w.id = s.word_id
+        INNER JOIN word_study_state s ON w.id = s.word_id AND s.study_mode = :studyMode
         WHERE ref.unit_id = :unitId
           AND s.due <= :now
         """
     )
-    suspend fun countDueWords(unitId: Long, now: Long): Int
+    suspend fun countDueWords(unitId: Long, now: Long, studyMode: String): Int
 
     /**
      * Count new words (no study state) for a single unit.
@@ -73,12 +73,12 @@ interface StudyDao {
         """
         SELECT COUNT(DISTINCT w.id) FROM words w
         INNER JOIN unit_word_cross_ref ref ON w.id = ref.word_id
-        LEFT JOIN word_study_state s ON w.id = s.word_id
+        LEFT JOIN word_study_state s ON w.id = s.word_id AND s.study_mode = :studyMode
         WHERE ref.unit_id = :unitId
           AND s.word_id IS NULL
         """
     )
-    suspend fun countNewWords(unitId: Long): Int
+    suspend fun countNewWords(unitId: Long, studyMode: String): Int
 
     /**
      * Get all study states for words in given units (for export).
@@ -103,6 +103,19 @@ interface StudyDao {
         """
     )
     suspend fun getStudyStatesForDictionary(dictionaryId: Long): List<WordStudyStateEntity>
+
+    @Query(
+        """
+        SELECT s.* FROM word_study_state s
+        INNER JOIN words w ON s.word_id = w.id
+        WHERE w.dictionary_id = :dictionaryId
+          AND s.study_mode = :studyMode
+        """
+    )
+    suspend fun getStudyStatesForDictionaryByMode(
+        dictionaryId: Long,
+        studyMode: String
+    ): List<WordStudyStateEntity>
 
     /**
      * Count all due words globally.

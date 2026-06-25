@@ -2,6 +2,7 @@ package com.xty.englishhelper.domain.usecase.brainstorm
 
 import com.xty.englishhelper.domain.model.EdgeNeighbor
 import com.xty.englishhelper.domain.model.EdgeType
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.repository.StudyRepository
 import com.xty.englishhelper.domain.repository.WordPoolRepository
@@ -62,7 +63,7 @@ class BuildBrainstormSessionUseCase @Inject constructor(
         val sessionAdj = buildSessionAdjacency(byId.keys, gatedAdj)
 
         // 已掌握程度（FSRS stability）：用于新词锚定与簇内排序的锚点选择。
-        val stability = studyRepository.getStudyStatesForDictionary(dictionaryId)
+        val stability = studyRepository.getStudyStatesForDictionary(dictionaryId, StudyMode.BRAINSTORM)
             .associate { it.wordId to it.stability }
 
         // 4. 簇装配 + 排序。

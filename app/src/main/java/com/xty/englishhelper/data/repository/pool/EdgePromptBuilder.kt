@@ -137,7 +137,7 @@ internal object EdgePromptBuilder {
             appendLine()
             appendLine("返回JSON数组，每个元素：")
             appendLine("""[{"i":0,"verdict":"keep","new_status":"core","new_confidence":0.8,"note":"调整原因"}]""")
-            appendLine("verdict: keep=保留原样 / adjust=调整status或confidence / remove=移除此边")
+            appendLine("verdict: keep=保留原样 / adjust=调整status或confidence / remove=将该边置信度降为0（保留边记录）")
             appendLine("adjust 时必须提供 new_status 和 new_confidence；keep/remove 时可省略。")
             appendLine("note: 简要说明审核意见（中文）。")
             appendLine(Constants.JSON_STRICT_RULES)

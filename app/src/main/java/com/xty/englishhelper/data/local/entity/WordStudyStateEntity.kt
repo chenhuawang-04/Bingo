@@ -3,10 +3,10 @@ package com.xty.englishhelper.data.local.entity
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
-import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "word_study_state",
+    primaryKeys = ["word_id", "study_mode"],
     foreignKeys = [
         ForeignKey(
             entity = WordEntity::class,
@@ -17,9 +17,10 @@ import androidx.room.PrimaryKey
     ]
 )
 data class WordStudyStateEntity(
-    @PrimaryKey
     @ColumnInfo(name = "word_id")
     val wordId: Long,
+    @ColumnInfo(name = "study_mode", defaultValue = "NORMAL")
+    val studyMode: String = "NORMAL",
     @ColumnInfo(name = "state", defaultValue = "2")
     val state: Int = 2,
     @ColumnInfo(name = "step")

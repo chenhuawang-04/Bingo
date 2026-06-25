@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.navigation
 
+import com.xty.englishhelper.domain.model.BackgroundTaskType
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -63,7 +64,10 @@ data class ArticleReaderRoute(val articleId: Long, val scrollToSentenceId: Long 
 data class BatchImportRoute(val dictionaryId: Long)
 
 @Serializable
-data class PoolBuildDetailRoute(val dictionaryId: Long)
+data class PoolBuildDetailRoute(
+    val dictionaryId: Long,
+    val taskType: String = BackgroundTaskType.WORD_POOL_REBUILD.name
+)
 
 @Serializable
 data class PoolOverviewRoute(val dictionaryId: Long)

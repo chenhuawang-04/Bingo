@@ -149,8 +149,8 @@ class StudyViewModel @Inject constructor(
     private suspend fun loadStudyContent() {
         try {
             // Get due words (most overdue first) and new words
-            val dueWords = getDueWords(unitIds)
-            val newWords = getNewWords(unitIds)
+            val dueWords = getDueWords(unitIds, studyMode)
+            val newWords = getNewWords(unitIds, studyMode)
             sessionHasDueWords = dueWords.isNotEmpty()
             sessionHasNewWords = newWords.isNotEmpty()
             sessionProgressTracked = false
@@ -336,7 +336,7 @@ class StudyViewModel @Inject constructor(
         if (_uiState.value.phase != StudyPhase.Studying) return
         val word = _uiState.value.currentWord ?: return
         viewModelScope.launch {
-            val intervals = previewIntervals(word.id)
+            val intervals = previewIntervals(word.id, studyMode)
             _uiState.update {
                 it.copy(
                     showAnswer = true,
@@ -355,7 +355,7 @@ class StudyViewModel @Inject constructor(
         isProcessingRating = true
         viewModelScope.launch {
             try {
-                val result = reviewWord(word.id, rating)
+                val result = reviewWord(word.id, rating, studyMode)
 
                 when (rating) {
                     Rating.Again -> againCount++

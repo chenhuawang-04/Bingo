@@ -72,6 +72,7 @@ data class UnitJsonModel(
 @JsonClass(generateAdapter = true)
 data class StudyStateJsonModel(
     val wordUid: String = "",
+    val mode: String = "NORMAL",
     val state: Int = 2,
     val step: Int? = null,
     val stability: Double = 0.0,

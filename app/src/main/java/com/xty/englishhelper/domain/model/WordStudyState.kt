@@ -2,6 +2,7 @@ package com.xty.englishhelper.domain.model
 
 data class WordStudyState(
     val wordId: Long,
+    val studyMode: StudyMode = StudyMode.NORMAL,
     val state: Int = 2,            // CardState.Review.value
     val step: Int? = null,
     val stability: Double = 0.0,

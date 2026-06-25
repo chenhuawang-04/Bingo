@@ -1,5 +1,6 @@
 package com.xty.englishhelper.ui.screen.dictionary
 
+import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordDetails
@@ -12,6 +13,17 @@ enum class BuildStatus {
     SUCCESS,
     FAILED,
     CANCELED
+}
+
+enum class PoolTaskMode(val taskType: BackgroundTaskType) {
+    BUILD(BackgroundTaskType.WORD_POOL_REBUILD),
+    REVIEW(BackgroundTaskType.WORD_POOL_REVIEW);
+
+    companion object {
+        fun fromTaskTypeName(raw: String?): PoolTaskMode {
+            return if (raw == BackgroundTaskType.WORD_POOL_REVIEW.name) REVIEW else BUILD
+        }
+    }
 }
 
 enum class EntryPresenceFilter {
@@ -65,6 +77,7 @@ data class DictionaryUiState(
     val isReviewingPools: Boolean = false,
     val reviewProgress: Pair<Int, Int>? = null,
     val reviewError: String? = null,
+    val currentReviewMessage: String? = null,
     val isReviewPaused: Boolean = false,
     val showQfConfirmDialog: Boolean = false,
     val qfWordCount: Int = 0,

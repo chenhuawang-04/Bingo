@@ -69,6 +69,7 @@ class ImportDictionaryUseCase @Inject constructor(
                 studyRepository.upsertStudyState(
                     WordStudyState(
                         wordId = wordId,
+                        studyMode = stateData.studyMode,
                         state = stateData.state,
                         step = stateData.step,
                         stability = stateData.stability,

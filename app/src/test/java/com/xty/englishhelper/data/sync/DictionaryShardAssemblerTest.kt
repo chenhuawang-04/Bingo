@@ -134,7 +134,7 @@ class DictionaryShardAssemblerTest {
         return DictionaryJsonModel(
             name = "Large Dictionary",
             description = "Dictionary for shard testing",
-            schemaVersion = 6,
+            schemaVersion = 7,
             words = words,
             units = listOf(
                 UnitJsonModel(

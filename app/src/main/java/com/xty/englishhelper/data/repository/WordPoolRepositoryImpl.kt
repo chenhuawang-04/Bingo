@@ -26,6 +26,7 @@ import com.xty.englishhelper.data.repository.pool.PoolQualityScorer
 import com.xty.englishhelper.data.repository.pool.RetryableEdgeException
 import java.util.concurrent.atomic.AtomicInteger
 import com.xty.englishhelper.domain.background.PoolBuildLiveMonitor
+import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.EdgeCluster
 import com.xty.englishhelper.domain.model.EdgeNeighbor
@@ -324,13 +325,38 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
         val allWords: List<WordDetails> = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
 
-        // 复查低置信度 / warning 边（移除或调整）。进度按待审边数上报。
+        // 复查低置信度 / warning 边。批大小 / 并发 / RPM / 重试模式均复用词池构建配置；
+        // review verdict=remove 现改为“保留边记录，仅把 confidence 降到 0”。
         val modified = edgeReviewer.reviewEdgesWithAi(
             edges = edgesBefore,
             domains = allWords,
-            dictionaryId = dictionaryId,
             isCancelled = isCancelled,
             isPaused = isPaused,
+            onReviewStart = { _, totalBatches ->
+                if (totalBatches > 0) {
+                    liveMonitor.startWord(
+                        dictionaryId = dictionaryId,
+                        taskType = BackgroundTaskType.WORD_POOL_REVIEW,
+                        word = "AI复查批次",
+                        chunkCount = totalBatches,
+                        alreadyCommitted = 0
+                    )
+                } else {
+                    liveMonitor.clear()
+                }
+            },
+            onBatchAttempt = { batchIndex, attempt, response, error, success ->
+                liveMonitor.recordAttempt(
+                    dictionaryId = dictionaryId,
+                    taskType = BackgroundTaskType.WORD_POOL_REVIEW,
+                    word = "AI复查批次",
+                    chunkIndex = batchIndex,
+                    attempt = attempt,
+                    response = response,
+                    error = error,
+                    success = success
+                )
+            },
             onProgress = onProgress
         )
 
@@ -345,6 +371,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         val pools = rebuildPoolsFromEdges(finalEdges, wordIds)
         coroutineContext.ensureActive()
         persistPools(dictionaryId, strategy, pools)
+        liveMonitor.clear()
     }
 
     override suspend fun getPoolCount(dictionaryId: Long): Int =
@@ -653,7 +680,13 @@ class WordPoolRepositoryImpl @Inject constructor(
             onProgress(wordsDone, totalWords, encodeProgress(currentWord.spelling, startChunkForWord, chunks.size, committedEdges))
 
             // 实时分块网格：用本词块数初始化方块（续传的前缀块直接置绿），下方每块每次尝试都会刷新对应方块颜色。
-            liveMonitor.startWord(dictionaryId, currentWord.spelling, chunks.size, startChunkForWord)
+            liveMonitor.startWord(
+                dictionaryId = dictionaryId,
+                taskType = BackgroundTaskType.WORD_POOL_REBUILD,
+                word = currentWord.spelling,
+                chunkCount = chunks.size,
+                alreadyCommitted = startChunkForWord
+            )
 
             // ── 分波处理（修复”失败不阻塞 + 计算后丢弃后续所有块”——用户反馈 ①②③ 的同一根因）──
             // 把待整理的块按 currentMaxConcurrent 切成若干「波」，一次只启动**一波**：
@@ -690,7 +723,14 @@ class WordPoolRepositoryImpl @Inject constructor(
                                     callAiForEdges(prompt, currentWord, chunk, unwrapEnabled, repairEnabled, currentRetryMode, wordFailureTally) { attempt, raw, error, success ->
                                         // 每一次尝试（含失败重试）都实时反映到详情页对应方块。
                                         liveMonitor.recordAttempt(
-                                            dictionaryId, currentWord.spelling, chunkIndex, attempt, raw, error, success
+                                            dictionaryId = dictionaryId,
+                                            taskType = BackgroundTaskType.WORD_POOL_REBUILD,
+                                            word = currentWord.spelling,
+                                            chunkIndex = chunkIndex,
+                                            attempt = attempt,
+                                            response = raw,
+                                            error = error,
+                                            success = success
                                         )
                                     }) {
                                     is EdgeCallResult.Success -> {
@@ -1223,6 +1263,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         // 刷新实时网格（仅当现场正是该词时生效；进程重启后网格为空则 no-op，续传会重填）。
         liveMonitor.recordAttempt(
             dictionaryId = dictionaryId,
+            taskType = BackgroundTaskType.WORD_POOL_REBUILD,
             word = wordSpelling,
             chunkIndex = chunkIndex,
             attempt = 0,

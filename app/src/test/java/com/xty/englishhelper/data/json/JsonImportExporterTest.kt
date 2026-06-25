@@ -9,6 +9,7 @@ import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordStudyState
 import org.junit.Assert.assertEquals
@@ -65,6 +66,7 @@ class JsonImportExporterTest {
         val studyStates = listOf(
             WordStudyState(
                 wordId = 1,
+                studyMode = StudyMode.NORMAL,
                 state = 2,
                 stability = 3.173,
                 difficulty = 5.71,
@@ -72,6 +74,17 @@ class JsonImportExporterTest {
                 lastReviewAt = 500L,
                 reps = 3,
                 lapses = 1
+            ),
+            WordStudyState(
+                wordId = 1,
+                studyMode = StudyMode.BRAINSTORM,
+                state = 3,
+                stability = 4.0,
+                difficulty = 2.5,
+                due = 2000L,
+                lastReviewAt = 1500L,
+                reps = 5,
+                lapses = 0
             )
         )
         val wordIdToUid = mapOf(1L to "uid-1", 2L to "uid-2")
@@ -79,7 +92,7 @@ class JsonImportExporterTest {
         val json = exporter.exportToJson(dictionary, words, units, unitWordMap, studyStates, wordIdToUid)
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 6"))
+        assertTrue(json.contains("\"schemaVersion\": 7"))
 
         val result = exporter.importFromJson(json)
 
@@ -106,16 +119,26 @@ class JsonImportExporterTest {
         assertEquals(3, result.units[0].repeatCount)
         assertEquals(listOf("uid-1", "uid-2"), result.units[0].wordUids)
 
-        // Study states use FSRS fields
-        assertEquals(1, result.studyStates.size)
-        assertEquals("uid-1", result.studyStates[0].wordUid)
-        assertEquals(2, result.studyStates[0].state)
-        assertEquals(3.173, result.studyStates[0].stability, 0.001)
-        assertEquals(5.71, result.studyStates[0].difficulty, 0.001)
-        assertEquals(1000L, result.studyStates[0].due)
-        assertEquals(500L, result.studyStates[0].lastReviewAt)
-        assertEquals(3, result.studyStates[0].reps)
-        assertEquals(1, result.studyStates[0].lapses)
+        // Study states use FSRS fields and preserve mode separation
+        assertEquals(2, result.studyStates.size)
+        val normal = result.studyStates.first { it.studyMode == StudyMode.NORMAL }
+        val brainstorm = result.studyStates.first { it.studyMode == StudyMode.BRAINSTORM }
+        assertEquals("uid-1", normal.wordUid)
+        assertEquals(2, normal.state)
+        assertEquals(3.173, normal.stability, 0.001)
+        assertEquals(5.71, normal.difficulty, 0.001)
+        assertEquals(1000L, normal.due)
+        assertEquals(500L, normal.lastReviewAt)
+        assertEquals(3, normal.reps)
+        assertEquals(1, normal.lapses)
+        assertEquals("uid-1", brainstorm.wordUid)
+        assertEquals(3, brainstorm.state)
+        assertEquals(4.0, brainstorm.stability, 0.001)
+        assertEquals(2.5, brainstorm.difficulty, 0.001)
+        assertEquals(2000L, brainstorm.due)
+        assertEquals(1500L, brainstorm.lastReviewAt)
+        assertEquals(5, brainstorm.reps)
+        assertEquals(0, brainstorm.lapses)
     }
 
     @Test
@@ -195,10 +218,10 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 6`() {
+    fun `export produces schemaVersion 7`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 6"))
+        assertTrue(json.contains("\"schemaVersion\": 7"))
     }
 
     @Test
@@ -300,7 +323,7 @@ class JsonImportExporterTest {
                 {"name": "Unit 1", "repeatCount": 2, "wordUids": [""]}
             ],
             "studyStates": [
-                {"wordUid": "", "state": 2, "stability": 1.0, "difficulty": 2.0, "due": 1, "lastReviewAt": 1, "reps": 1, "lapses": 0}
+                {"wordUid": "", "mode": "BRAINSTORM", "state": 2, "stability": 1.0, "difficulty": 2.0, "due": 1, "lastReviewAt": 1, "reps": 1, "lapses": 0}
             ],
             "wordPools": [
                 {"memberWordUids": ["", ""], "strategy": "BALANCED", "algorithmVersion": "BALANCED_v1"}
@@ -313,6 +336,29 @@ class JsonImportExporterTest {
 
         assertEquals(listOf(generatedUid), result.units.single().wordUids)
         assertEquals(generatedUid, result.studyStates.single().wordUid)
+        assertEquals(StudyMode.BRAINSTORM, result.studyStates.single().studyMode)
+    }
+
+    @Test
+    fun `import schema 4 study states default to normal mode`() {
+        val json = """
+        {
+            "name": "Legacy",
+            "description": "",
+            "schemaVersion": 4,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "uid-1"}
+            ],
+            "studyStates": [
+                {"wordUid": "uid-1", "state": 2, "stability": 1.0, "difficulty": 2.0, "due": 1, "lastReviewAt": 1, "reps": 1, "lapses": 0}
+            ]
+        }
+        """.trimIndent()
+
+        val result = exporter.importFromJson(json)
+
+        assertEquals(1, result.studyStates.size)
+        assertEquals(StudyMode.NORMAL, result.studyStates.single().studyMode)
     }
 
     @Test

@@ -61,6 +61,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
+import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.organize.OrganizeTaskStatus
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
@@ -84,7 +85,7 @@ fun DictionaryScreen(
     onUnitClick: (unitId: Long, dictionaryId: Long) -> Unit,
     onStudy: (dictionaryId: Long) -> Unit,
     onBatchImport: (dictionaryId: Long) -> Unit = {},
-    onPoolBuildDetail: () -> Unit = {},
+    onPoolTaskDetail: (BackgroundTaskType) -> Unit = {},
     onViewPools: () -> Unit = {},
     viewModel: DictionaryViewModel = hiltViewModel()
 ) {
@@ -108,6 +109,13 @@ fun DictionaryScreen(
         state.rebuildError?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearRebuildError()
+        }
+    }
+
+    LaunchedEffect(state.reviewError) {
+        state.reviewError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearReviewError()
         }
     }
 
@@ -246,7 +254,7 @@ fun DictionaryScreen(
                         onWordClick = handleWordClick,
                         onUnitClick = onUnitClick,
                         selectedWordId = selectedWordId,
-                        onPoolBuildDetail = onPoolBuildDetail,
+                        onPoolTaskDetail = onPoolTaskDetail,
                         onViewPools = onViewPools
                     )
                 }
@@ -296,7 +304,7 @@ fun DictionaryScreen(
                     onWordClick = handleWordClick,
                     onUnitClick = onUnitClick,
                     selectedWordId = null,
-                    onPoolBuildDetail = onPoolBuildDetail,
+                    onPoolTaskDetail = onPoolTaskDetail,
                     onViewPools = onViewPools
                 )
             }
@@ -510,7 +518,7 @@ private fun DictionaryListContent(
     onWordClick: (Long, Long) -> Unit,
     onUnitClick: (Long, Long) -> Unit,
     selectedWordId: Long?,
-    onPoolBuildDetail: () -> Unit = {},
+    onPoolTaskDetail: (BackgroundTaskType) -> Unit = {},
     onViewPools: () -> Unit = {}
 ) {
     SearchBar(
@@ -667,14 +675,18 @@ private fun DictionaryListContent(
                     }
 
                     item {
-                        val isBuilding = state.isRebuildingPools
-                        val canViewPools = !isBuilding && state.poolCount > 0
+                        val activePoolTaskType = when {
+                            state.isReviewingPools -> BackgroundTaskType.WORD_POOL_REVIEW
+                            state.isRebuildingPools -> BackgroundTaskType.WORD_POOL_REBUILD
+                            else -> null
+                        }
+                        val canViewPools = activePoolTaskType == null && state.poolCount > 0
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .then(
                                     when {
-                                        isBuilding -> Modifier.clickable { onPoolBuildDetail() }
+                                        activePoolTaskType != null -> Modifier.clickable { onPoolTaskDetail(activePoolTaskType) }
                                         canViewPools -> Modifier.clickable { onViewPools() }
                                         else -> Modifier
                                     }
@@ -702,7 +714,7 @@ private fun DictionaryListContent(
                                             color = MaterialTheme.colorScheme.error
                                         )
                                     }
-                                    if (isBuilding) {
+                                    if (state.isRebuildingPools) {
                                         val progress = state.rebuildProgress
                                         if (progress != null && progress.second > 0) {
                                             Text(
@@ -719,9 +731,16 @@ private fun DictionaryListContent(
                                                 maxLines = 1
                                             )
                                         }
+                                    } else if (state.isReviewingPools && state.currentReviewMessage != null) {
+                                        Text(
+                                            text = state.currentReviewMessage,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2
+                                        )
                                     }
                                 }
-                                if (isBuilding) {
+                                if (activePoolTaskType != null) {
                                     Icon(
                                         Icons.Default.ChevronRight,
                                         contentDescription = stringResource(R.string.common_view_detail),
@@ -744,7 +763,7 @@ private fun DictionaryListContent(
                                     }
                                 }
                             }
-                            if (isBuilding) {
+                            if (state.isRebuildingPools) {
                                 val progress = state.rebuildProgress
                                 if (progress != null && progress.second > 0) {
                                     LinearProgressIndicator(
@@ -778,7 +797,7 @@ private fun DictionaryListContent(
                                     TextButton(onClick = viewModel::cancelRebuild) {
                                         Text(stringResource(R.string.common_cancel))
                                     }
-                                    TextButton(onClick = onPoolBuildDetail) {
+                                    TextButton(onClick = { onPoolTaskDetail(BackgroundTaskType.WORD_POOL_REBUILD) }) {
                                         Text(stringResource(R.string.common_details))
                                     }
                                 }
@@ -838,6 +857,9 @@ private fun DictionaryListContent(
                                     }
                                     TextButton(onClick = viewModel::cancelReview) {
                                         Text(stringResource(R.string.common_cancel))
+                                    }
+                                    TextButton(onClick = { onPoolTaskDetail(BackgroundTaskType.WORD_POOL_REVIEW) }) {
+                                        Text(stringResource(R.string.common_details))
                                     }
                                 }
                             }

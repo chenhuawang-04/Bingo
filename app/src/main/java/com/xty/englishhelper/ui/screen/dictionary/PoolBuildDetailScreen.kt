@@ -84,6 +84,7 @@ fun PoolBuildDetailScreen(
     viewModel: PoolBuildDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val isReviewMode = state.taskMode == PoolTaskMode.REVIEW
 
     // 网格来源：优先实时网格；进程重启后实时网格为空但任务 FAILED 时，从持久化进度还原（[0,K) 绿、其余白），
     // 以便手动填块在重启后仍可用。
@@ -104,7 +105,15 @@ fun PoolBuildDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.pool_build_detail_title)) },
+                title = {
+                    Text(
+                        if (isReviewMode) {
+                            stringResource(R.string.pool_review_detail_title)
+                        } else {
+                            stringResource(R.string.pool_build_detail_title)
+                        }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
@@ -123,14 +132,16 @@ fun PoolBuildDetailScreen(
             // Status header card
             item {
                 StatusHeaderCard(
+                    taskMode = state.taskMode,
                     status = state.status,
                     strategy = state.strategy
                 )
             }
 
-            // 整理模型（全局 POOL 作用域）：随时可切换，热生效。
+            // 模型（按任务类型切换作用域）：随时可切换，热生效。
             item {
                 PoolModelCard(
+                    taskMode = state.taskMode,
                     providerName = state.poolProviderName,
                     model = state.poolModel,
                     onSwitch = viewModel::openModelSwitch
@@ -145,10 +156,18 @@ fun PoolBuildDetailScreen(
                 }
             }
 
+            val currentTaskMessage = state.currentReviewMessage
+            if (isReviewMode && currentTaskMessage != null) {
+                item {
+                    InfoMessageCard(message = currentTaskMessage, onDismiss = viewModel::clearReviewMessage)
+                }
+            }
+
             // Current word card
             if (state.status == BuildStatus.RUNNING || state.status == BuildStatus.PAUSED) {
                 item {
                     CurrentWordCard(
+                        taskMode = state.taskMode,
                         currentWord = state.currentWord,
                         isPaused = state.isPaused,
                         chunkCurrent = state.chunkCurrent,
@@ -162,6 +181,7 @@ fun PoolBuildDetailScreen(
             if (state.progressTotal > 0) {
                 item {
                     ProgressCard(
+                        taskMode = state.taskMode,
                         current = state.progressCurrent,
                         total = state.progressTotal,
                         isPaused = state.isPaused,
@@ -179,7 +199,11 @@ fun PoolBuildDetailScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                                 Text(
-                                stringResource(R.string.pool_build_preparing),
+                                if (isReviewMode) {
+                                    stringResource(R.string.pool_review_preparing)
+                                } else {
+                                    stringResource(R.string.pool_build_preparing)
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -204,6 +228,7 @@ fun PoolBuildDetailScreen(
             if (gridChunks.isNotEmpty()) {
                 item {
                     ChunkGridCard(
+                        taskMode = state.taskMode,
                         word = state.liveChunkWord ?: state.currentWord,
                         chunks = gridChunks,
                         fillableChunkIndex = state.fillableChunkIndex,
@@ -257,7 +282,11 @@ fun PoolBuildDetailScreen(
                             )
                             Column {
                                 Text(
-                                    stringResource(R.string.pool_build_failed),
+                                    if (isReviewMode) {
+                                        stringResource(R.string.pool_review_failed)
+                                    } else {
+                                        stringResource(R.string.pool_build_failed)
+                                    },
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
@@ -287,6 +316,7 @@ fun PoolBuildDetailScreen(
 
         if (state.modelSwitchVisible) {
             ModelSwitchDialog(
+                taskMode = state.taskMode,
                 providers = state.poolProviders,
                 editingProviderName = state.editingProviderName,
                 editingModel = state.editingModel,
@@ -305,6 +335,7 @@ fun PoolBuildDetailScreen(
 
 @Composable
 private fun StatusHeaderCard(
+    taskMode: PoolTaskMode,
     status: BuildStatus,
     strategy: String?
 ) {
@@ -312,37 +343,65 @@ private fun StatusHeaderCard(
         BuildStatus.IDLE -> StatusInfo(
             Icons.Default.CheckCircle,
             MaterialTheme.colorScheme.onSurfaceVariant,
-            stringResource(R.string.pool_build_idle),
-            stringResource(R.string.pool_build_idle_desc)
+            if (taskMode == PoolTaskMode.REVIEW) {
+                stringResource(R.string.pool_review_idle)
+            } else {
+                stringResource(R.string.pool_build_idle)
+            },
+            if (taskMode == PoolTaskMode.REVIEW) {
+                stringResource(R.string.pool_review_idle_desc)
+            } else {
+                stringResource(R.string.pool_build_idle_desc)
+            }
         )
         BuildStatus.RUNNING -> StatusInfo(
             Icons.Default.Refresh,
             MaterialTheme.colorScheme.primary,
-            stringResource(R.string.pool_build_running),
+            if (taskMode == PoolTaskMode.REVIEW) {
+                stringResource(R.string.pool_review_running)
+            } else {
+                stringResource(R.string.pool_build_running)
+            },
             strategyDisplayName(strategy)
         )
         BuildStatus.PAUSED -> StatusInfo(
             Icons.Default.Pause,
             MaterialTheme.colorScheme.tertiary,
-            stringResource(R.string.pool_build_paused),
+            if (taskMode == PoolTaskMode.REVIEW) {
+                stringResource(R.string.pool_review_paused)
+            } else {
+                stringResource(R.string.pool_build_paused)
+            },
             strategyDisplayName(strategy)
         )
         BuildStatus.SUCCESS -> StatusInfo(
             Icons.Default.CheckCircle,
             MaterialTheme.colorScheme.tertiary,
-            stringResource(R.string.pool_build_success),
+            if (taskMode == PoolTaskMode.REVIEW) {
+                stringResource(R.string.pool_review_success)
+            } else {
+                stringResource(R.string.pool_build_success)
+            },
             strategyDisplayName(strategy)
         )
         BuildStatus.FAILED -> StatusInfo(
             Icons.Default.Error,
             MaterialTheme.colorScheme.error,
-            stringResource(R.string.pool_build_failed),
+            if (taskMode == PoolTaskMode.REVIEW) {
+                stringResource(R.string.pool_review_failed)
+            } else {
+                stringResource(R.string.pool_build_failed)
+            },
             strategyDisplayName(strategy)
         )
         BuildStatus.CANCELED -> StatusInfo(
             Icons.Default.Close,
             MaterialTheme.colorScheme.onSurfaceVariant,
-            stringResource(R.string.pool_build_canceled),
+            if (taskMode == PoolTaskMode.REVIEW) {
+                stringResource(R.string.pool_review_canceled)
+            } else {
+                stringResource(R.string.pool_build_canceled)
+            },
             strategyDisplayName(strategy)
         )
     }
@@ -392,6 +451,7 @@ private fun StatusHeaderCard(
 
 @Composable
 private fun PoolModelCard(
+    taskMode: PoolTaskMode,
     providerName: String,
     model: String,
     onSwitch: () -> Unit
@@ -406,7 +466,11 @@ private fun PoolModelCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    stringResource(R.string.pool_build_model_global),
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_model_global)
+                    } else {
+                        stringResource(R.string.pool_build_model_global)
+                    },
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium
                 )
@@ -420,13 +484,23 @@ private fun PoolModelCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    stringResource(R.string.pool_build_switch_hint),
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_switch_hint)
+                    } else {
+                        stringResource(R.string.pool_build_switch_hint)
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             FilledTonalButton(onClick = onSwitch) {
-                Text(stringResource(R.string.pool_build_switch))
+                Text(
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_switch)
+                    } else {
+                        stringResource(R.string.pool_build_switch)
+                    }
+                )
             }
         }
     }
@@ -434,6 +508,7 @@ private fun PoolModelCard(
 
 @Composable
 private fun CurrentWordCard(
+    taskMode: PoolTaskMode,
     currentWord: String?,
     isPaused: Boolean,
     chunkCurrent: Int = 0,
@@ -453,13 +528,21 @@ private fun CurrentWordCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = if (isPaused) stringResource(R.string.pool_build_paused) else stringResource(R.string.pool_build_processing),
+                text = if (isPaused) {
+                    if (taskMode == PoolTaskMode.REVIEW) stringResource(R.string.pool_review_paused) else stringResource(R.string.pool_build_paused)
+                } else {
+                    if (taskMode == PoolTaskMode.REVIEW) stringResource(R.string.pool_review_processing) else stringResource(R.string.pool_build_processing)
+                },
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = currentWord ?: stringResource(R.string.pool_build_preparing_word),
+                text = currentWord ?: if (taskMode == PoolTaskMode.REVIEW) {
+                    stringResource(R.string.pool_review_preparing_word)
+                } else {
+                    stringResource(R.string.pool_build_preparing_word)
+                },
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -470,16 +553,23 @@ private fun CurrentWordCard(
             if (!isPaused && currentWord != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 if (chunkTotal > 0) {
-                    // 已完成的候选词对比组数（X / Y）
                     Text(
-                        text = stringResource(R.string.pool_build_chunk_progress, chunkCurrent, chunkTotal),
+                        text = if (taskMode == PoolTaskMode.REVIEW) {
+                            stringResource(R.string.pool_review_batch_progress, chunkCurrent, chunkTotal)
+                        } else {
+                            stringResource(R.string.pool_build_chunk_progress, chunkCurrent, chunkTotal)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                 }
                 Text(
-                    text = stringResource(R.string.pool_build_edges_found, edgesFound),
+                    text = if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_edges_found, edgesFound)
+                    } else {
+                        stringResource(R.string.pool_build_edges_found, edgesFound)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                 )
@@ -490,6 +580,7 @@ private fun CurrentWordCard(
 
 @Composable
 private fun ProgressCard(
+    taskMode: PoolTaskMode,
     current: Int,
     total: Int,
     isPaused: Boolean,
@@ -519,7 +610,11 @@ private fun ProgressCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    stringResource(R.string.pool_build_progress_title),
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_progress_title)
+                    } else {
+                        stringResource(R.string.pool_build_progress_title)
+                    },
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium
                 )
@@ -573,12 +668,20 @@ private fun ProgressCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        stringResource(R.string.pool_build_current_chunk),
+                        if (taskMode == PoolTaskMode.REVIEW) {
+                            stringResource(R.string.pool_review_current_batch)
+                        } else {
+                            stringResource(R.string.pool_build_current_chunk)
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        stringResource(R.string.pool_build_chunk_group, chunkCurrent, chunkTotal),
+                        if (taskMode == PoolTaskMode.REVIEW) {
+                            stringResource(R.string.pool_review_batch_group, chunkCurrent, chunkTotal)
+                        } else {
+                            stringResource(R.string.pool_build_chunk_group, chunkCurrent, chunkTotal)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.secondary
@@ -772,6 +875,7 @@ private fun strategyDisplayName(strategy: String?): String {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChunkGridCard(
+    taskMode: PoolTaskMode,
     word: String?,
     chunks: List<ChunkProgress>,
     fillableChunkIndex: Int? = null,
@@ -787,7 +891,19 @@ private fun ChunkGridCard(
                 .padding(20.dp)
         ) {
             Text(
-                text = if (word != null) stringResource(R.string.pool_build_chunk_word) + " · $word" else stringResource(R.string.pool_build_chunk_word),
+                text = if (word != null) {
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_chunk_word) + " · $word"
+                    } else {
+                        stringResource(R.string.pool_build_chunk_word) + " · $word"
+                    }
+                } else {
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_chunk_word)
+                    } else {
+                        stringResource(R.string.pool_build_chunk_word)
+                    }
+                },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Medium
             )
@@ -795,11 +911,37 @@ private fun ChunkGridCard(
             val succeeded = chunks.count { it.status == ChunkBuildStatus.SUCCESS }
             Text(
                 text = if (fillableChunkIndex != null) {
-                    stringResource(R.string.pool_build_chunk_summary, chunks.size, succeeded,
-                        stringResource(R.string.pool_build_click_fillable, fillableChunkIndex + 1))
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(
+                            R.string.pool_review_chunk_summary,
+                            chunks.size,
+                            succeeded,
+                            stringResource(R.string.pool_review_click_fillable, fillableChunkIndex + 1)
+                        )
+                    } else {
+                        stringResource(
+                            R.string.pool_build_chunk_summary,
+                            chunks.size,
+                            succeeded,
+                            stringResource(R.string.pool_build_click_fillable, fillableChunkIndex + 1)
+                        )
+                    }
                 } else {
-                    stringResource(R.string.pool_build_chunk_summary, chunks.size, succeeded,
-                        stringResource(R.string.pool_build_click_block))
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(
+                            R.string.pool_review_chunk_summary,
+                            chunks.size,
+                            succeeded,
+                            stringResource(R.string.pool_review_click_block)
+                        )
+                    } else {
+                        stringResource(
+                            R.string.pool_build_chunk_summary,
+                            chunks.size,
+                            succeeded,
+                            stringResource(R.string.pool_build_click_block)
+                        )
+                    }
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -838,6 +980,7 @@ private fun ChunkGridCard(
     val idx = selectedIndex
     if (idx != null && idx in chunks.indices) {
         ChunkDetailDialog(
+            taskMode = taskMode,
             chunk = chunks[idx],
             onDismiss = { selectedIndex = null }
         )
@@ -884,6 +1027,7 @@ private fun LegendItem(status: ChunkBuildStatus, label: String) {
 
 @Composable
 private fun ChunkDetailDialog(
+    taskMode: PoolTaskMode,
     chunk: ChunkProgress,
     onDismiss: () -> Unit
 ) {
@@ -893,7 +1037,13 @@ private fun ChunkDetailDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) }
         },
         title = {
-            Text(stringResource(R.string.pool_build_chunk_detail_dialog, chunk.index + 1, chunkStatusLabel(chunk.status)))
+            Text(
+                if (taskMode == PoolTaskMode.REVIEW) {
+                    stringResource(R.string.pool_review_chunk_detail_dialog, chunk.index + 1, chunkStatusLabel(chunk.status))
+                } else {
+                    stringResource(R.string.pool_build_chunk_detail_dialog, chunk.index + 1, chunkStatusLabel(chunk.status))
+                }
+            )
         },
         text = {
             Column(
@@ -904,7 +1054,11 @@ private fun ChunkDetailDialog(
             ) {
                 if (chunk.attempts.isEmpty()) {
                     Text(
-                        stringResource(R.string.pool_build_chunk_not_started),
+                        if (taskMode == PoolTaskMode.REVIEW) {
+                            stringResource(R.string.pool_review_chunk_not_started)
+                        } else {
+                            stringResource(R.string.pool_build_chunk_not_started)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -912,8 +1066,19 @@ private fun ChunkDetailDialog(
                     chunk.attempts.forEach { att ->
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                stringResource(R.string.pool_build_attempt_format, att.attempt,
-                                    if (att.success) stringResource(R.string.pool_build_attempt_success) else stringResource(R.string.pool_build_attempt_fail)),
+                                if (taskMode == PoolTaskMode.REVIEW) {
+                                    stringResource(
+                                        R.string.pool_review_attempt_format,
+                                        att.attempt,
+                                        if (att.success) stringResource(R.string.pool_review_attempt_success) else stringResource(R.string.pool_review_attempt_fail)
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.pool_build_attempt_format,
+                                        att.attempt,
+                                        if (att.success) stringResource(R.string.pool_build_attempt_success) else stringResource(R.string.pool_build_attempt_fail)
+                                    )
+                                },
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = if (att.success) {
@@ -924,18 +1089,32 @@ private fun ChunkDetailDialog(
                             )
                             if (att.error != null) {
                                 Text(
-                                    stringResource(R.string.pool_build_attempt_reason, att.error),
+                                    if (taskMode == PoolTaskMode.REVIEW) {
+                                        stringResource(R.string.pool_review_attempt_reason, att.error)
+                                    } else {
+                                        stringResource(R.string.pool_build_attempt_reason, att.error)
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error
                                 )
                             }
                             Text(
-                                stringResource(R.string.pool_build_server_response),
+                                if (taskMode == PoolTaskMode.REVIEW) {
+                                    stringResource(R.string.pool_review_server_response)
+                                } else {
+                                    stringResource(R.string.pool_build_server_response)
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = att.response?.ifBlank { stringResource(R.string.pool_build_empty_response) } ?: stringResource(R.string.pool_build_no_response),
+                                text = if (taskMode == PoolTaskMode.REVIEW) {
+                                    att.response?.ifBlank { stringResource(R.string.pool_review_empty_response) }
+                                        ?: stringResource(R.string.pool_review_no_response)
+                                } else {
+                                    att.response?.ifBlank { stringResource(R.string.pool_build_empty_response) }
+                                        ?: stringResource(R.string.pool_build_no_response)
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -981,6 +1160,7 @@ private fun chunkStatusLabel(status: ChunkBuildStatus): String = when (status) {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ModelSwitchDialog(
+    taskMode: PoolTaskMode,
     providers: List<PoolModelProvider>,
     editingProviderName: String,
     editingModel: String,
@@ -1000,12 +1180,28 @@ private fun ModelSwitchDialog(
             TextButton(
                 onClick = onConfirm,
                 enabled = editingProviderName.isNotBlank() && editingModel.isNotBlank()
-            ) { Text(stringResource(R.string.pool_build_confirm_switch)) }
+            ) {
+                Text(
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_confirm_switch)
+                    } else {
+                        stringResource(R.string.pool_build_confirm_switch)
+                    }
+                )
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
-        title = { Text(stringResource(R.string.pool_build_switch_model_title)) },
+        title = {
+            Text(
+                if (taskMode == PoolTaskMode.REVIEW) {
+                    stringResource(R.string.pool_review_switch_model_title)
+                } else {
+                    stringResource(R.string.pool_build_switch_model_title)
+                }
+            )
+        },
         text = {
             Column(
                 modifier = Modifier
@@ -1014,13 +1210,21 @@ private fun ModelSwitchDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    stringResource(R.string.pool_build_provider),
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_provider)
+                    } else {
+                        stringResource(R.string.pool_build_provider)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (providers.isEmpty()) {
                     Text(
-                        stringResource(R.string.pool_build_no_provider),
+                        if (taskMode == PoolTaskMode.REVIEW) {
+                            stringResource(R.string.pool_review_no_provider)
+                        } else {
+                            stringResource(R.string.pool_build_no_provider)
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -1042,7 +1246,11 @@ private fun ModelSwitchDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        stringResource(R.string.pool_build_model),
+                        if (taskMode == PoolTaskMode.REVIEW) {
+                            stringResource(R.string.pool_review_model)
+                        } else {
+                            stringResource(R.string.pool_build_model)
+                        },
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1050,7 +1258,21 @@ private fun ModelSwitchDialog(
                         onClick = onFetchModels,
                         enabled = !modelLoading && editingProviderName.isNotBlank()
                     ) {
-                        Text(if (modelLoading) stringResource(R.string.pool_build_fetching) else stringResource(R.string.pool_build_fetch_models))
+                        Text(
+                            if (modelLoading) {
+                                if (taskMode == PoolTaskMode.REVIEW) {
+                                    stringResource(R.string.pool_review_fetching)
+                                } else {
+                                    stringResource(R.string.pool_build_fetching)
+                                }
+                            } else {
+                                if (taskMode == PoolTaskMode.REVIEW) {
+                                    stringResource(R.string.pool_review_fetch_models)
+                                } else {
+                                    stringResource(R.string.pool_build_fetch_models)
+                                }
+                            }
+                        )
                     }
                 }
                 if (modelOptions.isNotEmpty()) {
@@ -1067,7 +1289,15 @@ private fun ModelSwitchDialog(
                 OutlinedTextField(
                     value = editingModel,
                     onValueChange = onModelChange,
-                    label = { Text(stringResource(R.string.pool_build_model_name)) },
+                    label = {
+                        Text(
+                            if (taskMode == PoolTaskMode.REVIEW) {
+                                stringResource(R.string.pool_review_model_name)
+                            } else {
+                                stringResource(R.string.pool_build_model_name)
+                            }
+                        )
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1080,13 +1310,21 @@ private fun ModelSwitchDialog(
                 }
                 if (selectedProvider != null && !selectedProvider.hasApiKey) {
                     Text(
-                        stringResource(R.string.pool_build_no_apikey),
+                        if (taskMode == PoolTaskMode.REVIEW) {
+                            stringResource(R.string.pool_review_no_apikey)
+                        } else {
+                            stringResource(R.string.pool_build_no_apikey)
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
                 }
                 Text(
-                    stringResource(R.string.pool_build_switch_global),
+                    if (taskMode == PoolTaskMode.REVIEW) {
+                        stringResource(R.string.pool_review_switch_global)
+                    } else {
+                        stringResource(R.string.pool_build_switch_global)
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -9,11 +9,13 @@ import com.xty.englishhelper.domain.background.ChunkProgress
 import com.xty.englishhelper.domain.background.PoolBuildLiveMonitor
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
+import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.ManualChunkContext
 import com.xty.englishhelper.domain.repository.ManualFillResult
@@ -38,25 +40,34 @@ class PoolBuildDetailViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
+    private val taskMode: PoolTaskMode = PoolTaskMode.fromTaskTypeName(savedStateHandle["taskType"])
+    private val taskType: BackgroundTaskType = taskMode.taskType
+    private val aiScope: AiSettingsScope = when (taskMode) {
+        PoolTaskMode.BUILD -> AiSettingsScope.POOL
+        PoolTaskMode.REVIEW -> AiSettingsScope.REVIEWER
+    }
 
-    private val _uiState = MutableStateFlow(PoolBuildDetailUiState())
+    private val _uiState = MutableStateFlow(PoolBuildDetailUiState(taskMode = taskMode))
     val uiState: StateFlow<PoolBuildDetailUiState> = _uiState.asStateFlow()
 
     private var poolTaskId: Long? = null
 
     init {
-        observePoolRebuildTasks()
+        observePoolTasks()
         observeLiveChunks()
         observePoolModelConfig()
         observeProviders()
     }
 
-    /** 收集实时分块网格（仅内存态）。仅展示属于本词典的当前词；其它情况清空方块。 */
     private fun observeLiveChunks() {
         viewModelScope.launch {
             liveMonitor.liveWord.collect { live ->
                 _uiState.update {
-                    if (live != null && live.dictionaryId == dictionaryId) {
+                    if (
+                        live != null &&
+                        live.dictionaryId == dictionaryId &&
+                        live.taskType == taskType
+                    ) {
                         it.copy(liveChunks = live.chunks, liveChunkWord = live.word)
                     } else {
                         it.copy(liveChunks = emptyList(), liveChunkWord = null)
@@ -66,13 +77,13 @@ class PoolBuildDetailViewModel @Inject constructor(
         }
     }
 
-    private fun observePoolRebuildTasks() {
+    private fun observePoolTasks() {
         viewModelScope.launch {
             var lastStatus: BackgroundTaskStatus? = null
             taskRepository.observeAllTasks().collect { tasks ->
                 val poolTask = tasks
-                    .filter { it.type == BackgroundTaskType.WORD_POOL_REBUILD }
-                    .filter { (it.payload as? WordPoolRebuildPayload)?.dictionaryId == dictionaryId }
+                    .filter { it.type == taskType }
+                    .filter { matchesDictionary(it) }
                     .maxByOrNull { it.updatedAt }
 
                 if (poolTask == null) {
@@ -84,9 +95,20 @@ class PoolBuildDetailViewModel @Inject constructor(
                             progressCurrent = 0,
                             progressTotal = 0,
                             strategy = null,
+                            rebuildMode = null,
                             isPaused = false,
                             errorMessage = null,
-                            fillableChunkIndex = null
+                            errorLogs = emptyList(),
+                            chunkCurrent = 0,
+                            chunkTotal = 0,
+                            edgesFound = 0,
+                            fillableChunkIndex = null,
+                            manualFillVisible = false,
+                            manualFillLoading = false,
+                            manualFillContext = null,
+                            manualFillError = null,
+                            manualFillSubmitting = false,
+                            currentReviewMessage = null
                         )
                     }
                     lastStatus = null
@@ -105,8 +127,8 @@ class PoolBuildDetailViewModel @Inject constructor(
                     BackgroundTaskStatus.CANCELED -> BuildStatus.CANCELED
                     else -> BuildStatus.IDLE
                 }
-                val strategy = (poolTask.payload as? WordPoolRebuildPayload)?.strategy
-                val rebuildMode = (poolTask.payload as? WordPoolRebuildPayload)?.rebuildMode
+                val strategy = extractStrategy(poolTask)
+                val rebuildMode = extractRebuildMode(poolTask)
                 val newError = if (poolTask.status == BackgroundTaskStatus.FAILED && poolTask.errorMessage != null) {
                     poolTask.errorMessage
                 } else {
@@ -115,38 +137,21 @@ class PoolBuildDetailViewModel @Inject constructor(
                 val terminalToActive = lastStatus in TERMINAL_STATES &&
                     poolTask.status in ACTIVE_STATES
                 val errorLogs = when {
-                    // Clear stale logs when a new build starts after failure/cancel
                     terminalToActive -> emptyList()
-                    // Append new unique error, cap at 100
                     newError != null && newError != _uiState.value.errorMessage ->
                         (_uiState.value.errorLogs + newError).takeLast(100)
                     else -> _uiState.value.errorLogs
                 }
 
-                // 解析 progressMessage 格式: "word|chunkIdx|totalChunks|edgesFound"
-                // 如果不是这个格式（例如纯单词），则 chunk 信息为 0
-                val rawMsg = poolTask.progressMessage
-                val parsedWord: String?
-                val parsedChunkCurrent: Int
-                val parsedChunkTotal: Int
-                val parsedEdgesFound: Int
-                if (rawMsg != null && rawMsg.contains("|")) {
-                    val parts = rawMsg.split("|")
-                    parsedWord = parts.getOrNull(0)
-                    parsedChunkCurrent = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                    parsedChunkTotal = parts.getOrNull(2)?.toIntOrNull() ?: 0
-                    parsedEdgesFound = parts.getOrNull(3)?.toIntOrNull() ?: 0
-                } else {
-                    parsedWord = rawMsg
-                    parsedChunkCurrent = 0
-                    parsedChunkTotal = 0
-                    parsedEdgesFound = 0
+                val detailProgress = when (taskMode) {
+                    PoolTaskMode.BUILD -> parseBuildProgress(poolTask.progressMessage)
+                    PoolTaskMode.REVIEW -> parseReviewProgress(poolTask.progressMessage)
                 }
 
                 _uiState.update {
                     it.copy(
                         status = status,
-                        currentWord = parsedWord,
+                        currentWord = detailProgress.label ?: poolTask.progressMessage,
                         progressCurrent = poolTask.progressCurrent,
                         progressTotal = poolTask.progressTotal,
                         strategy = strategy,
@@ -154,24 +159,108 @@ class PoolBuildDetailViewModel @Inject constructor(
                         isPaused = poolTask.status == BackgroundTaskStatus.PAUSED,
                         errorMessage = newError,
                         errorLogs = errorLogs,
-                        chunkCurrent = parsedChunkCurrent,
-                        chunkTotal = parsedChunkTotal,
-                        edgesFound = parsedEdgesFound,
-                        // 仅 FAILED 且有待整理块时，断点块（=已提交块数）可手动填入。
+                        chunkCurrent = detailProgress.chunkCurrent,
+                        chunkTotal = detailProgress.chunkTotal,
+                        edgesFound = detailProgress.metricCount,
                         fillableChunkIndex = if (
+                            taskMode == PoolTaskMode.BUILD &&
                             status == BuildStatus.FAILED &&
-                            parsedChunkTotal > 0 &&
-                            parsedChunkCurrent in 0 until parsedChunkTotal
-                        ) parsedChunkCurrent else null
+                            detailProgress.chunkTotal > 0 &&
+                            detailProgress.chunkCurrent in 0 until detailProgress.chunkTotal
+                        ) detailProgress.chunkCurrent else null,
+                        currentReviewMessage = if (taskMode == PoolTaskMode.REVIEW) {
+                            formatReviewMessage(poolTask)
+                        } else {
+                            null
+                        }
                     )
                 }
 
                 if (poolTask.status != lastStatus && poolTask.status == BackgroundTaskStatus.SUCCESS) {
-                    // Clear error logs on success
                     _uiState.update { it.copy(errorLogs = emptyList()) }
                 }
                 lastStatus = poolTask.status
             }
+        }
+    }
+
+    private fun matchesDictionary(task: BackgroundTask): Boolean {
+        return when (val payload = task.payload) {
+            is WordPoolRebuildPayload -> payload.dictionaryId == dictionaryId
+            is WordPoolReviewPayload -> payload.dictionaryId == dictionaryId
+            else -> false
+        }
+    }
+
+    private fun extractStrategy(task: BackgroundTask): String? {
+        return when (val payload = task.payload) {
+            is WordPoolRebuildPayload -> payload.strategy
+            is WordPoolReviewPayload -> payload.strategy
+            else -> null
+        }
+    }
+
+    private fun extractRebuildMode(task: BackgroundTask): String? {
+        val payload = task.payload as? WordPoolRebuildPayload ?: return null
+        return payload.rebuildMode
+    }
+
+    private data class DetailProgress(
+        val label: String?,
+        val chunkCurrent: Int,
+        val chunkTotal: Int,
+        val metricCount: Int
+    )
+
+    private data class ReviewProgressMessage(
+        val completedBatches: Int,
+        val totalBatches: Int,
+        val modifiedEdges: Int
+    )
+
+    private fun parseBuildProgress(message: String?): DetailProgress {
+        if (message.isNullOrBlank() || !message.contains("|")) {
+            return DetailProgress(label = message, chunkCurrent = 0, chunkTotal = 0, metricCount = 0)
+        }
+        val parts = message.split("|")
+        val word = parts.getOrNull(0)
+        val chunkCurrent = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        val chunkTotal = parts.getOrNull(2)?.toIntOrNull() ?: 0
+        val edges = parts.getOrNull(3)?.toIntOrNull() ?: 0
+        return DetailProgress(word, chunkCurrent, chunkTotal, edges)
+    }
+
+    private fun parseReviewProgress(message: String?): DetailProgress {
+        if (message.isNullOrBlank()) {
+            return DetailProgress(label = null, chunkCurrent = 0, chunkTotal = 0, metricCount = 0)
+        }
+        val parts = message.split("|")
+        if (parts.size < 4 || parts[0] != "review") {
+            return DetailProgress(label = message, chunkCurrent = 0, chunkTotal = 0, metricCount = 0)
+        }
+        val review = ReviewProgressMessage(
+            completedBatches = parts.getOrNull(1)?.toIntOrNull() ?: 0,
+            totalBatches = parts.getOrNull(2)?.toIntOrNull() ?: 0,
+            modifiedEdges = parts.getOrNull(3)?.toIntOrNull() ?: 0
+        )
+        return DetailProgress(
+            label = "AI复查批次",
+            chunkCurrent = review.completedBatches,
+            chunkTotal = review.totalBatches,
+            metricCount = review.modifiedEdges
+        )
+    }
+
+    private fun formatReviewMessage(task: BackgroundTask): String? {
+        val parsed = parseReviewProgress(task.progressMessage)
+        return when {
+            parsed.chunkTotal > 0 -> {
+                "已审 ${parsed.chunkCurrent}/${parsed.chunkTotal} 批 · 已处理 ${task.progressCurrent}/${task.progressTotal} 条边 · 已调整 ${parsed.metricCount} 条"
+            }
+            task.progressTotal > 0 -> {
+                "已处理 ${task.progressCurrent}/${task.progressTotal} 条边"
+            }
+            else -> task.progressMessage
         }
     }
 
@@ -194,14 +283,20 @@ class PoolBuildDetailViewModel @Inject constructor(
         val state = _uiState.value
         val strategy = state.strategy ?: return
         val poolStrategy = runCatching { PoolStrategy.valueOf(strategy) }.getOrNull() ?: return
-        // “重试” = 从断点继续，**绝不**重新清库：无论原构建是 FULL 还是 INCREMENTAL，重试一律走 INCREMENTAL 续传。
-        // （要彻底重建请用词典页的「完全重建」——那是独立的 force=true 路径，会清零进度并清库。）
-        backgroundTaskManager.enqueueWordPoolRebuild(
-            dictionaryId = dictionaryId,
-            strategy = poolStrategy,
-            force = false,
-            rebuildMode = RebuildMode.INCREMENTAL
-        )
+        when (taskMode) {
+            PoolTaskMode.BUILD -> {
+                backgroundTaskManager.enqueueWordPoolRebuild(
+                    dictionaryId = dictionaryId,
+                    strategy = poolStrategy,
+                    force = false,
+                    rebuildMode = RebuildMode.INCREMENTAL
+                )
+            }
+
+            PoolTaskMode.REVIEW -> {
+                backgroundTaskManager.enqueueWordPoolReview(dictionaryId, poolStrategy)
+            }
+        }
     }
 
     fun clearErrorLogs() {
@@ -210,8 +305,8 @@ class PoolBuildDetailViewModel @Inject constructor(
 
     // ── 手动填块 ──
 
-    /** 打开当前 FAILED 任务"下一待填块"的填入弹窗，并异步加载该块候选词与提示词。 */
     fun openManualFill() {
+        if (taskMode != PoolTaskMode.BUILD) return
         val taskId = poolTaskId ?: return
         _uiState.update {
             it.copy(
@@ -226,7 +321,7 @@ class PoolBuildDetailViewModel @Inject constructor(
             val ctx = runCatching { backgroundTaskManager.getPoolManualChunkContext(taskId) }.getOrNull()
             _uiState.update {
                 when {
-                    !it.manualFillVisible -> it // 用户已关闭
+                    !it.manualFillVisible -> it
                     ctx == null -> it.copy(
                         manualFillLoading = false,
                         manualFillError = "无法加载该块（窗口大小可能已变更，或当前不在可填状态）"
@@ -237,11 +332,11 @@ class PoolBuildDetailViewModel @Inject constructor(
         }
     }
 
-    /** 提交手动填入的 JSON；成功则关闭弹窗（进度/网格会经任务流自动刷新）。失败则在弹窗内提示。 */
     fun submitManualFill(json: String) {
+        if (taskMode != PoolTaskMode.BUILD) return
         val taskId = poolTaskId ?: return
         if (json.isBlank()) {
-            _uiState.update { it.copy(manualFillError = "请粘贴 JSON 数组（该块无边可填 [])") }
+            _uiState.update { it.copy(manualFillError = "请粘贴 JSON 数组（该块无边可填 []）") }
             return
         }
         _uiState.update { it.copy(manualFillSubmitting = true, manualFillError = null) }
@@ -284,20 +379,18 @@ class PoolBuildDetailViewModel @Inject constructor(
         _uiState.update { it.copy(manualFillMessage = null) }
     }
 
-    // ── 词池整理模型热切换（全局 POOL 作用域）──
-    // callAi() 每次请求都现读 getAiConfig(POOL)，故这里写入 POOL 配置后，构建的下一次请求（含失败重试）即用新模型——
-    // 无需触碰构建循环。词池构建一次只跑一个任务，故全局模型无并发冲突。
+    fun clearReviewMessage() {
+        _uiState.update { it.copy(currentReviewMessage = null) }
+    }
 
-    /** 观察当前 POOL 作用域配置（提供商 + 模型），用于卡片显示与弹窗初值。 */
     private fun observePoolModelConfig() {
         viewModelScope.launch {
-            settingsDataStore.scopeConfig(AiSettingsScope.POOL).collect { config ->
+            settingsDataStore.scopeConfig(aiScope).collect { config ->
                 _uiState.update { it.copy(poolProviderName = config.providerName, poolModel = config.model) }
             }
         }
     }
 
-    /** 观察可用提供商（含是否已配置 API Key），供切换弹窗选择。 */
     private fun observeProviders() {
         viewModelScope.launch {
             settingsDataStore.providersWithKeys.collect { list ->
@@ -312,7 +405,6 @@ class PoolBuildDetailViewModel @Inject constructor(
         }
     }
 
-    /** 打开切换弹窗，编辑态以当前 POOL 配置为初值（确认前不落库）。 */
     fun openModelSwitch() {
         _uiState.update {
             it.copy(
@@ -332,7 +424,6 @@ class PoolBuildDetailViewModel @Inject constructor(
         }
     }
 
-    /** 切换编辑中的提供商：清掉上一个提供商拉取到的模型列表；手动输入框保留，由用户决定。 */
     fun onEditingProviderChange(providerName: String) {
         _uiState.update { it.copy(editingProviderName = providerName, modelOptions = emptyList(), modelError = null) }
     }
@@ -341,7 +432,6 @@ class PoolBuildDetailViewModel @Inject constructor(
         _uiState.update { it.copy(editingModel = model) }
     }
 
-    /** 从接口拉取「编辑中提供商」的可用模型列表（复用设置页同款 FetchAiModelsUseCase）。 */
     fun fetchModelsForEditing() {
         val provider = _uiState.value.poolProviders.firstOrNull { it.name == _uiState.value.editingProviderName }
         if (provider == null) {
@@ -366,7 +456,6 @@ class PoolBuildDetailViewModel @Inject constructor(
         }
     }
 
-    /** 确认切换：写入全局 POOL 配置（scopeConfig flow 会自动回流刷新卡片显示）。 */
     fun confirmModelSwitch() {
         val providerName = _uiState.value.editingProviderName
         val model = _uiState.value.editingModel.trim()
@@ -379,14 +468,17 @@ class PoolBuildDetailViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            settingsDataStore.setScopeConfig(AiSettingsScope.POOL, providerName, model)
+            settingsDataStore.setScopeConfig(aiScope, providerName, model)
             _uiState.update {
                 it.copy(
                     modelSwitchVisible = false,
                     modelOptions = emptyList(),
                     modelLoading = false,
                     modelError = null,
-                    modelSwitchMessage = "已切换词池整理模型为「$model」，从下一次请求生效。"
+                    modelSwitchMessage = when (taskMode) {
+                        PoolTaskMode.BUILD -> "已切换词池整理模型为「$model」，从下一次请求生效。"
+                        PoolTaskMode.REVIEW -> "已切换词池审核模型为「$model」，从下一次请求生效。"
+                    }
                 )
             }
         }
@@ -415,6 +507,7 @@ class PoolBuildDetailViewModel @Inject constructor(
 }
 
 data class PoolBuildDetailUiState(
+    val taskMode: PoolTaskMode = PoolTaskMode.BUILD,
     val status: BuildStatus = BuildStatus.IDLE,
     val currentWord: String? = null,
     val progressCurrent: Int = 0,
@@ -424,14 +517,11 @@ data class PoolBuildDetailUiState(
     val isPaused: Boolean = false,
     val errorMessage: String? = null,
     val errorLogs: List<String> = emptyList(),
-    // 详细 chunk 信息（从 progressMessage 解析）
-    val chunkCurrent: Int = 0,       // 当前 chunk 序号
-    val chunkTotal: Int = 0,         // 总 chunk 数
-    val edgesFound: Int = 0,         // 当前词已找到的边数
-    // 实时分块网格（来自 PoolBuildLiveMonitor，仅内存态）
+    val chunkCurrent: Int = 0,
+    val chunkTotal: Int = 0,
+    val edgesFound: Int = 0,
     val liveChunks: List<ChunkProgress> = emptyList(),
     val liveChunkWord: String? = null,
-    // 手动填块
     val fillableChunkIndex: Int? = null,
     val manualFillVisible: Boolean = false,
     val manualFillLoading: Boolean = false,
@@ -439,7 +529,6 @@ data class PoolBuildDetailUiState(
     val manualFillError: String? = null,
     val manualFillSubmitting: Boolean = false,
     val manualFillMessage: String? = null,
-    // ── 词池整理模型热切换（全局 POOL 作用域）──
     val poolProviderName: String = "",
     val poolModel: String = "",
     val poolProviders: List<PoolModelProvider> = emptyList(),
@@ -449,10 +538,10 @@ data class PoolBuildDetailUiState(
     val modelOptions: List<String> = emptyList(),
     val modelLoading: Boolean = false,
     val modelError: String? = null,
-    val modelSwitchMessage: String? = null
+    val modelSwitchMessage: String? = null,
+    val currentReviewMessage: String? = null
 )
 
-/** 切换弹窗用的提供商摘要（名称、接口格式、Base URL、是否已配 Key）。 */
 data class PoolModelProvider(
     val name: String,
     val format: AiProvider,

@@ -79,6 +79,46 @@ enum class BackgroundTaskEnqueueResult {
     SKIPPED_SUCCESS
 }
 
+internal data class PoolTaskMutexKey(
+    val dictionaryId: Long,
+    val strategy: String
+)
+
+internal fun poolTaskMutexKey(task: BackgroundTask): PoolTaskMutexKey? {
+    return when (task.type) {
+        BackgroundTaskType.WORD_POOL_REVIEW -> {
+            val payload = task.payload as? WordPoolReviewPayload ?: return null
+            PoolTaskMutexKey(payload.dictionaryId, payload.strategy)
+        }
+
+        BackgroundTaskType.WORD_POOL_REBUILD -> {
+            val payload = task.payload as? WordPoolRebuildPayload ?: return null
+            if (payload.strategy != PoolStrategy.QUALITY_FIRST.name) return null
+            PoolTaskMutexKey(payload.dictionaryId, payload.strategy)
+        }
+
+        else -> null
+    }
+}
+
+internal fun selectLaunchablePendingTasks(
+    pendingTasks: List<BackgroundTask>,
+    runningTasks: Collection<BackgroundTask>,
+    slots: Int
+): List<BackgroundTask> {
+    if (slots <= 0) return emptyList()
+    val occupiedKeys = runningTasks.mapNotNull(::poolTaskMutexKey).toMutableSet()
+    val selected = mutableListOf<BackgroundTask>()
+    pendingTasks.forEach { task ->
+        if (selected.size >= slots) return@forEach
+        val mutexKey = poolTaskMutexKey(task)
+        if (mutexKey != null && mutexKey in occupiedKeys) return@forEach
+        selected += task
+        if (mutexKey != null) occupiedKeys += mutexKey
+    }
+    return selected
+}
+
 @Singleton
 class BackgroundTaskManager @Inject constructor(
     private val repository: BackgroundTaskRepository,
@@ -100,6 +140,7 @@ class BackgroundTaskManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val runningJobs = ConcurrentHashMap<Long, kotlinx.coroutines.Job>()
+    private val runningTaskInfos = ConcurrentHashMap<Long, BackgroundTask>()
     private val dispatchLock = Mutex()
     // Per-task pause/unpause/cancel handlers for pool rebuild (flag-based, not job cancel)
     private val pauseHandlers = ConcurrentHashMap<Long, () -> Unit>()
@@ -189,7 +230,7 @@ class BackgroundTaskManager @Inject constructor(
 
     /**
      * 词池审核（手动触发，独立于整理）。每次整跑，故一律 force=true：已有审核任务（SUCCESS/FAILED/…）会被重置重跑。
-     * 与 WORD_POOL_REBUILD 用不同 dedupeKey，互不顶替，可与整理任务共存。
+     * 与 WORD_POOL_REBUILD 仍使用不同 dedupeKey，但调度器会阻止同词典同策略的 QUALITY_FIRST 构建/审核并发落库。
      */
     fun enqueueWordPoolReview(
         dictionaryId: Long,
@@ -475,8 +516,13 @@ class BackgroundTaskManager @Inject constructor(
             val running = runningJobs.size
             val slots = maxConcurrency - running
             if (slots <= 0) return
-            val tasks = repository.getTasksByStatuses(listOf(BackgroundTaskStatus.PENDING), slots)
-            tasks.forEach { launchTask(it) }
+            val pendingTasks = repository.getTasksByStatuses(listOf(BackgroundTaskStatus.PENDING), 100)
+            val launchableTasks = selectLaunchablePendingTasks(
+                pendingTasks = pendingTasks,
+                runningTasks = runningTaskInfos.values,
+                slots = slots
+            )
+            launchableTasks.forEach { launchTask(it) }
         }
     }
 
@@ -498,6 +544,7 @@ class BackgroundTaskManager @Inject constructor(
             }
             return
         }
+        runningTaskInfos[task.id] = task
         val job = scope.launch {
             repository.incrementAttempt(task.id)
             repository.updateStatus(task.id, BackgroundTaskStatus.RUNNING, null)
@@ -517,6 +564,7 @@ class BackgroundTaskManager @Inject constructor(
                 maybeScheduleManagedResume(task.id)
             } finally {
                 runningJobs.remove(task.id)
+                runningTaskInfos.remove(task.id)
                 schedule()
             }
         }

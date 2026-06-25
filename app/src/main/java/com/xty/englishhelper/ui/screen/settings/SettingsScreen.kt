@@ -12,7 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.School
@@ -164,7 +164,7 @@ fun SettingsScreen(
 
                 // 文章功能区块
                 SettingsSectionCard(
-                    icon = Icons.Default.Article,
+                    icon = Icons.AutoMirrored.Filled.Article,
                     title = "文章功能",
                     subtitle = "在线阅读、自动扫描、图片压缩",
                     searchQuery = searchQuery

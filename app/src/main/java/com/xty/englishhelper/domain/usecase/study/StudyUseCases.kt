@@ -1,6 +1,7 @@
 package com.xty.englishhelper.domain.usecase.study
 
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.repository.StudyRepository
 import com.xty.englishhelper.domain.study.CardState
@@ -12,8 +13,10 @@ import javax.inject.Inject
 class GetStudyStateUseCase @Inject constructor(
     private val repository: StudyRepository
 ) {
-    suspend operator fun invoke(wordId: Long): WordStudyState? =
-        repository.getStudyState(wordId)
+    suspend operator fun invoke(
+        wordId: Long,
+        studyMode: StudyMode = StudyMode.NORMAL
+    ): WordStudyState? = repository.getStudyState(wordId, studyMode)
 }
 
 class ReviewWordUseCase @Inject constructor(
@@ -21,8 +24,12 @@ class ReviewWordUseCase @Inject constructor(
 ) {
     private val engine = FsrsEngine()
 
-    suspend operator fun invoke(wordId: Long, rating: Rating): SchedulingResult {
-        val existing = repository.getStudyState(wordId)
+    suspend operator fun invoke(
+        wordId: Long,
+        rating: Rating,
+        studyMode: StudyMode = StudyMode.NORMAL
+    ): SchedulingResult {
+        val existing = repository.getStudyState(wordId, studyMode)
         val now = System.currentTimeMillis()
 
         val result = if (existing == null) {
@@ -44,6 +51,7 @@ class ReviewWordUseCase @Inject constructor(
         repository.upsertStudyState(
             WordStudyState(
                 wordId = wordId,
+                studyMode = studyMode,
                 state = result.state.value,
                 step = result.step,
                 stability = result.stability,
@@ -64,8 +72,11 @@ class PreviewIntervalsUseCase @Inject constructor(
 ) {
     private val engine = FsrsEngine(enableFuzz = false)
 
-    suspend operator fun invoke(wordId: Long): Map<Rating, Long> {
-        val existing = repository.getStudyState(wordId)
+    suspend operator fun invoke(
+        wordId: Long,
+        studyMode: StudyMode = StudyMode.NORMAL
+    ): Map<Rating, Long> {
+        val existing = repository.getStudyState(wordId, studyMode)
         val now = System.currentTimeMillis()
 
         return if (existing == null) {
@@ -90,27 +101,35 @@ class PreviewIntervalsUseCase @Inject constructor(
 class GetDueWordsUseCase @Inject constructor(
     private val repository: StudyRepository
 ) {
-    suspend operator fun invoke(unitIds: List<Long>): List<WordDetails> =
-        repository.getDueWords(unitIds, System.currentTimeMillis())
+    suspend operator fun invoke(
+        unitIds: List<Long>,
+        studyMode: StudyMode = StudyMode.NORMAL
+    ): List<WordDetails> = repository.getDueWords(unitIds, System.currentTimeMillis(), studyMode)
 }
 
 class GetNewWordsUseCase @Inject constructor(
     private val repository: StudyRepository
 ) {
-    suspend operator fun invoke(unitIds: List<Long>): List<WordDetails> =
-        repository.getNewWords(unitIds)
+    suspend operator fun invoke(
+        unitIds: List<Long>,
+        studyMode: StudyMode = StudyMode.NORMAL
+    ): List<WordDetails> = repository.getNewWords(unitIds, studyMode)
 }
 
 class CountDueWordsUseCase @Inject constructor(
     private val repository: StudyRepository
 ) {
-    suspend operator fun invoke(unitId: Long): Int =
-        repository.countDueWords(unitId, System.currentTimeMillis())
+    suspend operator fun invoke(
+        unitId: Long,
+        studyMode: StudyMode = StudyMode.NORMAL
+    ): Int = repository.countDueWords(unitId, System.currentTimeMillis(), studyMode)
 }
 
 class CountNewWordsUseCase @Inject constructor(
     private val repository: StudyRepository
 ) {
-    suspend operator fun invoke(unitId: Long): Int =
-        repository.countNewWords(unitId)
+    suspend operator fun invoke(
+        unitId: Long,
+        studyMode: StudyMode = StudyMode.NORMAL
+    ): Int = repository.countNewWords(unitId, studyMode)
 }

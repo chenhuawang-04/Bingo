@@ -22,6 +22,7 @@ import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
 import com.xty.englishhelper.ui.screen.dictionary.PoolBuildDetailScreen
 import com.xty.englishhelper.ui.screen.dictionary.pool.PoolGraphScreen
 import com.xty.englishhelper.ui.screen.dictionary.pool.PoolOverviewScreen
+import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.ui.screen.home.HomeScreen
 import com.xty.englishhelper.ui.screen.importexport.ImportExportScreen
 import com.xty.englishhelper.ui.screen.main.MainScaffold
@@ -77,8 +78,8 @@ fun NavGraph(navController: NavHostController) {
                     onBatchImport = { dictId ->
                         navController.navigate(BatchImportRoute(dictId))
                     },
-                    onPoolBuildDetail = {
-                        navController.navigate(PoolBuildDetailRoute(route.dictionaryId))
+                    onPoolTaskDetail = { taskType ->
+                        navController.navigate(PoolBuildDetailRoute(route.dictionaryId, taskType.name))
                     },
                     onViewPools = {
                         navController.navigate(PoolOverviewRoute(route.dictionaryId))

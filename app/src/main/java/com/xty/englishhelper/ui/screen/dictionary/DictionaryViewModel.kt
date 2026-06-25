@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.background.BackgroundTaskManager
+import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.PoolStrategy
@@ -361,6 +362,55 @@ class DictionaryViewModel @Inject constructor(
         }
     }
 
+    private data class PoolProgressMessage(
+        val word: String,
+        val committedChunks: Int,
+        val totalChunks: Int,
+        val edges: Int
+    )
+
+    private data class ReviewProgressMessage(
+        val completedBatches: Int,
+        val totalBatches: Int,
+        val modifiedEdges: Int
+    )
+
+    private fun parseBuildProgressMessage(message: String?): PoolProgressMessage? {
+        if (message.isNullOrBlank()) return null
+        val parts = message.split("|")
+        if (parts.size < 3) return null
+        val word = parts[0]
+        val committed = parts.getOrNull(1)?.toIntOrNull() ?: return null
+        val total = parts.getOrNull(2)?.toIntOrNull() ?: return null
+        val edges = parts.getOrNull(3)?.toIntOrNull() ?: 0
+        if (word.isBlank() || total <= 0 || committed < 0 || committed > total) return null
+        return PoolProgressMessage(word, committed, total, edges)
+    }
+
+    private fun parseReviewProgressMessage(message: String?): ReviewProgressMessage? {
+        if (message.isNullOrBlank()) return null
+        val parts = message.split("|")
+        if (parts.size < 4 || parts[0] != "review") return null
+        val completed = parts.getOrNull(1)?.toIntOrNull() ?: return null
+        val total = parts.getOrNull(2)?.toIntOrNull() ?: return null
+        val modified = parts.getOrNull(3)?.toIntOrNull() ?: 0
+        if (total < 0 || completed < 0 || completed > total) return null
+        return ReviewProgressMessage(completed, total, modified)
+    }
+
+    private fun formatReviewMessage(task: BackgroundTask): String? {
+        val reviewProgress = parseReviewProgressMessage(task.progressMessage)
+        return when {
+            reviewProgress != null && reviewProgress.totalBatches > 0 -> {
+                "已审 ${reviewProgress.completedBatches}/${reviewProgress.totalBatches} 批 · 已处理 ${task.progressCurrent}/${task.progressTotal} 条边 · 已调整 ${reviewProgress.modifiedEdges} 条"
+            }
+            task.progressTotal > 0 -> {
+                "已处理 ${task.progressCurrent}/${task.progressTotal} 条边"
+            }
+            else -> task.progressMessage
+        }
+    }
+
     private fun observePoolRebuildTasks() {
         viewModelScope.launch {
             var lastStatus: BackgroundTaskStatus? = null
@@ -399,12 +449,13 @@ class DictionaryViewModel @Inject constructor(
                 } else {
                     null
                 }
+                val currentWord = parseBuildProgressMessage(poolTask.progressMessage)?.word ?: poolTask.progressMessage
                 _uiState.update {
                     it.copy(
                         isRebuildingPools = inProgress,
                         rebuildProgress = progress,
                         rebuildError = error,
-                        currentBuildWord = poolTask.progressMessage,
+                        currentBuildWord = currentWord,
                         isBuildPaused = poolTask.status == BackgroundTaskStatus.PAUSED
                     )
                 }
@@ -483,6 +534,7 @@ class DictionaryViewModel @Inject constructor(
                             isReviewingPools = false,
                             reviewProgress = null,
                             reviewError = null,
+                            currentReviewMessage = null,
                             isReviewPaused = false
                         )
                     }
@@ -505,6 +557,7 @@ class DictionaryViewModel @Inject constructor(
                         isReviewingPools = inProgress,
                         reviewProgress = progress,
                         reviewError = error,
+                        currentReviewMessage = formatReviewMessage(reviewTask),
                         isReviewPaused = reviewTask.status == BackgroundTaskStatus.PAUSED
                     )
                 }
@@ -539,7 +592,7 @@ class DictionaryViewModel @Inject constructor(
     fun cancelReview() {
         val taskId = reviewTaskId ?: return
         backgroundTaskManager.cancelTask(taskId)
-        _uiState.update { it.copy(isReviewingPools = false, reviewProgress = null) }
+        _uiState.update { it.copy(isReviewingPools = false, reviewProgress = null, currentReviewMessage = null) }
     }
 
     fun clearReviewError() {

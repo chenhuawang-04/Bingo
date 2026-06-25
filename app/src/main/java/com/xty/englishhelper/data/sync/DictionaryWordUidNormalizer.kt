@@ -121,12 +121,16 @@ class DictionaryWordUidNormalizer @Inject constructor() {
         }
 
         val duplicateStudyStates = normalized
-            .groupBy { it.wordUid }
+            .groupBy { it.wordUid to it.mode.trim().ifBlank { "NORMAL" }.uppercase() }
             .filterValues { it.size > 1 }
             .keys
         if (duplicateStudyStates.isNotEmpty()) {
             throw IllegalArgumentException(
-                "文件中同一单词存在多条学习状态记录：${duplicateStudyStates.sorted().joinToString("、")}"
+                "文件中同一单词在同一学习模式下存在多条学习状态记录：${
+                    duplicateStudyStates
+                        .sortedWith(compareBy<Pair<String, String>> { it.first }.thenBy { it.second })
+                        .joinToString("、") { "${it.first}(${it.second})" }
+                }"
             )
         }
 

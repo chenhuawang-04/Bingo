@@ -1,6 +1,7 @@
 package com.xty.englishhelper.domain.repository
 
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordStudyState
@@ -18,6 +19,7 @@ interface DictionaryImportExporter {
 
     data class ImportedStudyState(
         val wordUid: String,
+        val studyMode: StudyMode,
         val state: Int,
         val step: Int?,
         val stability: Double,

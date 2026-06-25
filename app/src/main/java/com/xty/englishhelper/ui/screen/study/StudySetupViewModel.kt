@@ -35,7 +35,7 @@ class StudySetupViewModel @Inject constructor(
     private var loadJob: Job? = null
 
     init {
-        loadUnits(showLoading = true)
+        loadUnits(showLoading = true, mode = _uiState.value.selectedMode)
         observeRefreshSignal()
     }
 
@@ -50,10 +50,10 @@ class StudySetupViewModel @Inject constructor(
     }
 
     fun refresh() {
-        loadUnits(showLoading = false)
+        loadUnits(showLoading = false, mode = _uiState.value.selectedMode)
     }
 
-    private fun loadUnits(showLoading: Boolean) {
+    private fun loadUnits(showLoading: Boolean, mode: StudyMode) {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             try {
@@ -65,8 +65,8 @@ class StudySetupViewModel @Inject constructor(
                 val items = coroutineScope {
                     units.map { unit ->
                         async {
-                            val due = countDueWords(unit.id)
-                            val newW = countNewWords(unit.id)
+                            val due = countDueWords(unit.id, mode)
+                            val newW = countNewWords(unit.id, mode)
                             UnitStudyInfo(
                                 unitId = unit.id,
                                 unitName = unit.name,
@@ -118,6 +118,7 @@ class StudySetupViewModel @Inject constructor(
 
     fun setMode(mode: StudyMode) {
         _uiState.update { it.copy(selectedMode = mode) }
+        loadUnits(showLoading = false, mode = mode)
     }
 
     fun clearError() {
