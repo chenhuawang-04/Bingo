@@ -46,6 +46,27 @@ interface WordEdgeDao {
     @Query("SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdgesFull(dictionaryId: Long): List<WordEdgeEntity>
 
+    @Query(
+        "SELECT * FROM word_edges " +
+            "WHERE dictionary_id = :dictionaryId AND id > :lastId " +
+            "ORDER BY id ASC LIMIT :limit"
+    )
+    suspend fun getEdgesPageFull(dictionaryId: Long, lastId: Long, limit: Int): List<WordEdgeEntity>
+
+    @Query(
+        "SELECT * FROM word_edges " +
+            "WHERE dictionary_id = :dictionaryId AND id > :lastId " +
+            "AND confidence >= :minConfidence AND status != :excludedStatus " +
+            "ORDER BY id ASC LIMIT :limit"
+    )
+    suspend fun getSignificantEdgesPageFull(
+        dictionaryId: Long,
+        lastId: Long,
+        minConfidence: Double,
+        excludedStatus: String,
+        limit: Int
+    ): List<WordEdgeEntity>
+
     @Query("SELECT COUNT(*) FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun countEdges(dictionaryId: Long): Int
 

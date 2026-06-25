@@ -279,4 +279,144 @@ class EdgeReviewerTest {
             wordEdgeDao.updateEdgeStatus(any(), any(), any())
         }
     }
+
+    @Test
+    fun `reviewDictionaryEdgesWithAi pages through stored edges without full load`() = runTest {
+        val db = mockk<AppDatabase>(relaxed = true)
+        val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
+        val settingsDataStore = mockk<SettingsDataStore>()
+        val anthropicClient = mockk<AnthropicApiClient>(relaxed = true)
+        val openAiClient = mockk<OpenAiCompatibleApiClient>()
+        val provider = AiApiClientProvider(anthropicClient, openAiClient)
+        val reviewer = EdgeReviewer(db, wordEdgeDao, provider, settingsDataStore)
+
+        val edges = listOf(
+            WordEdgeEntity(id = 1L, wordIdA = 501L, wordIdB = 502L, edgeType = "SEMANTIC_SYNONYM", dictionaryId = 1L),
+            WordEdgeEntity(id = 2L, wordIdA = 503L, wordIdB = 504L, edgeType = "FORM_SPELLING", dictionaryId = 1L),
+            WordEdgeEntity(id = 3L, wordIdA = 505L, wordIdB = 506L, edgeType = "LEARNING_CONFUSABLE", dictionaryId = 1L)
+        )
+        val wordSpellings = mapOf(
+            501L to "abandon",
+            502L to "forsake",
+            503L to "adapt",
+            504L to "adopt",
+            505L to "affect",
+            506L to "effect"
+        )
+
+        coEvery { settingsDataStore.getPoolWindowSize() } returns 1
+        coEvery { settingsDataStore.getPoolMaxConcurrent() } returns 2
+        coEvery { settingsDataStore.getPoolRequestsPerMinute() } returns 120
+        coEvery { settingsDataStore.getPoolRetryMode() } returns PoolRetryMode.AGGRESSIVE
+        coEvery { settingsDataStore.getAiResponseUnwrapEnabled() } returns false
+        coEvery { settingsDataStore.getAiJsonRepairEnabled() } returns false
+        coEvery { settingsDataStore.getAiConfig(AiSettingsScope.REVIEWER) } returns SettingsDataStore.AiConfig(
+            providerName = "test-openai",
+            provider = AiProvider.OPENAI_COMPATIBLE,
+            apiKey = "key",
+            model = "gpt-test",
+            baseUrl = "https://example.com"
+        )
+        coEvery { wordEdgeDao.countEdges(1L) } returns 3
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 0L, 2) } returns edges.subList(0, 2)
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 2L, 2) } returns listOf(edges[2])
+        coEvery {
+            openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
+        } returns """[{"i":0,"verdict":"keep","note":"关系成立"}]"""
+
+        var reviewStart: Pair<Int, Int>? = null
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val modified = reviewer.reviewDictionaryEdgesWithAi(
+            dictionaryId = 1L,
+            wordSpellings = wordSpellings,
+            onReviewStart = { totalEdges, totalBatches ->
+                reviewStart = totalEdges to totalBatches
+            },
+            onProgress = { current, total, _ ->
+                progress += current to total
+            }
+        )
+
+        assertFalse(modified)
+        assertEquals(3 to 3, reviewStart)
+        assertEquals(listOf(0 to 3, 1 to 3, 2 to 3, 3 to 3), progress)
+        coVerify(exactly = 1) { wordEdgeDao.countEdges(1L) }
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 0L, 2) }
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 2L, 2) }
+        coVerify(exactly = 0) { wordEdgeDao.getAllEdgesFull(any()) }
+        coVerify(exactly = 3) {
+            openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
+        }
+        coVerify(exactly = 0) {
+            wordEdgeDao.updateEdgeStatus(any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `reviewDictionaryEdgesWithAi does not persist successful early pages when a later page fails`() = runTest {
+        val db = mockk<AppDatabase>(relaxed = true)
+        val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
+        val settingsDataStore = mockk<SettingsDataStore>()
+        val anthropicClient = mockk<AnthropicApiClient>(relaxed = true)
+        val openAiClient = mockk<OpenAiCompatibleApiClient>()
+        val provider = AiApiClientProvider(anthropicClient, openAiClient)
+        val reviewer = EdgeReviewer(db, wordEdgeDao, provider, settingsDataStore)
+
+        val edges = listOf(
+            WordEdgeEntity(id = 11L, wordIdA = 601L, wordIdB = 602L, edgeType = "SEMANTIC_SYNONYM", dictionaryId = 1L),
+            WordEdgeEntity(id = 12L, wordIdA = 603L, wordIdB = 604L, edgeType = "FORM_SPELLING", dictionaryId = 1L),
+            WordEdgeEntity(id = 13L, wordIdA = 605L, wordIdB = 606L, edgeType = "LEARNING_CONFUSABLE", dictionaryId = 1L)
+        )
+        val wordSpellings = mapOf(
+            601L to "abandon",
+            602L to "forsake",
+            603L to "adapt",
+            604L to "adopt",
+            605L to "affect",
+            606L to "effect"
+        )
+
+        coEvery { settingsDataStore.getPoolWindowSize() } returns 1
+        coEvery { settingsDataStore.getPoolMaxConcurrent() } returns 1
+        coEvery { settingsDataStore.getPoolRequestsPerMinute() } returns 120
+        coEvery { settingsDataStore.getPoolRetryMode() } returns PoolRetryMode.AGGRESSIVE
+        coEvery { settingsDataStore.getAiResponseUnwrapEnabled() } returns false
+        coEvery { settingsDataStore.getAiJsonRepairEnabled() } returns false
+        coEvery { settingsDataStore.getAiConfig(AiSettingsScope.REVIEWER) } returns SettingsDataStore.AiConfig(
+            providerName = "test-openai",
+            provider = AiProvider.OPENAI_COMPATIBLE,
+            apiKey = "key",
+            model = "gpt-test",
+            baseUrl = "https://example.com"
+        )
+        coEvery { wordEdgeDao.countEdges(1L) } returns 3
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 0L, 1) } returns listOf(edges[0])
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 11L, 1) } returns listOf(edges[1])
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 12L, 1) } returns listOf(edges[2])
+        coEvery {
+            openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
+        } returnsMany listOf(
+            """[{"i":0,"verdict":"adjust","new_status":"core","new_confidence":0.91}]""",
+            """[{"i":0,"verdict":"keep","note":"关系成立"}]""",
+            "not-json",
+            "not-json",
+            "not-json",
+            "not-json"
+        )
+
+        val error = runCatching {
+            reviewer.reviewDictionaryEdgesWithAi(
+                dictionaryId = 1L,
+                wordSpellings = wordSpellings
+            )
+        }.exceptionOrNull()
+
+        assertTrue("Actual error: $error", error is IllegalStateException)
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 0L, 1) }
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 11L, 1) }
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 12L, 1) }
+        coVerify(exactly = 0) {
+            wordEdgeDao.updateEdgeStatus(any(), any(), any())
+        }
+    }
 }

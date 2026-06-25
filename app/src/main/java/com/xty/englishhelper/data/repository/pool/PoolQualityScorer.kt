@@ -1,6 +1,7 @@
 package com.xty.englishhelper.data.repository.pool
 
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
+import com.xty.englishhelper.domain.model.EdgeCluster
 import com.xty.englishhelper.domain.model.EdgeType
 
 /**
@@ -10,6 +11,60 @@ import com.xty.englishhelper.domain.model.EdgeType
  * Extracted from [com.xty.englishhelper.data.repository.WordPoolRepositoryImpl].
  */
 internal object PoolQualityScorer {
+
+    class Accumulator {
+        private var edgeCount = 0
+        private var confidenceSum = 0.0
+        private var accurateCount = 0
+        private var learningValueSum = 0
+        private var reasonCount = 0
+        private val clusterSet = linkedSetOf<EdgeCluster>()
+        private val uniquePairs = linkedSetOf<Pair<Long, Long>>()
+        private var optionalCount = 0
+        private var difficultyAwareCount = 0
+        private var registerAwareCount = 0
+        private var evidenceCount = 0
+
+        fun accept(edge: WordEdgeEntity) {
+            edgeCount++
+            confidenceSum += edge.confidence
+            if (edge.status == "core" || edge.status == "support") accurateCount++
+            learningValueSum += edge.learningValue
+            if (!edge.reason.isNullOrBlank()) reasonCount++
+            EdgeType.fromDbValue(edge.edgeType)?.cluster?.let(clusterSet::add)
+            uniquePairs.add(minOf(edge.wordIdA, edge.wordIdB) to maxOf(edge.wordIdA, edge.wordIdB))
+            if (edge.status == "optional") optionalCount++
+            if (!edge.difficultyCefr.isNullOrBlank()) difficultyAwareCount++
+            val reason = edge.reason?.lowercase() ?: ""
+            if (
+                reason.contains("语域") ||
+                reason.contains("正式") ||
+                reason.contains("口语") ||
+                reason.contains("学术") ||
+                reason.contains("register")
+            ) {
+                registerAwareCount++
+            }
+            if (!edge.evidenceSource.isNullOrBlank()) evidenceCount++
+        }
+
+        fun score(): Int {
+            if (edgeCount == 0) return 0
+            val size = edgeCount.toDouble()
+            val relevance = (confidenceSum / size * 5).toInt().coerceIn(0, 5)
+            val accuracy = (accurateCount / size * 5).toInt().coerceIn(0, 5)
+            val learningScore = (learningValueSum / size).toInt().coerceIn(0, 5)
+            val explainability = (reasonCount / size * 5).toInt().coerceIn(0, 5)
+            val coverage = clusterSet.size.coerceIn(0, 5)
+            val dedup = (uniquePairs.size.toDouble() / size * 5).toInt().coerceIn(0, 5)
+            val noiseControl = ((1.0 - optionalCount / size) * 5).toInt().coerceIn(0, 5)
+            val difficultyFit = (difficultyAwareCount / size * 5).toInt().coerceIn(0, 5)
+            val registerFit = (registerAwareCount / size * 5).toInt().coerceIn(0, 5)
+            val evidence = (evidenceCount / size * 5).toInt().coerceIn(0, 5)
+            return relevance + accuracy + learningScore + explainability + coverage + dedup +
+                noiseControl + difficultyFit + registerFit + evidence
+        }
+    }
 
     fun computePoolQualityScore(
         memberWordIds: List<Long>,
@@ -27,55 +82,8 @@ internal object PoolQualityScorer {
         }
         if (poolEdges.isEmpty()) return 0
 
-        val edgeList = poolEdges.toList()
-        val size = edgeList.size.toDouble()
-
-        // 1. Relevance (0-5): average confidence mapped to 0-5
-        val avgConfidence = edgeList.map { it.confidence }.average()
-        val relevance = (avgConfidence * 5).toInt().coerceIn(0, 5)
-
-        // 2. Accuracy (0-5): proportion of edges with status core/support
-        val accurateCount = edgeList.count { it.status == "core" || it.status == "support" }
-        val accuracy = (accurateCount / size * 5).toInt().coerceIn(0, 5)
-
-        // 3. Learning value (0-5): average learning_value
-        val avgLearningValue = edgeList.map { it.learningValue }.average()
-        val learningScore = avgLearningValue.toInt().coerceIn(0, 5)
-
-        // 4. Explainability (0-5): proportion with non-blank reason
-        val reasonRatio = edgeList.count { !it.reason.isNullOrBlank() }.toDouble() / size
-        val explainability = (reasonRatio * 5).toInt().coerceIn(0, 5)
-
-        // 5. Coverage / diversity (0-5): number of distinct EdgeClusters involved
-        val clusterCount = edgeList.mapNotNull { e ->
-            EdgeType.fromDbValue(e.edgeType)?.cluster
-        }.distinct().size
-        val coverage = clusterCount.coerceIn(0, 5)
-
-        // 6. Dedup (0-5): fewer near-duplicate edges = better
-        val uniquePairs = edgeList.map { minOf(it.wordIdA, it.wordIdB) to maxOf(it.wordIdA, it.wordIdB) }.distinct().size
-        val dedup = (uniquePairs.toDouble() / size * 5).toInt().coerceIn(0, 5)
-
-        // 7. Noise control (0-5): fewer optional edges = better
-        val optionalRatio = edgeList.count { it.status == "optional" }.toDouble() / size
-        val noiseControl = ((1.0 - optionalRatio) * 5).toInt().coerceIn(0, 5)
-
-        // 8. Difficulty fit (0-5): proportion of edges with non-blank difficulty_cefr
-        val difficultyAware = edgeList.count { !it.difficultyCefr.isNullOrBlank() }
-        val difficultyFit = (difficultyAware.toDouble() / size * 5).toInt().coerceIn(0, 5)
-
-        // 9. Register fit (0-5): proportion of edges with reason indicating register awareness
-        // BUG 5 fix: removed coerceAtLeast(3) that was inflating scores
-        val registerAware = edgeList.count {
-            val r = it.reason?.lowercase() ?: ""
-            r.contains("语域") || r.contains("正式") || r.contains("口语") || r.contains("学术") || r.contains("register")
-        }
-        val registerFit = (registerAware.toDouble() / size * 5).toInt().coerceIn(0, 5)
-
-        // 10. Evidence (0-5): proportion with evidence_source
-        val evidenceRatio = edgeList.count { !it.evidenceSource.isNullOrBlank() }.toDouble() / size
-        val evidence = (evidenceRatio * 5).toInt().coerceIn(0, 5)
-
-        return relevance + accuracy + learningScore + explainability + coverage + dedup + noiseControl + difficultyFit + registerFit + evidence
+        val accumulator = Accumulator()
+        poolEdges.forEach(accumulator::accept)
+        return accumulator.score()
     }
 }

@@ -129,8 +129,129 @@ class EdgeReviewer @javax.inject.Inject constructor(
             success: Boolean
         ) -> Unit = { _, _, _, _, _ -> },
         onProgress: (current: Int, total: Int, message: String?) -> Unit = { _, _, _ -> }
+    ): Boolean = reviewEdgesWithAi(
+        edges = edges,
+        wordSpellings = domains.associate { it.id to it.spelling },
+        isCancelled = isCancelled,
+        isPaused = isPaused,
+        onReviewStart = onReviewStart,
+        onBatchAttempt = onBatchAttempt,
+        onProgress = onProgress
+    )
+
+    suspend fun reviewDictionaryEdgesWithAi(
+        dictionaryId: Long,
+        wordSpellings: Map<Long, String>,
+        isCancelled: () -> Boolean = { false },
+        isPaused: () -> Boolean = { false },
+        onReviewStart: (totalEdges: Int, totalBatches: Int) -> Unit = { _, _ -> },
+        onBatchAttempt: (
+            batchIndex: Int,
+            attempt: Int,
+            response: String?,
+            error: String?,
+            success: Boolean
+        ) -> Unit = { _, _, _, _, _ -> },
+        onProgress: (current: Int, total: Int, message: String?) -> Unit = { _, _, _ -> }
     ): Boolean {
-        // 全量审核：词典里已存在的每一条边都必须进入 REVIEWER 复查，不再只挑低置信度 / warning 子集。
+        val totalEdges = wordEdgeDao.countEdges(dictionaryId)
+        if (totalEdges <= 0) {
+            onReviewStart(0, 0)
+            onProgress(0, 0, encodeReviewProgress(0, 0, 0))
+            return false
+        }
+
+        val batchSize = settingsDataStore.getPoolWindowSize().coerceAtLeast(1)
+        val totalBatches = (totalEdges + batchSize - 1) / batchSize
+        val failureTally = AtomicInteger(0)
+        val rateLimiter = EdgeRateLimiter(settingsDataStore.getPoolRequestsPerMinute())
+
+        onReviewStart(totalEdges, totalBatches)
+        onProgress(0, totalEdges, encodeReviewProgress(0, totalBatches, 0))
+
+        var lastMaxConcurrent = settingsDataStore.getPoolMaxConcurrent().coerceAtLeast(1)
+        var lastRpm = settingsDataStore.getPoolRequestsPerMinute()
+        var lastRetryMode = settingsDataStore.getPoolRetryMode()
+        var lastEdgeId = 0L
+        var processedEdges = 0
+        var completedBatches = 0
+        var modifiedEdges = 0
+        val pendingUpdates = mutableListOf<ReviewUpdate>()
+
+        while (processedEdges < totalEdges) {
+            awaitWhilePaused(isPaused, isCancelled)
+            if (isCancelled()) coroutineContext.ensureActive()
+            coroutineContext.ensureActive()
+
+            val currentMaxConcurrent = settingsDataStore.getPoolMaxConcurrent().coerceAtLeast(1)
+            val currentRpm = settingsDataStore.getPoolRequestsPerMinute()
+            val currentRetryMode = settingsDataStore.getPoolRetryMode()
+            if (
+                currentMaxConcurrent != lastMaxConcurrent ||
+                currentRpm != lastRpm ||
+                currentRetryMode != lastRetryMode
+            ) {
+                Log.i(
+                    "EdgeReviewer",
+                    "审核配置热更新: maxConcurrent $lastMaxConcurrent->$currentMaxConcurrent, " +
+                        "rpm $lastRpm->$currentRpm, retry $lastRetryMode->$currentRetryMode"
+                )
+                lastMaxConcurrent = currentMaxConcurrent
+                lastRpm = currentRpm
+                lastRetryMode = currentRetryMode
+            }
+            rateLimiter.updateRate(currentRpm)
+
+            val waveEdgeLimit = (batchSize * currentMaxConcurrent).coerceAtLeast(batchSize)
+            val edgeWave = wordEdgeDao.getEdgesPageFull(dictionaryId, lastEdgeId, waveEdgeLimit)
+            if (edgeWave.isEmpty()) break
+
+            val results = processReviewWave(
+                batches = edgeWave.chunked(batchSize),
+                batchStartIndex = completedBatches,
+                wordSpellings = wordSpellings,
+                maxConcurrent = currentMaxConcurrent,
+                retryMode = currentRetryMode,
+                rateLimiter = rateLimiter,
+                failureTally = failureTally,
+                isCancelled = isCancelled,
+                isPaused = isPaused,
+                onBatchAttempt = onBatchAttempt
+            )
+            results.forEach { result ->
+                processedEdges = (processedEdges + result.processedEdges).coerceAtMost(totalEdges)
+                pendingUpdates += result.updates
+                modifiedEdges += result.updates.size
+                completedBatches++
+                onProgress(
+                    processedEdges,
+                    totalEdges,
+                    encodeReviewProgress(completedBatches, totalBatches, modifiedEdges)
+                )
+            }
+            lastEdgeId = edgeWave.last().id
+        }
+
+        if (pendingUpdates.isEmpty()) return false
+        applyReviewUpdates(pendingUpdates)
+        return true
+    }
+
+    private suspend fun reviewEdgesWithAi(
+        edges: List<WordEdgeEntity>,
+        wordSpellings: Map<Long, String>,
+        isCancelled: () -> Boolean,
+        isPaused: () -> Boolean,
+        onReviewStart: (totalEdges: Int, totalBatches: Int) -> Unit,
+        onBatchAttempt: (
+            batchIndex: Int,
+            attempt: Int,
+            response: String?,
+            error: String?,
+            success: Boolean
+        ) -> Unit,
+        onProgress: (current: Int, total: Int, message: String?) -> Unit
+    ): Boolean {
         val reviewTargets = edges
         if (reviewTargets.isEmpty()) {
             onReviewStart(0, 0)
@@ -142,19 +263,15 @@ class EdgeReviewer @javax.inject.Inject constructor(
         val batches = reviewTargets.chunked(batchSize)
         val totalEdges = reviewTargets.size
         val totalBatches = batches.size
-        val wordMap = domains.associateBy { it.id }
         val failureTally = AtomicInteger(0)
 
         onReviewStart(totalEdges, totalBatches)
         onProgress(0, totalEdges, encodeReviewProgress(0, totalBatches, 0))
 
-        val initialMaxConcurrent = settingsDataStore.getPoolMaxConcurrent()
-        val initialRpm = settingsDataStore.getPoolRequestsPerMinute()
-        val initialRetryMode = settingsDataStore.getPoolRetryMode()
-        val rateLimiter = EdgeRateLimiter(initialRpm)
-        var lastMaxConcurrent = initialMaxConcurrent
-        var lastRpm = initialRpm
-        var lastRetryMode = initialRetryMode
+        var lastMaxConcurrent = settingsDataStore.getPoolMaxConcurrent().coerceAtLeast(1)
+        var lastRpm = settingsDataStore.getPoolRequestsPerMinute()
+        var lastRetryMode = settingsDataStore.getPoolRetryMode()
+        val rateLimiter = EdgeRateLimiter(lastRpm)
 
         var processedEdges = 0
         var completedBatches = 0
@@ -167,7 +284,7 @@ class EdgeReviewer @javax.inject.Inject constructor(
             if (isCancelled()) coroutineContext.ensureActive()
             coroutineContext.ensureActive()
 
-            val currentMaxConcurrent = settingsDataStore.getPoolMaxConcurrent()
+            val currentMaxConcurrent = settingsDataStore.getPoolMaxConcurrent().coerceAtLeast(1)
             val currentRpm = settingsDataStore.getPoolRequestsPerMinute()
             val currentRetryMode = settingsDataStore.getPoolRetryMode()
             if (
@@ -186,47 +303,28 @@ class EdgeReviewer @javax.inject.Inject constructor(
             }
             rateLimiter.updateRate(currentRpm)
             val waveEnd = (cursor + currentMaxConcurrent).coerceAtMost(batches.size)
-            val semaphore = Semaphore(currentMaxConcurrent)
-
-            coroutineScope {
-                val deferreds = (cursor until waveEnd).associateWith { batchIndex ->
-                    async {
-                        semaphore.withPermit {
-                            awaitWhilePaused(isPaused, isCancelled)
-                            if (isCancelled()) coroutineContext.ensureActive()
-                            rateLimiter.acquire()
-                            if (isCancelled()) coroutineContext.ensureActive()
-
-                            val batch = batches[batchIndex]
-                            val prompt = EdgePromptBuilder.buildReviewPrompt(batch, wordMap)
-                            val changed = reviewBatchWithRetry(
-                                prompt = prompt,
-                                batch = batch,
-                                retryMode = currentRetryMode,
-                                failureTally = failureTally
-                            ) { attempt, response, error, success ->
-                                onBatchAttempt(batchIndex, attempt, response, error, success)
-                            }
-                            ReviewedBatchResult(
-                                processedEdges = batch.size,
-                                updates = changed
-                            )
-                        }
-                    }
-                }
-
-                for (batchIndex in cursor until waveEnd) {
-                    val result = deferreds.getValue(batchIndex).await()
-                    processedEdges = (processedEdges + result.processedEdges).coerceAtMost(totalEdges)
-                    pendingUpdates += result.updates
-                    modifiedEdges += result.updates.size
-                    completedBatches++
-                    onProgress(
-                        processedEdges,
-                        totalEdges,
-                        encodeReviewProgress(completedBatches, totalBatches, modifiedEdges)
-                    )
-                }
+            val results = processReviewWave(
+                batches = batches.subList(cursor, waveEnd),
+                batchStartIndex = cursor,
+                wordSpellings = wordSpellings,
+                maxConcurrent = currentMaxConcurrent,
+                retryMode = currentRetryMode,
+                rateLimiter = rateLimiter,
+                failureTally = failureTally,
+                isCancelled = isCancelled,
+                isPaused = isPaused,
+                onBatchAttempt = onBatchAttempt
+            )
+            results.forEach { result ->
+                processedEdges = (processedEdges + result.processedEdges).coerceAtMost(totalEdges)
+                pendingUpdates += result.updates
+                modifiedEdges += result.updates.size
+                completedBatches++
+                onProgress(
+                    processedEdges,
+                    totalEdges,
+                    encodeReviewProgress(completedBatches, totalBatches, modifiedEdges)
+                )
             }
 
             cursor = waveEnd
@@ -234,6 +332,52 @@ class EdgeReviewer @javax.inject.Inject constructor(
         if (pendingUpdates.isEmpty()) return false
         applyReviewUpdates(pendingUpdates)
         return true
+    }
+
+    private suspend fun processReviewWave(
+        batches: List<List<WordEdgeEntity>>,
+        batchStartIndex: Int,
+        wordSpellings: Map<Long, String>,
+        maxConcurrent: Int,
+        retryMode: PoolRetryMode,
+        rateLimiter: EdgeRateLimiter,
+        failureTally: AtomicInteger,
+        isCancelled: () -> Boolean,
+        isPaused: () -> Boolean,
+        onBatchAttempt: (
+            batchIndex: Int,
+            attempt: Int,
+            response: String?,
+            error: String?,
+            success: Boolean
+        ) -> Unit
+    ): List<ReviewedBatchResult> = coroutineScope {
+        val semaphore = Semaphore(maxConcurrent)
+        val deferreds = batches.mapIndexed { localIndex, batch ->
+            async {
+                semaphore.withPermit {
+                    awaitWhilePaused(isPaused, isCancelled)
+                    if (isCancelled()) coroutineContext.ensureActive()
+                    rateLimiter.acquire()
+                    if (isCancelled()) coroutineContext.ensureActive()
+
+                    val prompt = EdgePromptBuilder.buildReviewPrompt(batch, wordSpellings)
+                    val changed = reviewBatchWithRetry(
+                        prompt = prompt,
+                        batch = batch,
+                        retryMode = retryMode,
+                        failureTally = failureTally
+                    ) { attempt, response, error, success ->
+                        onBatchAttempt(batchStartIndex + localIndex, attempt, response, error, success)
+                    }
+                    ReviewedBatchResult(
+                        processedEdges = batch.size,
+                        updates = changed
+                    )
+                }
+            }
+        }
+        deferreds.map { it.await() }
     }
 
     private suspend fun reviewBatchWithRetry(

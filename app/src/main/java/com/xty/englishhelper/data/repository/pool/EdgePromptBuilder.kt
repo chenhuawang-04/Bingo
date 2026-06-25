@@ -113,13 +113,13 @@ internal object EdgePromptBuilder {
     /**
      * Build a review prompt for the REVIEWER AI model to audit low-confidence edges.
      */
-    fun buildReviewPrompt(edges: List<WordEdgeEntity>, wordMap: Map<Long, WordDetails>): String {
+    fun buildReviewPrompt(edges: List<WordEdgeEntity>, wordMap: Map<Long, String>): String {
         return buildString {
             appendLine("你是英语词池质量审核员。请逐条审核以下 ${edges.size} 条边：")
             appendLine()
             edges.forEachIndexed { idx, edge ->
-                val wordA = wordMap[edge.wordIdA]?.spelling ?: "?"
-                val wordB = wordMap[edge.wordIdB]?.spelling ?: "?"
+                val wordA = wordMap[edge.wordIdA] ?: "?"
+                val wordB = wordMap[edge.wordIdB] ?: "?"
                 appendLine("$idx. $wordA ↔ $wordB | 类型:${edge.edgeType} | 状态:${edge.status} | 置信度:${edge.confidence} | 语域:${edge.register ?: "neutral"} | 难度:${edge.difficultyCefr ?: "未知"} | 理由:${edge.reason ?: "无"}")
             }
             appendLine()
