@@ -20,6 +20,7 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Before
@@ -134,6 +135,71 @@ class EdgeReviewerTest {
         assertTrue("Actual error: $error", error is IllegalStateException)
         assertTrue("Actual error message: ${error?.message}", error?.message?.contains("4 次尝试后仍失败") == true)
         coVerify(exactly = 4) {
+            openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
+        }
+        coVerify(exactly = 0) {
+            wordEdgeDao.updateEdgeStatus(any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `reviewEdgesWithAi audits all persisted edges including high confidence ones`() = runTest {
+        val db = mockk<AppDatabase>(relaxed = true)
+        val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
+        val settingsDataStore = mockk<SettingsDataStore>()
+        val anthropicClient = mockk<AnthropicApiClient>(relaxed = true)
+        val openAiClient = mockk<OpenAiCompatibleApiClient>()
+        val provider = AiApiClientProvider(anthropicClient, openAiClient)
+        val reviewer = EdgeReviewer(db, wordEdgeDao, provider, settingsDataStore)
+
+        coEvery { settingsDataStore.getPoolWindowSize() } returns 1
+        coEvery { settingsDataStore.getPoolMaxConcurrent() } returns 1
+        coEvery { settingsDataStore.getPoolRequestsPerMinute() } returns 120
+        coEvery { settingsDataStore.getPoolRetryMode() } returns PoolRetryMode.AGGRESSIVE
+        coEvery { settingsDataStore.getAiResponseUnwrapEnabled() } returns false
+        coEvery { settingsDataStore.getAiJsonRepairEnabled() } returns false
+        coEvery { settingsDataStore.getAiConfig(AiSettingsScope.REVIEWER) } returns SettingsDataStore.AiConfig(
+            providerName = "test-openai",
+            provider = AiProvider.OPENAI_COMPATIBLE,
+            apiKey = "key",
+            model = "gpt-test",
+            baseUrl = "https://example.com"
+        )
+        coEvery {
+            openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
+        } returns """[{"i":0,"verdict":"keep","note":"关系成立"}]"""
+
+        val edge = WordEdgeEntity(
+            id = 10L,
+            wordIdA = 311L,
+            wordIdB = 312L,
+            edgeType = "SEMANTIC_SYNONYM",
+            dictionaryId = 1L,
+            status = "core",
+            confidence = 0.95
+        )
+        val domains = listOf(
+            WordDetails(id = 311L, dictionaryId = 1L, spelling = "rapid"),
+            WordDetails(id = 312L, dictionaryId = 1L, spelling = "fast")
+        )
+        var reviewStart: Pair<Int, Int>? = null
+        val progress = mutableListOf<Pair<Int, Int>>()
+
+        val modified = reviewer.reviewEdgesWithAi(
+            edges = listOf(edge),
+            domains = domains,
+            onReviewStart = { totalEdges, totalBatches ->
+                reviewStart = totalEdges to totalBatches
+            },
+            onProgress = { current, total, _ ->
+                progress += current to total
+            }
+        )
+
+        assertFalse(modified)
+        assertEquals(1 to 1, reviewStart)
+        assertEquals(listOf(0 to 1, 1 to 1), progress)
+        coVerify(exactly = 1) {
             openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
         }
         coVerify(exactly = 0) {

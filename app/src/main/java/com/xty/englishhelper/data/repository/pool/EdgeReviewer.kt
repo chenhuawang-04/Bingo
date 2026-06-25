@@ -130,16 +130,17 @@ class EdgeReviewer @javax.inject.Inject constructor(
         ) -> Unit = { _, _, _, _, _ -> },
         onProgress: (current: Int, total: Int, message: String?) -> Unit = { _, _, _ -> }
     ): Boolean {
-        val needsReview = edges.filter { it.confidence < 0.6 || it.status == "warning" }
-        if (needsReview.isEmpty()) {
+        // 全量审核：词典里已存在的每一条边都必须进入 REVIEWER 复查，不再只挑低置信度 / warning 子集。
+        val reviewTargets = edges
+        if (reviewTargets.isEmpty()) {
             onReviewStart(0, 0)
             onProgress(0, 0, encodeReviewProgress(0, 0, 0))
             return false
         }
 
         val batchSize = settingsDataStore.getPoolWindowSize().coerceAtLeast(1)
-        val batches = needsReview.chunked(batchSize)
-        val totalEdges = needsReview.size
+        val batches = reviewTargets.chunked(batchSize)
+        val totalEdges = reviewTargets.size
         val totalBatches = batches.size
         val wordMap = domains.associateBy { it.id }
         val failureTally = AtomicInteger(0)

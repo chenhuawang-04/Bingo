@@ -37,9 +37,9 @@ interface WordPoolRepository {
     suspend fun getEdgeCount(dictionaryId: Long): Int
 
     /**
-     * 词池审核（手动触发，独立于整理）：用 REVIEWER AI 复查低置信度（<0.6）/ warning 边，
+     * 词池审核（手动触发，独立于整理）：用 REVIEWER AI 逐条复查该词典的全部边，
      * 据裁决移除或调整边，然后用复查后的边重建 [strategy] 策略的词池。
-     * 每次整跑（无块级续传）；可暂停 / 取消；[onProgress] 上报 (已处理边数, 待审边总数, 文案)。
+     * 每次整跑（无块级续传）；可暂停 / 取消；[onProgress] 上报 (已审核边数, 总审核边数, 文案)。
      */
     suspend fun reviewPools(
         dictionaryId: Long,

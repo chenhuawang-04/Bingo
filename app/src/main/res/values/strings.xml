@@ -1014,7 +1014,7 @@
     <string name="pool_review_processing">正在审核</string>
     <string name="pool_review_preparing_word">准备审核批次…</string>
     <string name="pool_review_batch_progress">已复查批次 %1$d / %2$d</string>
-    <string name="pool_review_edges_found">已调整 %d 条边</string>
+    <string name="pool_review_edges_found">已审核 %d 条边</string>
     <string name="pool_review_progress_title">审核进度</string>
     <string name="pool_review_current_batch">当前审核批次</string>
     <string name="pool_review_batch_group">%1$d / %2$d 批</string>

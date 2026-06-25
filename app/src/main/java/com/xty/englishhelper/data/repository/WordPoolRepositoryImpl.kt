@@ -325,7 +325,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
         val allWords: List<WordDetails> = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
 
-        // 复查低置信度 / warning 边。批大小 / 并发 / RPM / 重试模式均复用词池构建配置；
+        // 复查全部已存在边。批大小 / 并发 / RPM / 重试模式均复用词池构建配置；
         // review verdict=remove 现改为“保留边记录，仅把 confidence 降到 0”。
         val modified = edgeReviewer.reviewEdgesWithAi(
             edges = edgesBefore,

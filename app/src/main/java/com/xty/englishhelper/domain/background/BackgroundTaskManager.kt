@@ -977,8 +977,8 @@ class BackgroundTaskManager @Inject constructor(
     // ── 词池审核（手动触发，独立于整理） ──
 
     /**
-     * 词池审核：用 REVIEWER AI 复查低置信度 / warning 边，复查完用结果重建词池。
-     * 每次整跑（无续传坐标系，故无 startIndex / resumeMessage）；进度按待审边数上报，可暂停 / 取消。
+     * 词池审核：用 REVIEWER AI 逐条复查全部边，复查完用结果重建词池。
+     * 每次整跑（无续传坐标系，故无 startIndex / resumeMessage）；进度按总审核边数上报，可暂停 / 取消。
      */
     private suspend fun executeWordPoolReview(task: BackgroundTask) {
         val payload = task.payload as? WordPoolReviewPayload ?: throw IllegalStateException("任务参数缺失")

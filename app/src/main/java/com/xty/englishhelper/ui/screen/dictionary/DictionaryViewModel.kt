@@ -402,10 +402,10 @@ class DictionaryViewModel @Inject constructor(
         val reviewProgress = parseReviewProgressMessage(task.progressMessage)
         return when {
             reviewProgress != null && reviewProgress.totalBatches > 0 -> {
-                "已审 ${reviewProgress.completedBatches}/${reviewProgress.totalBatches} 批 · 已处理 ${task.progressCurrent}/${task.progressTotal} 条边 · 已调整 ${reviewProgress.modifiedEdges} 条"
+                "已审 ${reviewProgress.completedBatches}/${reviewProgress.totalBatches} 批 · 已审核 ${task.progressCurrent}/${task.progressTotal} 条边 · 已调整 ${reviewProgress.modifiedEdges} 条"
             }
             task.progressTotal > 0 -> {
-                "已处理 ${task.progressCurrent}/${task.progressTotal} 条边"
+                "已审核 ${task.progressCurrent}/${task.progressTotal} 条边"
             }
             else -> task.progressMessage
         }

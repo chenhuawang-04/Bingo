@@ -161,7 +161,11 @@ class PoolBuildDetailViewModel @Inject constructor(
                         errorLogs = errorLogs,
                         chunkCurrent = detailProgress.chunkCurrent,
                         chunkTotal = detailProgress.chunkTotal,
-                        edgesFound = detailProgress.metricCount,
+                        edgesFound = if (taskMode == PoolTaskMode.REVIEW) {
+                            poolTask.progressCurrent
+                        } else {
+                            detailProgress.metricCount
+                        },
                         fillableChunkIndex = if (
                             taskMode == PoolTaskMode.BUILD &&
                             status == BuildStatus.FAILED &&
@@ -255,10 +259,10 @@ class PoolBuildDetailViewModel @Inject constructor(
         val parsed = parseReviewProgress(task.progressMessage)
         return when {
             parsed.chunkTotal > 0 -> {
-                "已审 ${parsed.chunkCurrent}/${parsed.chunkTotal} 批 · 已处理 ${task.progressCurrent}/${task.progressTotal} 条边 · 已调整 ${parsed.metricCount} 条"
+                "已审 ${parsed.chunkCurrent}/${parsed.chunkTotal} 批 · 已审核 ${task.progressCurrent}/${task.progressTotal} 条边 · 已调整 ${parsed.metricCount} 条"
             }
             task.progressTotal > 0 -> {
-                "已处理 ${task.progressCurrent}/${task.progressTotal} 条边"
+                "已审核 ${task.progressCurrent}/${task.progressTotal} 条边"
             }
             else -> task.progressMessage
         }
