@@ -54,13 +54,16 @@ class ImportDictionaryUseCase @Inject constructor(
                 val unitId = unitRepository.insertUnit(
                     StudyUnit(
                         dictionaryId = dictId,
+                        unitUid = unitData.unitUid,
                         name = unitData.name,
-                        defaultRepeatCount = unitData.repeatCount
+                        defaultRepeatCount = unitData.repeatCount,
+                        createdAt = unitData.createdAt,
+                        updatedAt = unitData.updatedAt
                     )
                 )
                 val wordIds = unitData.wordUids.mapNotNull { wordUidToId[it] }
                 if (wordIds.isNotEmpty()) {
-                    unitRepository.addWordsToUnit(unitId, wordIds)
+                    unitRepository.addWordsToUnit(unitId, wordIds, touchUpdatedAt = false)
                 }
             }
 
@@ -96,10 +99,10 @@ class ExportDictionaryUseCase @Inject constructor(
     private val importExporter: DictionaryImportExporter,
     private val ensureDictionaryWordUids: EnsureDictionaryWordUidsUseCase
 ) {
-    suspend operator fun invoke(dictionaryId: Long, dictionaryName: String, dictionaryDescription: String): String {
-        val words = ensureDictionaryWordUids(dictionaryId, dictionaryName)
-        val units = unitRepository.getUnitsByDictionary(dictionaryId)
-        val studyStates = studyRepository.getStudyStatesForDictionary(dictionaryId)
+    suspend operator fun invoke(dictionary: Dictionary): String {
+        val words = ensureDictionaryWordUids(dictionary.id, dictionary.name)
+        val units = unitRepository.getUnitsByDictionary(dictionary.id)
+        val studyStates = studyRepository.getStudyStatesForDictionary(dictionary.id)
 
         val wordIdToUid = words.associate { it.id to it.wordUid }
 
@@ -110,10 +113,7 @@ class ExportDictionaryUseCase @Inject constructor(
         }
 
         return importExporter.exportToJson(
-            dictionary = Dictionary(
-                name = dictionaryName,
-                description = dictionaryDescription
-            ),
+            dictionary = dictionary,
             words = words,
             units = units,
             unitWordMap = unitWordMap,

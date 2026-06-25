@@ -26,25 +26,39 @@ class UnitRepositoryImpl @Inject constructor(
     override suspend fun getUnitsByDictionary(dictionaryId: Long): List<StudyUnit> =
         unitDao.getUnitsByDictionary(dictionaryId).map { it.toDomain() }
 
-    override suspend fun insertUnit(unit: StudyUnit): Long =
-        unitDao.insertUnit(unit.toEntity())
+    override suspend fun insertUnit(unit: StudyUnit): Long {
+        val inserted = unitDao.insertUnit(unit.toEntity())
+        if (inserted != -1L) return inserted
+        return unitDao.getUnitByUid(unit.unitUid)?.id
+            ?: throw IllegalStateException("Unit insert conflict but row not found for uid=${unit.unitUid}")
+    }
 
-    override suspend fun updateUnitName(unitId: Long, name: String) =
-        unitDao.updateUnitName(unitId, name)
+    override suspend fun updateUnit(unit: StudyUnit) =
+        unitDao.updateUnit(unit.toEntity())
 
-    override suspend fun updateRepeatCount(unitId: Long, repeatCount: Int) =
-        unitDao.updateRepeatCount(unitId, repeatCount)
+    override suspend fun updateUnitName(unitId: Long, name: String, updatedAt: Long) =
+        unitDao.updateUnitName(unitId, name, updatedAt)
+
+    override suspend fun updateRepeatCount(unitId: Long, repeatCount: Int, updatedAt: Long) =
+        unitDao.updateRepeatCount(unitId, repeatCount, updatedAt)
 
     override suspend fun deleteUnit(unitId: Long) =
         unitDao.deleteUnit(unitId)
 
-    override suspend fun addWordsToUnit(unitId: Long, wordIds: List<Long>) {
+    override suspend fun addWordsToUnit(unitId: Long, wordIds: List<Long>, touchUpdatedAt: Boolean) {
         val crossRefs = wordIds.map { UnitWordCrossRef(unitId = unitId, wordId = it) }
         unitDao.insertCrossRefs(crossRefs)
+        if (touchUpdatedAt) {
+            unitDao.touchUnit(unitId, System.currentTimeMillis())
+        }
     }
 
-    override suspend fun removeWordsFromUnit(unitId: Long, wordIds: List<Long>) =
+    override suspend fun removeWordsFromUnit(unitId: Long, wordIds: List<Long>, touchUpdatedAt: Boolean) {
         unitDao.removeCrossRefs(unitId, wordIds)
+        if (touchUpdatedAt) {
+            unitDao.touchUnit(unitId, System.currentTimeMillis())
+        }
+    }
 
     override suspend fun getWordIdsInUnit(unitId: Long): List<Long> =
         unitDao.getWordIdsInUnit(unitId)

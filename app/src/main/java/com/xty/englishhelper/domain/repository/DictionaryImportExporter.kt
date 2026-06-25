@@ -12,8 +12,11 @@ import com.xty.englishhelper.domain.model.WordStudyState
 interface DictionaryImportExporter {
 
     data class ImportedUnit(
+        val unitUid: String,
         val name: String,
         val repeatCount: Int,
+        val createdAt: Long,
+        val updatedAt: Long,
         val wordUids: List<String>
     )
 

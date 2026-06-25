@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.UUID
 
 @Entity(
     tableName = "units",
@@ -16,16 +17,23 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("dictionary_id")]
+    indices = [
+        Index("dictionary_id"),
+        Index(value = ["unit_uid"], unique = true)
+    ]
 )
 data class UnitEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     @ColumnInfo(name = "dictionary_id")
     val dictionaryId: Long,
+    @ColumnInfo(name = "unit_uid")
+    val unitUid: String = UUID.randomUUID().toString(),
     val name: String,
     @ColumnInfo(name = "default_repeat_count", defaultValue = "2")
     val defaultRepeatCount: Int = 2,
     @ColumnInfo(name = "created_at")
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: Long = createdAt
 )

@@ -15,6 +15,7 @@ import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.repository.DictionaryImportExporter
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -51,9 +52,13 @@ class JsonImportExporter @Inject constructor(
         }
 
         val model = DictionaryJsonModel(
+            dictionaryUid = dictionary.dictionaryUid,
             name = dictionary.name,
             description = dictionary.description,
-            schemaVersion = 7,
+            color = dictionary.color,
+            schemaVersion = 8,
+            createdAt = dictionary.createdAt,
+            updatedAt = dictionary.updatedAt,
             words = words.map { word ->
                 WordJsonModel(
                     spelling = word.spelling,
@@ -80,8 +85,11 @@ class JsonImportExporter @Inject constructor(
             },
             units = units.map { unit ->
                 UnitJsonModel(
+                    unitUid = unit.unitUid,
                     name = unit.name,
                     repeatCount = unit.defaultRepeatCount,
+                    createdAt = unit.createdAt,
+                    updatedAt = unit.updatedAt,
                     wordUids = unitWordMap[unit.id] ?: emptyList()
                 )
             },
@@ -108,8 +116,8 @@ class JsonImportExporter @Inject constructor(
         val parsedModel = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
 
         // Validate schema version
-        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7)) {
-            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5、6 或 7）")
+        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7, 8)) {
+            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5、6、7 或 8）")
         }
 
         // Validate no empty spellings
@@ -130,6 +138,13 @@ class JsonImportExporter @Inject constructor(
 
         val model = wordUidNormalizer.normalize(parsedModel)
 
+        val unitUids = mutableSetOf<String>()
+        model.units.forEachIndexed { index, unit ->
+            if (unit.unitUid.isNotBlank() && !unitUids.add(unit.unitUid)) {
+                throw IllegalArgumentException("第 ${index + 1} 个单元的 unitUid 重复：${unit.unitUid}")
+            }
+        }
+
         // Validate wordUid: when present, must be unique
         val uidSet = mutableSetOf<String>()
         model.words.forEach { word ->
@@ -149,10 +164,17 @@ class JsonImportExporter @Inject constructor(
             )
         }
 
+        val now = System.currentTimeMillis()
+        val dictionaryCreatedAt = model.createdAt.takeIf { it > 0 } ?: now
+        val dictionaryUpdatedAt = model.updatedAt.takeIf { it > 0 } ?: dictionaryCreatedAt
         val dictionary = Dictionary(
+            dictionaryUid = model.dictionaryUid.ifBlank { UUID.randomUUID().toString() },
             name = model.name,
             description = model.description,
-            wordCount = model.words.size
+            color = model.color,
+            wordCount = model.words.size,
+            createdAt = dictionaryCreatedAt,
+            updatedAt = dictionaryUpdatedAt
         )
         val words = model.words.map { word ->
             WordDetails(
@@ -188,9 +210,14 @@ class JsonImportExporter @Inject constructor(
             dictionary = dictionary,
             words = words,
             units = model.units.map {
+                val createdAt = it.createdAt.takeIf { value -> value > 0 } ?: now
+                val updatedAt = it.updatedAt.takeIf { value -> value > 0 } ?: createdAt
                 DictionaryImportExporter.ImportedUnit(
+                    unitUid = it.unitUid.ifBlank { UUID.randomUUID().toString() },
                     name = it.name,
                     repeatCount = it.repeatCount,
+                    createdAt = createdAt,
+                    updatedAt = updatedAt,
                     wordUids = it.wordUids
                 )
             },

@@ -4,9 +4,13 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class DictionaryJsonModel(
+    val dictionaryUid: String = "",
     val name: String = "",
     val description: String = "",
+    val color: Int = 0xFF4A6FA5.toInt(),
     val schemaVersion: Int = 0,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
     val words: List<WordJsonModel> = emptyList(),
     val units: List<UnitJsonModel> = emptyList(),
     val studyStates: List<StudyStateJsonModel> = emptyList(),
@@ -64,8 +68,11 @@ data class DecompositionPartJsonModel(
 
 @JsonClass(generateAdapter = true)
 data class UnitJsonModel(
+    val unitUid: String = "",
     val name: String = "",
     val repeatCount: Int = 2,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
     val wordUids: List<String> = emptyList()
 )
 

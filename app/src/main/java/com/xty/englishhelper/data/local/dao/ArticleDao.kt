@@ -33,6 +33,9 @@ interface ArticleDao {
     @Query("SELECT * FROM articles WHERE id = :id")
     suspend fun getArticleByIdOnce(id: Long): ArticleEntity?
 
+    @Query("SELECT id FROM articles")
+    suspend fun getAllArticleIds(): List<Long>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertArticle(entity: ArticleEntity): Long
 
@@ -165,6 +168,9 @@ interface ArticleDao {
 
     @Query("SELECT * FROM word_examples")
     suspend fun getAllExamples(): List<WordExampleEntity>
+
+    @Query("DELETE FROM word_examples")
+    suspend fun deleteAllExamples()
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertExamples(examples: List<WordExampleEntity>)

@@ -35,6 +35,7 @@ import com.xty.englishhelper.data.json.WordExamplesExportModel
 import com.xty.englishhelper.data.json.WordPoolJsonModel
 import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.QuestionBankDao
+import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
 import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
@@ -106,6 +107,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val articleDao: ArticleDao,
     private val wordPoolRepository: WordPoolRepository,
     private val wordPoolDao: WordPoolDao,
+    private val wordEdgeDao: WordEdgeDao,
     private val questionBankDao: QuestionBankDao,
     private val planRepository: PlanRepository,
     private val importExporter: DictionaryImportExporter,
@@ -176,7 +178,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     total.coerceAtLeast(1)
                 )
             )
-        }.toMutableMap()
+        }.toMutableList()
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
         val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
@@ -195,7 +197,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         for (localDict in localDicts) {
             val localJson = exportLocalDictionary(localDict)
-            val cloudJson = cloudDicts.remove(localDict.name)
+            val cloudJson = takeMatchingCloudDictionary(localDict, cloudDicts)
 
             if (cloudJson == null) {
                 // Only local -> upload as-is
@@ -208,7 +210,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         // Cloud-only dicts -> import to local
-        for ((_, cloudDict) in cloudDicts) {
+        for (cloudDict in cloudDicts) {
             onProgress(SyncProgress("Importing", "Importing cloud dictionary ${cloudDict.name}...", 2, 4))
             importCloudDictionary(cloudDict)
             mergedDictJsons.add(cloudDict)
@@ -295,7 +297,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         // Phase 1: Upload dictionaries (incremental via content hash)
         onProgress(SyncProgress("Uploading", "Syncing dictionaries...", 1, 4))
         val localDicts = dictionaryRepository.getAllDictionaries().first()
-        val finalDictJsons = localDicts.mapIndexed { i, dict ->
+        val finalDictJsons = localDicts.map { dict ->
             exportLocalDictionary(dict)
         }
         val dictionaryUpload = uploadDictionarySnapshot(
@@ -373,67 +375,33 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     total.coerceAtLeast(1)
                 )
             )
-        }.values.toList()
+        }
 
-        // Phase 2: Download and merge articles (incremental via timestamp comparison)
-        onProgress(SyncProgress("Downloading", "Syncing articles...", 2, 4))
+        // Phase 2: Download replacement payloads
+        onProgress(SyncProgress("Downloading", "Downloading articles...", 2, 4))
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
 
-        val localArticles = articleRepository.getAllArticles().first()
-        val localArticleMap = localArticles.associateBy { it.articleUid }
-        var articlesImported = 0
-        var articlesSkipped = 0
-
         if (cloudArticles != null) {
-            for (articleJson in cloudArticles.articles) {
-                val localArticle = localArticleMap[articleJson.articleUid]
-                if (localArticle == null || cloudArticles.articles.firstOrNull { it.articleUid == articleJson.articleUid }?.let {
-                    it.updatedAt > localArticle.updatedAt
-                } == true) {
-                    importArticleFromJson(articleJson, localArticle, supportsStructuredContent = (cloudArticles.schemaVersion ?: 1) >= 2)
-                    articlesImported++
-                } else {
-                    articlesSkipped++
-                }
-            }
+            // Payload downloaded successfully; replacement happens after all cloud data is ready.
         }
-        normalizeArticleCategories()
 
         // Phase 3: Download question bank, word examples, plan
-        onProgress(SyncProgress("Downloading", "Syncing other data...", 3, 4))
+        onProgress(SyncProgress("Downloading", "Downloading remaining cloud data...", 3, 4))
         val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
         val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
         val cloudPlan = downloadJson("plan.json", planAdapter)
 
-        // Import question bank (always full, as it's complex to diff)
-        if (cloudQuestionBank != null && cloudQuestionBank.papers.isNotEmpty()) {
-            val localPapers = questionBankDao.getAllExamPapers().first()
-            for (paper in localPapers) {
-                questionBankDao.deleteExamPaper(paper.id)
-            }
-            val articleUidToId = buildArticleUidToIdMap()
-            importQuestionBank(cloudQuestionBank, articleUidToId)
-        }
-
-        // Import word examples
-        val wordUidToId = buildWordUidToIdMap()
-        val articleUidToId = buildArticleUidToIdMap()
-        importWordExamples(cloudWordExamples, wordUidToId, articleUidToId)
-
-        // Import plan (always full)
-        if (cloudPlan != null) {
-            planRepository.replaceFromBackup(cloudPlan.toDomainBackup())
-        }
-
-        // Phase 4: Import dictionaries
-        onProgress(SyncProgress("Importing", "Importing dictionaries...", 4, 4))
-        for (dict in cloudDicts) {
-            importCloudDictionary(dict)
-        }
+        // Phase 4: Replace local snapshot with cloud snapshot
+        onProgress(SyncProgress("Importing", "Replacing local data with cloud snapshot...", 4, 4))
+        replaceAllArticlesFromCloud(cloudArticles, cloudCategories)
+        replaceAllDictionariesFromCloud(cloudDicts)
+        replaceQuestionBankFromCloud(cloudQuestionBank)
+        replaceWordExamplesFromCloud(cloudWordExamples)
+        planRepository.replaceFromBackup(cloudPlan?.toDomainBackup() ?: PlanBackup())
 
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
-        onProgress(SyncProgress("Done", "Download complete (incremental: $articlesImported imported, $articlesSkipped skipped)", 4, 4))
+        onProgress(SyncProgress("Done", "Download complete (cloud replaced local snapshot)", 4, 4))
     }
 
     private data class DictionaryUploadResult(
@@ -447,6 +415,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
         return manifest.dictionaries.map { fileName ->
             DictionaryCloudEntryJsonModel(
+                dictionaryUid = "",
                 name = fileName,
                 format = DictionaryCloudEntryJsonModel.FORMAT_SINGLE,
                 path = "dictionaries/$fileName"
@@ -456,18 +425,28 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
     private suspend fun downloadCloudDictionaries(
         manifest: SyncManifest?,
-            onEntry: (current: Int, total: Int, entry: DictionaryCloudEntryJsonModel) -> Unit = { _, _, _ -> }
-    ): Map<String, DictionaryJsonModel> {
+        onEntry: (current: Int, total: Int, entry: DictionaryCloudEntryJsonModel) -> Unit = { _, _, _ -> }
+    ): List<DictionaryJsonModel> {
         val entries = resolveDictionaryEntries(manifest)
-        if (entries.isEmpty()) return emptyMap()
+        if (entries.isEmpty()) return emptyList()
 
-        val dictionaries = linkedMapOf<String, DictionaryJsonModel>()
+        val dictionaries = mutableListOf<DictionaryJsonModel>()
         entries.forEachIndexed { index, entry ->
             onEntry(index + 1, entries.size, entry)
             val dictionary = downloadDictionaryEntry(entry)
-            if (dictionaries.put(dictionary.name, dictionary) != null) {
-                throw IllegalStateException("Duplicate dictionary name in cloud sync manifest: ${dictionary.name}")
-            }
+            dictionaries += dictionary
+        }
+        val duplicateNames = dictionaries.groupBy { it.name }.filterValues { it.size > 1 }.keys
+        if (duplicateNames.isNotEmpty()) {
+            throw IllegalStateException("Duplicate dictionary name in cloud sync manifest: ${duplicateNames.sorted().joinToString("、")}")
+        }
+        val duplicateUids = dictionaries
+            .filter { it.dictionaryUid.isNotBlank() }
+            .groupBy { it.dictionaryUid }
+            .filterValues { it.size > 1 }
+            .keys
+        if (duplicateUids.isNotEmpty()) {
+            throw IllegalStateException("Duplicate dictionary uid in cloud sync manifest: ${duplicateUids.sorted().joinToString("、")}")
         }
         return dictionaries
     }
@@ -516,13 +495,25 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         previousManifest: SyncManifest?
     ): DictionaryUploadResult {
         val previousEntries = resolveDictionaryEntries(previousManifest)
+        val previousShardedByUid = previousEntries
+            .filter {
+                it.format == DictionaryCloudEntryJsonModel.FORMAT_SHARDED &&
+                    it.dictionaryUid.isNotBlank()
+            }
+            .associateBy { it.dictionaryUid }
         val previousShardedByName = previousEntries
-            .filter { it.format == DictionaryCloudEntryJsonModel.FORMAT_SHARDED && it.name.isNotBlank() }
+            .filter {
+                it.format == DictionaryCloudEntryJsonModel.FORMAT_SHARDED &&
+                    it.name.isNotBlank()
+            }
             .associateBy { it.name }
 
         val entries = dictionaries.map { dictionary ->
             val sharded = dictionaryShardAssembler.shard(dictionary)
-            val previousEntry = previousShardedByName[dictionary.name]
+            val previousEntry = dictionary.dictionaryUid
+                .takeIf { it.isNotBlank() }
+                ?.let(previousShardedByUid::get)
+                ?: previousShardedByName[dictionary.name]
             val previousIndex = previousEntry?.let { downloadJson(it.path, dictionaryShardIndexAdapter) }
             uploadShardedDictionary(sharded, previousIndex)
             sharded.entry
@@ -558,6 +549,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         localJson: DictionaryJsonModel,
         cloudJson: DictionaryJsonModel
     ): DictionaryJsonModel {
+        val resolvedLocalDict = reconcileDictionaryMetadata(localDict, cloudJson)
         val wordPlan = dictionaryWordMergePlanner.plan(
             localWords = localJson.words,
             cloudWords = cloudJson.words
@@ -580,10 +572,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             )
             transactionRunner.runInTransaction {
                 importResult.words.forEach { word ->
-                    val existing = wordRepository.findByNormalizedSpelling(localDict.id, word.normalizedSpelling)
+                    val existing = wordRepository.findByNormalizedSpelling(resolvedLocalDict.id, word.normalizedSpelling)
                     if (existing == null) {
                         val wordWithDict = word.copy(
-                            dictionaryId = localDict.id,
+                            dictionaryId = resolvedLocalDict.id,
                             wordUid = word.wordUid
                         )
                         val wordId = wordRepository.insertWord(wordWithDict)
@@ -609,15 +601,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         }
                     }
                 }
-                dictionaryRepository.updateWordCount(localDict.id)
+                dictionaryRepository.updateWordCount(resolvedLocalDict.id)
             }
             didMutateWords = true
         }
 
         if (wordPlan.cloudUpdates.isNotEmpty()) {
-            val currentLocalWords = wordRepository.getWordsByDictionary(localDict.id).first()
+            val currentLocalWords = wordRepository.getWordsByDictionary(resolvedLocalDict.id).first()
             val resolvedUpdates = resolveCloudWordUpdates(
-                dictionaryId = localDict.id,
+                dictionaryId = resolvedLocalDict.id,
                 localWords = currentLocalWords,
                 cloudUpdates = wordPlan.cloudUpdates
             )
@@ -643,7 +635,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             .toSet()
 
         // Get local word mapping after word imports/updates
-        val localWords = wordRepository.getWordsByDictionary(localDict.id).first()
+        val localWords = wordRepository.getWordsByDictionary(resolvedLocalDict.id).first()
         val wordUidToId = localWords
             .filter { it.wordUid.isNotBlank() }
             .associate { it.wordUid to it.id }
@@ -656,7 +648,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             transactionRunner.runInTransaction {
                 wordPoolPlan.cloudSnapshotsToApply.forEach { snapshot ->
                     replaceWordPoolStrategy(
-                        dictionaryId = localDict.id,
+                        dictionaryId = resolvedLocalDict.id,
                         strategy = snapshot.strategy,
                         pools = snapshot.pools,
                         wordUidToId = wordUidToId
@@ -681,42 +673,180 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             }
         }
 
-        // Merge units by name
-        val cloudUnitsByName = cloudJson.units.associateBy { it.name }
-        val localUnits = unitRepository.getUnitsByDictionary(localDict.id)
-        val localUnitNames = localUnits.map { it.name }.toSet()
-
-        for ((name, cloudUnit) in cloudUnitsByName) {
-            if (name !in localUnitNames) {
-                // Cloud-only unit -> import
-                val unitId = unitRepository.insertUnit(
-                    StudyUnit(dictionaryId = localDict.id, name = name, defaultRepeatCount = cloudUnit.repeatCount)
-                )
-                val wordIds = cloudUnit.wordUids.mapNotNull { wordUidToId[it] }
-                if (wordIds.isNotEmpty()) {
-                    unitRepository.addWordsToUnit(unitId, wordIds)
-                }
-            } else {
-                // Both exist -> merge member wordUids (union)
-                val localUnit = localUnits.find { it.name == name } ?: continue
-                if (cloudUnit.repeatCount > localUnit.defaultRepeatCount) {
-                    unitRepository.updateRepeatCount(localUnit.id, cloudUnit.repeatCount)
-                }
-                val existingWordIds = unitRepository.getWordIdsInUnit(localUnit.id).toSet()
-                val cloudWordIds = cloudUnit.wordUids.mapNotNull { wordUidToId[it] }
-                val newWordIds = cloudWordIds.filter { it !in existingWordIds }
-                if (newWordIds.isNotEmpty()) {
-                    unitRepository.addWordsToUnit(localUnit.id, newWordIds)
-                }
-            }
-        }
+        mergeUnits(
+            dictionaryId = resolvedLocalDict.id,
+            cloudDictionary = cloudJson,
+            wordUidToId = wordUidToId
+        )
 
         if (didMutateWords) {
-            wordRepository.recomputeAllAssociationsForDictionary(localDict.id)
+            wordRepository.recomputeAllAssociationsForDictionary(resolvedLocalDict.id)
         }
 
         // Return merged JSON (will be re-exported from local DB later)
         return localJson
+    }
+
+    private suspend fun reconcileDictionaryMetadata(
+        localDict: Dictionary,
+        cloudJson: DictionaryJsonModel
+    ): Dictionary {
+        var merged = localDict
+        val cloudUid = cloudJson.dictionaryUid.trim()
+        if (cloudUid.isNotBlank() && cloudUid != merged.dictionaryUid) {
+            merged = merged.copy(dictionaryUid = cloudUid)
+        }
+
+        val cloudUpdatedAt = cloudJson.updatedAt.takeIf { cloudJson.schemaVersion >= 8 && it > 0 } ?: 0L
+        if (cloudUpdatedAt > merged.updatedAt) {
+            merged = merged.copy(
+                name = cloudJson.name.ifBlank { merged.name },
+                description = cloudJson.description,
+                color = cloudJson.color,
+                createdAt = cloudJson.createdAt.takeIf { it > 0 } ?: merged.createdAt,
+                updatedAt = cloudUpdatedAt
+            )
+        }
+
+        if (merged != localDict) {
+            dictionaryRepository.updateDictionary(merged.copy(wordCount = localDict.wordCount))
+        }
+        return merged.copy(wordCount = localDict.wordCount)
+    }
+
+    private suspend fun mergeUnits(
+        dictionaryId: Long,
+        cloudDictionary: DictionaryJsonModel,
+        wordUidToId: Map<String, Long>
+    ) {
+        val localUnits = unitRepository.getUnitsByDictionary(dictionaryId)
+        val remainingCloudUnits = cloudDictionary.units.toMutableList()
+
+        localUnits.forEach { localUnit ->
+            val cloudUnit = takeMatchingCloudUnit(localUnit, remainingCloudUnits) ?: return@forEach
+            mergeUnitSnapshot(localUnit, cloudUnit, wordUidToId, cloudDictionary.schemaVersion)
+        }
+
+        remainingCloudUnits.forEach { cloudUnit ->
+            importCloudUnit(dictionaryId, cloudUnit, wordUidToId)
+        }
+    }
+
+    private suspend fun mergeUnitSnapshot(
+        localUnit: StudyUnit,
+        cloudUnit: UnitJsonModel,
+        wordUidToId: Map<String, Long>,
+        dictionarySchemaVersion: Int
+    ) {
+        val cloudWordIds = cloudUnit.wordUids.mapNotNull { wordUidToId[it] }.distinct().toSet()
+        val localWordIds = unitRepository.getWordIdsInUnit(localUnit.id).toSet()
+        val cloudUpdatedAt = cloudUnit.updatedAt.takeIf { dictionarySchemaVersion >= 8 && it > 0 } ?: 0L
+        val localUpdatedAt = localUnit.updatedAt.takeIf { it > 0 } ?: 0L
+        var nextUnit = localUnit
+
+        val cloudUnitUid = cloudUnit.unitUid.trim()
+        if (cloudUnitUid.isNotBlank() && cloudUnitUid != nextUnit.unitUid) {
+            nextUnit = nextUnit.copy(unitUid = cloudUnitUid)
+        }
+
+        when {
+            cloudUpdatedAt > localUpdatedAt -> {
+                val toRemove = localWordIds.filter { it !in cloudWordIds }
+                val toAdd = cloudWordIds.filter { it !in localWordIds }
+                if (toRemove.isNotEmpty()) {
+                    unitRepository.removeWordsFromUnit(localUnit.id, toRemove, touchUpdatedAt = false)
+                }
+                if (toAdd.isNotEmpty()) {
+                    unitRepository.addWordsToUnit(localUnit.id, toAdd.toList(), touchUpdatedAt = false)
+                }
+                nextUnit = nextUnit.copy(
+                    name = cloudUnit.name,
+                    defaultRepeatCount = cloudUnit.repeatCount,
+                    createdAt = cloudUnit.createdAt.takeIf { it > 0 } ?: nextUnit.createdAt,
+                    updatedAt = cloudUpdatedAt
+                )
+            }
+
+            cloudUpdatedAt == localUpdatedAt && cloudUpdatedAt > 0L -> {
+                val toAdd = cloudWordIds.filter { it !in localWordIds }
+                if (toAdd.isNotEmpty()) {
+                    unitRepository.addWordsToUnit(localUnit.id, toAdd.toList(), touchUpdatedAt = false)
+                }
+            }
+
+            else -> {
+                if (cloudUnit.repeatCount > localUnit.defaultRepeatCount) {
+                    nextUnit = nextUnit.copy(defaultRepeatCount = cloudUnit.repeatCount)
+                }
+                val toAdd = cloudWordIds.filter { it !in localWordIds }
+                if (toAdd.isNotEmpty()) {
+                    unitRepository.addWordsToUnit(localUnit.id, toAdd.toList(), touchUpdatedAt = false)
+                }
+            }
+        }
+
+        if (nextUnit != localUnit) {
+            unitRepository.updateUnit(nextUnit)
+        }
+    }
+
+    private suspend fun importCloudUnit(
+        dictionaryId: Long,
+        cloudUnit: UnitJsonModel,
+        wordUidToId: Map<String, Long>
+    ) {
+        val unitId = unitRepository.insertUnit(
+            StudyUnit(
+                dictionaryId = dictionaryId,
+                unitUid = cloudUnit.unitUid.ifBlank { UUID.randomUUID().toString() },
+                name = cloudUnit.name,
+                defaultRepeatCount = cloudUnit.repeatCount,
+                createdAt = cloudUnit.createdAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
+                updatedAt = cloudUnit.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()
+            )
+        )
+        val wordIds = cloudUnit.wordUids.mapNotNull { wordUidToId[it] }.distinct()
+        if (wordIds.isNotEmpty()) {
+            unitRepository.addWordsToUnit(unitId, wordIds, touchUpdatedAt = false)
+        }
+    }
+
+    private fun takeMatchingCloudDictionary(
+        localDict: Dictionary,
+        remainingCloudDicts: MutableList<DictionaryJsonModel>
+    ): DictionaryJsonModel? {
+        val byUidIndex = localDict.dictionaryUid
+            .takeIf { it.isNotBlank() }
+            ?.let { uid -> remainingCloudDicts.indexOfFirst { it.dictionaryUid == uid && it.dictionaryUid.isNotBlank() } }
+            ?: -1
+        if (byUidIndex >= 0) {
+            return remainingCloudDicts.removeAt(byUidIndex)
+        }
+
+        val byNameIndex = remainingCloudDicts.indexOfFirst { it.name == localDict.name }
+        if (byNameIndex >= 0) {
+            return remainingCloudDicts.removeAt(byNameIndex)
+        }
+        return null
+    }
+
+    private fun takeMatchingCloudUnit(
+        localUnit: StudyUnit,
+        remainingCloudUnits: MutableList<UnitJsonModel>
+    ): UnitJsonModel? {
+        val byUidIndex = localUnit.unitUid
+            .takeIf { it.isNotBlank() }
+            ?.let { uid -> remainingCloudUnits.indexOfFirst { it.unitUid == uid && it.unitUid.isNotBlank() } }
+            ?: -1
+        if (byUidIndex >= 0) {
+            return remainingCloudUnits.removeAt(byUidIndex)
+        }
+
+        val byNameIndex = remainingCloudUnits.indexOfFirst { it.name == localUnit.name }
+        if (byNameIndex >= 0) {
+            return remainingCloudUnits.removeAt(byNameIndex)
+        }
+        return null
     }
 
     private fun resolveCloudWordUpdates(
@@ -880,7 +1010,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     // Export Helpers
 
     private suspend fun exportLocalDictionary(dict: Dictionary): DictionaryJsonModel {
-        val json = exportDictionary(dict.id, dict.name, dict.description)
+        val json = exportDictionary(dict)
         val model = dictAdapter.fromJson(json) ?: throw IllegalStateException("Failed to parse exported dict")
         val normalizedModel = dictionaryWordUidNormalizer.normalize(model)
 
@@ -1283,13 +1413,16 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         val unitId = unitRepository.insertUnit(
                             StudyUnit(
                                 dictionaryId = dictId,
+                                unitUid = unitData.unitUid,
                                 name = unitData.name,
-                                defaultRepeatCount = unitData.repeatCount
+                                defaultRepeatCount = unitData.repeatCount,
+                                createdAt = unitData.createdAt,
+                                updatedAt = unitData.updatedAt
                             )
                         )
                         val wordIds = unitData.wordUids.mapNotNull { wordUidToId[it] }
                         if (wordIds.isNotEmpty()) {
-                            unitRepository.addWordsToUnit(unitId, wordIds)
+                            unitRepository.addWordsToUnit(unitId, wordIds, touchUpdatedAt = false)
                         }
                     }
 
@@ -1318,6 +1451,70 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             }
         } catch (e: Exception) {
             throw IllegalStateException("Failed to import dictionary '${cloudDict.name}': ${e.message}", e)
+        }
+    }
+
+    private suspend fun replaceAllArticlesFromCloud(
+        cloudArticles: ArticlesExportModel?,
+        cloudCategories: ArticleCategoriesExportModel?
+    ) {
+        clearAllLocalArticles()
+        replaceCategoriesFromCloud(cloudCategories)
+
+        if (cloudArticles == null) {
+            normalizeArticleCategories()
+            return
+        }
+
+        val supportsStructuredContent = (cloudArticles.schemaVersion ?: 1) >= 2
+        cloudArticles.articles.forEach { articleJson ->
+            importArticleFromJson(articleJson, existing = null, supportsStructuredContent = supportsStructuredContent)
+        }
+        normalizeArticleCategories()
+    }
+
+    private suspend fun replaceAllDictionariesFromCloud(cloudDicts: List<DictionaryJsonModel>) {
+        clearAllLocalDictionaries()
+        cloudDicts.forEach { cloudDict ->
+            importCloudDictionary(cloudDict)
+        }
+    }
+
+    private suspend fun replaceQuestionBankFromCloud(cloudQuestionBank: QuestionBankExportModel?) {
+        clearQuestionBank()
+        if (cloudQuestionBank == null || cloudQuestionBank.papers.isEmpty()) return
+        val articleUidToId = buildArticleUidToIdMap()
+        importQuestionBank(cloudQuestionBank, articleUidToId)
+    }
+
+    private suspend fun replaceWordExamplesFromCloud(cloudWordExamples: WordExamplesExportModel?) {
+        articleDao.deleteAllExamples()
+        if (cloudWordExamples == null || cloudWordExamples.examples.isEmpty()) return
+        val wordUidToId = buildWordUidToIdMap()
+        val articleUidToId = buildArticleUidToIdMap()
+        importWordExamples(cloudWordExamples, wordUidToId, articleUidToId)
+    }
+
+    private suspend fun clearAllLocalArticles() {
+        articleDao.getAllArticleIds().forEach { articleId ->
+            articleDao.deleteArticleCascade(articleId)
+        }
+        articleDao.deleteAllExamples()
+    }
+
+    private suspend fun clearAllLocalDictionaries() {
+        val localDicts = dictionaryRepository.getAllDictionaries().first()
+        localDicts.forEach { dictionary ->
+            wordEdgeDao.deleteByDictionary(dictionary.id)
+            wordEdgeDao.deleteExcludedByDictionary(dictionary.id)
+            dictionaryRepository.deleteDictionary(dictionary.id)
+        }
+    }
+
+    private suspend fun clearQuestionBank() {
+        val localPapers = questionBankDao.getAllExamPapers().first()
+        localPapers.forEach { paper ->
+            questionBankDao.deleteExamPaper(paper.id)
         }
     }
 

@@ -33,7 +33,14 @@ class DictionaryShardAssembler @Inject constructor(
     private val studyStateAdapter = moshi.adapter(StudyStateJsonModel::class.java)
     private val chunkAdapter = moshi.adapter(DictionaryShardChunkJsonModel::class.java)
 
-    fun buildFolderPath(dictionaryName: String): String {
+    fun buildFolderPath(dictionaryUid: String, dictionaryName: String): String {
+        val safeUid = dictionaryUid
+            .trim()
+            .replace(Regex("[^\\w-]+"), "_")
+            .ifBlank { "" }
+        if (safeUid.isNotBlank()) {
+            return "dictionaries/$safeUid"
+        }
         val slug = dictionaryName
             .replace(Regex("[^\\w\\u4e00-\\u9fff]+"), "_")
             .trim { it == '_' }
@@ -42,7 +49,7 @@ class DictionaryShardAssembler @Inject constructor(
     }
 
     fun shard(dictionary: DictionaryJsonModel): ShardedDictionary {
-        val folderPath = buildFolderPath(dictionary.name)
+        val folderPath = buildFolderPath(dictionary.dictionaryUid, dictionary.name)
         val stateBuckets = dictionary.studyStates
             .filter { it.wordUid.isNotBlank() }
             .groupBy { it.wordUid }
@@ -106,10 +113,14 @@ class DictionaryShardAssembler @Inject constructor(
 
         val indexPath = "$folderPath/index.json"
         val index = DictionaryShardIndexJsonModel(
+            dictionaryUid = dictionary.dictionaryUid,
             name = dictionary.name,
             description = dictionary.description,
+            color = dictionary.color,
             schemaVersion = INDEX_SCHEMA_VERSION,
             dictionarySchemaVersion = dictionary.schemaVersion,
+            createdAt = dictionary.createdAt,
+            updatedAt = dictionary.updatedAt,
             totalWords = dictionary.words.size,
             totalStudyStates = dictionary.studyStates.size,
             units = dictionary.units,
@@ -117,6 +128,7 @@ class DictionaryShardAssembler @Inject constructor(
             chunks = chunkFiles.map { it.ref }
         )
         val entry = DictionaryCloudEntryJsonModel(
+            dictionaryUid = dictionary.dictionaryUid,
             name = dictionary.name,
             format = DictionaryCloudEntryJsonModel.FORMAT_SHARDED,
             path = indexPath,
@@ -146,9 +158,13 @@ class DictionaryShardAssembler @Inject constructor(
         }
 
         return DictionaryJsonModel(
+            dictionaryUid = index.dictionaryUid,
             name = index.name,
             description = index.description,
+            color = index.color,
             schemaVersion = index.dictionarySchemaVersion,
+            createdAt = index.createdAt,
+            updatedAt = index.updatedAt,
             words = words,
             units = index.units,
             studyStates = studyStates,

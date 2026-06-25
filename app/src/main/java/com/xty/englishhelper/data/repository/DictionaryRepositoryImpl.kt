@@ -21,8 +21,12 @@ class DictionaryRepositoryImpl @Inject constructor(
     override suspend fun getDictionaryById(id: Long): Dictionary? =
         dao.getDictionaryById(id)?.toDomain()
 
-    override suspend fun insertDictionary(dictionary: Dictionary): Long =
-        dao.insert(dictionary.toEntity())
+    override suspend fun insertDictionary(dictionary: Dictionary): Long {
+        val inserted = dao.insert(dictionary.toEntity())
+        if (inserted != -1L) return inserted
+        return dao.getDictionaryByUid(dictionary.dictionaryUid)?.id
+            ?: throw IllegalStateException("Dictionary insert conflict but row not found for uid=${dictionary.dictionaryUid}")
+    }
 
     override suspend fun updateDictionary(dictionary: Dictionary) =
         dao.update(dictionary.toEntity())

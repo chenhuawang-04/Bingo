@@ -33,8 +33,13 @@ class DictionaryShardAssemblerTest {
         )
 
         assertTrue(sharded.chunks.size > 1)
+        assertEquals(model.dictionaryUid, sharded.entry.dictionaryUid)
         assertEquals(model.name, assembled.name)
         assertEquals(model.description, assembled.description)
+        assertEquals(model.dictionaryUid, assembled.dictionaryUid)
+        assertEquals(model.color, assembled.color)
+        assertEquals(model.createdAt, assembled.createdAt)
+        assertEquals(model.updatedAt, assembled.updatedAt)
         assertEquals(model.units, assembled.units)
         assertEquals(model.wordPools, assembled.wordPools)
         assertEquals(
@@ -78,6 +83,15 @@ class DictionaryShardAssemblerTest {
         } catch (error: IllegalStateException) {
             assertTrue(error.message!!.contains("word count mismatch"))
         }
+    }
+
+    @Test
+    fun `buildFolderPath stays stable for same dictionary uid`() {
+        val first = assembler.buildFolderPath("dict-uid-1", "First Name")
+        val second = assembler.buildFolderPath("dict-uid-1", "Second Name")
+
+        assertEquals(first, second)
+        assertTrue(first.contains("dict-uid-1"))
     }
 
     private fun buildDictionary(wordCount: Int): DictionaryJsonModel {
@@ -132,14 +146,21 @@ class DictionaryShardAssemblerTest {
         }
 
         return DictionaryJsonModel(
+            dictionaryUid = "dict-uid-1",
             name = "Large Dictionary",
             description = "Dictionary for shard testing",
-            schemaVersion = 7,
+            color = 0xFF123456.toInt(),
+            schemaVersion = 8,
+            createdAt = 111L,
+            updatedAt = 222L,
             words = words,
             units = listOf(
                 UnitJsonModel(
+                    unitUid = "unit-uid-1",
                     name = "Unit 1",
                     repeatCount = 2,
+                    createdAt = 333L,
+                    updatedAt = 444L,
                     wordUids = words.take(30).map { it.wordUid }
                 )
             ),

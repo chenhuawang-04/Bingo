@@ -16,7 +16,10 @@ interface DictionaryDao {
     @Query("SELECT * FROM dictionaries WHERE id = :id")
     suspend fun getDictionaryById(id: Long): DictionaryEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT * FROM dictionaries WHERE dictionary_uid = :dictionaryUid LIMIT 1")
+    suspend fun getDictionaryByUid(dictionaryUid: String): DictionaryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(dictionary: DictionaryEntity): Long
 
     @Update

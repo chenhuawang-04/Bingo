@@ -30,7 +30,14 @@ class JsonImportExporterTest {
 
     @Test
     fun `round-trip export then import preserves data`() {
-        val dictionary = Dictionary(name = "Test Dict", description = "A test")
+        val dictionary = Dictionary(
+            dictionaryUid = "dict-uid-1",
+            name = "Test Dict",
+            description = "A test",
+            color = 0xFF123456.toInt(),
+            createdAt = 11L,
+            updatedAt = 22L
+        )
         val words = listOf(
             WordDetails(
                 id = 1,
@@ -60,7 +67,15 @@ class JsonImportExporterTest {
             )
         )
         val units = listOf(
-            StudyUnit(id = 1, dictionaryId = 1, name = "Unit 1", defaultRepeatCount = 3)
+            StudyUnit(
+                id = 1,
+                dictionaryId = 1,
+                unitUid = "unit-uid-1",
+                name = "Unit 1",
+                defaultRepeatCount = 3,
+                createdAt = 33L,
+                updatedAt = 44L
+            )
         )
         val unitWordMap = mapOf(1L to listOf("uid-1", "uid-2"))
         val studyStates = listOf(
@@ -92,12 +107,16 @@ class JsonImportExporterTest {
         val json = exporter.exportToJson(dictionary, words, units, unitWordMap, studyStates, wordIdToUid)
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 7"))
+        assertTrue(json.contains("\"schemaVersion\": 8"))
 
         val result = exporter.importFromJson(json)
 
         assertEquals("Test Dict", result.dictionary.name)
         assertEquals("A test", result.dictionary.description)
+        assertEquals("dict-uid-1", result.dictionary.dictionaryUid)
+        assertEquals(0xFF123456.toInt(), result.dictionary.color)
+        assertEquals(11L, result.dictionary.createdAt)
+        assertEquals(22L, result.dictionary.updatedAt)
         assertEquals(2, result.words.size)
 
         val importedApple = result.words[0]
@@ -115,8 +134,11 @@ class JsonImportExporterTest {
 
         // Units use wordUids
         assertEquals(1, result.units.size)
+        assertEquals("unit-uid-1", result.units[0].unitUid)
         assertEquals("Unit 1", result.units[0].name)
         assertEquals(3, result.units[0].repeatCount)
+        assertEquals(33L, result.units[0].createdAt)
+        assertEquals(44L, result.units[0].updatedAt)
         assertEquals(listOf("uid-1", "uid-2"), result.units[0].wordUids)
 
         // Study states use FSRS fields and preserve mode separation
@@ -218,10 +240,10 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 7`() {
+    fun `export produces schemaVersion 8`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 7"))
+        assertTrue(json.contains("\"schemaVersion\": 8"))
     }
 
     @Test
@@ -246,6 +268,7 @@ class JsonImportExporterTest {
         assertEquals("Legacy", result.dictionary.name)
         assertEquals(1, result.words.size)
         assertEquals("legacy-uid", result.words.single().wordUid)
+        assertTrue(result.dictionary.dictionaryUid.isNotBlank())
     }
 
     @Test
@@ -307,6 +330,30 @@ class JsonImportExporterTest {
 
         assertEquals(1, result.words.size)
         assertTrue(result.words.single().wordUid.startsWith("legacy-"))
+    }
+
+    @Test
+    fun `import schema 7 without dictionary and unit ids backfills stable ids`() {
+        val json = """
+        {
+            "name": "Legacy",
+            "description": "",
+            "schemaVersion": 7,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "uid-1"}
+            ],
+            "units": [
+                {"name": "Unit 1", "repeatCount": 2, "wordUids": ["uid-1"]}
+            ]
+        }
+        """.trimIndent()
+
+        val result = exporter.importFromJson(json)
+
+        assertTrue(result.dictionary.dictionaryUid.isNotBlank())
+        assertEquals(1, result.units.size)
+        assertTrue(result.units.single().unitUid.isNotBlank())
+        assertTrue(result.units.single().updatedAt > 0)
     }
 
     @Test

@@ -57,11 +57,7 @@ class ImportExportViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val json = exportDictionaryUseCase(
-                    dictionaryId = dictionary.id,
-                    dictionaryName = dictionary.name,
-                    dictionaryDescription = dictionary.description
-                )
+                val json = exportDictionaryUseCase(dictionary)
 
                 context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
                     it.write(json)

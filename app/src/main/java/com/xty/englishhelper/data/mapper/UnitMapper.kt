@@ -10,27 +10,33 @@ import com.xty.englishhelper.domain.model.WordStudyState
 fun UnitEntity.toDomain(wordCount: Int = 0) = StudyUnit(
     id = id,
     dictionaryId = dictionaryId,
+    unitUid = unitUid,
     name = name,
     defaultRepeatCount = defaultRepeatCount,
     wordCount = wordCount,
-    createdAt = createdAt
+    createdAt = createdAt,
+    updatedAt = updatedAt
 )
 
 fun UnitWithWordCount.toDomain() = StudyUnit(
     id = id,
     dictionaryId = dictionaryId,
+    unitUid = unitUid,
     name = name,
     defaultRepeatCount = defaultRepeatCount,
     wordCount = wordCount,
-    createdAt = createdAt
+    createdAt = createdAt,
+    updatedAt = updatedAt
 )
 
 fun StudyUnit.toEntity() = UnitEntity(
     id = id,
     dictionaryId = dictionaryId,
+    unitUid = unitUid,
     name = name,
     defaultRepeatCount = defaultRepeatCount,
-    createdAt = createdAt
+    createdAt = createdAt,
+    updatedAt = updatedAt
 )
 
 fun WordStudyStateEntity.toDomain() = WordStudyState(

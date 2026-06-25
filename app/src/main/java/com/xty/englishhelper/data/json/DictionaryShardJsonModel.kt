@@ -4,6 +4,7 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class DictionaryCloudEntryJsonModel(
+    val dictionaryUid: String = "",
     val name: String = "",
     val format: String = "single",
     val path: String = "",
@@ -18,10 +19,14 @@ data class DictionaryCloudEntryJsonModel(
 
 @JsonClass(generateAdapter = true)
 data class DictionaryShardIndexJsonModel(
+    val dictionaryUid: String = "",
     val name: String = "",
     val description: String = "",
+    val color: Int = 0xFF4A6FA5.toInt(),
     val schemaVersion: Int = 1,
     val dictionarySchemaVersion: Int = 6,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
     val totalWords: Int = 0,
     val totalStudyStates: Int = 0,
     val units: List<UnitJsonModel> = emptyList(),

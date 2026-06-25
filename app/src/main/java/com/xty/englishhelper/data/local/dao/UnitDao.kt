@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import com.xty.englishhelper.data.local.entity.UnitEntity
 import com.xty.englishhelper.data.local.entity.UnitWordCrossRef
 import com.xty.englishhelper.data.local.relation.UnitWithWordCount
@@ -16,7 +17,7 @@ interface UnitDao {
 
     @Query(
         """
-        SELECT u.id, u.dictionary_id, u.name, u.default_repeat_count, u.created_at,
+        SELECT u.id, u.dictionary_id, u.unit_uid, u.name, u.default_repeat_count, u.created_at, u.updated_at,
                COUNT(ref.word_id) AS word_count
         FROM units u
         LEFT JOIN unit_word_cross_ref ref ON u.id = ref.unit_id
@@ -30,17 +31,26 @@ interface UnitDao {
     @Query("SELECT * FROM units WHERE id = :unitId")
     suspend fun getUnitById(unitId: Long): UnitEntity?
 
+    @Query("SELECT * FROM units WHERE unit_uid = :unitUid LIMIT 1")
+    suspend fun getUnitByUid(unitUid: String): UnitEntity?
+
     @Query("SELECT * FROM units WHERE dictionary_id = :dictionaryId ORDER BY created_at ASC")
     suspend fun getUnitsByDictionary(dictionaryId: Long): List<UnitEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertUnit(unit: UnitEntity): Long
 
-    @Query("UPDATE units SET name = :name WHERE id = :unitId")
-    suspend fun updateUnitName(unitId: Long, name: String)
+    @Query("UPDATE units SET name = :name, updated_at = :updatedAt WHERE id = :unitId")
+    suspend fun updateUnitName(unitId: Long, name: String, updatedAt: Long)
 
-    @Query("UPDATE units SET default_repeat_count = :repeatCount WHERE id = :unitId")
-    suspend fun updateRepeatCount(unitId: Long, repeatCount: Int)
+    @Query("UPDATE units SET default_repeat_count = :repeatCount, updated_at = :updatedAt WHERE id = :unitId")
+    suspend fun updateRepeatCount(unitId: Long, repeatCount: Int, updatedAt: Long)
+
+    @Update
+    suspend fun updateUnit(unit: UnitEntity)
+
+    @Query("UPDATE units SET updated_at = :updatedAt WHERE id = :unitId")
+    suspend fun touchUnit(unitId: Long, updatedAt: Long)
 
     @Query("DELETE FROM units WHERE id = :unitId")
     suspend fun deleteUnit(unitId: Long)

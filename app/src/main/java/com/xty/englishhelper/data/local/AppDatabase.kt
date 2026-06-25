@@ -94,7 +94,7 @@ import java.util.UUID
         BrainstormDailyGoalEntity::class,
         BrainstormSettingsEntity::class
     ],
-    version = 30,
+    version = 31,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1072,6 +1072,49 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("DROP TABLE word_study_state")
                 db.execSQL("ALTER TABLE word_study_state_new RENAME TO word_study_state")
+            }
+        }
+
+        val MIGRATION_30_31 = object : Migration(30, 31) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE dictionaries ADD COLUMN dictionary_uid TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE units ADD COLUMN unit_uid TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE units ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+
+                val dictionaryCursor: Cursor = db.query("SELECT id FROM dictionaries")
+                dictionaryCursor.use {
+                    val idIndex = it.getColumnIndexOrThrow("id")
+                    while (it.moveToNext()) {
+                        val id = it.getLong(idIndex)
+                        db.execSQL(
+                            "UPDATE dictionaries SET dictionary_uid = ? WHERE id = ?",
+                            arrayOf(UUID.randomUUID().toString(), id)
+                        )
+                    }
+                }
+
+                val unitCursor: Cursor = db.query("SELECT id, created_at FROM units")
+                unitCursor.use {
+                    val idIndex = it.getColumnIndexOrThrow("id")
+                    val createdAtIndex = it.getColumnIndexOrThrow("created_at")
+                    while (it.moveToNext()) {
+                        val id = it.getLong(idIndex)
+                        val createdAt = it.getLong(createdAtIndex)
+                        db.execSQL(
+                            "UPDATE units SET unit_uid = ?, updated_at = ? WHERE id = ?",
+                            arrayOf(UUID.randomUUID().toString(), createdAt, id)
+                        )
+                    }
+                }
+
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_dictionaries_dictionary_uid` " +
+                        "ON `dictionaries` (`dictionary_uid`)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_units_unit_uid` " +
+                        "ON `units` (`unit_uid`)"
+                )
             }
         }
     }

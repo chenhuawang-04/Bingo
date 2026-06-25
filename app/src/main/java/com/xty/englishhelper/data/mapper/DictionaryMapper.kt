@@ -5,6 +5,7 @@ import com.xty.englishhelper.domain.model.Dictionary
 
 fun DictionaryEntity.toDomain() = Dictionary(
     id = id,
+    dictionaryUid = dictionaryUid,
     name = name,
     description = description,
     color = color,
@@ -15,6 +16,7 @@ fun DictionaryEntity.toDomain() = Dictionary(
 
 fun Dictionary.toEntity() = DictionaryEntity(
     id = id,
+    dictionaryUid = dictionaryUid,
     name = name,
     description = description,
     color = color,
