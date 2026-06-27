@@ -79,7 +79,7 @@
     <string name="dict_pool_balanced">Сформировать пул (Сбалансированный·Локальный)</string>
     <string name="dict_pool_balanced_ai">Сформировать пул (Сбалансированный+AI)</string>
     <string name="dict_pool_quality_first">Сформировать пул (Качество·Высокая стоимость)</string>
-    <string name="dict_pool_review">Ревизия пула (AI-ревизия·Качество)</string>
+    <string name="dict_pool_review">Очистка пула (AI-понижение·Качество)</string>
     <string name="dict_select_word_hint">Выберите слово для просмотра</string>
     <string name="dict_words_filtered">Отфильтровано %1$d/%2$d слов</string>
     <string name="dict_words_total">%d слов</string>
@@ -96,8 +96,8 @@
     <string name="dict_algorithm_updated">Алгоритм обновлён, рекомендуется пересборка</string>
     <string name="dict_view_graph">Просмотр графа</string>
     <string name="dict_view_pool_graph">Просмотр графа связей пула</string>
-    <string name="dict_review_paused">Ревизия приостановлена</string>
-    <string name="dict_reviewing">Ревизия</string>
+    <string name="dict_review_paused">Очистка приостановлена</string>
+    <string name="dict_reviewing">Очистка</string>
     <string name="dict_organizing_count">Сортировка: %d</string>
     <string name="dict_organized_count">Готово: %d</string>
     <string name="dict_failed_count">Ошибки: %d</string>
@@ -339,7 +339,7 @@
     <string name="settings_scope_pool">Сортировка пула</string>
     <string name="settings_scope_article">Разбор статей</string>
     <string name="settings_scope_search">Поисковая модель</string>
-    <string name="settings_scope_reviewer">Ревизия пула</string>
+    <string name="settings_scope_reviewer">Очистка пула</string>
     <string name="settings_image_compression">Сжатие изображений</string>
     <string name="settings_background_task">Фоновые задачи</string>
     <string name="settings_cloud_sync">Облачная синхронизация</string>
@@ -388,7 +388,7 @@
     <string name="task_management">Фоновые задачи</string>
     <string name="task_word_organize">Сортировка слов</string>
     <string name="task_pool_rebuild">Пересборка пула</string>
-    <string name="task_pool_review">Ревизия пула</string>
+    <string name="task_pool_review">Очистка пула</string>
     <string name="task_question_generate">Генерация вопросов</string>
     <string name="task_answer_generate">Генерация ответов</string>
     <string name="task_source_verify">Проверка источника</string>

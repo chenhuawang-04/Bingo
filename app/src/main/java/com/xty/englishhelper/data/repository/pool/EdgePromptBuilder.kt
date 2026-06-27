@@ -7,7 +7,7 @@ import com.xty.englishhelper.util.Constants
 
 /**
  * Pure functions for building AI prompts related to word-edge generation,
- * edge review, and entry-type classification.
+ * edge purification, and entry-type classification.
  * Extracted from [com.xty.englishhelper.data.repository.WordPoolRepositoryImpl].
  */
 internal object EdgePromptBuilder {
@@ -111,11 +111,11 @@ internal object EdgePromptBuilder {
     }
 
     /**
-     * Build a review prompt for the REVIEWER AI model to audit low-confidence edges.
+     * Build a purification prompt for the REVIEWER AI model to downgrade low-quality edges.
      */
     fun buildReviewPrompt(edges: List<WordEdgeEntity>, wordMap: Map<Long, String>): String {
         return buildString {
-            appendLine("你是英语词池质量审核员。请逐条审核以下 ${edges.size} 条边：")
+            appendLine("你是英语词池质量提纯员。请逐条评估以下 ${edges.size} 条边，找出应降权的劣质边：")
             appendLine()
             edges.forEachIndexed { idx, edge ->
                 val wordA = wordMap[edge.wordIdA] ?: "?"
@@ -123,7 +123,7 @@ internal object EdgePromptBuilder {
                 appendLine("$idx. $wordA ↔ $wordB | 类型:${edge.edgeType} | 状态:${edge.status} | 置信度:${edge.confidence} | 语域:${edge.register ?: "neutral"} | 难度:${edge.difficultyCefr ?: "未知"} | 理由:${edge.reason ?: "无"}")
             }
             appendLine()
-            appendLine("审核标准：")
+            appendLine("提纯标准：")
             appendLine("1. 关系类型(edge_type)是否准确？（如易混淆词不应标为同义词）")
             appendLine("2. status 是否合理？（core=核心/support=辅助/warning=易混/optional=可选）")
             appendLine("3. confidence 是否恰当？（低置信度边应降级或移除）")
@@ -139,7 +139,7 @@ internal object EdgePromptBuilder {
             appendLine("""[{"i":0,"verdict":"keep","new_status":"core","new_confidence":0.8,"note":"调整原因"}]""")
             appendLine("verdict: keep=保留原样 / adjust=调整status或confidence / remove=将该边置信度降为0（保留边记录）")
             appendLine("adjust 时必须提供 new_status 和 new_confidence；keep/remove 时可省略。")
-            appendLine("note: 简要说明审核意见（中文）。")
+            appendLine("note: 简要说明提纯意见（中文）。")
             appendLine(Constants.JSON_STRICT_RULES)
         }
     }

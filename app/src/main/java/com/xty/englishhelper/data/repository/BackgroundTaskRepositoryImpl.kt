@@ -11,6 +11,7 @@ import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
+import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
@@ -121,6 +122,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
     private fun encodePayload(type: BackgroundTaskType, payload: BackgroundTaskPayload): String {
         return when (type) {
             BackgroundTaskType.WORD_ORGANIZE -> json.encodeToString(payload as WordOrganizePayload)
+            BackgroundTaskType.WORD_NOTE_ORGANIZE -> json.encodeToString(payload as WordNoteOrganizePayload)
             BackgroundTaskType.WORD_POOL_REBUILD -> json.encodeToString(payload as WordPoolRebuildPayload)
             BackgroundTaskType.WORD_POOL_REVIEW -> json.encodeToString(payload as WordPoolReviewPayload)
             BackgroundTaskType.QUESTION_GENERATE -> json.encodeToString(payload as QuestionGeneratePayload)
@@ -137,6 +139,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
         return runCatching {
             when (type) {
                 BackgroundTaskType.WORD_ORGANIZE -> json.decodeFromString<WordOrganizePayload>(raw)
+                BackgroundTaskType.WORD_NOTE_ORGANIZE -> json.decodeFromString<WordNoteOrganizePayload>(raw)
                 BackgroundTaskType.WORD_POOL_REBUILD -> json.decodeFromString<WordPoolRebuildPayload>(raw)
                 BackgroundTaskType.WORD_POOL_REVIEW -> json.decodeFromString<WordPoolReviewPayload>(raw)
                 BackgroundTaskType.QUESTION_GENERATE -> json.decodeFromString<QuestionGeneratePayload>(raw)

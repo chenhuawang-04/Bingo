@@ -54,6 +54,7 @@ import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
+import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
@@ -227,10 +228,11 @@ private fun TaskCard(
 
             if (task.progressTotal > 0) {
                 val progress = task.progressCurrent.coerceAtMost(task.progressTotal)
-                    Text(stringResource(R.string.task_progress_format, progress, task.progressTotal),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Text(
+                    text = stringResource(R.string.task_progress_format, progress, task.progressTotal),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 LinearProgressIndicator(
                     progress = { progress.toFloat() / task.progressTotal.toFloat() },
                     modifier = Modifier.fillMaxWidth()
@@ -347,6 +349,7 @@ private fun StatusChip(status: BackgroundTaskStatus) {
 private fun taskTitle(task: BackgroundTask): String {
     return when (task.type) {
         BackgroundTaskType.WORD_ORGANIZE -> stringResource(R.string.task_word_organize)
+        BackgroundTaskType.WORD_NOTE_ORGANIZE -> stringResource(R.string.task_word_note_organize)
         BackgroundTaskType.WORD_POOL_REBUILD -> stringResource(R.string.task_pool_rebuild)
         BackgroundTaskType.WORD_POOL_REVIEW -> stringResource(R.string.task_pool_review)
         BackgroundTaskType.QUESTION_GENERATE -> stringResource(R.string.task_question_generate)
@@ -364,6 +367,8 @@ private fun taskSubtitle(task: BackgroundTask): String {
     val payload = task.payload
     return when (payload) {
         is WordOrganizePayload -> payload.spelling
+        is WordNoteOrganizePayload ->
+            stringResource(R.string.task_subtitle_word_pair, payload.sourceSpelling, payload.targetSpelling)
         is WordPoolRebuildPayload -> buildString {
             append(stringResource(R.string.task_subtitle_dict))
             append(payload.dictionaryId)

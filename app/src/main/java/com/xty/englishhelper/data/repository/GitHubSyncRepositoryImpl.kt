@@ -28,6 +28,7 @@ import com.xty.englishhelper.data.json.QuestionGroupJson
 import com.xty.englishhelper.data.json.QuestionItemJson
 import com.xty.englishhelper.data.json.StudyStateJsonModel
 import com.xty.englishhelper.data.json.SyncManifest
+import com.xty.englishhelper.data.json.SettingsSyncJsonModel
 import com.xty.englishhelper.data.json.UnitJsonModel
 import com.xty.englishhelper.data.json.WordJsonModel
 import com.xty.englishhelper.data.json.WordExampleJsonModel
@@ -95,6 +96,11 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal data class GitHubRepoTarget(
+    val owner: String,
+    val repo: String
+)
+
 @Singleton
 class GitHubSyncRepositoryImpl @Inject constructor(
     private val gitHubApi: GitHubApiService,
@@ -131,6 +137,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val articleCategoriesAdapter = moshi.adapter(ArticleCategoriesExportModel::class.java).indent("  ")
     private val wordExamplesAdapter = moshi.adapter(WordExamplesExportModel::class.java).indent("  ")
     private val planAdapter = moshi.adapter(PlanExportJsonModel::class.java).indent("  ")
+    private val settingsSyncAdapter = moshi.adapter(SettingsSyncJsonModel::class.java).indent("  ")
 
     private fun authHeader(): String {
         val pat = settingsDataStore.getGitHubPat()
@@ -150,24 +157,72 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         return r
     }
 
+    private suspend fun mainRepoTarget(): GitHubRepoTarget =
+        GitHubRepoTarget(owner = owner(), repo = repo())
+
+    private suspend fun configRepoTargetOrNull(): GitHubRepoTarget? {
+        val enabled = settingsDataStore.githubConfigSyncEnabled.first()
+        if (!enabled) return null
+        val configRepo = settingsDataStore.githubConfigRepo.first().trim()
+        if (configRepo.isBlank()) {
+            throw IllegalStateException("配置同步已开启，但配置仓库未填写")
+        }
+        val mainRepo = repo().trim()
+        if (configRepo.equals(mainRepo, ignoreCase = true)) {
+            throw IllegalStateException("配置同步仓库必须与数据同步仓库不同")
+        }
+        return GitHubRepoTarget(owner = owner(), repo = configRepo)
+    }
+
+    private suspend fun assertRepoAccessible(target: GitHubRepoTarget) {
+        val response = gitHubApi.getRepo(authHeader(), target.owner, target.repo)
+        if (!response.isSuccessful) {
+            throw IllegalStateException("GitHub 仓库不可用: ${target.owner}/${target.repo}")
+        }
+    }
+
+    private suspend fun exportSettingsSnapshot(): SettingsSyncJsonModel {
+        return settingsDataStore.exportSyncSnapshot(
+            appVersion = BuildConfig.VERSION_NAME,
+            deviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
+        )
+    }
+
+    private suspend fun prepareUploadableSettingsSnapshot(
+        existingSnapshot: SettingsSyncJsonModel? = null
+    ): SettingsSyncJsonModel {
+        val snapshot = existingSnapshot ?: exportSettingsSnapshot()
+        if (snapshot.exportedAt > 0L) return snapshot
+        settingsDataStore.markSettingsSyncUpdatedAt()
+        return exportSettingsSnapshot()
+    }
+
     // Public API
 
     override suspend fun testConnection(): Boolean {
-        val response = gitHubApi.getRepo(authHeader(), owner(), repo())
-        return response.isSuccessful
+        val mainTarget = mainRepoTarget()
+        val configTarget = configRepoTargetOrNull()
+        val mainResponse = gitHubApi.getRepo(authHeader(), mainTarget.owner, mainTarget.repo)
+        if (!mainResponse.isSuccessful) return false
+        if (configTarget == null) return true
+        val configResponse = gitHubApi.getRepo(authHeader(), configTarget.owner, configTarget.repo)
+        return configResponse.isSuccessful
     }
 
     override suspend fun getCloudManifest(): SyncManifest? {
         return downloadJson("manifest.json", manifestAdapter)
     }
 
-    override suspend fun sync(onProgress: (SyncProgress) -> Unit) {
+    override suspend fun sync(onProgress: suspend (SyncProgress) -> Unit) {
         authHeader()
-        owner()
-        repo()
+        val mainTarget = mainRepoTarget()
+        val configTarget = configRepoTargetOrNull()
+        assertRepoAccessible(mainTarget)
+        configTarget?.let { assertRepoAccessible(it) }
+        val totalSteps = if (configTarget != null) 5 else 4
 
         // 1. Download cloud data
-        onProgress(SyncProgress("Downloading", "Downloading cloud data...", 0, 4))
+        onProgress(SyncProgress("Downloading", "Downloading cloud data...", 0, totalSteps))
         val cloudManifest = downloadJson("manifest.json", manifestAdapter)
         val cloudDicts = downloadCloudDictionaries(cloudManifest) { current, total, entry ->
             onProgress(
@@ -185,14 +240,14 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val cloudPlan = downloadJson("plan.json", planAdapter)
 
         // 2. Read local data
-        onProgress(SyncProgress("Reading", "Reading local data...", 1, 4))
+        onProgress(SyncProgress("Reading", "Reading local data...", 1, totalSteps))
         val localDicts = dictionaryRepository.getAllDictionaries().first()
         applyCloudCategoriesOnSync(cloudCategories)
         val localArticles = articleRepository.getAllArticles().first()
         val localPlanBackup = planRepository.exportBackup()
 
         // 3. Smart merge
-        onProgress(SyncProgress("Merging", "Merging dictionaries...", 2, 4))
+        onProgress(SyncProgress("Merging", "Merging dictionaries...", 2, totalSteps))
         val mergedDictJsons = mutableListOf<DictionaryJsonModel>()
 
         for (localDict in localDicts) {
@@ -211,7 +266,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         // Cloud-only dicts -> import to local
         for (cloudDict in cloudDicts) {
-            onProgress(SyncProgress("Importing", "Importing cloud dictionary ${cloudDict.name}...", 2, 4))
+            onProgress(SyncProgress("Importing", "Importing cloud dictionary ${cloudDict.name}...", 2, totalSteps))
             importCloudDictionary(cloudDict)
             mergedDictJsons.add(cloudDict)
         }
@@ -235,7 +290,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         // 4. Upload merged snapshot
-        onProgress(SyncProgress("Uploading", "Uploading merged snapshot...", 3, 4))
+        onProgress(SyncProgress("Uploading", "Uploading merged snapshot...", 3, totalSteps))
         val dictionaryUpload = uploadDictionarySnapshot(
             dictionaries = finalDictJsons,
             previousManifest = cloudManifest
@@ -284,18 +339,29 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
         uploadJson("manifest.json", manifest, manifestAdapter)
 
+        if (configTarget != null) {
+            onProgress(SyncProgress("Config", "Synchronizing settings...", 4, totalSteps))
+            syncSettingsSmart(configTarget)
+        }
+
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
-        onProgress(SyncProgress("Done", "Sync complete", 4, 4))
+        onProgress(SyncProgress("Done", "Sync complete", totalSteps, totalSteps))
     }
 
-    override suspend fun forceUpload(onProgress: (SyncProgress) -> Unit) {
-        onProgress(SyncProgress("Uploading", "Comparing cloud data...", 0, 4))
+    override suspend fun forceUpload(onProgress: suspend (SyncProgress) -> Unit) {
+        authHeader()
+        val mainTarget = mainRepoTarget()
+        val configTarget = configRepoTargetOrNull()
+        assertRepoAccessible(mainTarget)
+        configTarget?.let { assertRepoAccessible(it) }
+        val totalSteps = if (configTarget != null) 5 else 4
+        onProgress(SyncProgress("Uploading", "Comparing cloud data...", 0, totalSteps))
 
         // Download cloud manifest for comparison
         val previousManifest = downloadJson("manifest.json", manifestAdapter)
 
         // Phase 1: Upload dictionaries (incremental via content hash)
-        onProgress(SyncProgress("Uploading", "Syncing dictionaries...", 1, 4))
+        onProgress(SyncProgress("Uploading", "Syncing dictionaries...", 1, totalSteps))
         val localDicts = dictionaryRepository.getAllDictionaries().first()
         val finalDictJsons = localDicts.map { dict ->
             exportLocalDictionary(dict)
@@ -306,7 +372,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
 
         // Phase 2: Upload articles (incremental via timestamp comparison)
-        onProgress(SyncProgress("Uploading", "Syncing articles...", 2, 4))
+        onProgress(SyncProgress("Uploading", "Syncing articles...", 2, totalSteps))
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudArticleMap = cloudArticles?.articles?.associateBy { it.articleUid } ?: emptyMap()
         val allArticles = articleRepository.getAllArticles().first()
@@ -325,7 +391,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
         // Phase 3: Upload categories, question bank, word examples, plan (always full)
-        onProgress(SyncProgress("Uploading", "Syncing other data...", 3, 4))
+        onProgress(SyncProgress("Uploading", "Syncing other data...", 3, totalSteps))
         val categoriesExport = exportArticleCategories()
         uploadJson("article_categories.json", categoriesExport, articleCategoriesAdapter)
 
@@ -339,7 +405,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         uploadJson("plan.json", planExport, planAdapter)
 
         // Phase 4: Upload manifest
-        onProgress(SyncProgress("Uploading", "Updating manifest...", 4, 4))
+        onProgress(SyncProgress("Uploading", "Updating manifest...", 4, totalSteps))
         val manifest = SyncManifest(
             appVersion = BuildConfig.VERSION_NAME,
             schemaVersion = 6,
@@ -354,18 +420,36 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
         uploadJson("manifest.json", manifest, manifestAdapter)
 
+        if (configTarget != null) {
+            onProgress(SyncProgress("Config", "Uploading settings snapshot...", 5.coerceAtMost(totalSteps), totalSteps))
+            forceUploadSettings(configTarget)
+        }
+
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
-        onProgress(SyncProgress("Done", "Upload complete (incremental: $articlesUpdated articles updated)", 4, 4))
+        onProgress(
+            SyncProgress(
+                "Done",
+                "Upload complete (incremental: $articlesUpdated articles updated)",
+                totalSteps,
+                totalSteps
+            )
+        )
     }
 
-    override suspend fun forceDownload(onProgress: (SyncProgress) -> Unit) {
-        onProgress(SyncProgress("Downloading", "Downloading cloud data...", 0, 4))
+    override suspend fun forceDownload(onProgress: suspend (SyncProgress) -> Unit) {
+        authHeader()
+        val mainTarget = mainRepoTarget()
+        val configTarget = configRepoTargetOrNull()
+        assertRepoAccessible(mainTarget)
+        configTarget?.let { assertRepoAccessible(it) }
+        val totalSteps = if (configTarget != null) 5 else 4
+        onProgress(SyncProgress("Downloading", "Downloading cloud data...", 0, totalSteps))
 
         val cloudManifest = downloadJson("manifest.json", manifestAdapter)
             ?: throw IllegalStateException("No cloud sync data")
 
         // Phase 1: Download dictionaries (incremental via content hash)
-        onProgress(SyncProgress("Downloading", "Syncing dictionaries...", 1, 4))
+        onProgress(SyncProgress("Downloading", "Syncing dictionaries...", 1, totalSteps))
         val cloudDicts = downloadCloudDictionaries(cloudManifest) { current, total, entry ->
             onProgress(
                 SyncProgress(
@@ -378,7 +462,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         // Phase 2: Download replacement payloads
-        onProgress(SyncProgress("Downloading", "Downloading articles...", 2, 4))
+        onProgress(SyncProgress("Downloading", "Downloading articles...", 2, totalSteps))
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
 
@@ -387,21 +471,73 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
 
         // Phase 3: Download question bank, word examples, plan
-        onProgress(SyncProgress("Downloading", "Downloading remaining cloud data...", 3, 4))
+        onProgress(SyncProgress("Downloading", "Downloading remaining cloud data...", 3, totalSteps))
         val cloudQuestionBank = downloadJson("questionbank.json", questionBankAdapter)
         val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
         val cloudPlan = downloadJson("plan.json", planAdapter)
 
-        // Phase 4: Replace local snapshot with cloud snapshot
-        onProgress(SyncProgress("Importing", "Replacing local data with cloud snapshot...", 4, 4))
+        val cloudSettingsSnapshot = configTarget?.let { target ->
+            onProgress(SyncProgress("Config", "Downloading settings snapshot...", 4, totalSteps))
+            downloadRequiredSettingsSnapshot(target)
+        }
+
+        // Phase 4/5: Replace local snapshot with cloud snapshot
+        val importStep = if (cloudSettingsSnapshot != null || configTarget != null) totalSteps else 4
+        onProgress(SyncProgress("Importing", "Replacing local data with cloud snapshot...", importStep, totalSteps))
         replaceAllArticlesFromCloud(cloudArticles, cloudCategories)
         replaceAllDictionariesFromCloud(cloudDicts)
         replaceQuestionBankFromCloud(cloudQuestionBank)
         replaceWordExamplesFromCloud(cloudWordExamples)
         planRepository.replaceFromBackup(cloudPlan?.toDomainBackup() ?: PlanBackup())
 
+        if (configTarget != null) {
+            forceDownloadSettings(cloudSettingsSnapshot)
+        }
+
         settingsDataStore.setLastSyncAt(System.currentTimeMillis())
-        onProgress(SyncProgress("Done", "Download complete (cloud replaced local snapshot)", 4, 4))
+        onProgress(SyncProgress("Done", "Download complete (cloud replaced local snapshot)", totalSteps, totalSteps))
+    }
+
+    private suspend fun downloadSettingsSnapshot(target: GitHubRepoTarget): SettingsSyncJsonModel? {
+        return downloadJson(target, "settings.json", settingsSyncAdapter)
+    }
+
+    internal suspend fun downloadRequiredSettingsSnapshot(target: GitHubRepoTarget): SettingsSyncJsonModel {
+        return downloadSettingsSnapshot(target)
+            ?: throw IllegalStateException("配置同步已开启，但配置仓库中缺少 settings.json")
+    }
+
+    internal suspend fun syncSettingsSmart(target: GitHubRepoTarget) {
+        val localSnapshot = exportSettingsSnapshot()
+        val cloudSnapshot = downloadSettingsSnapshot(target)
+        if (cloudSnapshot == null) {
+            uploadJson(
+                target,
+                "settings.json",
+                prepareUploadableSettingsSnapshot(localSnapshot),
+                settingsSyncAdapter
+            )
+            return
+        }
+        if (localSnapshot.exportedAt <= 0L) {
+            settingsDataStore.importSyncSnapshot(cloudSnapshot)
+            return
+        }
+        if (localSnapshot.exportedAt >= cloudSnapshot.exportedAt) {
+            uploadJson(target, "settings.json", localSnapshot, settingsSyncAdapter)
+            return
+        }
+        settingsDataStore.importSyncSnapshot(cloudSnapshot)
+    }
+
+    private suspend fun forceUploadSettings(target: GitHubRepoTarget) {
+        val snapshot = prepareUploadableSettingsSnapshot()
+        uploadJson(target, "settings.json", snapshot, settingsSyncAdapter)
+    }
+
+    private suspend fun forceDownloadSettings(snapshot: SettingsSyncJsonModel?) {
+        if (snapshot == null) return
+        settingsDataStore.importSyncSnapshot(snapshot)
     }
 
     private data class DictionaryUploadResult(
@@ -425,7 +561,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
     private suspend fun downloadCloudDictionaries(
         manifest: SyncManifest?,
-        onEntry: (current: Int, total: Int, entry: DictionaryCloudEntryJsonModel) -> Unit = { _, _, _ -> }
+        onEntry: suspend (current: Int, total: Int, entry: DictionaryCloudEntryJsonModel) -> Unit = { _, _, _ -> }
     ): List<DictionaryJsonModel> {
         val entries = resolveDictionaryEntries(manifest)
         if (entries.isEmpty()) return emptyList()
@@ -1926,7 +2062,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     // GitHub API Helpers
 
     private suspend fun <T> downloadJson(path: String, adapter: com.squareup.moshi.JsonAdapter<T>): T? {
-        val response = gitHubApi.getContent(authHeader(), owner(), repo(), path)
+        return downloadJson(mainRepoTarget(), path, adapter)
+    }
+
+    private suspend fun <T> downloadJson(
+        target: GitHubRepoTarget,
+        path: String,
+        adapter: com.squareup.moshi.JsonAdapter<T>
+    ): T? {
+        val response = gitHubApi.getContent(authHeader(), target.owner, target.repo, path)
         if (!response.isSuccessful) {
             if (response.code() == 404) return null
             throw IllegalStateException("GitHub API error: ${response.code()} ${response.message()}")
@@ -2008,11 +2152,20 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         StudyMode.entries.firstOrNull { it.name == normalizeStudyModeName(raw) } ?: StudyMode.NORMAL
 
     private suspend fun <T> uploadJson(path: String, data: T, adapter: com.squareup.moshi.JsonAdapter<T>) {
+        uploadJson(mainRepoTarget(), path, data, adapter)
+    }
+
+    private suspend fun <T> uploadJson(
+        target: GitHubRepoTarget,
+        path: String,
+        data: T,
+        adapter: com.squareup.moshi.JsonAdapter<T>
+    ) {
         val json = adapter.toJson(data)
         val encoded = Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 
         // Get existing SHA for update (CAS)
-        val existingResponse = gitHubApi.getContent(authHeader(), owner(), repo(), path)
+        val existingResponse = gitHubApi.getContent(authHeader(), target.owner, target.repo, path)
         val sha = if (existingResponse.isSuccessful) existingResponse.body()?.sha else null
 
         val putRequest = GitHubPutRequest(
@@ -2020,7 +2173,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             content = encoded,
             sha = sha
         )
-        val putResponse = gitHubApi.putContent(authHeader(), owner(), repo(), path, putRequest)
+        val putResponse = gitHubApi.putContent(authHeader(), target.owner, target.repo, path, putRequest)
         if (!putResponse.isSuccessful) {
             throw IllegalStateException("Upload failed: $path (${putResponse.code()} ${putResponse.message()})")
         }

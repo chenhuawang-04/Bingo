@@ -13,6 +13,40 @@ interface WordPoolRepository {
     suspend fun getPoolsForWord(wordId: Long): List<WordPool>
 
     /**
+     * 轻量预览：仅取当前词满足最低置信度门槛的邻居，用于背词页预答案态的关系图。
+     * 同一邻居可能存在多条不同 edge_type，会聚合到一个预览节点中。
+     */
+    suspend fun getWordEdgePreviews(
+        dictionaryId: Long,
+        wordId: Long,
+        minConfidence: Double
+    ): List<WordEdgeNeighborPreview>
+
+    /**
+     * 用户手动确认当前词与另一词相关时，仅把两词之间已存在的边提升为强关联：
+     * - confidence 置为 1.0
+     * - 不触发 QUALITY_FIRST 词池重算
+     * 返回 false 表示当前两词之间尚无任何边。
+     */
+    suspend fun confirmWordRelation(
+        dictionaryId: Long,
+        wordId: Long,
+        relatedWordId: Long
+    ): Boolean
+
+    /**
+     * 用户在背词页手动补便签、但当前两词尚无边时，只为这对词直连一条边：
+     * - 若已存在边，则仅把其 confidence 置为 1.0
+     * - 若不存在边，则基于拼写/词根启发式落一条边
+     * - 不触发 QUALITY_FIRST 词池重算
+     */
+    suspend fun organizeWordNoteRelation(
+        dictionaryId: Long,
+        wordId: Long,
+        relatedWordId: Long
+    )
+
+    /**
      * 装配整部词典的「关系图」用于可视化：全部词作节点、[com.xty.englishhelper.data.local.entity.WordEdgeEntity]
      * 作彩色 typed 边、边图的连通分量作簇。节点只取轻量投影（id+拼写），释义点击时再用 [getWordDetail] 懒加载。
      */
@@ -37,13 +71,13 @@ interface WordPoolRepository {
 
     suspend fun getPoolCount(dictionaryId: Long): Int
 
-    /** 该词典已建边总数（用于判断是否可发起「词池审核」）。 */
+    /** 该词典已建边总数（用于判断是否可发起「词池提纯」）。 */
     suspend fun getEdgeCount(dictionaryId: Long): Int
 
     /**
-     * 词池审核（手动触发，独立于整理）：用 REVIEWER AI 逐条复查该词典的全部边，
-     * 据裁决移除或调整边，然后用复查后的边重建 [strategy] 策略的词池。
-     * 每次整跑（无块级续传）；可暂停 / 取消；[onProgress] 上报 (已审核边数, 总审核边数, 文案)。
+     * 词池提纯（手动触发，独立于整理）：用 REVIEWER AI 逐条评估该词典的全部边，
+     * 据裁决降低劣质边置信度或调整状态；不删除边，也不重建词池。
+     * 每次整跑（无块级续传）；可暂停 / 取消；[onProgress] 上报 (已提纯边数, 总边数, 文案)。
      */
     suspend fun reviewPools(
         dictionaryId: Long,
@@ -137,4 +171,10 @@ data class ManualFillResult(
     val insertedEdges: Int = 0,
     val wordComplete: Boolean = false,
     val error: String? = null
+)
+
+data class WordEdgeNeighborPreview(
+    val neighborId: Long,
+    val spelling: String,
+    val edgeTypes: Set<EdgeType>
 )

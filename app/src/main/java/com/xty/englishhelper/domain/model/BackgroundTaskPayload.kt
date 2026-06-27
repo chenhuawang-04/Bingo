@@ -25,6 +25,21 @@ data class WordOrganizePayload(
 ) : BackgroundTaskPayload
 
 @Serializable
+data class WordNoteOrganizePayload(
+    val dictionaryId: Long,
+    val sourceWordId: Long,
+    val sourceSpelling: String,
+    val targetWordId: Long,
+    val targetSpelling: String,
+    val organizeTargetWordFirst: Boolean = false,
+    val targetReferenceHints: List<String> = emptyList(),
+    val highQualityEnabled: Boolean = false,
+    val referenceSource: String = WordReferenceSource.FAST.name,
+    val mainModelSnapshot: AiModelSnapshot? = null,
+    val referenceModelSnapshot: AiModelSnapshot? = null
+) : BackgroundTaskPayload
+
+@Serializable
 data class WordPoolRebuildPayload(
     val dictionaryId: Long,
     val strategy: String,
@@ -32,8 +47,8 @@ data class WordPoolRebuildPayload(
 ) : BackgroundTaskPayload
 
 /**
- * 词池审核（AI 复查低置信度 / warning 边）。独立于整理（WORD_POOL_REBUILD），手动触发。
- * 审核每次整跑（无块级续传坐标系），故 payload 只需词典 + 策略（策略仅用于复查后重建该策略的词池）。
+ * 词池提纯（AI 评估并降权劣质边）。独立于整理（WORD_POOL_REBUILD），手动触发。
+ * 提纯每次整跑（无块级续传坐标系），payload 中的策略仅用于和 QUALITY_FIRST 构建互斥调度。
  */
 @Serializable
 data class WordPoolReviewPayload(

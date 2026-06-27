@@ -29,6 +29,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,6 +53,8 @@ fun CloudSyncSection(
     state: CloudSyncState,
     onOwnerChange: (String) -> Unit,
     onRepoChange: (String) -> Unit,
+    onConfigSyncEnabledChange: (Boolean) -> Unit,
+    onConfigRepoChange: (String) -> Unit,
     onPatChange: (String) -> Unit,
     onTestConnection: () -> Unit,
     onSync: () -> Unit,
@@ -88,6 +91,50 @@ fun CloudSyncSection(
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = stringResource(R.string.cloud_sync_settings_title),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = stringResource(R.string.cloud_sync_settings_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = state.configSyncEnabled,
+                onCheckedChange = onConfigSyncEnabledChange
+            )
+        }
+
+        AnimatedVisibility(visible = state.configSyncEnabled) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = state.configRepo,
+                    onValueChange = onConfigRepoChange,
+                    label = { Text(stringResource(R.string.cloud_config_repo_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = stringResource(R.string.cloud_sync_settings_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
 
         OutlinedTextField(
             value = state.pat,
@@ -168,7 +215,11 @@ fun CloudSyncSection(
         // Sync button
         Button(
             onClick = { confirmDialog = ConfirmAction.SYNC },
-            enabled = !state.isSyncing && state.pat.isNotBlank() && state.githubOwner.isNotBlank() && state.githubRepo.isNotBlank(),
+            enabled = !state.isSyncing &&
+                state.pat.isNotBlank() &&
+                state.githubOwner.isNotBlank() &&
+                state.githubRepo.isNotBlank() &&
+                (!state.configSyncEnabled || state.configRepo.isNotBlank()),
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Default.Sync, contentDescription = stringResource(R.string.cloud_sync_cd), modifier = Modifier.size(18.dp))

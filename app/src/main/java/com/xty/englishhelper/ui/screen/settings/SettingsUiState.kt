@@ -42,6 +42,7 @@ data class SettingsUiState(
     val brainstormClusterSize: Int = 6,
     val brainstormQualityMinConfidence: Float = 0.3f,
     val brainstormActiveRecall: Boolean = false,
+    val studyWordNoteEnabled: Boolean = false,
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
     val scanRescoreAfterHours: Int = 24,
@@ -77,6 +78,8 @@ data class PendingDeleteProvider(
 data class CloudSyncState(
     val githubOwner: String = "",
     val githubRepo: String = "",
+    val configSyncEnabled: Boolean = false,
+    val configRepo: String = "",
     val pat: String = "",
     val isSyncing: Boolean = false,
     val syncProgress: SyncProgress? = null,

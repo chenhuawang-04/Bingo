@@ -11,14 +11,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -27,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.xty.englishhelper.R
@@ -48,6 +59,10 @@ internal fun StudyingContent(
     state: StudyUiState,
     onRevealAnswer: () -> Unit,
     onRate: (Rating) -> Unit,
+    onWordNoteInputChange: (String) -> Unit,
+    onWordNoteSuggestionSelected: (String) -> Unit,
+    onWordNoteSuggestionsExpandedChange: (Boolean) -> Unit,
+    onSubmitWordNote: () -> Unit,
     onCloudExampleSourceSelected: (CloudExampleSource) -> Unit,
     onQuizAnswer: (Long) -> Unit,
     onQuizContinue: () -> Unit,
@@ -108,6 +123,18 @@ internal fun StudyingContent(
                         spelling = word.spelling,
                         phonetic = word.phonetic,
                         relatedEdges = state.currentWordEdges,
+                        wordNoteEnabled = state.wordNoteEnabled,
+                        wordNoteInput = state.wordNoteInput,
+                        wordNoteSuggestions = state.wordNoteSuggestions,
+                        wordNoteSuggestionsLoading = state.wordNoteSuggestionsLoading,
+                        wordNoteSuggestionsExpanded = state.wordNoteSuggestionsExpanded,
+                        wordNoteSubmitting = state.wordNoteSubmitting,
+                        wordNoteMessage = state.wordNoteMessage,
+                        wordNoteError = state.wordNoteError,
+                        onWordNoteInputChange = onWordNoteInputChange,
+                        onWordNoteSuggestionSelected = onWordNoteSuggestionSelected,
+                        onWordNoteSuggestionsExpandedChange = onWordNoteSuggestionsExpandedChange,
+                        onSubmitWordNote = onSubmitWordNote,
                         onRevealAnswer = onRevealAnswer,
                         modifier = Modifier.weight(1f)
                     )
@@ -159,6 +186,18 @@ internal fun StudyingContent(
                     spelling = word.spelling,
                     phonetic = word.phonetic,
                     relatedEdges = state.currentWordEdges,
+                    wordNoteEnabled = state.wordNoteEnabled,
+                    wordNoteInput = state.wordNoteInput,
+                    wordNoteSuggestions = state.wordNoteSuggestions,
+                    wordNoteSuggestionsLoading = state.wordNoteSuggestionsLoading,
+                    wordNoteSuggestionsExpanded = state.wordNoteSuggestionsExpanded,
+                    wordNoteSubmitting = state.wordNoteSubmitting,
+                    wordNoteMessage = state.wordNoteMessage,
+                    wordNoteError = state.wordNoteError,
+                    onWordNoteInputChange = onWordNoteInputChange,
+                    onWordNoteSuggestionSelected = onWordNoteSuggestionSelected,
+                    onWordNoteSuggestionsExpandedChange = onWordNoteSuggestionsExpandedChange,
+                    onSubmitWordNote = onSubmitWordNote,
                     onRevealAnswer = onRevealAnswer,
                     modifier = Modifier.weight(1f)
                 )
@@ -312,6 +351,18 @@ private fun QuestionView(
     spelling: String,
     phonetic: String,
     relatedEdges: List<WordEdgePreview>,
+    wordNoteEnabled: Boolean,
+    wordNoteInput: String,
+    wordNoteSuggestions: List<String>,
+    wordNoteSuggestionsLoading: Boolean,
+    wordNoteSuggestionsExpanded: Boolean,
+    wordNoteSubmitting: Boolean,
+    wordNoteMessage: String?,
+    wordNoteError: String?,
+    onWordNoteInputChange: (String) -> Unit,
+    onWordNoteSuggestionSelected: (String) -> Unit,
+    onWordNoteSuggestionsExpandedChange: (Boolean) -> Unit,
+    onSubmitWordNote: () -> Unit,
     onRevealAnswer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -319,7 +370,13 @@ private fun QuestionView(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Text(
                 text = spelling,
                 style = MaterialTheme.typography.headlineLarge,
@@ -338,6 +395,57 @@ private fun QuestionView(
                 Spacer(modifier = Modifier.height(8.dp))
                 WordConstellation(nodes = relatedEdges)
             }
+            if (wordNoteEnabled) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.study_word_note_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                WordNoteInputField(
+                    value = wordNoteInput,
+                    suggestions = wordNoteSuggestions,
+                    suggestionsLoading = wordNoteSuggestionsLoading,
+                    suggestionsExpanded = wordNoteSuggestionsExpanded,
+                    enabled = !wordNoteSubmitting,
+                    onValueChange = onWordNoteInputChange,
+                    onSuggestionSelected = onWordNoteSuggestionSelected,
+                    onSuggestionsExpandedChange = onWordNoteSuggestionsExpandedChange,
+                    onSubmit = onSubmitWordNote,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = onSubmitWordNote,
+                    enabled = wordNoteInput.isNotBlank() && !wordNoteSubmitting,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (wordNoteSubmitting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    Text(stringResource(R.string.study_word_note_submit))
+                }
+                val feedback = wordNoteError ?: wordNoteMessage
+                if (!feedback.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = feedback,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (wordNoteError != null) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
         }
     }
     Button(
@@ -347,6 +455,73 @@ private fun QuestionView(
             .padding(16.dp)
     ) {
         Text(stringResource(R.string.study_show_answer))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WordNoteInputField(
+    value: String,
+    suggestions: List<String>,
+    suggestionsLoading: Boolean,
+    suggestionsExpanded: Boolean,
+    enabled: Boolean,
+    onValueChange: (String) -> Unit,
+    onSuggestionSelected: (String) -> Unit,
+    onSuggestionsExpandedChange: (Boolean) -> Unit,
+    onSubmit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val expanded = suggestionsExpanded && suggestions.isNotEmpty()
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { nextExpanded ->
+            if (suggestions.isNotEmpty()) {
+                onSuggestionsExpandedChange(nextExpanded)
+            }
+        },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            enabled = enabled,
+            label = { Text(stringResource(R.string.study_word_note_label)) },
+            placeholder = { Text(stringResource(R.string.study_word_note_placeholder)) },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    if (value.isNotBlank() && enabled) {
+                        onSubmit()
+                    }
+                }
+            ),
+            trailingIcon = {
+                when {
+                    suggestionsLoading -> CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                    suggestions.isNotEmpty() -> ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryEditable)
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { onSuggestionsExpandedChange(false) }
+        ) {
+            suggestions.forEach { suggestion ->
+                DropdownMenuItem(
+                    text = { Text(text = suggestion) },
+                    onClick = { onSuggestionSelected(suggestion) },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                )
+            }
+        }
     }
 }
 

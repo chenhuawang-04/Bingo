@@ -248,7 +248,7 @@ class PoolBuildDetailViewModel @Inject constructor(
             modifiedEdges = parts.getOrNull(3)?.toIntOrNull() ?: 0
         )
         return DetailProgress(
-            label = "AI复查批次",
+            label = "AI提纯批次",
             chunkCurrent = review.completedBatches,
             chunkTotal = review.totalBatches,
             metricCount = review.modifiedEdges
@@ -259,10 +259,10 @@ class PoolBuildDetailViewModel @Inject constructor(
         val parsed = parseReviewProgress(task.progressMessage)
         return when {
             parsed.chunkTotal > 0 -> {
-                "已审 ${parsed.chunkCurrent}/${parsed.chunkTotal} 批 · 已审核 ${task.progressCurrent}/${task.progressTotal} 条边 · 已调整 ${parsed.metricCount} 条"
+                "已提纯 ${parsed.chunkCurrent}/${parsed.chunkTotal} 批 · 已处理 ${task.progressCurrent}/${task.progressTotal} 条边 · 已降权 ${parsed.metricCount} 条"
             }
             task.progressTotal > 0 -> {
-                "已审核 ${task.progressCurrent}/${task.progressTotal} 条边"
+                "已处理 ${task.progressCurrent}/${task.progressTotal} 条边"
             }
             else -> task.progressMessage
         }
@@ -481,7 +481,7 @@ class PoolBuildDetailViewModel @Inject constructor(
                     modelError = null,
                     modelSwitchMessage = when (taskMode) {
                         PoolTaskMode.BUILD -> "已切换词池整理模型为「$model」，从下一次请求生效。"
-                        PoolTaskMode.REVIEW -> "已切换词池审核模型为「$model」，从下一次请求生效。"
+                        PoolTaskMode.REVIEW -> "已切换词池提纯模型为「$model」，从下一次请求生效。"
                     }
                 )
             }

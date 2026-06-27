@@ -25,6 +25,7 @@ import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
+import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
 import com.xty.englishhelper.domain.model.ArticleParseStatus
@@ -84,17 +85,24 @@ internal data class PoolTaskMutexKey(
     val strategy: String
 )
 
+private const val EDGE_WRITE_MUTEX = "__EDGE_WRITE__"
+
 internal fun poolTaskMutexKey(task: BackgroundTask): PoolTaskMutexKey? {
     return when (task.type) {
         BackgroundTaskType.WORD_POOL_REVIEW -> {
             val payload = task.payload as? WordPoolReviewPayload ?: return null
-            PoolTaskMutexKey(payload.dictionaryId, payload.strategy)
+            PoolTaskMutexKey(payload.dictionaryId, EDGE_WRITE_MUTEX)
         }
 
         BackgroundTaskType.WORD_POOL_REBUILD -> {
             val payload = task.payload as? WordPoolRebuildPayload ?: return null
             if (payload.strategy != PoolStrategy.QUALITY_FIRST.name) return null
-            PoolTaskMutexKey(payload.dictionaryId, payload.strategy)
+            PoolTaskMutexKey(payload.dictionaryId, EDGE_WRITE_MUTEX)
+        }
+
+        BackgroundTaskType.WORD_NOTE_ORGANIZE -> {
+            val payload = task.payload as? WordNoteOrganizePayload ?: return null
+            PoolTaskMutexKey(payload.dictionaryId, EDGE_WRITE_MUTEX)
         }
 
         else -> null
@@ -214,6 +222,67 @@ class BackgroundTaskManager @Inject constructor(
         }
     }
 
+    suspend fun enqueueWordNoteOrganize(
+        dictionaryId: Long,
+        sourceWordId: Long,
+        sourceSpelling: String,
+        targetWordId: Long,
+        targetSpelling: String,
+        organizeTargetWordFirst: Boolean = false,
+        targetReferenceHints: List<String> = emptyList(),
+        force: Boolean = true
+    ): BackgroundTaskEnqueueResult {
+        val highQualityEnabled = if (organizeTargetWordFirst) {
+            settingsDataStore.getWordOrganizeHighQualityEnabled()
+        } else {
+            false
+        }
+        val referenceSource = if (organizeTargetWordFirst) {
+            settingsDataStore.getWordOrganizeReferenceSource()
+        } else {
+            WordReferenceSource.FAST
+        }
+        val mainSnapshot = if (organizeTargetWordFirst) {
+            settingsDataStore.getAiConfig(AiSettingsScope.MAIN).toSnapshot()
+        } else {
+            null
+        }
+        val referenceSnapshot = if (organizeTargetWordFirst && highQualityEnabled) {
+            val referenceScope = when (referenceSource) {
+                WordReferenceSource.FAST -> AiSettingsScope.FAST
+                WordReferenceSource.SEARCH -> AiSettingsScope.SEARCH
+            }
+            settingsDataStore.getConfiguredAiConfig(referenceScope).toSnapshot()
+        } else {
+            null
+        }
+        val payload = WordNoteOrganizePayload(
+            dictionaryId = dictionaryId,
+            sourceWordId = sourceWordId,
+            sourceSpelling = sourceSpelling,
+            targetWordId = targetWordId,
+            targetSpelling = targetSpelling,
+            organizeTargetWordFirst = organizeTargetWordFirst,
+            targetReferenceHints = targetReferenceHints
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .take(6),
+            highQualityEnabled = highQualityEnabled,
+            referenceSource = referenceSource.name,
+            mainModelSnapshot = mainSnapshot,
+            referenceModelSnapshot = referenceSnapshot
+        )
+        val minId = minOf(sourceWordId, targetWordId)
+        val maxId = maxOf(sourceWordId, targetWordId)
+        return enqueueTaskInternal(
+            type = BackgroundTaskType.WORD_NOTE_ORGANIZE,
+            payload = payload,
+            dedupeKey = "word_note:$dictionaryId:$minId:$maxId",
+            force = force
+        )
+    }
+
     fun enqueueWordPoolRebuild(
         dictionaryId: Long,
         strategy: PoolStrategy,
@@ -229,8 +298,8 @@ class BackgroundTaskManager @Inject constructor(
     }
 
     /**
-     * 词池审核（手动触发，独立于整理）。每次整跑，故一律 force=true：已有审核任务（SUCCESS/FAILED/…）会被重置重跑。
-     * 与 WORD_POOL_REBUILD 仍使用不同 dedupeKey，但调度器会阻止同词典同策略的 QUALITY_FIRST 构建/审核并发落库。
+     * 词池提纯（手动触发，独立于整理）。每次整跑，故一律 force=true：已有提纯任务（SUCCESS/FAILED/…）会被重置重跑。
+     * 与 WORD_POOL_REBUILD 仍使用不同 dedupeKey，但调度器会阻止同词典同策略的 QUALITY_FIRST 构建/提纯并发落库。
      */
     fun enqueueWordPoolReview(
         dictionaryId: Long,
@@ -574,6 +643,7 @@ class BackgroundTaskManager @Inject constructor(
     private suspend fun executeTask(task: BackgroundTask) {
         when (task.type) {
             BackgroundTaskType.WORD_ORGANIZE -> executeWordOrganize(task)
+            BackgroundTaskType.WORD_NOTE_ORGANIZE -> executeWordNoteOrganize(task)
             BackgroundTaskType.WORD_POOL_REBUILD -> executeWordPoolRebuild(task)
             BackgroundTaskType.WORD_POOL_REVIEW -> executeWordPoolReview(task)
             BackgroundTaskType.QUESTION_GENERATE -> executeQuestionGenerate(task)
@@ -588,34 +658,88 @@ class BackgroundTaskManager @Inject constructor(
 
     private suspend fun executeWordOrganize(task: BackgroundTask) {
         val payload = task.payload as? WordOrganizePayload ?: throw IllegalStateException("任务参数缺失")
-        val mainSnapshot = payload.mainModelSnapshot
-            ?: throw IllegalStateException("旧任务缺少主模型快照，请重新开始后台整理")
-        val mainApiKey = settingsDataStore.getProviderApiKey(mainSnapshot.providerName)
-        if (mainApiKey.isBlank()) {
-            throw IllegalStateException("API Key 未配置")
-        }
-        val referenceSource = runCatching { WordReferenceSource.valueOf(payload.referenceSource) }
-            .getOrDefault(WordReferenceSource.FAST)
-        val referenceSnapshot = if (payload.highQualityEnabled) {
-            payload.referenceModelSnapshot
-                ?: throw IllegalStateException("旧任务缺少参考模型快照，请重新开始后台整理")
-        } else {
-            null
-        }
-        val result = organizeWordWithAi(
-            payload.spelling,
-            mainApiKey,
-            mainSnapshot.model,
-            mainSnapshot.baseUrl,
-            mainSnapshot.provider,
-            supplementalReferenceHints = payload.referenceHints,
-            highQualityEnabledOverride = payload.highQualityEnabled,
-            referenceSourceOverride = referenceSource,
-            referenceModelSnapshotOverride = referenceSnapshot
+        organizeWordAndMerge(
+            wordId = payload.wordId,
+            spelling = payload.spelling,
+            referenceHints = payload.referenceHints,
+            highQualityEnabled = payload.highQualityEnabled,
+            referenceSourceRaw = payload.referenceSource,
+            mainSnapshot = payload.mainModelSnapshot,
+            referenceSnapshot = payload.referenceModelSnapshot
         ) { progress ->
             repository.updateProgress(task.id, progress.current, progress.total)
         }
-        val currentWord = wordRepository.getWordById(payload.wordId) ?: throw IllegalStateException("单词不存在")
+    }
+
+    private suspend fun executeWordNoteOrganize(task: BackgroundTask) {
+        val payload = task.payload as? WordNoteOrganizePayload ?: throw IllegalStateException("任务参数缺失")
+        val totalSteps = if (payload.organizeTargetWordFirst) 2 else 1
+
+        if (payload.organizeTargetWordFirst) {
+            repository.updateProgress(task.id, 0, totalSteps, "整理便签单词")
+            organizeWordAndMerge(
+                wordId = payload.targetWordId,
+                spelling = payload.targetSpelling,
+                referenceHints = payload.targetReferenceHints,
+                highQualityEnabled = payload.highQualityEnabled,
+                referenceSourceRaw = payload.referenceSource,
+                mainSnapshot = payload.mainModelSnapshot,
+                referenceSnapshot = payload.referenceModelSnapshot
+            ) { progress ->
+                repository.updateProgress(task.id, 0, totalSteps, "整理便签单词: ${progress.label}")
+            }
+            repository.updateProgress(task.id, 1, totalSteps, "连接单词便签")
+        } else {
+            repository.updateProgress(task.id, 0, totalSteps, "连接单词便签")
+        }
+
+        wordPoolRepository.organizeWordNoteRelation(
+            dictionaryId = payload.dictionaryId,
+            wordId = payload.sourceWordId,
+            relatedWordId = payload.targetWordId
+        )
+        repository.updateProgress(task.id, totalSteps, totalSteps, "已连接到当前单词")
+    }
+
+    private suspend fun organizeWordAndMerge(
+        wordId: Long,
+        spelling: String,
+        referenceHints: List<String>,
+        highQualityEnabled: Boolean,
+        referenceSourceRaw: String,
+        mainSnapshot: AiModelSnapshot?,
+        referenceSnapshot: AiModelSnapshot?,
+        onProgress: suspend (com.xty.englishhelper.domain.model.WordOrganizeProgress) -> Unit
+    ) {
+        val mainModelSnapshot = mainSnapshot
+            ?: throw IllegalStateException("旧任务缺少主模型快照，请重新开始后台整理")
+        val mainApiKey = settingsDataStore.getProviderApiKey(mainModelSnapshot.providerName)
+        if (mainApiKey.isBlank()) {
+            throw IllegalStateException("API Key 未配置")
+        }
+        val referenceSource = runCatching { WordReferenceSource.valueOf(referenceSourceRaw) }
+            .getOrDefault(WordReferenceSource.FAST)
+        val requiredReferenceSnapshot = if (highQualityEnabled) {
+            referenceSnapshot ?: throw IllegalStateException("旧任务缺少参考模型快照，请重新开始后台整理")
+        } else {
+            null
+        }
+
+        val result = organizeWordWithAi(
+            spelling,
+            mainApiKey,
+            mainModelSnapshot.model,
+            mainModelSnapshot.baseUrl,
+            mainModelSnapshot.provider,
+            supplementalReferenceHints = referenceHints,
+            highQualityEnabledOverride = highQualityEnabled,
+            referenceSourceOverride = referenceSource,
+            referenceModelSnapshotOverride = requiredReferenceSnapshot
+        ) { progress ->
+            onProgress(progress)
+        }
+
+        val currentWord = wordRepository.getWordById(wordId) ?: throw IllegalStateException("单词不存在")
         val merged = currentWord.copy(
             phonetic = currentWord.phonetic.ifBlank { result.phonetic },
             meanings = currentWord.meanings.ifEmpty { result.meanings },
@@ -974,11 +1098,11 @@ class BackgroundTaskManager @Inject constructor(
         }
     }
 
-    // ── 词池审核（手动触发，独立于整理） ──
+    // ── 词池提纯（手动触发，独立于整理） ──
 
     /**
-     * 词池审核：用 REVIEWER AI 逐条复查全部边，复查完用结果重建词池。
-     * 每次整跑（无续传坐标系，故无 startIndex / resumeMessage）；进度按总审核边数上报，可暂停 / 取消。
+     * 词池提纯：用 REVIEWER AI 逐条评估全部边，只降低劣质边置信度或调整状态，不重建词池。
+     * 每次整跑（无续传坐标系，故无 startIndex / resumeMessage）；进度按总提纯边数上报，可暂停 / 取消。
      */
     private suspend fun executeWordPoolReview(task: BackgroundTask) {
         val payload = task.payload as? WordPoolReviewPayload ?: throw IllegalStateException("任务参数缺失")
@@ -1024,7 +1148,7 @@ class BackgroundTaskManager @Inject constructor(
             }
             // 成功：最终写一次 100%。
             latest.get()?.let { (_, total, _) ->
-                if (total > 0) repository.updateProgress(task.id, total, total, "审核完成")
+                if (total > 0) repository.updateProgress(task.id, total, total, "提纯完成")
             }
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
@@ -1034,13 +1158,13 @@ class BackgroundTaskManager @Inject constructor(
             }
             throw e
         } catch (e: Exception) {
-            // 审核中止：落最后进度后上抛，由 launchTask 标记 FAILED。审核重试即整跑（不依赖续传点）。
+            // 提纯中止：落最后进度后上抛，由 launchTask 标记 FAILED。提纯重试即整跑（不依赖续传点）。
             withContext(NonCancellable) {
                 latest.get()?.let { (current, total, msg) ->
                     if (total > 0) repository.updateProgress(task.id, current, total, msg)
                 }
             }
-            Log.w("BackgroundTaskManager", "词池审核中止 task=${task.id}：${e.message?.take(160)}")
+            Log.w("BackgroundTaskManager", "词池提纯中止 task=${task.id}：${e.message?.take(160)}")
             throw e
         } finally {
             pauseHandlers.remove(task.id)
@@ -1409,7 +1533,14 @@ class BackgroundTaskManager @Inject constructor(
             else -> com.xty.englishhelper.data.sync.SyncMode.SMART
         }
 
-        syncEngine.sync(mode)
+        syncEngine.sync(mode) { progress ->
+            repository.updateProgress(
+                task.id,
+                progress.current,
+                progress.total,
+                "${progress.phase}: ${progress.detail}"
+            )
+        }
     }
 
     private suspend fun fetchOnlineScanCandidates(

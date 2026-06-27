@@ -803,7 +803,7 @@ private fun DictionaryListContent(
                                 }
                             }
 
-                            // 词池审核（独立任务）状态行
+                            // 词池提纯（独立任务）状态行
                             if (state.isReviewingPools) {
                                 Row(
                                     modifier = Modifier

@@ -32,6 +32,22 @@ class WordRepositoryImpl @Inject constructor(
     override fun searchWords(dictionaryId: Long, query: String): Flow<List<WordDetails>> =
         wordDao.searchWords(dictionaryId, query).map { list -> list.map { it.toDomain() } }
 
+    override suspend fun suggestWordSpellings(
+        dictionaryId: Long,
+        query: String,
+        excludeWordId: Long,
+        limit: Int
+    ): List<String> {
+        val normalizedQuery = query.trim().lowercase()
+        if (normalizedQuery.isBlank() || limit <= 0) return emptyList()
+        return wordDao.suggestWordSpellings(
+            dictionaryId = dictionaryId,
+            normalizedQuery = normalizedQuery,
+            excludeWordId = excludeWordId,
+            limit = limit
+        )
+    }
+
     override suspend fun getWordById(wordId: Long): WordDetails? =
         wordDao.getWordById(wordId)?.toDomain()
 

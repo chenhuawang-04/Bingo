@@ -402,10 +402,10 @@ class DictionaryViewModel @Inject constructor(
         val reviewProgress = parseReviewProgressMessage(task.progressMessage)
         return when {
             reviewProgress != null && reviewProgress.totalBatches > 0 -> {
-                "已审 ${reviewProgress.completedBatches}/${reviewProgress.totalBatches} 批 · 已审核 ${task.progressCurrent}/${task.progressTotal} 条边 · 已调整 ${reviewProgress.modifiedEdges} 条"
+                "已提纯 ${reviewProgress.completedBatches}/${reviewProgress.totalBatches} 批 · 已处理 ${task.progressCurrent}/${task.progressTotal} 条边 · 已降权 ${reviewProgress.modifiedEdges} 条"
             }
             task.progressTotal > 0 -> {
-                "已审核 ${task.progressCurrent}/${task.progressTotal} 条边"
+                "已处理 ${task.progressCurrent}/${task.progressTotal} 条边"
             }
             else -> task.progressMessage
         }
@@ -516,7 +516,7 @@ class DictionaryViewModel @Inject constructor(
         _uiState.update { it.copy(rebuildError = null) }
     }
 
-    // ── 词池审核（独立任务，手动触发） ──
+    // ── 词池提纯（独立任务，手动触发） ──
 
     private fun observePoolReviewTasks() {
         viewModelScope.launch {
@@ -562,7 +562,7 @@ class DictionaryViewModel @Inject constructor(
                     )
                 }
 
-                // 审核成功后刷新词池数（审核会用复查后的边重建词池）。
+                // 提纯成功后刷新边数/词池数摘要；提纯不会重建词池。
                 if (reviewTask.status != lastStatus && reviewTask.status == BackgroundTaskStatus.SUCCESS) {
                     loadPoolInfo()
                 }
@@ -571,7 +571,7 @@ class DictionaryViewModel @Inject constructor(
         }
     }
 
-    /** 手动发起词池审核（仅 QUALITY_FIRST：审核针对边）。需已有边、且当前无整理 / 审核进行中。 */
+    /** 手动发起词池提纯（仅 QUALITY_FIRST：提纯针对边）。需已有边、且当前无整理 / 提纯进行中。 */
     fun requestReviewPools() {
         if (_uiState.value.edgeCount <= 0) return
         if (_uiState.value.isRebuildingPools || _uiState.value.isReviewingPools) return

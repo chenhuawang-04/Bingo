@@ -79,7 +79,7 @@
     <string name="dict_pool_balanced">Generate Pool (Balanced·Local)</string>
     <string name="dict_pool_balanced_ai">Generate Pool (Balanced+AI)</string>
     <string name="dict_pool_quality_first">Generate Pool (Quality·High Cost)</string>
-    <string name="dict_pool_review">Review Pool (AI Review·Quality)</string>
+    <string name="dict_pool_review">Refine Pool (AI Downgrade·Quality)</string>
     <string name="dict_select_word_hint">Select a word to view details</string>
     <string name="dict_words_filtered">Filtered %1$d/%2$d words</string>
     <string name="dict_words_total">%d words</string>
@@ -96,8 +96,8 @@
     <string name="dict_algorithm_updated">Algorithm updated, rebuild recommended</string>
     <string name="dict_view_graph">View Graph</string>
     <string name="dict_view_pool_graph">View pool relationship graph</string>
-    <string name="dict_review_paused">Review Paused</string>
-    <string name="dict_reviewing">Reviewing</string>
+    <string name="dict_review_paused">Refinement Paused</string>
+    <string name="dict_reviewing">Refining</string>
     <string name="dict_organizing_count">Organizing: %d</string>
     <string name="dict_organized_count">Done: %d</string>
     <string name="dict_failed_count">Failed: %d</string>
@@ -188,6 +188,9 @@
     <string name="study_related_words">Related:</string>
     <string name="study_storm_progress">Storm %1$d/%2$d</string>
     <string name="study_active_recall">Active Recall</string>
+    <string name="study_word_note_label">Word Note</string>
+    <string name="study_word_note_placeholder">Type a related word you recall</string>
+    <string name="study_word_note_submit">Add Note</string>
     <string name="study_select_relation">Select its \"%s\"</string>
     <string name="study_correct_answer">Correct! Marked as \"Good\"</string>
     <string name="study_wrong_answer">Wrong! Marked as \"Again\", retry later</string>
@@ -339,7 +342,7 @@
     <string name="settings_scope_pool">Pool Organize</string>
     <string name="settings_scope_article">Article Parse</string>
     <string name="settings_scope_search">Search Model</string>
-    <string name="settings_scope_reviewer">Pool Review</string>
+    <string name="settings_scope_reviewer">Pool Refinement</string>
     <string name="settings_image_compression">Image Compression</string>
     <string name="settings_background_task">Background Tasks</string>
     <string name="settings_cloud_sync">Cloud Sync</string>
@@ -363,6 +366,8 @@
     <string name="settings_word_organize_enhance_desc">High-quality mode searches for confusable words, synonyms, cognates, and similar words online before organizing. Applies to both single-word and batch background organize.</string>
     <string name="settings_high_quality_mode">High-Quality Mode</string>
     <string name="settings_high_quality_desc">Increases time and token cost, but captures high-frequency exam confusables. Falls back to normal mode when reference is unavailable.</string>
+    <string name="settings_word_note">Word Note</string>
+    <string name="settings_word_note_desc">Show a note input on the pre-answer screen in both normal study and brainstorm mode. Added related words are promoted to confirmed relations, and missing edges go through background pool organize.</string>
     <string name="settings_reference_source">Reference Source</string>
     <string name="settings_fast_model">Fast Model</string>
     <string name="settings_search_model">Search Model</string>
@@ -397,8 +402,9 @@
     <!-- ==================== Background Task ==================== -->
     <string name="task_management">Background Tasks</string>
     <string name="task_word_organize">Word Organize</string>
+    <string name="task_word_note_organize">Word Note Organize</string>
     <string name="task_pool_rebuild">Pool Rebuild</string>
-    <string name="task_pool_review">Pool Review</string>
+    <string name="task_pool_review">Pool Refinement</string>
     <string name="task_question_generate">Question Generate</string>
     <string name="task_answer_generate">Answer Generate</string>
     <string name="task_source_verify">Source Verify</string>
@@ -585,6 +591,7 @@
     <string name="task_subtitle_dict">Dict </string>
     <string name="task_subtitle_article">Article </string>
     <string name="task_subtitle_group">Group </string>
+    <string name="task_subtitle_word_pair">%1$s ↔ %2$s</string>
     <string name="task_subtitle_scan_format">Full scan, rescore after %dh</string>
     <string name="task_subtitle_task_id">Task %d</string>
     <!-- ==================== Pool Build Detail ==================== -->

@@ -79,7 +79,7 @@
     <string name="dict_pool_balanced">إنشاء مجموعة (متوازنة·محلية)</string>
     <string name="dict_pool_balanced_ai">إنشاء مجموعة (متوازنة+ذكاء اصطناعي)</string>
     <string name="dict_pool_quality_first">إنشاء مجموعة (جودة·تكلفة عالية)</string>
-    <string name="dict_pool_review">مراجعة المجموعة (مراجعة بالذكاء الاصطناعي·جودة)</string>
+    <string name="dict_pool_review">تنقية المجموعة (خفض بالذكاء الاصطناعي·جودة)</string>
     <string name="dict_select_word_hint">اختر كلمة لعرض التفاصيل</string>
     <string name="dict_words_filtered">تم تصفية %1$d/%2$d كلمة</string>
     <string name="dict_words_total">%d كلمة</string>
@@ -96,8 +96,8 @@
     <string name="dict_algorithm_updated">تم تحديث الخوارزمية، يُنصح بإعادة البناء</string>
     <string name="dict_view_graph">عرض الرسم البياني</string>
     <string name="dict_view_pool_graph">عرض رسم العلاقات بين المجموعات</string>
-    <string name="dict_review_paused">المراجعة متوقفة مؤقتاً</string>
-    <string name="dict_reviewing">جاري المراجعة</string>
+    <string name="dict_review_paused">التنقية متوقفة مؤقتاً</string>
+    <string name="dict_reviewing">جاري التنقية</string>
     <string name="dict_organizing_count">جاري الترتيب: %d</string>
     <string name="dict_organized_count">تم: %d</string>
     <string name="dict_failed_count">فشل: %d</string>
@@ -339,7 +339,7 @@
     <string name="settings_scope_pool">ترتيب المجموعة</string>
     <string name="settings_scope_article">تحليل المقالات</string>
     <string name="settings_scope_search">نموذج البحث</string>
-    <string name="settings_scope_reviewer">مراجعة المجموعة</string>
+    <string name="settings_scope_reviewer">تنقية المجموعة</string>
     <string name="settings_image_compression">ضغط الصور</string>
     <string name="settings_background_task">مهام الخلفية</string>
     <string name="settings_cloud_sync">مزامنة سحابية</string>
@@ -388,7 +388,7 @@
     <string name="task_management">مهام الخلفية</string>
     <string name="task_word_organize">ترتيب الكلمات</string>
     <string name="task_pool_rebuild">إعادة بناء المجموعة</string>
-    <string name="task_pool_review">مراجعة المجموعة</string>
+    <string name="task_pool_review">تنقية المجموعة</string>
     <string name="task_question_generate">إنشاء الأسئلة</string>
     <string name="task_answer_generate">إنشاء الإجابات</string>
     <string name="task_source_verify">تحقق من المصدر</string>

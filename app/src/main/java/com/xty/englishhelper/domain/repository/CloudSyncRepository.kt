@@ -10,9 +10,9 @@ data class SyncProgress(
 )
 
 interface CloudSyncRepository {
-    suspend fun sync(onProgress: (SyncProgress) -> Unit)
-    suspend fun forceUpload(onProgress: (SyncProgress) -> Unit)
-    suspend fun forceDownload(onProgress: (SyncProgress) -> Unit)
+    suspend fun sync(onProgress: suspend (SyncProgress) -> Unit)
+    suspend fun forceUpload(onProgress: suspend (SyncProgress) -> Unit)
+    suspend fun forceDownload(onProgress: suspend (SyncProgress) -> Unit)
     suspend fun testConnection(): Boolean
     suspend fun getCloudManifest(): SyncManifest?
 }

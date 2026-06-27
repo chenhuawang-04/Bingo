@@ -73,7 +73,7 @@ data class DictionaryUiState(
     val rebuildError: String? = null,
     val currentBuildWord: String? = null,
     val isBuildPaused: Boolean = false,
-    // 词池审核（独立任务）
+    // 词池提纯（独立任务）
     val isReviewingPools: Boolean = false,
     val reviewProgress: Pair<Int, Int>? = null,
     val reviewError: String? = null,

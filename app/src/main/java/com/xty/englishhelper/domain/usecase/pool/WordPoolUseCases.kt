@@ -35,7 +35,7 @@ class GetPoolCountUseCase @Inject constructor(
         repo.getPoolCount(dictionaryId)
 }
 
-/** 该词典已建边总数，用于判断「词池审核」是否可用。 */
+/** 该词典已建边总数，用于判断「词池提纯」是否可用。 */
 class GetPoolEdgeCountUseCase @Inject constructor(
     private val repo: WordPoolRepository
 ) {

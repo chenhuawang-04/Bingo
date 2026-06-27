@@ -13,6 +13,12 @@ interface WordEdgeDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEdges(edges: List<WordEdgeEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertEdge(edge: WordEdgeEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertEdgeIfAbsent(edge: WordEdgeEntity): Long
+
     @Query("DELETE FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun deleteByDictionary(dictionaryId: Long)
 
@@ -45,6 +51,42 @@ interface WordEdgeDao {
 
     @Query("SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdgesFull(dictionaryId: Long): List<WordEdgeEntity>
+
+    @Query(
+        """
+        SELECT * FROM word_edges
+        WHERE dictionary_id = :dictionaryId
+          AND (
+            (word_id_a = :wordId AND word_id_b = :relatedWordId) OR
+            (word_id_a = :relatedWordId AND word_id_b = :wordId)
+          )
+        ORDER BY id ASC
+        """
+    )
+    suspend fun getEdgesBetweenWords(
+        dictionaryId: Long,
+        wordId: Long,
+        relatedWordId: Long
+    ): List<WordEdgeEntity>
+
+    @Query(
+        """
+        SELECT * FROM word_edges
+        WHERE dictionary_id = :dictionaryId
+          AND word_id_a != word_id_b
+          AND confidence >= :minConfidence
+          AND (
+            (word_id_a = :wordId) OR
+            (word_id_b = :wordId)
+          )
+        ORDER BY confidence DESC, relation_strength DESC, learning_value DESC, id ASC
+        """
+    )
+    suspend fun getEdgesForWord(
+        dictionaryId: Long,
+        wordId: Long,
+        minConfidence: Double
+    ): List<WordEdgeEntity>
 
     @Query(
         "SELECT * FROM word_edges " +

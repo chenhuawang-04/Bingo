@@ -79,7 +79,7 @@
     <string name="dict_pool_balanced">풀 생성 (균형·로컬)</string>
     <string name="dict_pool_balanced_ai">풀 생성 (균형+AI)</string>
     <string name="dict_pool_quality_first">풀 생성 (품질·고비용)</string>
-    <string name="dict_pool_review">풀 리뷰 (AI 리뷰·품질)</string>
+    <string name="dict_pool_review">풀 정제 (AI 강등·품질)</string>
     <string name="dict_select_word_hint">단어를 선택하여 상세정보를 보세요</string>
     <string name="dict_words_filtered">필터링된 %1$d/%2$d 단어</string>
     <string name="dict_words_total">%d 단어</string>
@@ -96,8 +96,8 @@
     <string name="dict_algorithm_updated">알고리즘이 업데이트되었습니다. 재빌드를 권장합니다</string>
     <string name="dict_view_graph">그래프 보기</string>
     <string name="dict_view_pool_graph">풀 관계 그래프 보기</string>
-    <string name="dict_review_paused">리뷰 일시정지됨</string>
-    <string name="dict_reviewing">리뷰 중</string>
+    <string name="dict_review_paused">정제 일시정지됨</string>
+    <string name="dict_reviewing">정제 중</string>
     <string name="dict_organizing_count">정리 중: %d</string>
     <string name="dict_organized_count">완료: %d</string>
     <string name="dict_failed_count">실패: %d</string>
@@ -339,7 +339,7 @@
     <string name="settings_scope_pool">풀 정리</string>
     <string name="settings_scope_article">기사 분석</string>
     <string name="settings_scope_search">검색 모델</string>
-    <string name="settings_scope_reviewer">풀 리뷰</string>
+    <string name="settings_scope_reviewer">풀 정제</string>
     <string name="settings_image_compression">이미지 압축</string>
     <string name="settings_background_task">백그라운드 작업</string>
     <string name="settings_cloud_sync">클라우드 동기화</string>
@@ -388,7 +388,7 @@
     <string name="task_management">백그라운드 작업</string>
     <string name="task_word_organize">단어 정리</string>
     <string name="task_pool_rebuild">풀 재빌드</string>
-    <string name="task_pool_review">풀 리뷰</string>
+    <string name="task_pool_review">풀 정제</string>
     <string name="task_question_generate">문제 생성</string>
     <string name="task_answer_generate">답변 생성</string>
     <string name="task_source_verify">원본 인증</string>

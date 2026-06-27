@@ -71,6 +71,8 @@ internal fun SystemSettingsSection(
                     state = state.cloudSync,
                     onOwnerChange = viewModel::onGitHubOwnerChange,
                     onRepoChange = viewModel::onGitHubRepoChange,
+                    onConfigSyncEnabledChange = viewModel::onGitHubConfigSyncEnabledChange,
+                    onConfigRepoChange = viewModel::onGitHubConfigRepoChange,
                     onPatChange = viewModel::onGitHubPatChange,
                     onTestConnection = viewModel::testSyncConnection,
                     onSync = viewModel::performSync,

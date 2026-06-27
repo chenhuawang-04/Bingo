@@ -8,7 +8,7 @@ import javax.inject.Inject
 class SyncUseCase @Inject constructor(
     private val repository: CloudSyncRepository
 ) {
-    suspend operator fun invoke(onProgress: (SyncProgress) -> Unit) {
+    suspend operator fun invoke(onProgress: suspend (SyncProgress) -> Unit) {
         repository.sync(onProgress)
     }
 }
@@ -16,7 +16,7 @@ class SyncUseCase @Inject constructor(
 class ForceUploadUseCase @Inject constructor(
     private val repository: CloudSyncRepository
 ) {
-    suspend operator fun invoke(onProgress: (SyncProgress) -> Unit) {
+    suspend operator fun invoke(onProgress: suspend (SyncProgress) -> Unit) {
         repository.forceUpload(onProgress)
     }
 }
@@ -24,7 +24,7 @@ class ForceUploadUseCase @Inject constructor(
 class ForceDownloadUseCase @Inject constructor(
     private val repository: CloudSyncRepository
 ) {
-    suspend operator fun invoke(onProgress: (SyncProgress) -> Unit) {
+    suspend operator fun invoke(onProgress: suspend (SyncProgress) -> Unit) {
         repository.forceDownload(onProgress)
     }
 }

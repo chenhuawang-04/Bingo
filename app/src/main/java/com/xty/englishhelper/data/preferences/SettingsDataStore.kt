@@ -1,6 +1,7 @@
 package com.xty.englishhelper.data.preferences
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -8,6 +9,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.xty.englishhelper.data.json.SettingsSyncJsonModel
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.AiProviderProfile
 import com.xty.englishhelper.domain.model.AiScopeConfig
@@ -30,6 +32,14 @@ class SettingsDataStore @Inject constructor(
     private val dataStore: DataStore<Preferences>,
     private val encryptedApiKeyStore: EncryptedApiKeyStore
 ) {
+    private enum class SyncValueType {
+        STRING,
+        INT,
+        LONG,
+        FLOAT,
+        BOOLEAN
+    }
+
     companion object {
         val API_KEY = stringPreferencesKey("api_key")
         // Legacy global keys (kept for backward compatibility/migration fallback)
@@ -57,7 +67,10 @@ class SettingsDataStore @Inject constructor(
 
         val GITHUB_OWNER = stringPreferencesKey("github_owner")
         val GITHUB_REPO = stringPreferencesKey("github_repo")
+        val GITHUB_CONFIG_SYNC_ENABLED = booleanPreferencesKey("github_config_sync_enabled")
+        val GITHUB_CONFIG_REPO = stringPreferencesKey("github_config_repo")
         val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
+        val SETTINGS_SYNC_UPDATED_AT = longPreferencesKey("settings_sync_updated_at")
         val GUARDIAN_DETAIL_CONCURRENCY = intPreferencesKey("guardian_detail_concurrency")
         val ONLINE_READING_SOURCE = stringPreferencesKey("online_reading_source")
         val TTS_RATE = floatPreferencesKey("tts_rate")
@@ -74,6 +87,7 @@ class SettingsDataStore @Inject constructor(
         val BRAINSTORM_CLUSTER_SIZE = intPreferencesKey("brainstorm_cluster_size")
         val BRAINSTORM_QUALITY_MIN_CONFIDENCE = floatPreferencesKey("brainstorm_quality_min_confidence")
         val BRAINSTORM_ACTIVE_RECALL = booleanPreferencesKey("brainstorm_active_recall")
+        val STUDY_WORD_NOTE_ENABLED = booleanPreferencesKey("study_word_note_enabled")
         val SCAN_RESCORE_AFTER_HOURS = intPreferencesKey("scan_rescore_after_hours")
         val APP_LOCALE = stringPreferencesKey("app_locale")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
@@ -111,6 +125,9 @@ class SettingsDataStore @Inject constructor(
     private val defaultImageCompressionTargetBytes = 1_000_000
     private val minImageCompressionTargetBytes = 200 * 1024
     private val maxImageCompressionTargetBytes = 4 * 1024 * 1024
+    private val nonSyncablePreferenceKeys = setOf(LAST_SYNC_AT.name)
+    private val nonSyncablePreferencePrefixes = setOf("last_selected_unit_ids_")
+    private val syncablePreferenceTypes: Map<String, SyncValueType> = buildSyncablePreferenceTypes()
 
     val providers: Flow<List<AiProviderProfile>> = dataStore.data.map { prefs ->
         readProviders(prefs)
@@ -231,76 +248,81 @@ class SettingsDataStore @Inject constructor(
         prefs[BRAINSTORM_ACTIVE_RECALL] ?: false
     }
 
+    /** 背词页单词便签：预答案态展示图与输入框，支持补充强关联词。默认关。 */
+    val studyWordNoteEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[STUDY_WORD_NOTE_ENABLED] ?: false
+    }
+
     suspend fun setGuardianDetailConcurrency(value: Int) {
-        dataStore.edit { prefs ->
+        editSyncablePreferences { prefs ->
             prefs[GUARDIAN_DETAIL_CONCURRENCY] = value
         }
     }
 
     suspend fun setBackgroundTaskConcurrency(value: Int) {
-        dataStore.edit { prefs ->
+        editSyncablePreferences { prefs ->
             prefs[BACKGROUND_TASK_CONCURRENCY] = value.coerceIn(1, 6)
         }
     }
 
     suspend fun setOnlineReadingSource(value: String) {
-        dataStore.edit { prefs ->
+        editSyncablePreferences { prefs ->
             prefs[ONLINE_READING_SOURCE] = value
         }
     }
 
     suspend fun setTtsRate(value: Float) {
-        dataStore.edit { prefs -> prefs[TTS_RATE] = value }
+        editSyncablePreferences { prefs -> prefs[TTS_RATE] = value }
     }
 
     suspend fun setTtsPitch(value: Float) {
-        dataStore.edit { prefs -> prefs[TTS_PITCH] = value }
+        editSyncablePreferences { prefs -> prefs[TTS_PITCH] = value }
     }
 
     suspend fun setTtsLocale(value: String) {
-        dataStore.edit { prefs -> prefs[TTS_LOCALE] = value }
+        editSyncablePreferences { prefs -> prefs[TTS_LOCALE] = value }
     }
 
     suspend fun setTtsAutoStudy(value: Boolean) {
-        dataStore.edit { prefs -> prefs[TTS_AUTO_STUDY] = value }
+        editSyncablePreferences { prefs -> prefs[TTS_AUTO_STUDY] = value }
     }
 
     suspend fun setAiDebugMode(value: Boolean) {
-        dataStore.edit { prefs -> prefs[AI_DEBUG_MODE] = value }
+        editSyncablePreferences { prefs -> prefs[AI_DEBUG_MODE] = value }
     }
 
     suspend fun setAiResponseUnwrapEnabled(value: Boolean) {
-        dataStore.edit { prefs -> prefs[AI_RESPONSE_UNWRAP_ENABLED] = value }
+        editSyncablePreferences { prefs -> prefs[AI_RESPONSE_UNWRAP_ENABLED] = value }
     }
 
     suspend fun setAiJsonRepairEnabled(value: Boolean) {
-        dataStore.edit { prefs -> prefs[AI_JSON_REPAIR_ENABLED] = value }
+        editSyncablePreferences { prefs -> prefs[AI_JSON_REPAIR_ENABLED] = value }
     }
 
     suspend fun setWordOrganizeHighQualityEnabled(value: Boolean) {
-        dataStore.edit { prefs -> prefs[WORD_ORGANIZE_HIGH_QUALITY_ENABLED] = value }
+        editSyncablePreferences { prefs -> prefs[WORD_ORGANIZE_HIGH_QUALITY_ENABLED] = value }
     }
 
     suspend fun setWordOrganizeReferenceSource(value: WordReferenceSource) {
-        dataStore.edit { prefs -> prefs[WORD_ORGANIZE_REFERENCE_SOURCE] = value.name }
+        editSyncablePreferences { prefs -> prefs[WORD_ORGANIZE_REFERENCE_SOURCE] = value.name }
     }
 
     suspend fun setImageCompressionEnabled(value: Boolean) {
-        dataStore.edit { prefs -> prefs[IMAGE_COMPRESSION_ENABLED] = value }
+        editSyncablePreferences { prefs -> prefs[IMAGE_COMPRESSION_ENABLED] = value }
     }
 
     suspend fun setImageCompressionTargetBytes(value: Int) {
-        dataStore.edit { prefs ->
+        editSyncablePreferences { prefs ->
             prefs[IMAGE_COMPRESSION_TARGET_BYTES] = clampImageCompressionTarget(value)
         }
     }
 
     suspend fun setTtsPrewarmConcurrency(value: Int) {
-        dataStore.edit { prefs -> prefs[TTS_PREWARM_CONCURRENCY] = value }
+        editSyncablePreferences { prefs -> prefs[TTS_PREWARM_CONCURRENCY] = value }
     }
 
     suspend fun setTtsPrewarmRetry(value: Int) {
-        dataStore.edit { prefs -> prefs[TTS_PREWARM_RETRY] = value }
+        editSyncablePreferences { prefs -> prefs[TTS_PREWARM_RETRY] = value }
     }
 
     suspend fun getPoolWindowSize(): Int {
@@ -309,7 +331,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setPoolWindowSize(value: Int) {
-        dataStore.edit { prefs -> prefs[POOL_WINDOW_SIZE] = value.coerceIn(10, 200) }
+        editSyncablePreferences { prefs -> prefs[POOL_WINDOW_SIZE] = value.coerceIn(10, 200) }
     }
 
     suspend fun getPoolMaxConcurrent(): Int {
@@ -318,7 +340,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setPoolMaxConcurrent(value: Int) {
-        dataStore.edit { prefs -> prefs[POOL_MAX_CONCURRENT] = value.coerceIn(1, 10) }
+        editSyncablePreferences { prefs -> prefs[POOL_MAX_CONCURRENT] = value.coerceIn(1, 10) }
     }
 
     suspend fun getPoolRequestsPerMinute(): Int {
@@ -327,7 +349,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setPoolRequestsPerMinute(value: Int) {
-        dataStore.edit { prefs -> prefs[POOL_REQUESTS_PER_MINUTE] = value.coerceIn(1, 120) }
+        editSyncablePreferences { prefs -> prefs[POOL_REQUESTS_PER_MINUTE] = value.coerceIn(1, 120) }
     }
 
     suspend fun getPoolRetryMode(): PoolRetryMode {
@@ -336,7 +358,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setPoolRetryMode(value: PoolRetryMode) {
-        dataStore.edit { prefs -> prefs[POOL_RETRY_MODE] = value.name }
+        editSyncablePreferences { prefs -> prefs[POOL_RETRY_MODE] = value.name }
     }
 
     private fun parsePoolRetryMode(raw: String?): PoolRetryMode =
@@ -349,7 +371,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setPoolManagedMode(value: Boolean) {
-        dataStore.edit { prefs -> prefs[POOL_MANAGED_MODE] = value }
+        editSyncablePreferences { prefs -> prefs[POOL_MANAGED_MODE] = value }
     }
 
     suspend fun getBrainstormClusterSize(): Int {
@@ -358,7 +380,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setBrainstormClusterSize(value: Int) {
-        dataStore.edit { prefs -> prefs[BRAINSTORM_CLUSTER_SIZE] = value.coerceIn(2, 12) }
+        editSyncablePreferences { prefs -> prefs[BRAINSTORM_CLUSTER_SIZE] = value.coerceIn(2, 12) }
     }
 
     suspend fun getBrainstormQualityMinConfidence(): Float {
@@ -367,7 +389,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setBrainstormQualityMinConfidence(value: Float) {
-        dataStore.edit { prefs -> prefs[BRAINSTORM_QUALITY_MIN_CONFIDENCE] = value.coerceIn(0f, 0.9f) }
+        editSyncablePreferences { prefs -> prefs[BRAINSTORM_QUALITY_MIN_CONFIDENCE] = value.coerceIn(0f, 0.9f) }
     }
 
     suspend fun getBrainstormActiveRecall(): Boolean {
@@ -376,7 +398,16 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setBrainstormActiveRecall(value: Boolean) {
-        dataStore.edit { prefs -> prefs[BRAINSTORM_ACTIVE_RECALL] = value }
+        editSyncablePreferences { prefs -> prefs[BRAINSTORM_ACTIVE_RECALL] = value }
+    }
+
+    suspend fun getStudyWordNoteEnabled(): Boolean {
+        val prefs = dataStore.data.first()
+        return prefs[STUDY_WORD_NOTE_ENABLED] ?: false
+    }
+
+    suspend fun setStudyWordNoteEnabled(value: Boolean) {
+        editSyncablePreferences { prefs -> prefs[STUDY_WORD_NOTE_ENABLED] = value }
     }
 
     suspend fun getProviders(): List<AiProviderProfile> {
@@ -388,10 +419,10 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun addProvider(profile: AiProviderProfile) {
-        dataStore.edit { prefs ->
+        editSyncablePreferences { prefs ->
             val providers = readProviders(prefs).toMutableList()
             if (providers.any { it.name.equals(profile.name, ignoreCase = true) }) {
-                return@edit
+                return@editSyncablePreferences
             }
             val normalized = profile.copy(baseUrl = normalizeBaseUrl(profile.baseUrl, profile.provider))
             providers.add(normalized)
@@ -404,10 +435,10 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun updateProvider(profile: AiProviderProfile) {
-        dataStore.edit { prefs ->
+        editSyncablePreferences { prefs ->
             val providers = readProviders(prefs).toMutableList()
             val index = providers.indexOfFirst { it.name == profile.name }
-            if (index < 0) return@edit
+            if (index < 0) return@editSyncablePreferences
             providers[index] = profile.copy(baseUrl = normalizeBaseUrl(profile.baseUrl, profile.provider))
             prefs[AI_PROVIDERS_JSON] = json.encodeToString(providers)
         }
@@ -415,11 +446,11 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun deleteProvider(providerName: String): Boolean {
         var removed = false
-        dataStore.edit { prefs ->
+        editSyncablePreferences { prefs ->
             val providers = readProviders(prefs).toMutableList()
             val index = providers.indexOfFirst { it.name == providerName }
-            if (index < 0) return@edit
-            if (providers.size <= 1) return@edit
+            if (index < 0) return@editSyncablePreferences
+            if (providers.size <= 1) return@editSyncablePreferences
             providers.removeAt(index)
             removed = true
             prefs[AI_PROVIDERS_JSON] = json.encodeToString(providers)
@@ -449,9 +480,9 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setDefaultProvider(providerName: String) {
-        dataStore.edit { prefs ->
+        editSyncablePreferences { prefs ->
             val providers = readProviders(prefs)
-            if (providers.none { it.name == providerName }) return@edit
+            if (providers.none { it.name == providerName }) return@editSyncablePreferences
             prefs[AI_DEFAULT_PROVIDER] = providerName
         }
     }
@@ -463,7 +494,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     suspend fun setScopeConfig(scope: AiSettingsScope, providerName: String, model: String) {
-        dataStore.edit { prefs ->
+        editSyncablePreferences { prefs ->
             val scopeConfigs = readScopeConfigMap(prefs).toMutableMap()
             scopeConfigs[scope.name] = AiScopeConfig(providerName = providerName, model = model)
             prefs[AI_SCOPE_CONFIGS_JSON] = json.encodeToString(scopeConfigs)
@@ -684,6 +715,8 @@ class SettingsDataStore @Inject constructor(
 
     val githubOwner: Flow<String> = dataStore.data.map { it[GITHUB_OWNER] ?: "" }
     val githubRepo: Flow<String> = dataStore.data.map { it[GITHUB_REPO] ?: "" }
+    val githubConfigSyncEnabled: Flow<Boolean> = dataStore.data.map { it[GITHUB_CONFIG_SYNC_ENABLED] ?: false }
+    val githubConfigRepo: Flow<String> = dataStore.data.map { it[GITHUB_CONFIG_REPO] ?: "" }
     val lastSyncAt: Flow<Long> = dataStore.data.map { it[LAST_SYNC_AT] ?: 0L }
 
     val scanRescoreAfterHours: Flow<Int> = dataStore.data.map { (it[SCAN_RESCORE_AFTER_HOURS] ?: 24).coerceIn(1, 720) }
@@ -691,19 +724,27 @@ class SettingsDataStore @Inject constructor(
     val appLocale: Flow<String> = dataStore.data.map { it[APP_LOCALE] ?: "system" }
 
     suspend fun setScanRescoreAfterHours(value: Int) {
-        dataStore.edit { it[SCAN_RESCORE_AFTER_HOURS] = value.coerceIn(1, 720) }
+        editSyncablePreferences { it[SCAN_RESCORE_AFTER_HOURS] = value.coerceIn(1, 720) }
     }
 
     suspend fun setAppLocale(locale: String) {
-        dataStore.edit { it[APP_LOCALE] = locale }
+        editSyncablePreferences { it[APP_LOCALE] = locale }
     }
 
     suspend fun setGitHubOwner(owner: String) {
-        dataStore.edit { it[GITHUB_OWNER] = owner }
+        editTransportPreferences { it[GITHUB_OWNER] = owner }
     }
 
     suspend fun setGitHubRepo(repo: String) {
-        dataStore.edit { it[GITHUB_REPO] = repo }
+        editTransportPreferences { it[GITHUB_REPO] = repo }
+    }
+
+    suspend fun setGitHubConfigSyncEnabled(enabled: Boolean) {
+        editTransportPreferences { it[GITHUB_CONFIG_SYNC_ENABLED] = enabled }
+    }
+
+    suspend fun setGitHubConfigRepo(repo: String) {
+        editTransportPreferences { it[GITHUB_CONFIG_REPO] = repo }
     }
 
     suspend fun setLastSyncAt(timestamp: Long) {
@@ -713,6 +754,44 @@ class SettingsDataStore @Inject constructor(
     fun getGitHubPat(): String = encryptedApiKeyStore.getGitHubPat()
 
     fun setGitHubPat(token: String) = encryptedApiKeyStore.setGitHubPat(token)
+
+    suspend fun exportSyncSnapshot(
+        appVersion: String,
+        deviceName: String
+    ): SettingsSyncJsonModel {
+        val exportedAt = currentSettingsSyncUpdatedAt()
+        val prefs = dataStore.data.first()
+        val rawPreferences = prefs.asMap().mapKeys { it.key.name }
+        return SettingsSyncJsonModel(
+            exportedAt = exportedAt,
+            appVersion = appVersion,
+            deviceName = deviceName,
+            preferences = SettingsSyncCodec.encodePreferences(
+                preferences = rawPreferences,
+                excludedKeys = nonSyncablePreferenceKeys,
+                excludedPrefixes = nonSyncablePreferencePrefixes
+            )
+        )
+    }
+
+    suspend fun importSyncSnapshot(snapshot: SettingsSyncJsonModel) {
+        val importedValues = SettingsSyncCodec.decodeSnapshot(snapshot)
+        validateImportedPreferences(importedValues)
+        val importedUpdatedAt = maxOf(
+            snapshot.exportedAt,
+            (importedValues[SETTINGS_SYNC_UPDATED_AT.name] as? Long) ?: 0L
+        )
+        dataStore.edit { prefs ->
+            clearSyncablePreferences(prefs)
+            importedValues.forEach { (key, value) ->
+                if (!isSyncablePreferenceKey(key)) return@forEach
+                applyImportedPreference(prefs, key, value)
+            }
+            if (importedUpdatedAt > 0L) {
+                prefs[SETTINGS_SYNC_UPDATED_AT] = importedUpdatedAt
+            }
+        }
+    }
 
     private fun providerFromPrefs(prefs: Preferences): AiProvider {
         return when (prefs[PROVIDER]) {
@@ -817,5 +896,149 @@ class SettingsDataStore @Inject constructor(
 
     private fun clampImageCompressionTarget(value: Int): Int {
         return value.coerceIn(minImageCompressionTargetBytes, maxImageCompressionTargetBytes)
+    }
+
+    private suspend fun editSyncablePreferences(block: (MutablePreferences) -> Unit) {
+        dataStore.edit { prefs ->
+            block(prefs)
+            prefs[SETTINGS_SYNC_UPDATED_AT] = System.currentTimeMillis()
+        }
+    }
+
+    suspend fun markSettingsSyncUpdatedAt(timestamp: Long = System.currentTimeMillis()) {
+        dataStore.edit { prefs ->
+            prefs[SETTINGS_SYNC_UPDATED_AT] = timestamp
+        }
+    }
+
+    private suspend fun currentSettingsSyncUpdatedAt(): Long {
+        return dataStore.data.first()[SETTINGS_SYNC_UPDATED_AT] ?: 0L
+    }
+
+    private suspend fun editTransportPreferences(block: (MutablePreferences) -> Unit) {
+        dataStore.edit { prefs ->
+            block(prefs)
+        }
+    }
+
+    private fun clearSyncablePreferences(prefs: MutablePreferences) {
+        prefs.asMap().keys.forEach { key ->
+            if (!isSyncablePreferenceKey(key.name)) return@forEach
+            removePreference(prefs, key)
+        }
+    }
+
+    private fun isSyncablePreferenceKey(key: String): Boolean {
+        if (key in nonSyncablePreferenceKeys) return false
+        if (nonSyncablePreferencePrefixes.any(key::startsWith)) return false
+        return true
+    }
+
+    private fun validateImportedPreferences(importedValues: Map<String, Any>) {
+        importedValues.forEach { (key, value) ->
+            if (!isSyncablePreferenceKey(key)) return@forEach
+            val expectedType = syncablePreferenceTypes[key] ?: return@forEach
+            val typeMatches = when (expectedType) {
+                SyncValueType.STRING -> value is String
+                SyncValueType.INT -> value is Int
+                SyncValueType.LONG -> value is Long
+                SyncValueType.FLOAT -> value is Float
+                SyncValueType.BOOLEAN -> value is Boolean
+            }
+            if (!typeMatches) {
+                throw IllegalStateException("Invalid imported type for settings key: $key")
+            }
+        }
+    }
+
+    private fun applyImportedPreference(
+        prefs: MutablePreferences,
+        key: String,
+        value: Any
+    ) {
+        when (syncablePreferenceTypes[key]) {
+            SyncValueType.STRING -> prefs[stringPreferencesKey(key)] = value as String
+            SyncValueType.INT -> prefs[intPreferencesKey(key)] = value as Int
+            SyncValueType.LONG -> prefs[longPreferencesKey(key)] = value as Long
+            SyncValueType.FLOAT -> prefs[floatPreferencesKey(key)] = value as Float
+            SyncValueType.BOOLEAN -> prefs[booleanPreferencesKey(key)] = value as Boolean
+            null -> Unit
+        }
+    }
+
+    private fun buildSyncablePreferenceTypes(): Map<String, SyncValueType> = buildMap {
+        fun register(key: Preferences.Key<String>) {
+            put(key.name, SyncValueType.STRING)
+        }
+
+        fun register(key: Preferences.Key<Int>) {
+            put(key.name, SyncValueType.INT)
+        }
+
+        fun register(key: Preferences.Key<Long>) {
+            put(key.name, SyncValueType.LONG)
+        }
+
+        fun register(key: Preferences.Key<Float>) {
+            put(key.name, SyncValueType.FLOAT)
+        }
+
+        fun register(key: Preferences.Key<Boolean>) {
+            put(key.name, SyncValueType.BOOLEAN)
+        }
+
+        register(API_KEY)
+        register(MODEL)
+        register(BASE_URL)
+        register(PROVIDER)
+        register(ANTHROPIC_MODEL)
+        register(OPENAI_MODEL)
+        register(ANTHROPIC_BASE_URL)
+        register(OPENAI_BASE_URL)
+        register(FAST_ANTHROPIC_MODEL)
+        register(FAST_OPENAI_MODEL)
+        register(AI_PROVIDERS_JSON)
+        register(AI_DEFAULT_PROVIDER)
+        register(AI_SCOPE_CONFIGS_JSON)
+        register(AI_DEBUG_MODE)
+        register(AI_RESPONSE_UNWRAP_ENABLED)
+        register(AI_JSON_REPAIR_ENABLED)
+        register(WORD_ORGANIZE_HIGH_QUALITY_ENABLED)
+        register(WORD_ORGANIZE_REFERENCE_SOURCE)
+        register(IMAGE_COMPRESSION_ENABLED)
+        register(IMAGE_COMPRESSION_TARGET_BYTES)
+        register(BACKGROUND_TASK_CONCURRENCY)
+        register(GITHUB_OWNER)
+        register(GITHUB_REPO)
+        register(GITHUB_CONFIG_SYNC_ENABLED)
+        register(GITHUB_CONFIG_REPO)
+        register(SETTINGS_SYNC_UPDATED_AT)
+        register(GUARDIAN_DETAIL_CONCURRENCY)
+        register(ONLINE_READING_SOURCE)
+        register(TTS_RATE)
+        register(TTS_PITCH)
+        register(TTS_LOCALE)
+        register(TTS_AUTO_STUDY)
+        register(TTS_PREWARM_CONCURRENCY)
+        register(TTS_PREWARM_RETRY)
+        register(POOL_WINDOW_SIZE)
+        register(POOL_MAX_CONCURRENT)
+        register(POOL_REQUESTS_PER_MINUTE)
+        register(POOL_RETRY_MODE)
+        register(POOL_MANAGED_MODE)
+        register(BRAINSTORM_CLUSTER_SIZE)
+        register(BRAINSTORM_QUALITY_MIN_CONFIDENCE)
+        register(BRAINSTORM_ACTIVE_RECALL)
+        register(STUDY_WORD_NOTE_ENABLED)
+        register(SCAN_RESCORE_AFTER_HOURS)
+        register(APP_LOCALE)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun removePreference(
+        prefs: MutablePreferences,
+        key: Preferences.Key<*>
+    ) {
+        prefs.remove(key as Preferences.Key<Any>)
     }
 }

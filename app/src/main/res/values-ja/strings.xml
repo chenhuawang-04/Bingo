@@ -79,7 +79,7 @@
     <string name="dict_pool_balanced">プール生成（バランス・ローカル）</string>
     <string name="dict_pool_balanced_ai">プール生成（バランス+AI）</string>
     <string name="dict_pool_quality_first">プール生成（品質優先・高コスト）</string>
-    <string name="dict_pool_review">プールレビュー（AIレビュー・品質）</string>
+    <string name="dict_pool_review">プール精製（AI降格・品質）</string>
     <string name="dict_select_word_hint">単語を選択して詳細を表示</string>
     <string name="dict_words_filtered">フィルター: %1$d/%2$d語</string>
     <string name="dict_words_total">%d語</string>
@@ -96,8 +96,8 @@
     <string name="dict_algorithm_updated">アルゴリズムが更新されました。再構築を推奨します</string>
     <string name="dict_view_graph">グラフを表示</string>
     <string name="dict_view_pool_graph">プール関係グラフを表示</string>
-    <string name="dict_review_paused">レビュー一時停止中</string>
-    <string name="dict_reviewing">レビュー中</string>
+    <string name="dict_review_paused">精製を一時停止中</string>
+    <string name="dict_reviewing">精製中</string>
     <string name="dict_organizing_count">整理中: %d</string>
     <string name="dict_organized_count">完了: %d</string>
     <string name="dict_failed_count">失敗: %d</string>
@@ -339,7 +339,7 @@
     <string name="settings_scope_pool">プール整理</string>
     <string name="settings_scope_article">記事解析</string>
     <string name="settings_scope_search">検索モデル</string>
-    <string name="settings_scope_reviewer">プールレビュー</string>
+    <string name="settings_scope_reviewer">プール精製</string>
     <string name="settings_image_compression">画像圧縮</string>
     <string name="settings_background_task">バックグラウンドタスク</string>
     <string name="settings_cloud_sync">クラウド同期</string>
@@ -388,7 +388,7 @@
     <string name="task_management">バックグラウンドタスク</string>
     <string name="task_word_organize">単語整理</string>
     <string name="task_pool_rebuild">プール再構築</string>
-    <string name="task_pool_review">プールレビュー</string>
+    <string name="task_pool_review">プール精製</string>
     <string name="task_question_generate">問題生成</string>
     <string name="task_answer_generate">回答生成</string>
     <string name="task_source_verify">ソース検証</string>

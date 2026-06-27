@@ -21,6 +21,7 @@ import com.xty.englishhelper.ui.screen.settings.components.ChipOption
 import com.xty.englishhelper.ui.screen.settings.components.SettingsChipRow
 import com.xty.englishhelper.ui.screen.settings.components.SettingsSliderRow
 import com.xty.englishhelper.ui.screen.settings.components.SettingsSwitchRow
+import java.util.Locale
 
 /**
  * 学习功能设置区块
@@ -185,6 +186,13 @@ internal fun StudySettingsSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_word_note),
+                    description = stringResource(R.string.settings_word_note_desc),
+                    checked = state.studyWordNoteEnabled,
+                    onCheckedChange = viewModel::onStudyWordNoteEnabledChange
+                )
+
                 SettingsSliderRow(
                     title = stringResource(R.string.settings_cluster_size, state.brainstormClusterSize),
                     description = stringResource(R.string.settings_cluster_size_desc),
@@ -196,12 +204,15 @@ internal fun StudySettingsSection(
                 )
 
                 SettingsSliderRow(
-                    title = stringResource(R.string.settings_quality_threshold, String.format("%.2f", state.brainstormQualityMinConfidence)),
+                    title = stringResource(
+                        R.string.settings_quality_threshold,
+                        String.format(Locale.getDefault(), "%.2f", state.brainstormQualityMinConfidence)
+                    ),
                     description = stringResource(R.string.settings_quality_threshold_desc),
                     value = state.brainstormQualityMinConfidence,
                     valueRange = 0f..0.9f,
                     steps = 17,
-                    valueLabel = { String.format("%.2f", it) },
+                    valueLabel = { String.format(Locale.getDefault(), "%.2f", it) },
                     onValueChange = viewModel::onBrainstormQualityMinConfidenceChange
                 )
 

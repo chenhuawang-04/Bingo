@@ -3,16 +3,16 @@ package com.xty.englishhelper.domain.background
 import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class BackgroundTaskManagerSelectionTest {
 
     @Test
-    fun `poolTaskMutexKey only locks review and quality-first rebuild for same dictionary and strategy`() {
+    fun `poolTaskMutexKey locks quality-first edge writers per dictionary`() {
         val reviewTask = poolTaskTask(
             id = 1L,
             type = BackgroundTaskType.WORD_POOL_REVIEW,
@@ -28,14 +28,26 @@ class BackgroundTaskManagerSelectionTest {
             type = BackgroundTaskType.WORD_POOL_REBUILD,
             payload = WordPoolRebuildPayload(dictionaryId = 10L, strategy = "BALANCED")
         )
+        val noteTask = poolTaskTask(
+            id = 4L,
+            type = BackgroundTaskType.WORD_NOTE_ORGANIZE,
+            payload = WordNoteOrganizePayload(
+                dictionaryId = 10L,
+                sourceWordId = 1L,
+                sourceSpelling = "adapt",
+                targetWordId = 2L,
+                targetSpelling = "adopt"
+            )
+        )
 
-        assertEquals(PoolTaskMutexKey(10L, "QUALITY_FIRST"), poolTaskMutexKey(reviewTask))
-        assertEquals(PoolTaskMutexKey(10L, "QUALITY_FIRST"), poolTaskMutexKey(qualityFirstTask))
-        assertNull(poolTaskMutexKey(balancedTask))
+        assertEquals(PoolTaskMutexKey(10L, "__EDGE_WRITE__"), poolTaskMutexKey(reviewTask))
+        assertEquals(PoolTaskMutexKey(10L, "__EDGE_WRITE__"), poolTaskMutexKey(qualityFirstTask))
+        assertEquals(PoolTaskMutexKey(10L, "__EDGE_WRITE__"), poolTaskMutexKey(noteTask))
+        assertEquals(null, poolTaskMutexKey(balancedTask))
     }
 
     @Test
-    fun `selectLaunchablePendingTasks skips review rebuild conflicts but keeps unrelated tasks`() {
+    fun `selectLaunchablePendingTasks skips edge-write conflicts but keeps unrelated tasks`() {
         val running = listOf(
             poolTaskTask(
                 id = 100L,
@@ -59,6 +71,17 @@ class BackgroundTaskManagerSelectionTest {
                 id = 3L,
                 type = BackgroundTaskType.WORD_POOL_REBUILD,
                 payload = WordPoolRebuildPayload(dictionaryId = 1L, strategy = "BALANCED")
+            ),
+            poolTaskTask(
+                id = 4L,
+                type = BackgroundTaskType.WORD_NOTE_ORGANIZE,
+                payload = WordNoteOrganizePayload(
+                    dictionaryId = 1L,
+                    sourceWordId = 1L,
+                    sourceSpelling = "adapt",
+                    targetWordId = 2L,
+                    targetSpelling = "adopt"
+                )
             )
         )
 
@@ -72,7 +95,7 @@ class BackgroundTaskManagerSelectionTest {
     }
 
     @Test
-    fun `selectLaunchablePendingTasks prevents pending review and rebuild from launching together`() {
+    fun `selectLaunchablePendingTasks prevents pending note review and rebuild from launching together`() {
         val pending = listOf(
             poolTaskTask(
                 id = 11L,
@@ -88,6 +111,17 @@ class BackgroundTaskManagerSelectionTest {
                 id = 13L,
                 type = BackgroundTaskType.WORD_POOL_REVIEW,
                 payload = WordPoolReviewPayload(dictionaryId = 6L, strategy = "QUALITY_FIRST")
+            ),
+            poolTaskTask(
+                id = 14L,
+                type = BackgroundTaskType.WORD_NOTE_ORGANIZE,
+                payload = WordNoteOrganizePayload(
+                    dictionaryId = 5L,
+                    sourceWordId = 8L,
+                    sourceSpelling = "adapt",
+                    targetWordId = 9L,
+                    targetSpelling = "adapter"
+                )
             )
         )
 

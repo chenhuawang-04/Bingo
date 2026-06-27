@@ -7,6 +7,12 @@ import kotlinx.coroutines.flow.Flow
 interface WordRepository {
     fun getWordsByDictionary(dictionaryId: Long): Flow<List<WordDetails>>
     fun searchWords(dictionaryId: Long, query: String): Flow<List<WordDetails>>
+    suspend fun suggestWordSpellings(
+        dictionaryId: Long,
+        query: String,
+        excludeWordId: Long,
+        limit: Int
+    ): List<String>
     suspend fun getWordById(wordId: Long): WordDetails?
     suspend fun insertWord(word: WordDetails): Long
     suspend fun updateWord(word: WordDetails)

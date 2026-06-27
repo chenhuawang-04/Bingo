@@ -37,6 +37,23 @@ interface WordDao {
     @Query("SELECT * FROM words WHERE dictionary_id = :dictionaryId AND spelling LIKE '%' || :query || '%' ORDER BY spelling ASC")
     fun searchWords(dictionaryId: Long, query: String): Flow<List<WordWithDetails>>
 
+    @Query(
+        """
+        SELECT spelling FROM words
+        WHERE dictionary_id = :dictionaryId
+          AND id != :excludeWordId
+          AND normalized_spelling LIKE :normalizedQuery || '%'
+        ORDER BY normalized_spelling ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun suggestWordSpellings(
+        dictionaryId: Long,
+        normalizedQuery: String,
+        excludeWordId: Long,
+        limit: Int
+    ): List<String>
+
     @Transaction
     @Query("SELECT * FROM words WHERE id = :wordId")
     suspend fun getWordById(wordId: Long): WordWithDetails?

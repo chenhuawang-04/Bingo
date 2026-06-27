@@ -18,6 +18,7 @@ data class BackgroundTask(
 enum class BackgroundTaskType {
     UNKNOWN,
     WORD_ORGANIZE,
+    WORD_NOTE_ORGANIZE,
     WORD_POOL_REBUILD,
     WORD_POOL_REVIEW,
     QUESTION_GENERATE,

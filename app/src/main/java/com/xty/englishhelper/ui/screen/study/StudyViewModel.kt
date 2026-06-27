@@ -7,12 +7,17 @@ import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.EdgeNeighbor
 import com.xty.englishhelper.domain.model.EdgeType
+import com.xty.englishhelper.domain.model.BackgroundTaskStatus
+import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.BrainstormDailyGoal
 import com.xty.englishhelper.domain.model.BrainstormProgressResult
+import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
+import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
+import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
 import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.domain.usecase.brainstorm.BuildBrainstormSessionUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.CollectRelatedGroupUseCase
@@ -22,11 +27,16 @@ import com.xty.englishhelper.domain.usecase.brainstorm.UpdateBrainstormProgressU
 import com.xty.englishhelper.domain.usecase.dictionary.GetCloudWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.study.GetDueWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.GetNewWordsUseCase
+import com.xty.englishhelper.domain.usecase.study.GetStudyWordEdgePreviewsUseCase
 import com.xty.englishhelper.domain.usecase.study.PreviewIntervalsUseCase
 import com.xty.englishhelper.domain.usecase.study.ReviewWordUseCase
+import com.xty.englishhelper.domain.usecase.study.SearchStudyWordNoteSuggestionsUseCase
+import com.xty.englishhelper.domain.usecase.study.SubmitStudyWordNoteUseCase
+import com.xty.englishhelper.domain.usecase.study.StudyWordNoteOutcome
 import com.xty.englishhelper.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,13 +65,21 @@ class StudyViewModel @Inject constructor(
     private val getCloudWordExamples: GetCloudWordExamplesUseCase,
     private val settingsDataStore: SettingsDataStore,
     private val ttsManager: TtsManager,
+    private val backgroundTaskRepository: BackgroundTaskRepository,
     private val planAutoProgressTracker: PlanAutoProgressTracker,
     private val getBrainstormDailyGoal: GetBrainstormDailyGoalUseCase,
     private val saveBrainstormDailyGoal: SaveBrainstormDailyGoalUseCase,
     private val updateBrainstormProgress: UpdateBrainstormProgressUseCase,
     private val collectRelatedGroup: CollectRelatedGroupUseCase,
-    private val buildBrainstormSession: BuildBrainstormSessionUseCase
+    private val buildBrainstormSession: BuildBrainstormSessionUseCase,
+    private val getStudyWordEdgePreviews: GetStudyWordEdgePreviewsUseCase,
+    private val searchStudyWordNoteSuggestions: SearchStudyWordNoteSuggestionsUseCase,
+    private val submitStudyWordNote: SubmitStudyWordNoteUseCase
 ) : ViewModel() {
+    private companion object {
+        const val WORD_NOTE_SUGGESTION_MIN_QUERY_LENGTH = 2
+        const val WORD_NOTE_SUGGESTION_DEBOUNCE_MS = 120L
+    }
 
     private val unitIdsStr: String = savedStateHandle["unitIds"] ?: ""
     private val unitIds: List<Long> = unitIdsStr.split(",").mapNotNull { it.toLongOrNull() }
@@ -101,6 +119,9 @@ class StudyViewModel @Inject constructor(
     private var isProcessingRating = false
     private var cloudExamplesJob: Job? = null
     private var cloudExamplesRequestVersion: Long = 0L
+    private val pendingWordNoteTargetWordIds = linkedSetOf<Long>()
+    private var wordNoteSuggestionJob: Job? = null
+    private var wordNoteSuggestionRequestVersion: Long = 0L
 
     // Brainstorm daily goal state
     private var brainstormDailyGoal: BrainstormDailyGoal? = null
@@ -111,6 +132,8 @@ class StudyViewModel @Inject constructor(
     private var dueWordIds = emptySet<Long>()  // 本次会话中的复习词 ID
 
     init {
+        observeWordNoteSetting()
+        observeWordNoteTasks()
         loadSession()
     }
 
@@ -132,6 +155,105 @@ class StudyViewModel @Inject constructor(
                 loadStudyContent()
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, phase = StudyPhase.Finished) }
+            }
+        }
+    }
+
+    private fun observeWordNoteSetting() {
+        viewModelScope.launch {
+            settingsDataStore.studyWordNoteEnabled.collect { enabled ->
+                _uiState.update { state ->
+                    state.copy(
+                        wordNoteEnabled = enabled,
+                        wordNoteInput = if (enabled) state.wordNoteInput else "",
+                        wordNoteSuggestions = if (enabled) state.wordNoteSuggestions else emptyList(),
+                        wordNoteSuggestionsLoading = if (enabled) state.wordNoteSuggestionsLoading else false,
+                        wordNoteSuggestionsExpanded = if (enabled) state.wordNoteSuggestionsExpanded else false,
+                        wordNoteMessage = if (enabled) state.wordNoteMessage else null,
+                        wordNoteError = if (enabled) state.wordNoteError else null
+                    )
+                }
+                if (!enabled) {
+                    cancelWordNoteSuggestionRequest()
+                }
+                refreshCurrentWordEdgesIfNeeded(enabled)
+            }
+        }
+    }
+
+    private fun observeWordNoteTasks() {
+        viewModelScope.launch {
+            backgroundTaskRepository.observeTasksByTypes(listOf(BackgroundTaskType.WORD_NOTE_ORGANIZE)).collect { tasks ->
+                val currentWord = _uiState.value.currentWord ?: return@collect
+                if (pendingWordNoteTargetWordIds.isEmpty()) return@collect
+
+                val relevantTasks = tasks.mapNotNull { task ->
+                    val payload = task.payload as? WordNoteOrganizePayload ?: return@mapNotNull null
+                    if (payload.sourceWordId != currentWord.id ||
+                        payload.targetWordId !in pendingWordNoteTargetWordIds
+                    ) {
+                        return@mapNotNull null
+                    }
+                    task to payload
+                }
+                if (relevantTasks.isEmpty()) return@collect
+
+                val successTasks = relevantTasks.filter { it.first.status == BackgroundTaskStatus.SUCCESS }
+                val failedTasks = relevantTasks.filter { it.first.status == BackgroundTaskStatus.FAILED }
+                val activeTasks = relevantTasks.filter {
+                    it.first.status == BackgroundTaskStatus.PENDING ||
+                        it.first.status == BackgroundTaskStatus.RUNNING
+                }
+
+                successTasks.forEach { (_, payload) ->
+                    pendingWordNoteTargetWordIds.remove(payload.targetWordId)
+                }
+                failedTasks.forEach { (_, payload) ->
+                    pendingWordNoteTargetWordIds.remove(payload.targetWordId)
+                }
+
+                if (successTasks.isNotEmpty()) {
+                    refreshCurrentWordEdgesIfNeeded(_uiState.value.wordNoteEnabled)
+                }
+
+                when {
+                    successTasks.isNotEmpty() -> {
+                        val successSpellings = successTasks.map { it.second.targetSpelling }
+                        val failureCount = failedTasks.size
+                        val message = buildWordNoteCompletionMessage(successSpellings, failureCount)
+                        _uiState.update { state ->
+                            state.copy(
+                                wordNoteSubmitting = false,
+                                wordNoteMessage = message,
+                                wordNoteError = null
+                            )
+                        }
+                    }
+
+                    failedTasks.isNotEmpty() -> {
+                        val error = buildWordNoteFailureMessage(failedTasks)
+                        _uiState.update { state ->
+                            state.copy(
+                                wordNoteSubmitting = false,
+                                wordNoteError = error,
+                                wordNoteMessage = null
+                            )
+                        }
+                    }
+
+                    activeTasks.isNotEmpty() -> {
+                        val latestActive = activeTasks.maxByOrNull { it.first.updatedAt } ?: return@collect
+                        _uiState.update { state ->
+                            state.copy(
+                                wordNoteSubmitting = false,
+                                wordNoteMessage = "${latestActive.second.targetSpelling} 正在后台整理",
+                                wordNoteError = null
+                            )
+                        }
+                    }
+
+                    else -> Unit
+                }
             }
         }
     }
@@ -214,7 +336,7 @@ class StudyViewModel @Inject constructor(
         }
     }
 
-    private fun showNextWord() {
+    private suspend fun showNextWord() {
         if (queue.isEmpty()) {
             isProcessingRating = false
             trackStudySessionProgressIfNeeded()
@@ -242,28 +364,14 @@ class StudyViewModel @Inject constructor(
         if (nextIndex >= 0) {
             isProcessingRating = false
             val entry = queue.removeAt(nextIndex)
-
-            // Compute related spellings for brainstorm tag
+            val noteEnabled = settingsDataStore.getStudyWordNoteEnabled()
             val relatedSpellings = if (studyMode == StudyMode.BRAINSTORM) {
                 val related = brainstormRelated[entry.word.id] ?: emptySet()
                 related.take(5).mapNotNull { wordIdToSpelling[it] }
             } else {
                 emptyList()
             }
-
-            // Compute edge previews for enhanced brainstorm tag
-            val edgePreviews = if (studyMode == StudyMode.BRAINSTORM) {
-                val neighbors = brainstormEdgeMap[entry.word.id] ?: emptyMap()
-                neighbors.entries
-                    .sortedByDescending { it.value.size }
-                    .take(5)
-                    .mapNotNull { (neighborId, edgeTypes) ->
-                        val spelling = wordIdToSpelling[neighborId] ?: return@mapNotNull null
-                        WordEdgePreview(spelling, selectDisplayEdgeType(edgeTypes))
-                    }
-            } else {
-                emptyList()
-            }
+            val edgePreviews = buildCurrentWordEdges(entry.word, noteEnabled)
 
             // 阶段C：当前词所在簇的掌握进度 + 记忆钩子 + 是否出选择题
             val clusterIdx = brainstormClusterOf[entry.word.id]
@@ -287,6 +395,14 @@ class StudyViewModel @Inject constructor(
                     stats = buildStats(),
                     currentWordRelatedSpellings = relatedSpellings,
                     currentWordEdges = edgePreviews,
+                    wordNoteEnabled = noteEnabled,
+                    wordNoteInput = "",
+                    wordNoteSuggestions = emptyList(),
+                    wordNoteSuggestionsLoading = false,
+                    wordNoteSuggestionsExpanded = false,
+                    wordNoteSubmitting = false,
+                    wordNoteMessage = null,
+                    wordNoteError = null,
                     brainstormClusterLearned = clusterLearned,
                     brainstormClusterTotal = clusterTotal,
                     currentWordHook = hook,
@@ -296,6 +412,8 @@ class StudyViewModel @Inject constructor(
                     cloudExamplesError = null
                 )
             }
+            pendingWordNoteTargetWordIds.clear()
+            cancelWordNoteSuggestionRequest()
             cloudExamplesJob?.cancel()
 
             // Auto-speak the word when it appears
@@ -465,6 +583,68 @@ class StudyViewModel @Inject constructor(
         return priority.firstOrNull { it in types } ?: types.first()
     }
 
+    private suspend fun buildCurrentWordEdges(
+        word: WordDetails,
+        wordNoteEnabled: Boolean
+    ): List<WordEdgePreview> {
+        val brainstormEdges = if (studyMode == StudyMode.BRAINSTORM) {
+            val neighbors = brainstormEdgeMap[word.id] ?: emptyMap()
+            neighbors.entries
+                .sortedByDescending { it.value.size }
+                .take(5)
+                .mapNotNull { (neighborId, edgeTypes) ->
+                    val spelling = wordIdToSpelling[neighborId] ?: return@mapNotNull null
+                    WordEdgePreview(spelling, selectDisplayEdgeType(edgeTypes))
+                }
+        } else {
+            emptyList()
+        }
+        if (!wordNoteEnabled) {
+            return if (studyMode == StudyMode.BRAINSTORM) brainstormEdges else emptyList()
+        }
+
+        val confirmedEdges = getStudyWordEdgePreviews(
+            dictionaryId = word.dictionaryId,
+            wordId = word.id,
+            minConfidence = 1.0
+        ).map { preview ->
+            WordEdgePreview(
+                spelling = preview.spelling,
+                edgeType = selectDisplayEdgeType(preview.edgeTypes)
+            )
+        }
+
+        return if (studyMode == StudyMode.BRAINSTORM) {
+            mergeEdgePreviews(brainstormEdges, confirmedEdges)
+        } else {
+            confirmedEdges.take(8)
+        }
+    }
+
+    private fun mergeEdgePreviews(
+        primary: List<WordEdgePreview>,
+        secondary: List<WordEdgePreview>
+    ): List<WordEdgePreview> {
+        val merged = LinkedHashMap<String, WordEdgePreview>()
+        (primary + secondary).forEach { preview ->
+            merged.putIfAbsent(preview.spelling.lowercase(), preview)
+        }
+        return merged.values.take(8)
+    }
+
+    private fun refreshCurrentWordEdgesIfNeeded(wordNoteEnabled: Boolean) {
+        val currentWord = _uiState.value.currentWord ?: return
+        val state = _uiState.value
+        if (state.phase != StudyPhase.Studying || state.showAnswer) return
+        viewModelScope.launch {
+            val refreshed = buildCurrentWordEdges(currentWord, wordNoteEnabled)
+            if (_uiState.value.currentWord?.id != currentWord.id || _uiState.value.showAnswer) return@launch
+            _uiState.update {
+                it.copy(currentWordEdges = refreshed)
+            }
+        }
+    }
+
     // ── 阶段C：记忆钩子 / 选择题 / Again 拉钩 ──
 
     /** 关系的简短可读标签（用于钩子与选择题题干）。 */
@@ -555,6 +735,210 @@ class StudyViewModel @Inject constructor(
         val rating = if (quiz.isCorrect) Rating.Good else Rating.Again
         _uiState.update { it.copy(brainstormQuiz = null) }
         onRate(rating)
+    }
+
+    fun onWordNoteInputChange(value: String) {
+        _uiState.update {
+            it.copy(
+                wordNoteInput = value,
+                wordNoteSuggestionsExpanded = value.isNotBlank(),
+                wordNoteError = null,
+                wordNoteMessage = null
+            )
+        }
+        requestWordNoteSuggestions(value)
+    }
+
+    fun onWordNoteSuggestionSelected(suggestion: String) {
+        cancelWordNoteSuggestionRequest()
+        _uiState.update {
+            it.copy(
+                wordNoteInput = suggestion,
+                wordNoteSuggestionsExpanded = false,
+                wordNoteError = null,
+                wordNoteMessage = null
+            )
+        }
+    }
+
+    fun setWordNoteSuggestionsExpanded(expanded: Boolean) {
+        _uiState.update { state ->
+            state.copy(
+                wordNoteSuggestionsExpanded = expanded && state.wordNoteSuggestions.isNotEmpty()
+            )
+        }
+    }
+
+    fun submitWordNote() {
+        val state = _uiState.value
+        if (!state.wordNoteEnabled || state.wordNoteSubmitting) return
+        val currentWord = state.currentWord ?: return
+        cancelWordNoteSuggestionRequest()
+        _uiState.update {
+            it.copy(
+                wordNoteSuggestions = emptyList(),
+                wordNoteSuggestionsLoading = false,
+                wordNoteSuggestionsExpanded = false
+            )
+        }
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    wordNoteSubmitting = true,
+                    wordNoteError = null,
+                    wordNoteMessage = null
+                )
+            }
+            try {
+                val result = submitStudyWordNote(
+                    currentWord = currentWord,
+                    rawInput = state.wordNoteInput,
+                    fallbackUnitIds = unitIds
+                )
+                if (_uiState.value.currentWord?.id != currentWord.id) return@launch
+
+                when (result.outcome) {
+                    StudyWordNoteOutcome.PROMOTED -> pendingWordNoteTargetWordIds.remove(result.relatedWordId)
+                    StudyWordNoteOutcome.QUEUED,
+                    StudyWordNoteOutcome.ALREADY_QUEUED -> pendingWordNoteTargetWordIds.add(result.relatedWordId)
+                }
+
+                val refreshedEdges = if (result.outcome == StudyWordNoteOutcome.PROMOTED) {
+                    buildCurrentWordEdges(currentWord, _uiState.value.wordNoteEnabled)
+                } else {
+                    _uiState.value.currentWordEdges
+                }
+
+                _uiState.update {
+                    it.copy(
+                        currentWordEdges = refreshedEdges,
+                        wordNoteInput = "",
+                        wordNoteSuggestions = emptyList(),
+                        wordNoteSuggestionsLoading = false,
+                        wordNoteSuggestionsExpanded = false,
+                        wordNoteSubmitting = false,
+                        wordNoteMessage = result.message,
+                        wordNoteError = null
+                    )
+                }
+            } catch (e: Exception) {
+                if (_uiState.value.currentWord?.id != currentWord.id) return@launch
+                _uiState.update {
+                    it.copy(
+                        wordNoteSubmitting = false,
+                        wordNoteError = e.message ?: "单词便签处理失败",
+                        wordNoteMessage = null
+                    )
+                }
+            }
+        }
+    }
+
+    private fun requestWordNoteSuggestions(rawInput: String) {
+        val currentWord = _uiState.value.currentWord
+        if (!_uiState.value.wordNoteEnabled || currentWord == null) {
+            clearWordNoteSuggestions()
+            return
+        }
+
+        val normalizedQuery = rawInput.trim().lowercase()
+        if (normalizedQuery.length < WORD_NOTE_SUGGESTION_MIN_QUERY_LENGTH) {
+            clearWordNoteSuggestions()
+            return
+        }
+
+        cancelWordNoteSuggestionRequest()
+        val requestVersion = ++wordNoteSuggestionRequestVersion
+        _uiState.update {
+            it.copy(
+                wordNoteSuggestions = emptyList(),
+                wordNoteSuggestionsLoading = true,
+                wordNoteSuggestionsExpanded = true
+            )
+        }
+
+        wordNoteSuggestionJob = viewModelScope.launch {
+            delay(WORD_NOTE_SUGGESTION_DEBOUNCE_MS)
+            runCatching {
+                searchStudyWordNoteSuggestions(
+                    currentWord = currentWord,
+                    rawInput = normalizedQuery
+                )
+            }.onSuccess { suggestions ->
+                val state = _uiState.value
+                if (requestVersion != wordNoteSuggestionRequestVersion ||
+                    state.currentWord?.id != currentWord.id ||
+                    state.wordNoteInput.trim().lowercase() != normalizedQuery
+                ) {
+                    return@onSuccess
+                }
+                _uiState.update {
+                    it.copy(
+                        wordNoteSuggestions = suggestions,
+                        wordNoteSuggestionsLoading = false,
+                        wordNoteSuggestionsExpanded = suggestions.isNotEmpty() && it.wordNoteSuggestionsExpanded
+                    )
+                }
+            }.onFailure {
+                val state = _uiState.value
+                if (requestVersion != wordNoteSuggestionRequestVersion ||
+                    state.currentWord?.id != currentWord.id ||
+                    state.wordNoteInput.trim().lowercase() != normalizedQuery
+                ) {
+                    return@onFailure
+                }
+                _uiState.update {
+                    it.copy(
+                        wordNoteSuggestions = emptyList(),
+                        wordNoteSuggestionsLoading = false,
+                        wordNoteSuggestionsExpanded = false
+                    )
+                }
+            }
+        }
+    }
+
+    private fun clearWordNoteSuggestions() {
+        cancelWordNoteSuggestionRequest()
+        _uiState.update {
+            it.copy(
+                wordNoteSuggestions = emptyList(),
+                wordNoteSuggestionsLoading = false,
+                wordNoteSuggestionsExpanded = false
+            )
+        }
+    }
+
+    private fun cancelWordNoteSuggestionRequest() {
+        wordNoteSuggestionJob?.cancel()
+        wordNoteSuggestionJob = null
+        wordNoteSuggestionRequestVersion++
+    }
+
+    private fun buildWordNoteCompletionMessage(
+        successSpellings: List<String>,
+        failureCount: Int
+    ): String {
+        val successPart = if (successSpellings.size == 1) {
+            "${successSpellings.first()} 已加入强关联"
+        } else {
+            "已加入 ${successSpellings.size} 个强关联词"
+        }
+        return if (failureCount > 0) {
+            "$successPart，另有 $failureCount 个整理失败"
+        } else {
+            successPart
+        }
+    }
+
+    private fun buildWordNoteFailureMessage(
+        failedTasks: List<Pair<com.xty.englishhelper.domain.model.BackgroundTask, WordNoteOrganizePayload>>
+    ): String {
+        if (failedTasks.size == 1) {
+            val (task, payload) = failedTasks.first()
+            return task.errorMessage ?: "${payload.targetSpelling} 后台整理失败"
+        }
+        return "${failedTasks.size} 个关联词后台整理失败"
     }
 
     private fun buildStats(): StudyStats {

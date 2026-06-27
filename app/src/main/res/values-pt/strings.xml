@@ -79,7 +79,7 @@
     <string name="dict_pool_balanced">Gerar Pool (Equilibrado·Local)</string>
     <string name="dict_pool_balanced_ai">Gerar Pool (Equilibrado+AI)</string>
     <string name="dict_pool_quality_first">Gerar Pool (Qualidade·Alto Custo)</string>
-    <string name="dict_pool_review">Revisão de Pool (Revisão AI·Qualidade)</string>
+    <string name="dict_pool_review">Refinar Pool (Rebaixamento IA·Qualidade)</string>
     <string name="dict_select_word_hint">Selecione uma palavra para ver detalhes</string>
     <string name="dict_words_filtered">%1$d/%2$d palavras filtradas</string>
     <string name="dict_words_total">%d palavras</string>
@@ -96,8 +96,8 @@
     <string name="dict_algorithm_updated">Algoritmo atualizado, recomenda-se reconstruir</string>
     <string name="dict_view_graph">Ver Gráfico</string>
     <string name="dict_view_pool_graph">Ver gráfico de relações do pool</string>
-    <string name="dict_review_paused">Revisão Pausada</string>
-    <string name="dict_reviewing">Revisando</string>
+    <string name="dict_review_paused">Refinamento pausado</string>
+    <string name="dict_reviewing">Refinando</string>
     <string name="dict_organizing_count">Organizando: %d</string>
     <string name="dict_organized_count">Concluído: %d</string>
     <string name="dict_failed_count">Falhou: %d</string>
@@ -339,7 +339,7 @@
     <string name="settings_scope_pool">Organização de Pool</string>
     <string name="settings_scope_article">Análise de Artigo</string>
     <string name="settings_scope_search">Modelo de Busca</string>
-    <string name="settings_scope_reviewer">Revisão de Pool</string>
+    <string name="settings_scope_reviewer">Refinamento de Pool</string>
     <string name="settings_image_compression">Compressão de Imagem</string>
     <string name="settings_background_task">Tarefas em Segundo Plano</string>
     <string name="settings_cloud_sync">Sincronização na Nuvem</string>
@@ -388,7 +388,7 @@
     <string name="task_management">Tarefas em Segundo Plano</string>
     <string name="task_word_organize">Organização de Palavras</string>
     <string name="task_pool_rebuild">Reconstrução de Pool</string>
-    <string name="task_pool_review">Revisão de Pool</string>
+    <string name="task_pool_review">Refinamento de Pool</string>
     <string name="task_question_generate">Geração de Questões</string>
     <string name="task_answer_generate">Geração de Respostas</string>
     <string name="task_source_verify">Verificação de Fonte</string>

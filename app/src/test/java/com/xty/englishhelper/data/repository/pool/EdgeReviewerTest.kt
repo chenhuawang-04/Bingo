@@ -1,7 +1,6 @@
 package com.xty.englishhelper.data.repository.pool
 
 import android.util.Log
-import com.xty.englishhelper.data.local.AppDatabase
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.preferences.SettingsDataStore
@@ -88,14 +87,13 @@ class EdgeReviewerTest {
     }
 
     @Test
-    fun `reviewEdgesWithAi fails after retries instead of swallowing exhausted review errors`() = runTest {
-        val db = mockk<AppDatabase>(relaxed = true)
+    fun `reviewEdgesWithAi fails after retries instead of swallowing exhausted purification errors`() = runTest {
         val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
         val settingsDataStore = mockk<SettingsDataStore>()
         val anthropicClient = mockk<AnthropicApiClient>(relaxed = true)
         val openAiClient = mockk<OpenAiCompatibleApiClient>()
         val provider = AiApiClientProvider(anthropicClient, openAiClient)
-        val reviewer = EdgeReviewer(db, wordEdgeDao, provider, settingsDataStore)
+        val reviewer = EdgeReviewer(wordEdgeDao, provider, settingsDataStore)
 
         coEvery { settingsDataStore.getPoolWindowSize() } returns 1
         coEvery { settingsDataStore.getPoolMaxConcurrent() } returns 1
@@ -144,13 +142,12 @@ class EdgeReviewerTest {
 
     @Test
     fun `reviewEdgesWithAi audits all persisted edges including high confidence ones`() = runTest {
-        val db = mockk<AppDatabase>(relaxed = true)
         val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
         val settingsDataStore = mockk<SettingsDataStore>()
         val anthropicClient = mockk<AnthropicApiClient>(relaxed = true)
         val openAiClient = mockk<OpenAiCompatibleApiClient>()
         val provider = AiApiClientProvider(anthropicClient, openAiClient)
-        val reviewer = EdgeReviewer(db, wordEdgeDao, provider, settingsDataStore)
+        val reviewer = EdgeReviewer(wordEdgeDao, provider, settingsDataStore)
 
         coEvery { settingsDataStore.getPoolWindowSize() } returns 1
         coEvery { settingsDataStore.getPoolMaxConcurrent() } returns 1
@@ -208,14 +205,13 @@ class EdgeReviewerTest {
     }
 
     @Test
-    fun `reviewEdgesWithAi does not persist early successful batches when a later batch fails`() = runTest {
-        val db = mockk<AppDatabase>(relaxed = true)
+    fun `reviewEdgesWithAi persists successful batches before a later batch fails`() = runTest {
         val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
         val settingsDataStore = mockk<SettingsDataStore>()
         val anthropicClient = mockk<AnthropicApiClient>(relaxed = true)
         val openAiClient = mockk<OpenAiCompatibleApiClient>()
         val provider = AiApiClientProvider(anthropicClient, openAiClient)
-        val reviewer = EdgeReviewer(db, wordEdgeDao, provider, settingsDataStore)
+        val reviewer = EdgeReviewer(wordEdgeDao, provider, settingsDataStore)
 
         coEvery { settingsDataStore.getPoolWindowSize() } returns 1
         coEvery { settingsDataStore.getPoolMaxConcurrent() } returns 1
@@ -275,20 +271,19 @@ class EdgeReviewerTest {
         coVerify(exactly = 5) {
             openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
         }
-        coVerify(exactly = 0) {
-            wordEdgeDao.updateEdgeStatus(any(), any(), any())
+        coVerify(exactly = 1) {
+            wordEdgeDao.updateEdgeStatus(11L, "core", 0.91)
         }
     }
 
     @Test
     fun `reviewDictionaryEdgesWithAi pages through stored edges without full load`() = runTest {
-        val db = mockk<AppDatabase>(relaxed = true)
         val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
         val settingsDataStore = mockk<SettingsDataStore>()
         val anthropicClient = mockk<AnthropicApiClient>(relaxed = true)
         val openAiClient = mockk<OpenAiCompatibleApiClient>()
         val provider = AiApiClientProvider(anthropicClient, openAiClient)
-        val reviewer = EdgeReviewer(db, wordEdgeDao, provider, settingsDataStore)
+        val reviewer = EdgeReviewer(wordEdgeDao, provider, settingsDataStore)
 
         val edges = listOf(
             WordEdgeEntity(id = 1L, wordIdA = 501L, wordIdB = 502L, edgeType = "SEMANTIC_SYNONYM", dictionaryId = 1L),
@@ -353,14 +348,13 @@ class EdgeReviewerTest {
     }
 
     @Test
-    fun `reviewDictionaryEdgesWithAi does not persist successful early pages when a later page fails`() = runTest {
-        val db = mockk<AppDatabase>(relaxed = true)
+    fun `reviewDictionaryEdgesWithAi persists successful early pages when a later page fails`() = runTest {
         val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
         val settingsDataStore = mockk<SettingsDataStore>()
         val anthropicClient = mockk<AnthropicApiClient>(relaxed = true)
         val openAiClient = mockk<OpenAiCompatibleApiClient>()
         val provider = AiApiClientProvider(anthropicClient, openAiClient)
-        val reviewer = EdgeReviewer(db, wordEdgeDao, provider, settingsDataStore)
+        val reviewer = EdgeReviewer(wordEdgeDao, provider, settingsDataStore)
 
         val edges = listOf(
             WordEdgeEntity(id = 11L, wordIdA = 601L, wordIdB = 602L, edgeType = "SEMANTIC_SYNONYM", dictionaryId = 1L),
@@ -415,8 +409,8 @@ class EdgeReviewerTest {
         coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 0L, 1) }
         coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 11L, 1) }
         coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 12L, 1) }
-        coVerify(exactly = 0) {
-            wordEdgeDao.updateEdgeStatus(any(), any(), any())
+        coVerify(exactly = 1) {
+            wordEdgeDao.updateEdgeStatus(11L, "core", 0.91)
         }
     }
 }

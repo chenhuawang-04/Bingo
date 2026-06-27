@@ -1,8 +1,6 @@
 package com.xty.englishhelper.data.repository.pool
 
 import android.util.Log
-import androidx.room.withTransaction
-import com.xty.englishhelper.data.local.AppDatabase
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.preferences.SettingsDataStore
@@ -40,7 +38,7 @@ internal fun parseReviewUpdates(
     val arrayStart = text.indexOf('[')
     val arrayEnd = text.lastIndexOf(']')
     if (arrayStart < 0 || arrayEnd < arrayStart) {
-        throw RetryableEdgeException("审核返回不是 JSON 数组")
+        throw RetryableEdgeException("提纯返回不是 JSON 数组")
     }
     val arrayText = text.substring(arrayStart, arrayEnd + 1).trim()
     if (arrayText == "[]") return emptyList()
@@ -84,7 +82,7 @@ internal fun parseReviewUpdates(
     }
 
     if (parsedVerdicts == 0) {
-        throw RetryableEdgeException("审核返回无法解析出任何有效裁决")
+        throw RetryableEdgeException("提纯返回无法解析出任何有效裁决")
     }
     return updatesByEdgeId.values.toList()
 }
@@ -95,16 +93,15 @@ private data class ReviewedBatchResult(
 )
 
 /**
- * AI-powered reviewer for low-confidence and warning edges.
+ * AI-powered purifier for existing word-pool edges.
  *
- * 审核按“构建同款配置”执行：
+ * 提纯按“构建同款配置”执行：
  * - 批大小复用词池窗口大小；
  * - 每波最大并发复用词池并发设置；
  * - 请求节奏复用每分钟请求数上限；
  * - 失败等待复用宽松/激进重试模式。
  */
 class EdgeReviewer @javax.inject.Inject constructor(
-    private val db: AppDatabase,
     private val wordEdgeDao: WordEdgeDao,
     private val aiApiClientProvider: AiApiClientProvider,
     private val settingsDataStore: SettingsDataStore
@@ -176,7 +173,7 @@ class EdgeReviewer @javax.inject.Inject constructor(
         var processedEdges = 0
         var completedBatches = 0
         var modifiedEdges = 0
-        val pendingUpdates = mutableListOf<ReviewUpdate>()
+        var appliedAnyUpdate = false
 
         while (processedEdges < totalEdges) {
             awaitWhilePaused(isPaused, isCancelled)
@@ -193,7 +190,7 @@ class EdgeReviewer @javax.inject.Inject constructor(
             ) {
                 Log.i(
                     "EdgeReviewer",
-                    "审核配置热更新: maxConcurrent $lastMaxConcurrent->$currentMaxConcurrent, " +
+                    "提纯配置热更新: maxConcurrent $lastMaxConcurrent->$currentMaxConcurrent, " +
                         "rpm $lastRpm->$currentRpm, retry $lastRetryMode->$currentRetryMode"
                 )
                 lastMaxConcurrent = currentMaxConcurrent
@@ -219,8 +216,11 @@ class EdgeReviewer @javax.inject.Inject constructor(
                 onBatchAttempt = onBatchAttempt
             )
             results.forEach { result ->
+                if (result.updates.isNotEmpty()) {
+                    applyReviewUpdates(result.updates)
+                    appliedAnyUpdate = true
+                }
                 processedEdges = (processedEdges + result.processedEdges).coerceAtMost(totalEdges)
-                pendingUpdates += result.updates
                 modifiedEdges += result.updates.size
                 completedBatches++
                 onProgress(
@@ -232,9 +232,7 @@ class EdgeReviewer @javax.inject.Inject constructor(
             lastEdgeId = edgeWave.last().id
         }
 
-        if (pendingUpdates.isEmpty()) return false
-        applyReviewUpdates(pendingUpdates)
-        return true
+        return appliedAnyUpdate
     }
 
     private suspend fun reviewEdgesWithAi(
@@ -276,7 +274,7 @@ class EdgeReviewer @javax.inject.Inject constructor(
         var processedEdges = 0
         var completedBatches = 0
         var modifiedEdges = 0
-        val pendingUpdates = mutableListOf<ReviewUpdate>()
+        var appliedAnyUpdate = false
         var cursor = 0
 
         while (cursor < batches.size) {
@@ -294,7 +292,7 @@ class EdgeReviewer @javax.inject.Inject constructor(
             ) {
                 Log.i(
                     "EdgeReviewer",
-                    "审核配置热更新: maxConcurrent $lastMaxConcurrent->$currentMaxConcurrent, " +
+                    "提纯配置热更新: maxConcurrent $lastMaxConcurrent->$currentMaxConcurrent, " +
                         "rpm $lastRpm->$currentRpm, retry $lastRetryMode->$currentRetryMode"
                 )
                 lastMaxConcurrent = currentMaxConcurrent
@@ -316,8 +314,11 @@ class EdgeReviewer @javax.inject.Inject constructor(
                 onBatchAttempt = onBatchAttempt
             )
             results.forEach { result ->
+                if (result.updates.isNotEmpty()) {
+                    applyReviewUpdates(result.updates)
+                    appliedAnyUpdate = true
+                }
                 processedEdges = (processedEdges + result.processedEdges).coerceAtMost(totalEdges)
-                pendingUpdates += result.updates
                 modifiedEdges += result.updates.size
                 completedBatches++
                 onProgress(
@@ -329,9 +330,7 @@ class EdgeReviewer @javax.inject.Inject constructor(
 
             cursor = waveEnd
         }
-        if (pendingUpdates.isEmpty()) return false
-        applyReviewUpdates(pendingUpdates)
-        return true
+        return appliedAnyUpdate
     }
 
     private suspend fun processReviewWave(
@@ -408,9 +407,9 @@ class EdgeReviewer @javax.inject.Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RetryableEdgeException) {
-                lastError = e.message ?: "审核返回不合规"
+                lastError = e.message ?: "提纯返回不合规"
                 onAttempt(attempt, raw, lastError, false)
-                Log.w("EdgeReviewer", "审核批次第 ${attempt + 1}/$MAX_RETRIES 次失败，准备重试: $lastError")
+                Log.w("EdgeReviewer", "提纯批次第 ${attempt + 1}/$MAX_RETRIES 次失败，准备重试: $lastError")
                 waitAfterFailure(attempt, retryMode, failureTally, e)
             } catch (e: Exception) {
                 lastError = e.message ?: e.javaClass.simpleName
@@ -418,17 +417,17 @@ class EdgeReviewer @javax.inject.Inject constructor(
                 val retryable = AiErrorUtils.isRetryableError(e)
                 Log.w(
                     "EdgeReviewer",
-                    "审核批次第 ${attempt + 1}/$MAX_RETRIES 次失败 (retryable=$retryable): $lastError",
+                    "提纯批次第 ${attempt + 1}/$MAX_RETRIES 次失败 (retryable=$retryable): $lastError",
                     e
                 )
                 if (!retryable) {
-                    throw IllegalStateException("审核批次失败：$lastError", e)
+                    throw IllegalStateException("提纯批次失败：$lastError", e)
                 }
                 waitAfterFailure(attempt, retryMode, failureTally, e)
             }
         }
         throw IllegalStateException(
-            "审核批次在 $MAX_RETRIES 次尝试后仍失败：${lastError ?: "未收到可用响应"}"
+            "提纯批次在 $MAX_RETRIES 次尝试后仍失败：${lastError ?: "未收到可用响应"}"
         )
     }
 
@@ -438,10 +437,8 @@ class EdgeReviewer @javax.inject.Inject constructor(
         updates.forEach { update ->
             latestByEdgeId[update.edgeId] = update
         }
-        db.withTransaction {
-            latestByEdgeId.values.forEach { update ->
-                wordEdgeDao.updateEdgeStatus(update.edgeId, update.newStatus, update.newConfidence)
-            }
+        latestByEdgeId.values.forEach { update ->
+            wordEdgeDao.updateEdgeStatus(update.edgeId, update.newStatus, update.newConfidence)
         }
     }
 

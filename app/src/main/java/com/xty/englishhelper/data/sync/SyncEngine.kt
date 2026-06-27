@@ -23,22 +23,16 @@ class SyncEngine @Inject constructor(
 
     suspend fun sync(
         mode: SyncMode,
-        onProgress: (SyncProgress) -> Unit = {}
+        onProgress: suspend (SyncProgress) -> Unit = {}
     ): SyncResult {
         progressTracker.reset()
         _result.value = null
 
         return try {
             when (mode) {
-                SyncMode.SMART -> syncRepository.sync { progress ->
-                    onProgress(progress)
-                }
-                SyncMode.FORCE_UPLOAD -> syncRepository.forceUpload { progress ->
-                    onProgress(progress)
-                }
-                SyncMode.FORCE_DOWNLOAD -> syncRepository.forceDownload { progress ->
-                    onProgress(progress)
-                }
+                SyncMode.SMART -> syncRepository.sync(onProgress)
+                SyncMode.FORCE_UPLOAD -> syncRepository.forceUpload(onProgress)
+                SyncMode.FORCE_DOWNLOAD -> syncRepository.forceDownload(onProgress)
             }
 
             val syncResult = SyncResult(success = true)

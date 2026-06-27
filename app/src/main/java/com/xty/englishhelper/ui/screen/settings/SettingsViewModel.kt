@@ -176,6 +176,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.studyWordNoteEnabled.collect { value ->
+                _uiState.update { it.copy(studyWordNoteEnabled = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.poolRetryMode.collect { value ->
                 _uiState.update { it.copy(poolRetryMode = value) }
             }
@@ -536,6 +541,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsDataStore.setBrainstormActiveRecall(value) }
     }
 
+    fun onStudyWordNoteEnabledChange(value: Boolean) {
+        _uiState.update { it.copy(studyWordNoteEnabled = value) }
+        viewModelScope.launch { settingsDataStore.setStudyWordNoteEnabled(value) }
+    }
+
     fun onImageCompressionEnabledChange(value: Boolean) {
         _uiState.update { it.copy(imageCompressionEnabled = value) }
         viewModelScope.launch { settingsDataStore.setImageCompressionEnabled(value) }
@@ -601,6 +611,16 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.githubConfigSyncEnabled.collect { enabled ->
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(configSyncEnabled = enabled)) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.githubConfigRepo.collect { repo ->
+                _uiState.update { it.copy(cloudSync = it.cloudSync.copy(configRepo = repo)) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.lastSyncAt.collect { ts ->
                 _uiState.update { it.copy(cloudSync = it.cloudSync.copy(lastSyncAt = ts)) }
             }
@@ -618,15 +638,25 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsDataStore.setGitHubRepo(repo) }
     }
 
+    fun onGitHubConfigSyncEnabledChange(enabled: Boolean) {
+        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(configSyncEnabled = enabled)) }
+        viewModelScope.launch { settingsDataStore.setGitHubConfigSyncEnabled(enabled) }
+    }
+
+    fun onGitHubConfigRepoChange(repo: String) {
+        _uiState.update { it.copy(cloudSync = it.cloudSync.copy(configRepo = repo)) }
+        viewModelScope.launch { settingsDataStore.setGitHubConfigRepo(repo) }
+    }
+
     fun onGitHubPatChange(pat: String) {
         _uiState.update { it.copy(cloudSync = it.cloudSync.copy(pat = pat)) }
         settingsDataStore.setGitHubPat(pat)
     }
 
     fun testSyncConnection() {
-        val sync = _uiState.value.cloudSync
-        if (sync.pat.isBlank() || sync.githubOwner.isBlank() || sync.githubRepo.isBlank()) {
-            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = "请填写完整配置")) }
+        val validationError = validateCloudSyncConfig()
+        if (validationError != null) {
+            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = validationError)) }
             return
         }
         viewModelScope.launch {
@@ -650,6 +680,11 @@ class SettingsViewModel @Inject constructor(
 
     fun performSync() {
         if (_uiState.value.cloudSync.isSyncing) return
+        val validationError = validateCloudSyncConfig()
+        if (validationError != null) {
+            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(error = validationError)) }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = true, error = null, syncProgress = null)) }
             backgroundTaskManager.enqueueCloudSync(
@@ -663,6 +698,11 @@ class SettingsViewModel @Inject constructor(
 
     fun performForceUpload() {
         if (_uiState.value.cloudSync.isSyncing) return
+        val validationError = validateCloudSyncConfig()
+        if (validationError != null) {
+            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(error = validationError)) }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = true, error = null, syncProgress = null)) }
             backgroundTaskManager.enqueueCloudSync(
@@ -676,6 +716,11 @@ class SettingsViewModel @Inject constructor(
 
     fun performForceDownload() {
         if (_uiState.value.cloudSync.isSyncing) return
+        val validationError = validateCloudSyncConfig()
+        if (validationError != null) {
+            _uiState.update { it.copy(cloudSync = it.cloudSync.copy(error = validationError)) }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(cloudSync = it.cloudSync.copy(isSyncing = true, error = null, syncProgress = null)) }
             backgroundTaskManager.enqueueCloudSync(
@@ -721,6 +766,21 @@ class SettingsViewModel @Inject constructor(
 
     fun clearSyncError() {
         _uiState.update { it.copy(cloudSync = it.cloudSync.copy(error = null, connectionTestResult = null)) }
+    }
+
+    private fun validateCloudSyncConfig(): String? {
+        val sync = _uiState.value.cloudSync
+        if (sync.pat.isBlank() || sync.githubOwner.isBlank() || sync.githubRepo.isBlank()) {
+            return "请填写完整配置"
+        }
+        if (!sync.configSyncEnabled) return null
+        if (sync.configRepo.isBlank()) {
+            return "已开启配置同步，请填写配置仓库名"
+        }
+        if (sync.configRepo.trim().equals(sync.githubRepo.trim(), ignoreCase = true)) {
+            return "配置同步仓库必须与数据同步仓库不同"
+        }
+        return null
     }
 
     private fun defaultModelFor(provider: AiProvider): String {

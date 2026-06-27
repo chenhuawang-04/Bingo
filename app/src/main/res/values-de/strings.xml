@@ -79,7 +79,7 @@
     <string name="dict_pool_balanced">Pool erstellen (Ausgewogen·Lokal)</string>
     <string name="dict_pool_balanced_ai">Pool erstellen (Ausgewogen+KI)</string>
     <string name="dict_pool_quality_first">Pool erstellen (Qualität·Hohe Kosten)</string>
-    <string name="dict_pool_review">Pool überprüfen (KI-Überprüfung·Qualität)</string>
+    <string name="dict_pool_review">Pool bereinigen (KI-Abwertung·Qualität)</string>
     <string name="dict_select_word_hint">Wort auswählen, um Details anzuzeigen</string>
     <string name="dict_words_filtered">Gefiltert %1$d/%2$d Wörter</string>
     <string name="dict_words_total">%d Wörter</string>
@@ -96,8 +96,8 @@
     <string name="dict_algorithm_updated">Algorithmus aktualisiert, Neuerstellung empfohlen</string>
     <string name="dict_view_graph">Graph anzeigen</string>
     <string name="dict_view_pool_graph">Pool-Beziehungsgraph anzeigen</string>
-    <string name="dict_review_paused">Überprüfung pausiert</string>
-    <string name="dict_reviewing">Überprüfe</string>
+    <string name="dict_review_paused">Bereinigung pausiert</string>
+    <string name="dict_reviewing">Bereinigung läuft</string>
     <string name="dict_organizing_count">Organisiere: %d</string>
     <string name="dict_organized_count">Fertig: %d</string>
     <string name="dict_failed_count">Fehlgeschlagen: %d</string>
@@ -339,7 +339,7 @@
     <string name="settings_scope_pool">Pool-Organisation</string>
     <string name="settings_scope_article">Artikel-Analyse</string>
     <string name="settings_scope_search">Suchmodell</string>
-    <string name="settings_scope_reviewer">Pool-Überprüfung</string>
+    <string name="settings_scope_reviewer">Pool-Bereinigung</string>
     <string name="settings_image_compression">Bildkomprimierung</string>
     <string name="settings_background_task">Hintergrundaufgaben</string>
     <string name="settings_cloud_sync">Cloud-Synchronisierung</string>
@@ -388,7 +388,7 @@
     <string name="task_management">Hintergrundaufgaben</string>
     <string name="task_word_organize">Wortorganisation</string>
     <string name="task_pool_rebuild">Pool-Neuerstellung</string>
-    <string name="task_pool_review">Pool-Überprüfung</string>
+    <string name="task_pool_review">Pool-Bereinigung</string>
     <string name="task_question_generate">Fragengenerierung</string>
     <string name="task_answer_generate">Antwortgenerierung</string>
     <string name="task_source_verify">Quellenverifizierung</string>

@@ -51,6 +51,7 @@ import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.ManualChunkCandidate
 import com.xty.englishhelper.domain.repository.ManualChunkContext
 import com.xty.englishhelper.domain.repository.ManualFillResult
+import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -162,6 +163,92 @@ class WordPoolRepositoryImpl @Inject constructor(
                 members = memberDetails
             )
         }.filter { it.members.isNotEmpty() }
+    }
+
+    override suspend fun getWordEdgePreviews(
+        dictionaryId: Long,
+        wordId: Long,
+        minConfidence: Double
+    ): List<WordEdgeNeighborPreview> {
+        val edges = wordEdgeDao.getEdgesForWord(dictionaryId, wordId, minConfidence)
+        if (edges.isEmpty()) return emptyList()
+
+        val neighborIds = edges.map { edge ->
+            if (edge.wordIdA == wordId) edge.wordIdB else edge.wordIdA
+        }.distinct()
+        val spellingsById = wordDao.getWordsByIds(neighborIds)
+            .associate { it.word.id to it.word.spelling }
+
+        return edges
+            .groupBy { edge ->
+                if (edge.wordIdA == wordId) edge.wordIdB else edge.wordIdA
+            }
+            .mapNotNull { (neighborId, groupedEdges) ->
+                val spelling = spellingsById[neighborId] ?: return@mapNotNull null
+                val edgeTypes = groupedEdges.mapNotNull { EdgeType.fromDbValue(it.edgeType) }.toSet()
+                if (edgeTypes.isEmpty()) return@mapNotNull null
+                WordEdgeNeighborPreview(
+                    neighborId = neighborId,
+                    spelling = spelling,
+                    edgeTypes = edgeTypes
+                )
+            }
+    }
+
+    override suspend fun confirmWordRelation(
+        dictionaryId: Long,
+        wordId: Long,
+        relatedWordId: Long
+    ): Boolean {
+        val edges = wordEdgeDao.getEdgesBetweenWords(dictionaryId, wordId, relatedWordId)
+        if (edges.isEmpty()) return false
+        edges.forEach { edge ->
+            wordEdgeDao.updateEdgeStatus(
+                id = edge.id,
+                status = edge.status,
+                confidence = 1.0
+            )
+        }
+        invalidateGraphCache(dictionaryId)
+        return true
+    }
+
+    override suspend fun organizeWordNoteRelation(
+        dictionaryId: Long,
+        wordId: Long,
+        relatedWordId: Long
+    ) {
+        val currentWord = wordDao.getWordById(wordId)?.toDomain()
+            ?: throw IllegalStateException("当前背诵词不存在")
+        val relatedWord = wordDao.getWordById(relatedWordId)?.toDomain()
+            ?: throw IllegalStateException("便签单词不存在")
+        if (currentWord.dictionaryId != dictionaryId || relatedWord.dictionaryId != dictionaryId) {
+            throw IllegalStateException("便签关联的两个单词必须属于同一个词典")
+        }
+
+        val existingEdges = wordEdgeDao.getEdgesBetweenWords(dictionaryId, wordId, relatedWordId)
+        if (existingEdges.isNotEmpty()) {
+            existingEdges.forEach { edge ->
+                wordEdgeDao.updateEdgeStatus(
+                    id = edge.id,
+                    status = edge.status,
+                    confidence = 1.0
+                )
+            }
+        } else {
+            val fallbackEdge = buildFallbackNoteEdge(currentWord, relatedWord).copy(confidence = 1.0)
+            wordEdgeDao.insertEdgeIfAbsent(
+                toEdgeEntity(currentWord, relatedWord, fallbackEdge, dictionaryId)
+            )
+            wordEdgeDao.getEdgesBetweenWords(dictionaryId, wordId, relatedWordId).forEach { edge ->
+                wordEdgeDao.updateEdgeStatus(
+                    id = edge.id,
+                    status = edge.status,
+                    confidence = 1.0
+                )
+            }
+        }
+        invalidateGraphCache(dictionaryId)
     }
 
     override suspend fun getWordDetail(wordId: Long): WordDetails? =
@@ -345,7 +432,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         invalidateGraphCache(dictionaryId)
     }
 
-    /** 把构建好的词池在单事务内落库（先删该策略旧池再插入新池+成员）。整理与审核共用。 */
+    /** 把构建好的词池在单事务内落库（先删该策略旧池再插入新池+成员）。 */
     private suspend fun persistPools(
         dictionaryId: Long,
         strategy: PoolStrategy,
@@ -392,7 +479,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
         val wordSpellings = wordDao.getWordLabels(dictionaryId).associate { it.id to it.spelling }
 
-        // 复查全部已存在边。批大小 / 并发 / RPM / 重试模式均复用词池构建配置；
+        // 提纯全部已存在边。批大小 / 并发 / RPM / 重试模式均复用词池构建配置；
         // review verdict=remove 现改为“保留边记录，仅把 confidence 降到 0”。
         edgeReviewer.reviewDictionaryEdgesWithAi(
             dictionaryId = dictionaryId,
@@ -404,7 +491,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                     liveMonitor.startWord(
                         dictionaryId = dictionaryId,
                         taskType = BackgroundTaskType.WORD_POOL_REVIEW,
-                        word = "AI复查批次",
+                        word = "AI提纯批次",
                         chunkCount = totalBatches,
                         alreadyCommitted = 0
                     )
@@ -416,7 +503,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                 liveMonitor.recordAttempt(
                     dictionaryId = dictionaryId,
                     taskType = BackgroundTaskType.WORD_POOL_REVIEW,
-                    word = "AI复查批次",
+                    word = "AI提纯批次",
                     chunkIndex = batchIndex,
                     attempt = attempt,
                     response = response,
@@ -427,11 +514,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             onProgress = onProgress
         )
 
-        // 用复查后的边重建词池。重建阶段同样分页扫边，避免审核后再次整表加载。
         coroutineContext.ensureActive()
-        val pools = rebuildPoolsFromDictionaryEdges(dictionaryId)
-        coroutineContext.ensureActive()
-        persistPools(dictionaryId, strategy, pools)
         invalidateGraphCache(dictionaryId)
         liveMonitor.clear()
     }
@@ -876,7 +959,7 @@ class WordPoolRepositoryImpl @Inject constructor(
 
         // ============================================================
         // 整理完成：直接用当前边构建词池。
-        // 审核（AI 复查低置信度 / warning 边）已抽离为独立的手动触发任务（见 reviewPools），
+        // 提纯（AI 评估并降权劣质边）已抽离为独立的手动触发任务（见 reviewPools），
         // 不再附加在整理之后。
         // ============================================================
         coroutineContext.ensureActive()
@@ -927,6 +1010,63 @@ class WordPoolRepositoryImpl @Inject constructor(
         while (isPaused() && !isCancelled()) {
             delay(300)
         }
+    }
+
+    private fun buildFallbackNoteEdge(
+        currentWord: WordDetails,
+        otherWord: WordDetails
+    ): com.xty.englishhelper.data.repository.pool.ParsedEdge {
+        val edgeType = when {
+            spellingDistance(currentWord.spelling, otherWord.spelling) <= 2 -> EdgeType.FORM_SPELLING
+            shareLikelyRoot(currentWord.spelling, otherWord.spelling) -> EdgeType.FAMILY_SAME_ROOT
+            else -> EdgeType.SEMANTIC_OVERLAP
+        }
+        return com.xty.englishhelper.data.repository.pool.ParsedEdge(
+            index = 0,
+            edgeType = edgeType,
+            status = "support",
+            learningValue = 4,
+            relationStrength = 3,
+            confidence = 1.0,
+            reason = "来自用户在背词页补充的单词便签关联",
+            warningNote = null,
+            evidenceSource = "user_note",
+            register = "neutral",
+            exampleSentence = null,
+            difficultyCefr = null
+        )
+    }
+
+    private fun shareLikelyRoot(a: String, b: String): Boolean {
+        val left = a.trim().lowercase()
+        val right = b.trim().lowercase()
+        if (left.length < 4 || right.length < 4) return false
+        val prefix = left.commonPrefixWith(right)
+        return prefix.length >= 4
+    }
+
+    private fun spellingDistance(a: String, b: String): Int {
+        val left = a.trim().lowercase()
+        val right = b.trim().lowercase()
+        if (left == right) return 0
+        if (left.isEmpty()) return right.length
+        if (right.isEmpty()) return left.length
+        val dp = IntArray(right.length + 1) { it }
+        for (i in left.indices) {
+            var prev = dp[0]
+            dp[0] = i + 1
+            for (j in right.indices) {
+                val temp = dp[j + 1]
+                val cost = if (left[i] == right[j]) 0 else 1
+                dp[j + 1] = minOf(
+                    dp[j + 1] + 1,
+                    dp[j] + 1,
+                    prev + cost
+                )
+                prev = temp
+            }
+        }
+        return dp[right.length]
     }
 
     /** 把一条 AI 解析出的边转换为可入库实体（按 wordIdA < wordIdB 规范化）。 */
