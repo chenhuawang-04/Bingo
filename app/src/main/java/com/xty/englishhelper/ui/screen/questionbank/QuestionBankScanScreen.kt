@@ -54,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.QuestionType
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,20 +92,19 @@ fun QuestionBankScanScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.question_scan_paper)) },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        if (state.phase == ScanPhase.PREVIEW) viewModel.resetToSelect()
-                        else onBack()
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.question_scan_paper)) },
+        navigationIcon = {
+            AppTopBarBackButton(
+                onClick = {
+                    if (state.phase == ScanPhase.PREVIEW) viewModel.resetToSelect()
+                    else onBack()
                 }
             )
-        },
+        }
+    )
+
+    Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         when (state.phase) {

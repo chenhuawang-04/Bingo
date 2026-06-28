@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Launch
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -61,6 +63,7 @@ import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 import com.xty.englishhelper.ui.screen.dictionary.QuickDictionaryViewModel
 import com.xty.englishhelper.ui.screen.dictionary.QuickLookupMode
 import com.xty.englishhelper.ui.screen.dictionary.QuickLookupSource
+import com.xty.englishhelper.ui.screen.dictionary.QuickSearchSection
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,9 +100,13 @@ fun QuickDictionarySheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(stringResource(R.string.quick_dictionary), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.quick_search), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        stringResource(R.string.dict_quick_lookup_desc),
+                        if (state.section == QuickSearchSection.ASK) {
+                            stringResource(R.string.quick_search_ask_desc)
+                        } else {
+                            stringResource(R.string.dict_quick_lookup_desc)
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -110,125 +117,152 @@ fun QuickDictionarySheet(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuickLookupMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = state.mode == mode,
-                        onClick = { viewModel.setMode(mode) },
-                        label = { Text(mode.label) }
-                    )
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuickLookupSource.entries.forEach { source ->
-                    AssistChip(
-                        onClick = { viewModel.setSource(source) },
-                        label = { Text(source.label) },
-                        colors = if (state.source == source) {
-                            AssistChipDefaults.assistChipColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            )
-                        } else {
-                            AssistChipDefaults.assistChipColors()
-                        }
-                    )
-                }
-            }
-
-            OutlinedTextField(
-                value = state.query,
-                onValueChange = viewModel::updateQuery,
-                label = {
-                    Text(
-                        if (state.mode == QuickLookupMode.ZH_TO_EN) stringResource(R.string.dict_input_zh_hint)
-                        else stringResource(R.string.dict_input_en_hint)
-                    )
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = {
-                        viewModel.submitQuery()
-                        focusManager.clearFocus()
-                    }
-                ),
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    if (state.isLoading || state.isSearching) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .width(18.dp)
-                                .height(18.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        IconButton(
-                            onClick = viewModel::submitQuery,
-                            enabled = state.query.isNotBlank()
-                        ) {
-                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.common_search))
-                        }
-                    }
-                }
-            )
-
-            if (state.error != null) {
-                Text(
-                    text = state.error ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                FilterChip(
+                    selected = state.section == QuickSearchSection.LOOKUP,
+                    onClick = { viewModel.setSection(QuickSearchSection.LOOKUP) },
+                    label = { Text(stringResource(R.string.quick_search_lookup)) }
+                )
+                FilterChip(
+                    selected = state.section == QuickSearchSection.ASK,
+                    onClick = { viewModel.setSection(QuickSearchSection.ASK) },
+                    label = { Text(stringResource(R.string.quick_search_ask)) }
                 )
             }
 
-            if (state.suggestions.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        stringResource(R.string.dict_suggestions),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 132.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(state.suggestions, key = { it }) { suggestion ->
-                            Surface(
-                                shape = ArticleShapes.Control,
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                            ) {
-                                Text(
-                                    text = suggestion,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { viewModel.selectSuggestion(suggestion) }
-                                        .padding(horizontal = 12.dp, vertical = 9.dp),
-                                    style = MaterialTheme.typography.bodyMedium
+            if (state.section == QuickSearchSection.LOOKUP) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QuickLookupMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = state.mode == mode,
+                            onClick = { viewModel.setMode(mode) },
+                            label = { Text(mode.label) }
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QuickLookupSource.entries.forEach { source ->
+                        AssistChip(
+                            onClick = { viewModel.setSource(source) },
+                            label = { Text(source.label) },
+                            colors = if (state.source == source) {
+                                AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
                                 )
+                            } else {
+                                AssistChipDefaults.assistChipColors()
+                            }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = state.query,
+                    onValueChange = viewModel::updateQuery,
+                    label = {
+                        Text(
+                            if (state.mode == QuickLookupMode.ZH_TO_EN) stringResource(R.string.dict_input_zh_hint)
+                            else stringResource(R.string.dict_input_en_hint)
+                        )
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            viewModel.submitQuery()
+                            focusManager.clearFocus()
+                        }
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        if (state.isLoading || state.isSearching) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .width(18.dp)
+                                    .height(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            IconButton(
+                                onClick = viewModel::submitQuery,
+                                enabled = state.query.isNotBlank()
+                            ) {
+                                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.common_search))
+                            }
+                        }
+                    }
+                )
+
+                if (state.error != null) {
+                    Text(
+                        text = state.error ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                if (state.suggestions.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            stringResource(R.string.dict_suggestions),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 132.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(state.suggestions, key = { it }) { suggestion ->
+                                Surface(
+                                    shape = ArticleShapes.Control,
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                ) {
+                                    Text(
+                                        text = suggestion,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { viewModel.selectSuggestion(suggestion) }
+                                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            if (state.groups.isNotEmpty()) {
-                HorizontalDivider()
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(state.groups, key = { it.word }) { group ->
-                        GroupCard(
-                            word = group.word,
-                            hint = group.hint,
-                            entries = group.entries,
-                            expanded = group.expanded,
-                            onToggle = { viewModel.toggleGroupExpanded(group.word) },
-                            onEntryClick = { selectedEntry = it }
-                        )
+                if (state.groups.isNotEmpty()) {
+                    HorizontalDivider()
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(state.groups, key = { it.word }) { group ->
+                            GroupCard(
+                                word = group.word,
+                                hint = group.hint,
+                                entries = group.entries,
+                                expanded = group.expanded,
+                                onToggle = { viewModel.toggleGroupExpanded(group.word) },
+                                onEntryClick = { selectedEntry = it }
+                            )
+                        }
                     }
                 }
+            } else {
+                AskQuestionContent(
+                    question = state.question,
+                    answer = state.answer,
+                    isAsking = state.isAsking,
+                    error = state.askError,
+                    onQuestionChange = viewModel::updateQuestion,
+                    onSubmit = {
+                        viewModel.submitQuestion()
+                        focusManager.clearFocus()
+                    }
+                )
             }
 
             Spacer(Modifier.height(4.dp))
@@ -237,6 +271,93 @@ fun QuickDictionarySheet(
 
     selectedEntry?.let { entry ->
         EntryDetailDialog(entry = entry, onDismiss = { selectedEntry = null })
+    }
+}
+
+@Composable
+private fun AskQuestionContent(
+    question: String,
+    answer: String,
+    isAsking: Boolean,
+    error: String?,
+    onQuestionChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+            value = question,
+            onValueChange = onQuestionChange,
+            label = { Text(stringResource(R.string.quick_search_question_hint)) },
+            minLines = 3,
+            maxLines = 6,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { onSubmit() }),
+            modifier = Modifier.fillMaxWidth(),
+            trailingIcon = {
+                if (isAsking) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .width(18.dp)
+                            .height(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+            }
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Button(
+                onClick = onSubmit,
+                enabled = question.isNotBlank() && !isAsking
+            ) {
+                if (isAsking) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .width(16.dp)
+                            .height(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(stringResource(R.string.quick_search_question_submit))
+            }
+        }
+
+        if (error != null) {
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        if (answer.isNotBlank()) {
+            Surface(
+                shape = ArticleShapes.Control,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.quick_search_answer),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    SelectionContainer {
+                        Text(answer, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
     }
 }
 

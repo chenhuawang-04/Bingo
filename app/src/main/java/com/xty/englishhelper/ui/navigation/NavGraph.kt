@@ -1,6 +1,6 @@
 package com.xty.englishhelper.ui.navigation
 
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -36,11 +36,11 @@ import com.xty.englishhelper.ui.screen.word.WordDetailScreen
 
 @Composable
 fun NavGraph(navController: NavHostController) {
-    MainScaffold(navController = navController) { innerPadding ->
+    MainScaffold(navController = navController) { _ ->
         NavHost(
             navController = navController,
             startDestination = HomeRoute,
-            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
+            modifier = Modifier.fillMaxSize()
         ) {
             composable<HomeRoute> {
                 HomeScreen(
@@ -203,6 +203,9 @@ fun NavGraph(navController: NavHostController) {
                             ?.savedStateHandle
                             ?.set("study_refresh_token", System.currentTimeMillis())
                         navController.popBackStack()
+                    },
+                    onWordClick = { wordId, dictionaryId ->
+                        navController.navigate(WordDetailRoute(wordId, dictionaryId))
                     }
                 )
             }

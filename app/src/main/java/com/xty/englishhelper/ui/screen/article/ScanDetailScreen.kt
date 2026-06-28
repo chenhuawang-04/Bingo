@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import com.xty.englishhelper.R
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,17 +74,12 @@ fun ScanDetailScreen(
         status == BackgroundTaskStatus.FAILED ||
         status == BackgroundTaskStatus.CANCELED
 
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.scan_detail)) },
+        navigationIcon = { AppTopBarBackButton(onBack) }
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.scan_detail)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                }
-            )
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         EhMaxWidthContainer(

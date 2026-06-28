@@ -74,6 +74,8 @@ import com.xty.englishhelper.domain.model.WordGraphEdge
 import com.xty.englishhelper.ui.components.pool.clusterColor
 import com.xty.englishhelper.ui.components.pool.edgeClusterLegend
 import com.xty.englishhelper.ui.components.pool.edgeTypeColor
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
@@ -99,27 +101,21 @@ fun PoolGraphScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.pool_graph_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                },
-                actions = {
-                    val incl = state.includeIsolated
-                    IconButton(onClick = { viewModel.setIncludeIsolated(!incl) }) {
-                        Icon(
-                            imageVector = if (incl) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                            contentDescription = if (incl) stringResource(R.string.pool_graph_hide_unlinked) else stringResource(R.string.pool_graph_show_unlinked)
-                        )
-                    }
-                }
-            )
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.pool_graph_title)) },
+        navigationIcon = { AppTopBarBackButton(onBack) },
+        actions = {
+            val incl = state.includeIsolated
+            IconButton(onClick = { viewModel.setIncludeIsolated(!incl) }) {
+                Icon(
+                    imageVector = if (incl) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                    contentDescription = if (incl) stringResource(R.string.pool_graph_hide_unlinked) else stringResource(R.string.pool_graph_show_unlinked)
+                )
+            }
         }
-    ) { padding ->
+    )
+
+    Scaffold { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             val layout = state.layout
             when {

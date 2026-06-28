@@ -689,6 +689,14 @@
     <string name="article_no_unit">No unit</string>
 
     <!-- ==================== Quick Dictionary ==================== -->
+    <string name="quick_dictionary">Quick Search</string>
+    <string name="quick_search">Quick Search</string>
+    <string name="quick_search_lookup">Dictionary</string>
+    <string name="quick_search_ask">Ask AI</string>
+    <string name="quick_search_ask_desc">Ask about vocabulary, grammar, translation, writing, or reading</string>
+    <string name="quick_search_question_hint">Type your question</string>
+    <string name="quick_search_question_submit">Ask</string>
+    <string name="quick_search_answer">AI Answer</string>
     <string name="dict_quick_lookup_desc">Supports CN->EN candidates + Cambridge/OED entries</string>
     <string name="dict_input_zh_hint">Enter Chinese meaning (e.g., white)</string>
     <string name="dict_input_en_hint">Enter English word (e.g., white)</string>

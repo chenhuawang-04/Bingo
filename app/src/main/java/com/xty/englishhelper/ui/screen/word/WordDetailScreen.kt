@@ -30,6 +30,8 @@ import com.xty.englishhelper.R
 import com.xty.englishhelper.ui.components.ConfirmDialog
 import com.xty.englishhelper.ui.components.LoadingIndicator
 import com.xty.englishhelper.ui.components.WordDetailContent
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,56 +53,51 @@ fun WordDetailScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(word?.spelling ?: "") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                },
-                actions = {
-                    if (word != null) {
-                        val ttsSessionId = "word:${word.id}"
-                        val isSpeaking = state.ttsState.isSpeaking && state.ttsState.sessionId == ttsSessionId
-                        val canSpeak = state.ttsState.isReady
+    AppTopBarEffect(
+        title = { Text(word?.spelling ?: "") },
+        navigationIcon = { AppTopBarBackButton(onBack) },
+        actions = {
+            if (word != null) {
+                val ttsSessionId = "word:${word.id}"
+                val isSpeaking = state.ttsState.isSpeaking && state.ttsState.sessionId == ttsSessionId
+                val canSpeak = state.ttsState.isReady
 
-                        IconButton(
-                            onClick = viewModel::toggleSpeakWord,
-                            enabled = canSpeak
-                        ) {
-                            Icon(
-                                if (isSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isSpeaking) stringResource(R.string.word_tts_pause) else stringResource(R.string.word_tts_play)
-                            )
-                        }
-                        TextButton(
-                            onClick = viewModel::speakWordUs,
-                            enabled = canSpeak
-                        ) {
-                            Text("US")
-                        }
-                        TextButton(
-                            onClick = viewModel::speakWordUk,
-                            enabled = canSpeak
-                        ) {
-                            Text("UK")
-                        }
-                        IconButton(onClick = { onEdit(word.dictionaryId, word.id) }) {
-                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
-                        }
-                        IconButton(onClick = viewModel::showDeleteDialog) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = stringResource(R.string.common_delete),
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
+                IconButton(
+                    onClick = viewModel::toggleSpeakWord,
+                    enabled = canSpeak
+                ) {
+                    Icon(
+                        if (isSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isSpeaking) stringResource(R.string.word_tts_pause) else stringResource(R.string.word_tts_play)
+                    )
                 }
-            )
-        },
+                TextButton(
+                    onClick = viewModel::speakWordUs,
+                    enabled = canSpeak
+                ) {
+                    Text("US")
+                }
+                TextButton(
+                    onClick = viewModel::speakWordUk,
+                    enabled = canSpeak
+                ) {
+                    Text("UK")
+                }
+                IconButton(onClick = { onEdit(word.dictionaryId, word.id) }) {
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
+                }
+                IconButton(onClick = viewModel::showDeleteDialog) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.common_delete),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    )
+
+    Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         when {

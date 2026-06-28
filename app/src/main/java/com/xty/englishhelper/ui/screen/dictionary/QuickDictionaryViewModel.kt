@@ -51,7 +51,9 @@ class QuickDictionaryViewModel @Inject constructor(
 
     private var suggestionJob: Job? = null
     private var lookupJob: Job? = null
+    private var askJob: Job? = null
     private val lookupSerial = AtomicLong(0L)
+    private val askSerial = AtomicLong(0L)
     private val lookupLimiter = Semaphore(permits = 3)
     private val entryCache = ConcurrentHashMap<String, CachedEntries>()
     private val cacheTtlMs = 5 * 60 * 1000L
@@ -68,6 +70,24 @@ class QuickDictionaryViewModel @Inject constructor(
             )
         }
         scheduleSuggestionFetch(query)
+    }
+
+    fun setSection(section: QuickSearchSection) {
+        if (section == QuickSearchSection.ASK) {
+            suggestionJob?.cancel()
+        }
+        _uiState.update {
+            it.copy(
+                section = section,
+                suggestions = if (section == QuickSearchSection.LOOKUP) it.suggestions else emptyList(),
+                isSearching = if (section == QuickSearchSection.LOOKUP) it.isSearching else false,
+                error = null,
+                askError = null
+            )
+        }
+        if (section == QuickSearchSection.LOOKUP) {
+            scheduleSuggestionFetch(_uiState.value.query)
+        }
     }
 
     fun setMode(mode: QuickLookupMode) {
@@ -97,6 +117,18 @@ class QuickDictionaryViewModel @Inject constructor(
         performLookup(suggestion)
     }
 
+    fun updateQuestion(question: String) {
+        _uiState.update {
+            it.copy(question = question, askError = null)
+        }
+    }
+
+    fun submitQuestion() {
+        val question = uiState.value.question.trim()
+        if (question.isBlank()) return
+        performAsk(question)
+    }
+
     fun toggleGroupExpanded(word: String) {
         _uiState.update { state ->
             state.copy(
@@ -104,6 +136,46 @@ class QuickDictionaryViewModel @Inject constructor(
                     if (group.word.equals(word, ignoreCase = true)) group.copy(expanded = !group.expanded) else group
                 }
             )
+        }
+    }
+
+    private fun performAsk(rawQuestion: String) {
+        askJob?.cancel()
+        val requested = rawQuestion.trim()
+        val serial = askSerial.incrementAndGet()
+        askJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(isAsking = true, askError = null)
+            }
+            try {
+                val answer = askAiQuestion(requested)
+                if (!isActive ||
+                    serial != askSerial.get() ||
+                    _uiState.value.question.trim() != requested
+                ) {
+                    return@launch
+                }
+                _uiState.update {
+                    it.copy(
+                        isAsking = false,
+                        answer = answer,
+                        askError = if (answer.isBlank()) "AI 未返回内容" else null
+                    )
+                }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (err: Exception) {
+                Log.e(TAG, "Ask failed for question='${requested.take(80)}': ${err.message}", err)
+                if (!isActive ||
+                    serial != askSerial.get() ||
+                    _uiState.value.question.trim() != requested
+                ) {
+                    return@launch
+                }
+                _uiState.update {
+                    it.copy(isAsking = false, askError = err.message ?: "提问失败")
+                }
+            }
         }
     }
 
@@ -308,6 +380,36 @@ class QuickDictionaryViewModel @Inject constructor(
         return out.distinctBy { it.word.lowercase() }.take(6)
     }
 
+    private suspend fun askAiQuestion(question: String): String {
+        val cfg = settingsDataStore.getFastAiConfig()
+        if (cfg.apiKey.isBlank()) {
+            throw IllegalStateException("未配置 FAST 模型的 API Key，请先在设置中完成配置")
+        }
+
+        val prompt = """
+            你是一个面向考研英语学习场景的快速问答助手。
+            请直接回答用户问题，默认使用中文解释；当用户明确要求英文或需要英文示例时，可以加入英文。
+            回答要求：
+            - 优先给出结论，再补充必要解释
+            - 如果问题涉及词义、语法、翻译、写作或阅读，给出可操作的学习建议
+            - 不要编造来源、题目年份或事实；不确定时说明不确定
+            - 保持简洁，但不要牺牲关键推理
+
+            用户问题：
+            $question
+        """.trimIndent()
+
+        val client = aiApiClientProvider.getClient(cfg.provider)
+        return client.sendMessage(
+            url = cfg.baseUrl,
+            apiKey = cfg.apiKey,
+            model = cfg.model,
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = prompt)),
+            maxTokens = 1400
+        ).trim()
+    }
+
     private suspend fun lookupBySourceWithCache(
         source: QuickDictionarySource,
         word: String,
@@ -399,7 +501,13 @@ data class QuickDictionaryWordGroup(
     val expanded: Boolean
 )
 
+enum class QuickSearchSection {
+    LOOKUP,
+    ASK
+}
+
 data class QuickDictionaryUiState(
+    val section: QuickSearchSection = QuickSearchSection.LOOKUP,
     val query: String = "",
     val mode: QuickLookupMode = QuickLookupMode.EN_TO_EN,
     val source: QuickLookupSource = QuickLookupSource.BOTH,
@@ -407,5 +515,9 @@ data class QuickDictionaryUiState(
     val groups: List<QuickDictionaryWordGroup> = emptyList(),
     val isSearching: Boolean = false,
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val question: String = "",
+    val answer: String = "",
+    val isAsking: Boolean = false,
+    val askError: String? = null
 )

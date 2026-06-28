@@ -117,6 +117,8 @@ import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
 import com.xty.englishhelper.ui.components.reading.extractContextSentence
 import com.xty.englishhelper.ui.components.reading.extractWordAtOffset
 import com.xty.englishhelper.ui.components.reading.extractWordRangeAtOffset
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
 import com.xty.englishhelper.ui.designsystem.tokens.LocalEhSemanticColors
 import com.xty.englishhelper.ui.screen.article.CollectionNotebookSheet
@@ -204,86 +206,77 @@ fun QuestionBankReaderScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-        
-            TopAppBar(
-                title = {
-                    Text(
-                        state.group?.sectionLabel
-                            ?: state.group?.questionType?.displayName
-                            ?: stringResource(R.string.reader_reading),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                },
-                actions = {
-                    // TTS toggle
-                    IconButton(onClick = { viewModel.toggleSpeakArticle() }) {
-                        Icon(
-                            if (ttsActive) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (ttsActive) stringResource(R.string.common_pause) else stringResource(R.string.reader_read_aloud)
-                        )
-                    }
-                    // Translation toggle
-                    IconButton(onClick = { viewModel.toggleTranslation() }) {
-                        Icon(
-                            Icons.Default.Translate,
-                            contentDescription = stringResource(R.string.reader_translate),
-                            tint = if (state.translationEnabled)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    // Notebook
-                    val notebookBaseTint = if (state.collectedWords.isNotEmpty()) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    val notebookTint = lerp(
-                        notebookBaseTint,
-                        MaterialTheme.colorScheme.primary,
-                        notebookPulseTint.value
-                    )
-                    IconButton(onClick = { viewModel.toggleNotebook() }) {
-                        if (state.collectedWords.isNotEmpty()) {
-                            BadgedBox(
-                                badge = {
-                                    Badge { Text("${state.collectedWords.size}") }
-                                }
-                            ) {
-                                Icon(
-                                    Icons.Outlined.CollectionsBookmark,
-                                    contentDescription = stringResource(R.string.reader_notebook),
-                                    tint = notebookTint,
-                                    modifier = Modifier.graphicsLayer {
-                                        scaleX = notebookPulseScale.value
-                                        scaleY = notebookPulseScale.value
-                                    }
-                                )
-                            }
-                        } else {
-                            Icon(
-                                Icons.Outlined.CollectionsBookmark,
-                                contentDescription = stringResource(R.string.reader_notebook),
-                                tint = notebookTint,
-                                modifier = Modifier.graphicsLayer {
-                                    scaleX = notebookPulseScale.value
-                                    scaleY = notebookPulseScale.value
-                                }
-                            )
-                        }
-                    }
-                }
+    AppTopBarEffect(
+        title = {
+            Text(
+                state.group?.sectionLabel
+                    ?: state.group?.questionType?.displayName
+                    ?: stringResource(R.string.reader_reading),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         },
+        navigationIcon = { AppTopBarBackButton(onBack) },
+        actions = {
+            IconButton(onClick = { viewModel.toggleSpeakArticle() }) {
+                Icon(
+                    if (ttsActive) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (ttsActive) stringResource(R.string.common_pause) else stringResource(R.string.reader_read_aloud)
+                )
+            }
+            IconButton(onClick = { viewModel.toggleTranslation() }) {
+                Icon(
+                    Icons.Default.Translate,
+                    contentDescription = stringResource(R.string.reader_translate),
+                    tint = if (state.translationEnabled)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            val notebookBaseTint = if (state.collectedWords.isNotEmpty()) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            val notebookTint = lerp(
+                notebookBaseTint,
+                MaterialTheme.colorScheme.primary,
+                notebookPulseTint.value
+            )
+            IconButton(onClick = { viewModel.toggleNotebook() }) {
+                if (state.collectedWords.isNotEmpty()) {
+                    BadgedBox(
+                        badge = {
+                            Badge { Text("${state.collectedWords.size}") }
+                        }
+                    ) {
+                        Icon(
+                            Icons.Outlined.CollectionsBookmark,
+                            contentDescription = stringResource(R.string.reader_notebook),
+                            tint = notebookTint,
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = notebookPulseScale.value
+                                scaleY = notebookPulseScale.value
+                            }
+                        )
+                    }
+                } else {
+                    Icon(
+                        Icons.Outlined.CollectionsBookmark,
+                        contentDescription = stringResource(R.string.reader_notebook),
+                        tint = notebookTint,
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = notebookPulseScale.value
+                            scaleY = notebookPulseScale.value
+                        }
+                    )
+                }
+            }
+        }
+    )
+
+    Scaffold(
         bottomBar = {
             if (ttsCurrent) {
                 TtsPlaybackBar(

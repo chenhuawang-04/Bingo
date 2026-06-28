@@ -76,6 +76,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,26 +104,20 @@ fun PoolBuildDetailScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (isReviewMode) {
-                            stringResource(R.string.pool_review_detail_title)
-                        } else {
-                            stringResource(R.string.pool_build_detail_title)
-                        }
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
+    AppTopBarEffect(
+        title = {
+            Text(
+                if (isReviewMode) {
+                    stringResource(R.string.pool_review_detail_title)
+                } else {
+                    stringResource(R.string.pool_build_detail_title)
                 }
             )
-        }
-    ) { padding ->
+        },
+        navigationIcon = { AppTopBarBackButton(onBack) }
+    )
+
+    Scaffold { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()

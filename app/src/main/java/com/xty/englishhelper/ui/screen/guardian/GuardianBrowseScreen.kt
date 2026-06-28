@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.OnlineReadingSource
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 import com.xty.englishhelper.ui.screen.article.ArticleFilterActionButton
@@ -94,31 +96,26 @@ fun GuardianBrowseScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.article_online_reading)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                },
-                actions = {
-                    ArticleFilterActionButton(
-                        filterEnabled = uiState.filterEnabled,
-                        lengthFilter = uiState.lengthFilter,
-                        scoreFilter = uiState.scoreFilter,
-                        sortOption = uiState.sortOption,
-                        onFilterEnabledChange = viewModel::setFilterEnabled,
-                        onLengthFilterChange = viewModel::setLengthFilter,
-                        onScoreFilterChange = viewModel::setScoreFilter,
-                        onSortOptionChange = viewModel::setSortOption,
-                        onReset = viewModel::resetFilters,
-                        helperText = stringResource(R.string.guardian_filter_hint)
-                    )
-                }
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.article_online_reading)) },
+        navigationIcon = { AppTopBarBackButton(onBack) },
+        actions = {
+            ArticleFilterActionButton(
+                filterEnabled = uiState.filterEnabled,
+                lengthFilter = uiState.lengthFilter,
+                scoreFilter = uiState.scoreFilter,
+                sortOption = uiState.sortOption,
+                onFilterEnabledChange = viewModel::setFilterEnabled,
+                onLengthFilterChange = viewModel::setLengthFilter,
+                onScoreFilterChange = viewModel::setScoreFilter,
+                onSortOptionChange = viewModel::setSortOption,
+                onReset = viewModel::resetFilters,
+                helperText = stringResource(R.string.guardian_filter_hint)
             )
-        },
+        }
+    )
+
+    Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         EhMaxWidthContainer(

@@ -19,11 +19,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.ui.components.LoadingIndicator
+import com.xty.englishhelper.ui.components.topbar.AppTopBarCloseButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StudyScreen(
     onBack: () -> Unit,
+    onWordClick: (Long, Long) -> Unit,
     viewModel: StudyViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -50,30 +53,23 @@ fun StudyScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    if (state.phase == StudyPhase.Studying || state.phase == StudyPhase.WaitingForNext) {
-                        if (state.studyMode == StudyMode.BRAINSTORM && state.brainstormTargetCount > 0) {
-                            // Show daily goal progress
-                            Text(stringResource(R.string.study_storm_progress, state.brainstormLearnedCount, state.brainstormTargetCount))
-                        } else {
-                            val prefix = if (state.studyMode == StudyMode.BRAINSTORM) "风暴 " else ""
-                            Text("$prefix${state.progress}/${state.total}")
-                        }
-                    } else {
-                        Text(stringResource(R.string.study_complete))
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close))
-                    }
+    AppTopBarEffect(
+        title = {
+            if (state.phase == StudyPhase.Studying || state.phase == StudyPhase.WaitingForNext) {
+                if (state.studyMode == StudyMode.BRAINSTORM && state.brainstormTargetCount > 0) {
+                    Text(stringResource(R.string.study_storm_progress, state.brainstormLearnedCount, state.brainstormTargetCount))
+                } else {
+                    val prefix = if (state.studyMode == StudyMode.BRAINSTORM) "风暴 " else ""
+                    Text("$prefix${state.progress}/${state.total}")
                 }
-            )
-        }
-    ) { padding ->
+            } else {
+                Text(stringResource(R.string.study_complete))
+            }
+        },
+        navigationIcon = { AppTopBarCloseButton(onBack) }
+    )
+
+    Scaffold { padding ->
         when (state.phase) {
             StudyPhase.Loading -> {
                 LoadingIndicator(Modifier.padding(padding))
@@ -84,6 +80,7 @@ fun StudyScreen(
                     state = state,
                     onRevealAnswer = viewModel::onRevealAnswer,
                     onRate = viewModel::onRate,
+                    onOpenRelatedWord = onWordClick,
                     onWordNoteInputChange = viewModel::onWordNoteInputChange,
                     onWordNoteSuggestionSelected = viewModel::onWordNoteSuggestionSelected,
                     onWordNoteSuggestionsExpandedChange = viewModel::setWordNoteSuggestionsExpanded,

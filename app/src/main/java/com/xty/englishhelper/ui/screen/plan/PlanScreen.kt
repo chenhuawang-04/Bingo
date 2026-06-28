@@ -73,6 +73,7 @@ import com.xty.englishhelper.domain.model.PlanAutoSource
 import com.xty.englishhelper.domain.model.PlanStatsMode
 import com.xty.englishhelper.domain.model.PlanTemplate
 import com.xty.englishhelper.domain.model.PlanTypeSummary
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -106,12 +107,11 @@ fun PlanScreen(
         }
     }
 
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.plan_title)) }
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.plan_title)) }
-            )
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(

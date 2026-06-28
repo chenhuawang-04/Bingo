@@ -910,7 +910,14 @@
     <string name="unit_delete_confirm">确定要删除单元「%s」吗？（不会删除单词本身）</string>
 
     <!-- ==================== Main Scaffold (new) ==================== -->
-    <string name="quick_dictionary">快捷查词</string>
+    <string name="quick_dictionary">快速搜索</string>
+    <string name="quick_search">快速搜索</string>
+    <string name="quick_search_lookup">查词</string>
+    <string name="quick_search_ask">提问问题</string>
+    <string name="quick_search_ask_desc">随时询问词义、语法、翻译、写作或阅读问题</string>
+    <string name="quick_search_question_hint">输入你想问的问题</string>
+    <string name="quick_search_question_submit">提问</string>
+    <string name="quick_search_answer">AI 回答</string>
     <string name="dict_quick_lookup_desc">支持中->英候选词 + Cambridge/OED 词条</string>
     <string name="dict_input_zh_hint">输入中文含义（如：白色的）</string>
     <string name="dict_input_en_hint">输入英语单词（如：white）</string>

@@ -3,15 +3,11 @@ package com.xty.englishhelper.ui.screen.main
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
-import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material3.Icon
@@ -20,24 +16,25 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.window.core.layout.WindowWidthSizeClass
 import com.xty.englishhelper.R
 import com.xty.englishhelper.ui.components.dictionary.QuickDictionarySheet
+import com.xty.englishhelper.ui.components.topbar.LocalAppTopBarController
+import com.xty.englishhelper.ui.components.topbar.ManagedAppTopBar
+import com.xty.englishhelper.ui.components.topbar.rememberAppTopBarController
 import com.xty.englishhelper.ui.debug.AiDebugDialogHost
 import com.xty.englishhelper.ui.navigation.AddWordRoute
 import com.xty.englishhelper.ui.navigation.ArticleEditorRoute
@@ -81,14 +78,6 @@ private val PLAN_TAB_ROUTES: Set<String> = setOf(
     PlanRoute::class
 ).mapNotNull { it.qualifiedName }.toSet()
 
-private val PRIMARY_FAB_ROUTES: Set<String> = setOf(
-    HomeRoute::class,
-    DictionaryRoute::class,
-    ArticleListRoute::class,
-    QuestionBankListRoute::class,
-    PlanRoute::class
-).mapNotNull { it.qualifiedName }.toSet()
-
 private fun matchesTab(currentRoute: String?, prefixes: Set<String>): Boolean =
     currentRoute != null && prefixes.any { currentRoute.startsWith(it) }
 
@@ -99,6 +88,7 @@ fun MainScaffold(
 ) {
     var showQuickDictionary by rememberSaveable { mutableStateOf(false) }
     val quickDictionaryViewModel: QuickDictionaryViewModel = hiltViewModel()
+    val topBarController = rememberAppTopBarController()
 
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
@@ -107,7 +97,6 @@ fun MainScaffold(
     val isInArticleTab = matchesTab(currentRoute, ARTICLE_TAB_ROUTES)
     val isInQuestionBankTab = matchesTab(currentRoute, QUESTION_BANK_TAB_ROUTES)
     val isInPlanTab = matchesTab(currentRoute, PLAN_TAB_ROUTES)
-    val hasPrimaryFab = matchesTab(currentRoute, PRIMARY_FAB_ROUTES)
     val showBottomBar = isInDictionaryTab || isInArticleTab || isInQuestionBankTab || isInPlanTab
 
     fun navigateToDictionaryTab() {
@@ -144,20 +133,21 @@ fun MainScaffold(
 
     val isCompact = currentWindowAdaptiveInfo().windowSizeClass.windowWidthSizeClass == WindowWidthSizeClass.COMPACT
 
-    QuickDictionarySheet(
-        visible = showQuickDictionary,
-        onDismiss = { showQuickDictionary = false },
-        viewModel = quickDictionaryViewModel
-    )
+    CompositionLocalProvider(LocalAppTopBarController provides topBarController) {
+        QuickDictionarySheet(
+            visible = showQuickDictionary,
+            onDismiss = { showQuickDictionary = false },
+            viewModel = quickDictionaryViewModel
+        )
 
-    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val launcherBottomPadding = navBarBottom +
-        (if (showBottomBar) 72.dp else 16.dp) +
-        (if (hasPrimaryFab) 72.dp else 0.dp)
-
-    if (isCompact) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        if (isCompact) {
             Scaffold(
+                topBar = {
+                    ManagedAppTopBar(
+                        controller = topBarController,
+                        onQuickSearchClick = { showQuickDictionary = true }
+                    )
+                },
                 bottomBar = {
                     if (showBottomBar) {
                         NavigationBar {
@@ -189,63 +179,68 @@ fun MainScaffold(
                     }
                 }
             ) { innerPadding ->
-                content(innerPadding)
-                AiDebugDialogHost()
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    content(PaddingValues())
+                    AiDebugDialogHost()
+                }
             }
-
-            SmallFloatingActionButton(
-                onClick = { showQuickDictionary = true },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = launcherBottomPadding)
-            ) {
-                Icon(Icons.Default.Translate, contentDescription = stringResource(R.string.quick_dictionary))
-            }
-        }
-    } else {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Row {
-                if (showBottomBar) {
-                    NavigationRail {
-                        NavigationRailItem(
-                            selected = isInDictionaryTab,
-                            onClick = ::navigateToDictionaryTab,
-                            icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null) },
+        } else {
+            Scaffold(
+                topBar = {
+                    ManagedAppTopBar(
+                        controller = topBarController,
+                        onQuickSearchClick = { showQuickDictionary = true }
+                    )
+                }
+            ) { innerPadding ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    if (showBottomBar) {
+                        NavigationRail {
+                            NavigationRailItem(
+                                selected = isInDictionaryTab,
+                                onClick = ::navigateToDictionaryTab,
+                                icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null) },
                                 label = { Text(stringResource(R.string.nav_dictionary)) }
-                        )
-                        NavigationRailItem(
-                            selected = isInArticleTab,
-                            onClick = ::navigateToArticleTab,
-                            icon = { Icon(Icons.AutoMirrored.Outlined.Article, null) },
-                            label = { Text(stringResource(R.string.nav_article)) }
-                        )
-                        NavigationRailItem(
-                            selected = isInQuestionBankTab,
-                            onClick = ::navigateToQuestionBankTab,
-                            icon = { Icon(Icons.Outlined.Quiz, null) },
-                            label = { Text(stringResource(R.string.question_bank)) }
-                        )
-                        NavigationRailItem(
-                            selected = isInPlanTab,
-                            onClick = ::navigateToPlanTab,
-                            icon = { Icon(Icons.Outlined.DateRange, null) },
-                            label = { Text(stringResource(R.string.nav_plan)) }
-                        )
+                            )
+                            NavigationRailItem(
+                                selected = isInArticleTab,
+                                onClick = ::navigateToArticleTab,
+                                icon = { Icon(Icons.AutoMirrored.Outlined.Article, null) },
+                                label = { Text(stringResource(R.string.nav_article)) }
+                            )
+                            NavigationRailItem(
+                                selected = isInQuestionBankTab,
+                                onClick = ::navigateToQuestionBankTab,
+                                icon = { Icon(Icons.Outlined.Quiz, null) },
+                                label = { Text(stringResource(R.string.question_bank)) }
+                            )
+                            NavigationRailItem(
+                                selected = isInPlanTab,
+                                onClick = ::navigateToPlanTab,
+                                icon = { Icon(Icons.Outlined.DateRange, null) },
+                                label = { Text(stringResource(R.string.nav_plan)) }
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                    ) {
+                        content(PaddingValues())
                     }
                 }
-                content(PaddingValues())
             }
 
-            SmallFloatingActionButton(
-                onClick = { showQuickDictionary = true },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 20.dp, bottom = launcherBottomPadding)
-            ) {
-                Icon(Icons.Default.Translate, contentDescription = stringResource(R.string.quick_dictionary))
-            }
+            AiDebugDialogHost()
         }
-
-        AiDebugDialogHost()
     }
 }

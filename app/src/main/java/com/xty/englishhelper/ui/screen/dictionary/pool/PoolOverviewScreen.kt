@@ -49,6 +49,8 @@ import com.xty.englishhelper.domain.model.WordGraph
 import com.xty.englishhelper.domain.model.WordGraphCluster
 import com.xty.englishhelper.ui.components.pool.clusterColor
 import com.xty.englishhelper.ui.components.pool.edgeClusterLegend
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 
 /** 词池总览：顶部仪表盘 + 下方词池簇画廊。点卡进入大图并定位该簇；亦可「查看全图」。 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,18 +62,12 @@ fun PoolOverviewScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.pool_overview_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                }
-            )
-        }
-    ) { padding ->
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.pool_overview_title)) },
+        navigationIcon = { AppTopBarBackButton(onBack) }
+    )
+
+    Scaffold { padding ->
         val graph = state.graph
         when {
             state.isLoading -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {

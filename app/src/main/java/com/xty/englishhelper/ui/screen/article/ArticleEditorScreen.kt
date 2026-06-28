@@ -60,6 +60,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 
@@ -110,27 +112,22 @@ fun ArticleEditorScreen(
         }
     }
 
+    AppTopBarEffect(
+        title = { Text(if (state.isEditing) stringResource(R.string.article_edit) else stringResource(R.string.article_create_new)) },
+        navigationIcon = { AppTopBarBackButton(onBack) },
+        actions = {
+            TextButton(
+                onClick = viewModel::save,
+                enabled = !state.isSaving &&
+                    state.title.isNotBlank() &&
+                    state.paragraphs.any { it.text.isNotBlank() }
+            ) {
+                Text(stringResource(R.string.common_save))
+            }
+        }
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (state.isEditing) stringResource(R.string.article_edit) else stringResource(R.string.article_create_new)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                },
-                actions = {
-                    TextButton(
-                        onClick = viewModel::save,
-                        enabled = !state.isSaving &&
-                            state.title.isNotBlank() &&
-                            state.paragraphs.any { it.text.isNotBlank() }
-                    ) {
-                        Text(stringResource(R.string.common_save))
-                    }
-                }
-            )
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         EhMaxWidthContainer(

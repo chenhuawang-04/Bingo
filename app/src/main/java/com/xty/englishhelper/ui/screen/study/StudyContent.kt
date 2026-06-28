@@ -59,6 +59,7 @@ internal fun StudyingContent(
     state: StudyUiState,
     onRevealAnswer: () -> Unit,
     onRate: (Rating) -> Unit,
+    onOpenRelatedWord: (Long, Long) -> Unit,
     onWordNoteInputChange: (String) -> Unit,
     onWordNoteSuggestionSelected: (String) -> Unit,
     onWordNoteSuggestionsExpandedChange: (Boolean) -> Unit,
@@ -146,7 +147,12 @@ internal fun StudyingContent(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item { BrainstormTag(state) }
+                        item {
+                            BrainstormTag(
+                                state = state,
+                                onOpenRelatedWord = onOpenRelatedWord
+                            )
+                        }
                         state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                         wordDetailItems(
                             word = word,
@@ -209,7 +215,12 @@ internal fun StudyingContent(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    item { BrainstormTag(state) }
+                    item {
+                        BrainstormTag(
+                            state = state,
+                            onOpenRelatedWord = onOpenRelatedWord
+                        )
+                    }
                     state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                     wordDetailItems(
                         word = word,
@@ -274,9 +285,13 @@ private fun ProgressBar(state: StudyUiState) {
 }
 
 @Composable
-private fun BrainstormTag(state: StudyUiState) {
+private fun BrainstormTag(
+    state: StudyUiState,
+    onOpenRelatedWord: (Long, Long) -> Unit
+) {
     val edges = state.currentWordEdges
     val spellings = state.currentWordRelatedSpellings
+    val dictionaryId = state.currentWord?.dictionaryId ?: return
 
     val hasEdges = edges.isNotEmpty()
     val hasSpellings = spellings.isNotEmpty()
@@ -303,6 +318,7 @@ private fun BrainstormTag(state: StudyUiState) {
                 items(edges) { edge ->
                     val color = edgeTypeColor(edge.edgeType)
                     Surface(
+                        onClick = { onOpenRelatedWord(edge.wordId, dictionaryId) },
                         shape = MaterialTheme.shapes.small,
                         color = color.copy(alpha = 0.15f)
                     ) {

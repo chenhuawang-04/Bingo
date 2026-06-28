@@ -51,6 +51,8 @@ import com.xty.englishhelper.ui.components.ConfirmDialog
 import com.xty.englishhelper.ui.components.EmptyState
 import com.xty.englishhelper.ui.components.LoadingIndicator
 import com.xty.englishhelper.ui.components.WordListItem
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,56 +72,51 @@ fun UnitDetailScreen(
         }
     }
 
+    AppTopBarEffect(
+        title = { Text(state.unit?.name ?: stringResource(R.string.unit_default_name)) },
+        navigationIcon = { AppTopBarBackButton(onBack) },
+        actions = {
+            IconButton(onClick = viewModel::showAddWordsDialog) {
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.unit_manage_words))
+            }
+            IconButton(onClick = { showMenu = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_more))
+            }
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.unit_rename)) },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.unit_rename)) },
+                    onClick = {
+                        showMenu = false
+                        viewModel.showRenameDialog()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.unit_set_repeat_count)) },
+                    onClick = {
+                        showMenu = false
+                        viewModel.showRepeatCountDialog()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.unit_delete)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.common_delete),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    onClick = {
+                        showMenu = false
+                        viewModel.showDeleteConfirm()
+                    }
+                )
+            }
+        }
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(state.unit?.name ?: stringResource(R.string.unit_default_name)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = viewModel::showAddWordsDialog) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.unit_manage_words))
-                    }
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_more))
-                    }
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.unit_rename)) },
-                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.unit_rename)) },
-                            onClick = {
-                                showMenu = false
-                                viewModel.showRenameDialog()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.unit_set_repeat_count)) },
-                            onClick = {
-                                showMenu = false
-                                viewModel.showRepeatCountDialog()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.unit_delete)) },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = stringResource(R.string.common_delete),
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            },
-                            onClick = {
-                                showMenu = false
-                                viewModel.showDeleteConfirm()
-                            }
-                        )
-                    }
-                }
-            )
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(

@@ -594,7 +594,11 @@ class StudyViewModel @Inject constructor(
                 .take(5)
                 .mapNotNull { (neighborId, edgeTypes) ->
                     val spelling = wordIdToSpelling[neighborId] ?: return@mapNotNull null
-                    WordEdgePreview(spelling, selectDisplayEdgeType(edgeTypes))
+                    WordEdgePreview(
+                        wordId = neighborId,
+                        spelling = spelling,
+                        edgeType = selectDisplayEdgeType(edgeTypes)
+                    )
                 }
         } else {
             emptyList()
@@ -609,6 +613,7 @@ class StudyViewModel @Inject constructor(
             minConfidence = 1.0
         ).map { preview ->
             WordEdgePreview(
+                wordId = preview.neighborId,
                 spelling = preview.spelling,
                 edgeType = selectDisplayEdgeType(preview.edgeTypes)
             )

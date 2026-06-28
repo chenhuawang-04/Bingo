@@ -40,6 +40,8 @@ import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.ui.components.EmptyState
 import com.xty.englishhelper.ui.components.LoadingIndicator
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,17 +60,12 @@ fun StudySetupScreen(
         }
     }
 
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.study_title)) },
+        navigationIcon = { AppTopBarBackButton(onBack) }
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.study_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                }
-            )
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(

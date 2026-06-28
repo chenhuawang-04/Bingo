@@ -99,6 +99,8 @@ import com.xty.englishhelper.ui.components.reading.HighlightedParagraphText
 import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TranslationBlock
 import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleTypography
 import com.xty.englishhelper.ui.designsystem.tokens.LocalReaderColors
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
@@ -221,80 +223,74 @@ fun ArticleReaderScreen(
         uiState.ttsState.isReady
     val topBarTitleText = article?.title?.takeIf { it.isNotBlank() } ?: stringResource(R.string.article_reading)
 
-    Scaffold(
-        topBar = {
-        
-            TopAppBar(
-                title = {
-                    Text(
-                        text = topBarTitleText,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                },
-                actions = {
-                    val notebookBaseTint = if (uiState.collectedWords.isNotEmpty()) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    val notebookTint = lerp(
-                        notebookBaseTint,
-                        MaterialTheme.colorScheme.primary,
-                        notebookPulseTint.value
-                    )
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ReaderTopActionButton(
-                            icon = if (isArticleSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isArticleSpeaking) stringResource(R.string.article_tts_pause) else stringResource(R.string.article_tts_play),
-                            onClick = { viewModel.toggleSpeakArticle() },
-                            enabled = canSpeak,
-                            active = isArticleSpeaking
-                        )
-                        ReaderTopActionButton(
-                            icon = Icons.Default.Translate,
-                            contentDescription = if (uiState.translationEnabled) stringResource(R.string.article_translate_off) else stringResource(R.string.article_translate_toggle),
-                            onClick = { viewModel.toggleTranslation() },
-                            active = uiState.translationEnabled
-                        )
-                        ReaderTopActionButton(
-                            icon = Icons.Default.AutoAwesome,
-                            contentDescription = if (uiState.isGeneratingQuestions) stringResource(R.string.article_generating_questions) else stringResource(R.string.article_generate_questions),
-                            onClick = { showGenerateDialog = true },
-                            enabled = !uiState.isGeneratingQuestions,
-                            active = uiState.isGeneratingQuestions
-                        )
-                        if (article?.isSaved == false) {
-                            ReaderTopActionButton(
-                                icon = Icons.Default.Download,
-                                contentDescription = if (uiState.isSavingToLocal) stringResource(R.string.article_saving) else stringResource(R.string.article_save_to_local),
-                                onClick = { viewModel.saveToLocal() },
-                                enabled = !uiState.isSavingToLocal,
-                                active = uiState.isSavingToLocal
-                            )
-                        }
-                        ReaderTopActionButton(
-                            icon = Icons.AutoMirrored.Filled.MenuBook,
-                            contentDescription = stringResource(R.string.article_notebook),
-                            onClick = { viewModel.toggleNotebook() },
-                            tint = notebookTint,
-                            pulseScale = notebookPulseScale.value,
-                            badgeCount = uiState.collectedWords.size,
-                            active = uiState.collectedWords.isNotEmpty()
-                        )
-                    }
-                }
+    AppTopBarEffect(
+        title = {
+            Text(
+                text = topBarTitleText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         },
+        navigationIcon = { AppTopBarBackButton(onBack) },
+        actions = {
+            val notebookBaseTint = if (uiState.collectedWords.isNotEmpty()) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            val notebookTint = lerp(
+                notebookBaseTint,
+                MaterialTheme.colorScheme.primary,
+                notebookPulseTint.value
+            )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ReaderTopActionButton(
+                    icon = if (isArticleSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isArticleSpeaking) stringResource(R.string.article_tts_pause) else stringResource(R.string.article_tts_play),
+                    onClick = { viewModel.toggleSpeakArticle() },
+                    enabled = canSpeak,
+                    active = isArticleSpeaking
+                )
+                ReaderTopActionButton(
+                    icon = Icons.Default.Translate,
+                    contentDescription = if (uiState.translationEnabled) stringResource(R.string.article_translate_off) else stringResource(R.string.article_translate_toggle),
+                    onClick = { viewModel.toggleTranslation() },
+                    active = uiState.translationEnabled
+                )
+                ReaderTopActionButton(
+                    icon = Icons.Default.AutoAwesome,
+                    contentDescription = if (uiState.isGeneratingQuestions) stringResource(R.string.article_generating_questions) else stringResource(R.string.article_generate_questions),
+                    onClick = { showGenerateDialog = true },
+                    enabled = !uiState.isGeneratingQuestions,
+                    active = uiState.isGeneratingQuestions
+                )
+                if (article?.isSaved == false) {
+                    ReaderTopActionButton(
+                        icon = Icons.Default.Download,
+                        contentDescription = if (uiState.isSavingToLocal) stringResource(R.string.article_saving) else stringResource(R.string.article_save_to_local),
+                        onClick = { viewModel.saveToLocal() },
+                        enabled = !uiState.isSavingToLocal,
+                        active = uiState.isSavingToLocal
+                    )
+                }
+                ReaderTopActionButton(
+                    icon = Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = stringResource(R.string.article_notebook),
+                    onClick = { viewModel.toggleNotebook() },
+                    tint = notebookTint,
+                    pulseScale = notebookPulseScale.value,
+                    badgeCount = uiState.collectedWords.size,
+                    active = uiState.collectedWords.isNotEmpty()
+                )
+            }
+        }
+    )
+
+    Scaffold(
         bottomBar = {
             val ttsSessionId = article?.let { "article:${it.id}" }
             val isCurrent = ttsSessionId != null && uiState.ttsState.sessionId == ttsSessionId

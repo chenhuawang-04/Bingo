@@ -59,6 +59,7 @@ import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 import com.xty.englishhelper.ui.components.article.UnifiedArticleCard
@@ -91,31 +92,30 @@ fun ArticleListScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.article_reading)) },
-                actions = {
-                    IconButton(onClick = onGuardianBrowse) {
-                        Icon(Icons.Default.Language, contentDescription = stringResource(R.string.article_online_reading))
-                    }
-                    ArticleFilterActionButton(
-                        filterEnabled = uiState.filterEnabled,
-                        lengthFilter = uiState.lengthFilter,
-                        scoreFilter = uiState.scoreFilter,
-                        sortOption = uiState.sortOption,
-                        onFilterEnabledChange = viewModel::setFilterEnabled,
-                        onLengthFilterChange = viewModel::setLengthFilter,
-                        onScoreFilterChange = viewModel::setScoreFilter,
-                        onSortOptionChange = viewModel::setSortOption,
-                        onReset = viewModel::resetFilters
-                    )
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.common_settings))
-                    }
-                }
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.article_reading)) },
+        actions = {
+            IconButton(onClick = onGuardianBrowse) {
+                Icon(Icons.Default.Language, contentDescription = stringResource(R.string.article_online_reading))
+            }
+            ArticleFilterActionButton(
+                filterEnabled = uiState.filterEnabled,
+                lengthFilter = uiState.lengthFilter,
+                scoreFilter = uiState.scoreFilter,
+                sortOption = uiState.sortOption,
+                onFilterEnabledChange = viewModel::setFilterEnabled,
+                onLengthFilterChange = viewModel::setLengthFilter,
+                onScoreFilterChange = viewModel::setScoreFilter,
+                onSortOptionChange = viewModel::setSortOption,
+                onReset = viewModel::resetFilters
             )
-        },
+            IconButton(onClick = onSettings) {
+                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.common_settings))
+            }
+        }
+    )
+
+    Scaffold(
         floatingActionButton = {
             FloatingActionButton(onClick = onCreateArticle) {
                 Icon(Icons.Default.Add, contentDescription = stringResource(R.string.article_create))

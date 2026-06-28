@@ -24,6 +24,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
 import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,25 +49,20 @@ fun AddWordScreen(
         if (state.savedSuccessfully) onBack()
     }
 
+    AppTopBarEffect(
+        title = { Text(if (state.isEditing) stringResource(R.string.word_edit_word) else stringResource(R.string.dict_add_word)) },
+        navigationIcon = { AppTopBarBackButton(onBack) },
+        actions = {
+            TextButton(
+                onClick = viewModel::save,
+                enabled = !state.isSaving && state.spelling.isNotBlank()
+            ) {
+                Text(stringResource(R.string.common_save))
+            }
+        }
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (state.isEditing) stringResource(R.string.word_edit_word) else stringResource(R.string.dict_add_word)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                },
-                actions = {
-                    TextButton(
-                        onClick = viewModel::save,
-                        enabled = !state.isSaving && state.spelling.isNotBlank()
-                    ) {
-                        Text(stringResource(R.string.common_save))
-                    }
-                }
-            )
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         AddWordContent(

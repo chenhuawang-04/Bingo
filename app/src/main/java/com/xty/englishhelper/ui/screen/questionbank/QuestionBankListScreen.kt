@@ -51,6 +51,7 @@ import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -69,10 +70,11 @@ fun QuestionBankListScreen(
         }
     }
 
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.question_bank)) }
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.question_bank)) })
-        },
         floatingActionButton = {
             FloatingActionButton(onClick = onScan) {
                 Icon(Icons.Default.CameraAlt, contentDescription = stringResource(R.string.question_scan))

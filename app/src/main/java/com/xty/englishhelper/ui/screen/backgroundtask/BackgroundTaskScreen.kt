@@ -58,6 +58,8 @@ import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,18 +70,12 @@ fun BackgroundTaskScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.task_management)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
-                }
-            )
-        }
-    ) { padding ->
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.task_management)) },
+        navigationIcon = { AppTopBarBackButton(onBack) }
+    )
+
+    Scaffold { padding ->
         EhMaxWidthContainer(
             modifier = Modifier
                 .fillMaxSize()

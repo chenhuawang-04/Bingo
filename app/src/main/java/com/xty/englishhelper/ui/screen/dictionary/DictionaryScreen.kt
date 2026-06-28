@@ -73,6 +73,8 @@ import com.xty.englishhelper.ui.components.SearchBar
 import com.xty.englishhelper.ui.components.UnitCard
 import com.xty.englishhelper.ui.components.WordDetailContent
 import com.xty.englishhelper.ui.components.WordListItem
+import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.screen.word.WordDetailViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -129,82 +131,77 @@ fun DictionaryScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(state.dictionary?.name ?: stringResource(R.string.nav_dictionary)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
+    AppTopBarEffect(
+        title = { Text(state.dictionary?.name ?: stringResource(R.string.nav_dictionary)) },
+        navigationIcon = { AppTopBarBackButton(onBack) },
+        actions = {
+            state.dictionary?.let { dict ->
+                IconButton(onClick = viewModel::showFilterDialog) {
+                    Icon(
+                        Icons.Default.FilterList,
+                        contentDescription = stringResource(R.string.dict_filter),
+                        tint = if (state.hasActiveWordFilter) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+                TextButton(onClick = viewModel::toggleBatchMode) {
+                    Text(if (state.isBatchMode) stringResource(R.string.dict_exit_batch) else stringResource(R.string.dict_batch_mode))
+                }
+                IconButton(onClick = { onStudy(dict.id) }) {
+                    Icon(Icons.Default.School, contentDescription = stringResource(R.string.study_title))
+                }
+                Box {
+                    IconButton(onClick = { showPoolMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_more))
                     }
-                },
-                actions = {
-                    state.dictionary?.let { dict ->
-                        IconButton(onClick = viewModel::showFilterDialog) {
-                            Icon(
-                                Icons.Default.FilterList,
-                                contentDescription = stringResource(R.string.dict_filter),
-                                tint = if (state.hasActiveWordFilter) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
-                        }
-                        TextButton(onClick = viewModel::toggleBatchMode) {
-                            Text(if (state.isBatchMode) stringResource(R.string.dict_exit_batch) else stringResource(R.string.dict_batch_mode))
-                        }
-                        IconButton(onClick = { onStudy(dict.id) }) {
-                            Icon(Icons.Default.School, contentDescription = stringResource(R.string.study_title))
-                        }
-                        Box {
-                            IconButton(onClick = { showPoolMenu = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.common_more))
-                            }
-                            DropdownMenu(
-                                expanded = showPoolMenu,
-                                onDismissRequest = { showPoolMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.dict_pool_balanced)) },
-                                    onClick = {
-                                        showPoolMenu = false
-                                        viewModel.requestRebuildPools(PoolStrategy.BALANCED)
-                                    },
-                                    enabled = !state.isRebuildingPools
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.dict_pool_balanced_ai)) },
-                                    onClick = {
-                                        showPoolMenu = false
-                                        viewModel.requestRebuildPools(PoolStrategy.BALANCED_WITH_AI)
-                                    },
-                                    enabled = !state.isRebuildingPools
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.dict_pool_quality_first)) },
-                                    onClick = {
-                                        showPoolMenu = false
-                                        viewModel.requestRebuildPools(PoolStrategy.QUALITY_FIRST)
-                                    },
-                                    enabled = !state.isRebuildingPools
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.dict_pool_review)) },
-                                    onClick = {
-                                        showPoolMenu = false
-                                        viewModel.requestReviewPools()
-                                    },
-                                    enabled = state.edgeCount > 0 &&
-                                        !state.isRebuildingPools &&
-                                        !state.isReviewingPools
-                                )
-                            }
-                        }
+                    DropdownMenu(
+                        expanded = showPoolMenu,
+                        onDismissRequest = { showPoolMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.dict_pool_balanced)) },
+                            onClick = {
+                                showPoolMenu = false
+                                viewModel.requestRebuildPools(PoolStrategy.BALANCED)
+                            },
+                            enabled = !state.isRebuildingPools
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.dict_pool_balanced_ai)) },
+                            onClick = {
+                                showPoolMenu = false
+                                viewModel.requestRebuildPools(PoolStrategy.BALANCED_WITH_AI)
+                            },
+                            enabled = !state.isRebuildingPools
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.dict_pool_quality_first)) },
+                            onClick = {
+                                showPoolMenu = false
+                                viewModel.requestRebuildPools(PoolStrategy.QUALITY_FIRST)
+                            },
+                            enabled = !state.isRebuildingPools
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.dict_pool_review)) },
+                            onClick = {
+                                showPoolMenu = false
+                                viewModel.requestReviewPools()
+                            },
+                            enabled = state.edgeCount > 0 &&
+                                !state.isRebuildingPools &&
+                                !state.isReviewingPools
+                        )
                     }
                 }
-            )
-        },
+            }
+        }
+    )
+
+    Scaffold(
         floatingActionButton = {
             state.dictionary?.let { dict ->
                 Box {

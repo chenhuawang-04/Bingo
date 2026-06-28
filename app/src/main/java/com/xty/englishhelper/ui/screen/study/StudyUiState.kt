@@ -75,6 +75,7 @@ data class BrainstormQuizOption(
 )
 
 data class WordEdgePreview(
+    val wordId: Long,
     val spelling: String,
     val edgeType: EdgeType
 )

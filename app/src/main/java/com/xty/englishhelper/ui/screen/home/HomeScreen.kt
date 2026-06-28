@@ -61,6 +61,7 @@ import com.xty.englishhelper.ui.components.ConfirmDialog
 import com.xty.englishhelper.ui.components.DictionaryCard
 import com.xty.englishhelper.ui.components.EmptyState
 import com.xty.englishhelper.ui.components.LoadingIndicator
+import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.designsystem.components.EhCard
 import com.xty.englishhelper.ui.designsystem.components.EhStatTile
 import com.xty.englishhelper.ui.theme.DictionaryColors
@@ -97,20 +98,19 @@ fun HomeScreen(
         }
     }
 
+    AppTopBarEffect(
+        title = { Text(stringResource(R.string.home_title)) },
+        actions = {
+            IconButton(onClick = onImportExport) {
+                Icon(Icons.Default.ImportExport, contentDescription = stringResource(R.string.home_import_export))
+            }
+            IconButton(onClick = onSettings) {
+                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.common_settings))
+            }
+        }
+    )
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.home_title)) },
-                actions = {
-                    IconButton(onClick = onImportExport) {
-                        Icon(Icons.Default.ImportExport, contentDescription = stringResource(R.string.home_import_export))
-                    }
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.common_settings))
-                    }
-                }
-            )
-        },
         floatingActionButton = {
             FloatingActionButton(onClick = viewModel::showCreateDialog) {
                 Icon(Icons.Default.Add, contentDescription = stringResource(R.string.home_create_dictionary))
