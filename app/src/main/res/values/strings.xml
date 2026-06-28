@@ -83,6 +83,14 @@
     <string name="dict_pool_balanced_ai">生成词池（均衡+AI）</string>
     <string name="dict_pool_quality_first">生成词池（质量优先·高消耗）</string>
     <string name="dict_pool_review">提纯词池（AI 降权·质量优先）</string>
+    <string name="dict_phrase_organize">整理词组/短语</string>
+    <string name="dict_phrase_stats">词组/短语：%1$d · 标签：%2$d · 已整理：%3$d/%4$d</string>
+    <string name="dict_phrase_organizing">短语整理中</string>
+    <string name="dict_phrase_paused">短语整理已暂停</string>
+    <string name="dict_phrase_confirm_title">整理词组/短语</string>
+    <string name="dict_phrase_confirm_detail">将补齐当前辞书的词组/短语。单词数：%d</string>
+    <string name="dict_phrase_confirm_tokens">预计 token 消耗：%2$d（%1$d x 450）</string>
+    <string name="dict_phrase_confirm_incremental">会跳过已经有词组/短语或已确认无短语的单词，失败词下次可继续重试。</string>
     <string name="dict_select_word_hint">选择一个单词查看详情</string>
     <string name="dict_words_filtered">筛选后 %1$d/%2$d 词</string>
     <string name="dict_words_total">共 %d 词</string>
@@ -152,6 +160,8 @@
     <string name="word_similar_words">形近词</string>
     <string name="word_cognates">同根词</string>
     <string name="word_inflections">词形变化</string>
+    <string name="word_phrases">词组/短语</string>
+    <string name="word_phrase_example">例：%s</string>
     <string name="word_no_data">暂无数据</string>
     <string name="word_edit_word">编辑单词</string>
     <string name="word_word">单词</string>
@@ -484,6 +494,7 @@
     <string name="task_management">后台任务管理</string>
     <string name="task_word_organize">单词整理</string>
     <string name="task_word_note_organize">单词便签整理</string>
+    <string name="task_word_phrase_organize">词组/短语整理</string>
     <string name="task_pool_rebuild">词池重建</string>
     <string name="task_pool_review">词池提纯</string>
     <string name="task_question_generate">文章出题</string>

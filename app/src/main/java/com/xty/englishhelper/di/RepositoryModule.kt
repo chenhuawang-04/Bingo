@@ -22,6 +22,8 @@ import com.xty.englishhelper.data.repository.RoomTransactionRunner
 import com.xty.englishhelper.data.repository.StudyRepositoryImpl
 import com.xty.englishhelper.data.repository.UnitRepositoryImpl
 import com.xty.englishhelper.data.repository.WordPoolRepositoryImpl
+import com.xty.englishhelper.data.repository.WordPhraseRepositoryImpl
+import com.xty.englishhelper.data.repository.WordPhraseAiRepositoryImpl
 import com.xty.englishhelper.data.repository.WordRepositoryImpl
 import com.xty.englishhelper.domain.repository.AiModelRepository
 import com.xty.englishhelper.domain.repository.AiRepository
@@ -45,6 +47,8 @@ import com.xty.englishhelper.domain.repository.StudyRepository
 import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordPoolRepository
+import com.xty.englishhelper.domain.repository.WordPhraseRepository
+import com.xty.englishhelper.domain.repository.WordPhraseAiRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import dagger.Binds
 import dagger.Module
@@ -107,6 +111,14 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindWordPoolRepository(impl: WordPoolRepositoryImpl): WordPoolRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindWordPhraseRepository(impl: WordPhraseRepositoryImpl): WordPhraseRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindWordPhraseAiRepository(impl: WordPhraseAiRepositoryImpl): WordPhraseAiRepository
 
     @Binds
     @Singleton

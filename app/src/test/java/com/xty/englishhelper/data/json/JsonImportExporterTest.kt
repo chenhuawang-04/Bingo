@@ -11,6 +11,10 @@ import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordPhrase
+import com.xty.englishhelper.domain.model.WordPhraseSyncItem
+import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
+import com.xty.englishhelper.domain.model.WordPhraseTag
 import com.xty.englishhelper.domain.model.WordStudyState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -103,11 +107,52 @@ class JsonImportExporterTest {
             )
         )
         val wordIdToUid = mapOf(1L to "uid-1", 2L to "uid-2")
+        val wordPhraseSnapshot = WordPhraseSyncSnapshot(
+            tags = listOf(
+                WordPhraseTag(
+                    tagUid = "tag-writing",
+                    dictionaryId = 1,
+                    name = "写作表达",
+                    normalizedName = "写作表达",
+                    description = "可用于作文",
+                    createdAt = 700L,
+                    updatedAt = 701L
+                )
+            ),
+            phrases = listOf(
+                WordPhraseSyncItem(
+                    wordUid = "uid-1",
+                    tagUids = listOf("tag-writing"),
+                    phrase = WordPhrase(
+                        phraseUid = "phrase-apple-1",
+                        wordId = 1,
+                        dictionaryId = 1,
+                        phrase = "the apple of one's eye",
+                        normalizedPhrase = "the apple of one's eye",
+                        meaning = "掌上明珠",
+                        example = "His daughter is the apple of his eye.",
+                        usageNote = "常用于人物关系描写。",
+                        confidence = 0.95f,
+                        createdAt = 800L,
+                        updatedAt = 801L,
+                        organizedAt = 802L
+                    )
+                )
+            )
+        )
 
-        val json = exporter.exportToJson(dictionary, words, units, unitWordMap, studyStates, wordIdToUid)
+        val json = exporter.exportToJson(
+            dictionary = dictionary,
+            words = words,
+            units = units,
+            unitWordMap = unitWordMap,
+            studyStates = studyStates,
+            wordIdToUid = wordIdToUid,
+            wordPhraseSnapshot = wordPhraseSnapshot
+        )
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 8"))
+        assertTrue(json.contains("\"schemaVersion\": 9"))
 
         val result = exporter.importFromJson(json)
 
@@ -161,6 +206,15 @@ class JsonImportExporterTest {
         assertEquals(1500L, brainstorm.lastReviewAt)
         assertEquals(5, brainstorm.reps)
         assertEquals(0, brainstorm.lapses)
+
+        assertEquals(1, result.wordPhraseSnapshot.tags.size)
+        assertEquals("tag-writing", result.wordPhraseSnapshot.tags.single().tagUid)
+        assertEquals(1, result.wordPhraseSnapshot.phrases.size)
+        val importedPhrase = result.wordPhraseSnapshot.phrases.single()
+        assertEquals("uid-1", importedPhrase.wordUid)
+        assertEquals("phrase-apple-1", importedPhrase.phrase.phraseUid)
+        assertEquals("the apple of one's eye", importedPhrase.phrase.phrase)
+        assertEquals(listOf("tag-writing"), importedPhrase.tagUids)
     }
 
     @Test
@@ -240,10 +294,10 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 8`() {
+    fun `export produces schemaVersion 9`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 8"))
+        assertTrue(json.contains("\"schemaVersion\": 9"))
     }
 
     @Test
@@ -454,6 +508,133 @@ class JsonImportExporterTest {
             fail("Expected exception for unknown wordUid reference")
         } catch (e: IllegalArgumentException) {
             assertTrue(e.message!!.contains("不存在的 wordUid"))
+        }
+    }
+
+    @Test
+    fun `import rejects phrase with missing tag reference`() {
+        val json = """
+        {
+            "name": "Phrase Test",
+            "description": "",
+            "schemaVersion": 9,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "uid-1"}
+            ],
+            "phraseTags": [
+                {"tagUid": "tag-writing", "name": "写作表达"}
+            ],
+            "wordPhrases": [
+                {
+                    "phraseUid": "phrase-1",
+                    "wordUid": "uid-1",
+                    "phrase": "the apple of one's eye",
+                    "tagUids": ["tag-missing"]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        try {
+            exporter.importFromJson(json)
+            fail("Expected exception for missing tagUid")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("tagUid"))
+        }
+    }
+
+    @Test
+    fun `import rejects oversized phrase and tag fields`() {
+        val longPhrase = "a".repeat(121)
+        val json = """
+        {
+            "name": "Phrase Test",
+            "description": "",
+            "schemaVersion": 9,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "uid-1"}
+            ],
+            "phraseTags": [
+                {"tagUid": "tag-writing", "name": "写作表达"}
+            ],
+            "wordPhrases": [
+                {
+                    "phraseUid": "phrase-1",
+                    "wordUid": "uid-1",
+                    "phrase": "$longPhrase",
+                    "tagUids": ["tag-writing"]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        try {
+            exporter.importFromJson(json)
+            fail("Expected exception for oversized phrase")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("过长"))
+        }
+    }
+
+    @Test
+    fun `import rejects duplicate normalized phrase per word`() {
+        val json = """
+        {
+            "name": "Phrase Test",
+            "description": "",
+            "schemaVersion": 9,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "uid-1"}
+            ],
+            "phraseTags": [
+                {"tagUid": "tag-writing", "name": "写作表达"}
+            ],
+            "wordPhrases": [
+                {"phraseUid": "phrase-1", "wordUid": "uid-1", "phrase": "take part in", "tagUids": ["tag-writing"]},
+                {"phraseUid": "phrase-2", "wordUid": "uid-1", "phrase": " take   part in.", "tagUids": ["tag-writing"]}
+            ]
+        }
+        """.trimIndent()
+
+        try {
+            exporter.importFromJson(json)
+            fail("Expected exception for duplicate phrase")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("重复词组/短语"))
+        }
+    }
+
+    @Test
+    fun `import rejects invalid phrase source and confidence`() {
+        val json = """
+        {
+            "name": "Phrase Test",
+            "description": "",
+            "schemaVersion": 9,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "uid-1"}
+            ],
+            "phraseTags": [
+                {"tagUid": "tag-writing", "name": "写作表达"}
+            ],
+            "wordPhrases": [
+                {
+                    "phraseUid": "phrase-1",
+                    "wordUid": "uid-1",
+                    "phrase": "take part in",
+                    "confidence": 2.0,
+                    "source": "REMOTE",
+                    "tagUids": ["tag-writing"]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        try {
+            exporter.importFromJson(json)
+            fail("Expected exception for invalid phrase metadata")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("confidence") || e.message!!.contains("来源"))
         }
     }
 }

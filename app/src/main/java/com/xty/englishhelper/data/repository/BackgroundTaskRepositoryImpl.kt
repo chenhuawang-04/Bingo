@@ -12,6 +12,7 @@ import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
 import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
+import com.xty.englishhelper.domain.model.WordPhraseOrganizePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
@@ -125,6 +126,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
             BackgroundTaskType.WORD_NOTE_ORGANIZE -> json.encodeToString(payload as WordNoteOrganizePayload)
             BackgroundTaskType.WORD_POOL_REBUILD -> json.encodeToString(payload as WordPoolRebuildPayload)
             BackgroundTaskType.WORD_POOL_REVIEW -> json.encodeToString(payload as WordPoolReviewPayload)
+            BackgroundTaskType.WORD_PHRASE_ORGANIZE -> json.encodeToString(payload as WordPhraseOrganizePayload)
             BackgroundTaskType.QUESTION_GENERATE -> json.encodeToString(payload as QuestionGeneratePayload)
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> json.encodeToString(payload as QuestionAnswerGeneratePayload)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.encodeToString(payload as QuestionSourceVerifyPayload)
@@ -142,6 +144,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
                 BackgroundTaskType.WORD_NOTE_ORGANIZE -> json.decodeFromString<WordNoteOrganizePayload>(raw)
                 BackgroundTaskType.WORD_POOL_REBUILD -> json.decodeFromString<WordPoolRebuildPayload>(raw)
                 BackgroundTaskType.WORD_POOL_REVIEW -> json.decodeFromString<WordPoolReviewPayload>(raw)
+                BackgroundTaskType.WORD_PHRASE_ORGANIZE -> json.decodeFromString<WordPhraseOrganizePayload>(raw)
                 BackgroundTaskType.QUESTION_GENERATE -> json.decodeFromString<QuestionGeneratePayload>(raw)
                 BackgroundTaskType.QUESTION_ANSWER_GENERATE -> json.decodeFromString<QuestionAnswerGeneratePayload>(raw)
                 BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.decodeFromString<QuestionSourceVerifyPayload>(raw)

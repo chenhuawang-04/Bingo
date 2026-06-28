@@ -57,6 +57,16 @@ data class WordPoolReviewPayload(
 ) : BackgroundTaskPayload
 
 @Serializable
+data class WordPhraseOrganizePayload(
+    val dictionaryId: Long,
+    val dictionaryName: String = "",
+    val mode: String = "FILL_MISSING",
+    val allowNewTags: Boolean = true,
+    val maxPhrasesPerWord: Int = 8,
+    val mainModelSnapshot: AiModelSnapshot? = null
+) : BackgroundTaskPayload
+
+@Serializable
 data class QuestionGeneratePayload(
     val articleId: Long,
     val paperTitle: String = "",

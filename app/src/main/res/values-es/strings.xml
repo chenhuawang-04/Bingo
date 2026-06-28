@@ -80,6 +80,14 @@
     <string name="dict_pool_balanced_ai">Generar pool (Equilibrado+AI)</string>
     <string name="dict_pool_quality_first">Generar pool (Calidad·Alto coste)</string>
     <string name="dict_pool_review">Depurar pool (Degradación IA·Calidad)</string>
+    <string name="dict_phrase_organize">Organize Phrases</string>
+    <string name="dict_phrase_stats">Phrases: %1$d · Tags: %2$d · Organized: %3$d/%4$d</string>
+    <string name="dict_phrase_organizing">Organizing phrases</string>
+    <string name="dict_phrase_paused">Phrase organize paused</string>
+    <string name="dict_phrase_confirm_title">Organize Phrases</string>
+    <string name="dict_phrase_confirm_detail">Fill missing phrases in this dictionary. Word count: %d.</string>
+    <string name="dict_phrase_confirm_tokens">Estimated tokens: %2$d (%1$d x 450).</string>
+    <string name="dict_phrase_confirm_incremental">Words that already have phrases or confirmed empty results will be skipped. Failed words can be retried later.</string>
     <string name="dict_select_word_hint">Selecciona una palabra para ver detalles</string>
     <string name="dict_words_filtered">Filtradas %1$d/%2$d palabras</string>
     <string name="dict_words_total">%d palabras</string>
@@ -146,6 +154,8 @@
     <string name="word_similar_words">Palabras similares</string>
     <string name="word_cognates">Cognados</string>
     <string name="word_inflections">Flexiones</string>
+    <string name="word_phrases">Phrases</string>
+    <string name="word_phrase_example">Example: %s</string>
     <string name="word_no_data">Sin datos</string>
     <string name="word_edit_word">Editar palabra</string>
     <string name="word_word">Palabra</string>
@@ -387,6 +397,7 @@
     <!-- ==================== Background Task ==================== -->
     <string name="task_management">Tareas en segundo plano</string>
     <string name="task_word_organize">Organización de palabras</string>
+    <string name="task_word_phrase_organize">Phrase Organize</string>
     <string name="task_pool_rebuild">Reconstrucción de pool</string>
     <string name="task_pool_review">Depuración de pool</string>
     <string name="task_question_generate">Generación de preguntas</string>

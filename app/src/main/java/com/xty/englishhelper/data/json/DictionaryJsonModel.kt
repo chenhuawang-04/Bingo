@@ -14,7 +14,9 @@ data class DictionaryJsonModel(
     val words: List<WordJsonModel> = emptyList(),
     val units: List<UnitJsonModel> = emptyList(),
     val studyStates: List<StudyStateJsonModel> = emptyList(),
-    val wordPools: List<WordPoolJsonModel> = emptyList()
+    val wordPools: List<WordPoolJsonModel> = emptyList(),
+    val phraseTags: List<WordPhraseTagJsonModel> = emptyList(),
+    val wordPhrases: List<WordPhraseJsonModel> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
@@ -104,4 +106,35 @@ data class WordPoolJsonModel(
     val algorithmVersion: String = "",
     val updatedAt: Long = 0,
     val qualityScore: Int? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class WordPhraseTagJsonModel(
+    val tagUid: String = "",
+    val name: String = "",
+    val normalizedName: String = "",
+    val description: String = "",
+    val source: String = "AI",
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0
+)
+
+@JsonClass(generateAdapter = true)
+data class WordPhraseJsonModel(
+    val phraseUid: String = "",
+    val wordUid: String = "",
+    val phrase: String = "",
+    val normalizedPhrase: String = "",
+    val meaning: String = "",
+    val example: String = "",
+    val usageNote: String = "",
+    val register: String? = null,
+    val difficulty: String? = null,
+    val confidence: Float = 0.8f,
+    val source: String = "AI",
+    val model: String? = null,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
+    val organizedAt: Long = 0,
+    val tagUids: List<String> = emptyList()
 )

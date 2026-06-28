@@ -34,6 +34,7 @@ import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordPhraseWithTags
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.repository.WordExample
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
@@ -50,6 +51,7 @@ fun WordDetailContent(
     examples: List<WordExample> = emptyList(),
     onArticleClick: (articleId: Long, sentenceId: Long) -> Unit = { _, _ -> },
     pools: List<WordPool> = emptyList(),
+    phrases: List<WordPhraseWithTags> = emptyList(),
     cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
     cloudExamples: List<CloudWordExample> = emptyList(),
     cloudExamplesLoading: Boolean = false,
@@ -79,6 +81,7 @@ fun WordDetailContent(
                     linkedWordIds = linkedWordIds,
                     associatedWords = associatedWords,
                     pools = pools,
+                    phrases = phrases,
                     examples = examples,
                     onWordClick = onWordClick,
                     onArticleClick = onArticleClick,
@@ -102,6 +105,7 @@ fun WordDetailContent(
                 linkedWordIds = linkedWordIds,
                 associatedWords = associatedWords,
                 pools = pools,
+                phrases = phrases,
                 examples = examples,
                 onWordClick = onWordClick,
                 onArticleClick = onArticleClick,
@@ -177,6 +181,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
     linkedWordIds: Map<String, Long>,
     associatedWords: List<AssociatedWordInfo>,
     pools: List<WordPool>,
+    phrases: List<WordPhraseWithTags>,
     examples: List<WordExample>,
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
     onArticleClick: (articleId: Long, sentenceId: Long) -> Unit,
@@ -292,6 +297,64 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
                                             style = MaterialTheme.typography.labelSmall,
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                         )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (phrases.isNotEmpty()) {
+        item {
+            WordDetailSection(title = stringResource(R.string.word_phrases)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    phrases.forEach { item ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = item.phrase.phrase,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (item.phrase.meaning.isNotBlank()) {
+                                Text(
+                                    text = item.phrase.meaning,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            if (item.phrase.example.isNotBlank()) {
+                                Text(
+                                    text = stringResource(R.string.word_phrase_example, item.phrase.example),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (item.phrase.usageNote.isNotBlank()) {
+                                Text(
+                                    text = item.phrase.usageNote,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (item.tags.isNotEmpty()) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    item.tags.forEach { tag ->
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            shape = MaterialTheme.shapes.small
+                                        ) {
+                                            Text(
+                                                tag.name,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

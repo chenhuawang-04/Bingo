@@ -67,6 +67,10 @@ android {
     room {
         schemaDirectory("$projectDir/schemas")
     }
+
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
 }
 
 dependencies {

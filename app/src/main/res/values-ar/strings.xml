@@ -80,6 +80,14 @@
     <string name="dict_pool_balanced_ai">إنشاء مجموعة (متوازنة+ذكاء اصطناعي)</string>
     <string name="dict_pool_quality_first">إنشاء مجموعة (جودة·تكلفة عالية)</string>
     <string name="dict_pool_review">تنقية المجموعة (خفض بالذكاء الاصطناعي·جودة)</string>
+    <string name="dict_phrase_organize">Organize Phrases</string>
+    <string name="dict_phrase_stats">Phrases: %1$d · Tags: %2$d · Organized: %3$d/%4$d</string>
+    <string name="dict_phrase_organizing">Organizing phrases</string>
+    <string name="dict_phrase_paused">Phrase organize paused</string>
+    <string name="dict_phrase_confirm_title">Organize Phrases</string>
+    <string name="dict_phrase_confirm_detail">Fill missing phrases in this dictionary. Word count: %d.</string>
+    <string name="dict_phrase_confirm_tokens">Estimated tokens: %2$d (%1$d x 450).</string>
+    <string name="dict_phrase_confirm_incremental">Words that already have phrases or confirmed empty results will be skipped. Failed words can be retried later.</string>
     <string name="dict_select_word_hint">اختر كلمة لعرض التفاصيل</string>
     <string name="dict_words_filtered">تم تصفية %1$d/%2$d كلمة</string>
     <string name="dict_words_total">%d كلمة</string>
@@ -146,6 +154,8 @@
     <string name="word_similar_words">الكلمات المشابهة</string>
     <string name="word_cognates">الكلمات المشتقة</string>
     <string name="word_inflections">التصريفات</string>
+    <string name="word_phrases">Phrases</string>
+    <string name="word_phrase_example">Example: %s</string>
     <string name="word_no_data">لا توجد بيانات</string>
     <string name="word_edit_word">تعديل الكلمة</string>
     <string name="word_word">الكلمة</string>
@@ -387,6 +397,7 @@
     <!-- ==================== Background Task ==================== -->
     <string name="task_management">مهام الخلفية</string>
     <string name="task_word_organize">ترتيب الكلمات</string>
+    <string name="task_word_phrase_organize">Phrase Organize</string>
     <string name="task_pool_rebuild">إعادة بناء المجموعة</string>
     <string name="task_pool_review">تنقية المجموعة</string>
     <string name="task_question_generate">إنشاء الأسئلة</string>

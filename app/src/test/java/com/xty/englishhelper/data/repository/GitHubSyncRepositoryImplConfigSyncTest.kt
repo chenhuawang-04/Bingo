@@ -278,7 +278,8 @@ class GitHubSyncRepositoryImplConfigSyncTest {
         dictionaryWordUpdatePlanner = mockk<DictionaryWordUpdatePlanner>(relaxed = true),
         dictionaryWordPoolMergePlanner = mockk<DictionaryWordPoolMergePlanner>(relaxed = true),
         dictionaryWordUidNormalizer = mockk<DictionaryWordUidNormalizer>(relaxed = true),
-        ensureDictionaryWordUids = mockk<EnsureDictionaryWordUidsUseCase>(relaxed = true)
+        ensureDictionaryWordUids = mockk<EnsureDictionaryWordUidsUseCase>(relaxed = true),
+        wordPhraseRepository = mockk(relaxed = true)
     )
 
     private suspend fun expectIllegalState(block: suspend () -> Unit): IllegalStateException {

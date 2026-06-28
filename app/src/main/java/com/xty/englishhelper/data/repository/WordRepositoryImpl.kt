@@ -48,6 +48,14 @@ class WordRepositoryImpl @Inject constructor(
         )
     }
 
+    override suspend fun getWordsByDictionaryPage(dictionaryId: Long, lastId: Long, limit: Int): List<WordDetails> {
+        if (limit <= 0) return emptyList()
+        return wordDao.getWordsByDictionaryPaginated(dictionaryId, lastId, limit).map { it.toDomain() }
+    }
+
+    override suspend fun countWords(dictionaryId: Long): Int =
+        wordDao.countAllWords(dictionaryId)
+
     override suspend fun getWordById(wordId: Long): WordDetails? =
         wordDao.getWordById(wordId)?.toDomain()
 

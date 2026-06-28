@@ -25,6 +25,8 @@ import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
+import com.xty.englishhelper.domain.model.WordPhraseOrganizePayload
+import com.xty.englishhelper.domain.model.WordPhraseOrganizeStatus
 import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
@@ -40,6 +42,8 @@ import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.ManualChunkContext
 import com.xty.englishhelper.domain.repository.ManualFillResult
 import com.xty.englishhelper.domain.repository.WordPoolRepository
+import com.xty.englishhelper.domain.repository.WordPhraseAiRepository
+import com.xty.englishhelper.domain.repository.WordPhraseRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.article.OnlineReadingCatalog
 import com.xty.englishhelper.domain.article.OnlineReadingSection
@@ -86,6 +90,8 @@ internal data class PoolTaskMutexKey(
 )
 
 private const val EDGE_WRITE_MUTEX = "__EDGE_WRITE__"
+private const val WORD_PHRASE_PAGE_SIZE = 50
+private const val WORD_PHRASE_TAG_PROMPT_LIMIT = 80
 
 internal fun poolTaskMutexKey(task: BackgroundTask): PoolTaskMutexKey? {
     return when (task.type) {
@@ -138,6 +144,8 @@ class BackgroundTaskManager @Inject constructor(
     private val csMonitorRepository: CsMonitorRepository,
     private val atlanticRepository: AtlanticRepository,
     private val wordRepository: WordRepository,
+    private val wordPhraseRepository: WordPhraseRepository,
+    private val wordPhraseAiRepository: WordPhraseAiRepository,
     private val organizeWordWithAi: OrganizeWordWithAiUseCase,
     private val rebuildWordPools: RebuildWordPoolsUseCase,
     private val wordPoolRepository: WordPoolRepository,
@@ -313,6 +321,32 @@ class BackgroundTaskManager @Inject constructor(
         enqueueTaskAsync(BackgroundTaskType.WORD_POOL_REVIEW, payload, "poolreview:$dictionaryId:${strategy.name}", force)
     }
 
+    fun enqueueWordPhraseOrganize(
+        dictionaryId: Long,
+        dictionaryName: String = "",
+        force: Boolean = false,
+        mode: String = "FILL_MISSING",
+        maxPhrasesPerWord: Int = 8
+    ) {
+        scope.launch {
+            val mainSnapshot = settingsDataStore.getAiConfig(AiSettingsScope.MAIN).toSnapshot()
+            val payload = WordPhraseOrganizePayload(
+                dictionaryId = dictionaryId,
+                dictionaryName = dictionaryName,
+                mode = mode,
+                allowNewTags = true,
+                maxPhrasesPerWord = maxPhrasesPerWord.coerceIn(1, 12),
+                mainModelSnapshot = mainSnapshot
+            )
+            enqueueTaskInternal(
+                type = BackgroundTaskType.WORD_PHRASE_ORGANIZE,
+                payload = payload,
+                dedupeKey = "word_phrase:$dictionaryId",
+                force = force
+            )
+        }
+    }
+
     suspend fun enqueueQuestionGenerateFromArticle(
         articleId: Long,
         paperTitle: String,
@@ -420,14 +454,13 @@ class BackgroundTaskManager @Inject constructor(
         scope.launch {
             cancelManagedResume(taskId)
             val task = repository.getTaskById(taskId)
-            repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
-            // For pool rebuild: unpause the running job
             val unpauseHandler = unpauseHandlers[taskId]
             if (unpauseHandler != null) {
+                repository.updateStatus(taskId, BackgroundTaskStatus.RUNNING, null)
                 unpauseHandler()
             } else {
-                // Other task types: re-schedule
-                if (task?.type != BackgroundTaskType.WORD_POOL_REBUILD) {
+                repository.updateStatus(taskId, BackgroundTaskStatus.PENDING, null)
+                if (!preservesProgressOnResume(task?.type)) {
                     repository.updateProgress(taskId, 0, 0)
                 }
                 schedule()
@@ -444,7 +477,7 @@ class BackgroundTaskManager @Inject constructor(
             // 否则会清零 progressCurrent 并把 progress_message 置 null → 续传点丢失 → 整本从头重来。
             // （这正是“无论怎么修，从后台任务页点重试仍从头开始”的第三个、也是最隐蔽的入口。）
             // 要彻底重建词池请用词典页「完全重建」（独立的 force=true 路径，会清零进度并清库）。
-            if (task?.type != BackgroundTaskType.WORD_POOL_REBUILD) {
+            if (!preservesProgressOnResume(task?.type)) {
                 repository.updateProgress(taskId, 0, 0)
             }
             schedule()
@@ -549,7 +582,8 @@ class BackgroundTaskManager @Inject constructor(
                         // 其余任务（含词池 FULL 重建）一律重置进度从头开始。
                         val resumeIncrementalPool = type == BackgroundTaskType.WORD_POOL_REBUILD &&
                             (payload as? WordPoolRebuildPayload)?.rebuildMode == RebuildMode.INCREMENTAL.name
-                        if (!resumeIncrementalPool) {
+                        val resumePhraseOrganize = type == BackgroundTaskType.WORD_PHRASE_ORGANIZE
+                        if (!resumeIncrementalPool && !resumePhraseOrganize) {
                             repository.updateProgress(existing.id, 0, 0)
                         }
                         return@withLock BackgroundTaskEnqueueResult.RESTARTED
@@ -578,6 +612,11 @@ class BackgroundTaskManager @Inject constructor(
             schedule()
         }
         return result
+    }
+
+    private fun preservesProgressOnResume(type: BackgroundTaskType?): Boolean {
+        return type == BackgroundTaskType.WORD_POOL_REBUILD ||
+            type == BackgroundTaskType.WORD_PHRASE_ORGANIZE
     }
 
     private suspend fun schedule() {
@@ -646,6 +685,7 @@ class BackgroundTaskManager @Inject constructor(
             BackgroundTaskType.WORD_NOTE_ORGANIZE -> executeWordNoteOrganize(task)
             BackgroundTaskType.WORD_POOL_REBUILD -> executeWordPoolRebuild(task)
             BackgroundTaskType.WORD_POOL_REVIEW -> executeWordPoolReview(task)
+            BackgroundTaskType.WORD_PHRASE_ORGANIZE -> executeWordPhraseOrganize(task)
             BackgroundTaskType.QUESTION_GENERATE -> executeQuestionGenerate(task)
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> executeAnswerGenerate(task)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> executeSourceVerify(task)
@@ -699,6 +739,214 @@ class BackgroundTaskManager @Inject constructor(
             relatedWordId = payload.targetWordId
         )
         repository.updateProgress(task.id, totalSteps, totalSteps, "已连接到当前单词")
+    }
+
+    private data class WordPhraseProgressMessage(
+        val lastWordId: Long,
+        val word: String,
+        val success: Int,
+        val empty: Int,
+        val failed: Int
+    )
+
+    private suspend fun executeWordPhraseOrganize(task: BackgroundTask) {
+        val payload = task.payload as? WordPhraseOrganizePayload
+            ?: throw IllegalStateException("任务参数缺失")
+        val modelSnapshot = payload.mainModelSnapshot
+            ?: throw IllegalStateException("旧任务缺少主模型快照，请重新开始词组/短语整理")
+        if (modelSnapshot.model.isBlank() || modelSnapshot.baseUrl.isBlank()) {
+            throw IllegalStateException("主模型未配置，无法整理词组/短语")
+        }
+        val apiKey = settingsDataStore.getProviderApiKey(modelSnapshot.providerName)
+        if (apiKey.isBlank()) {
+            throw IllegalStateException("API Key 未配置")
+        }
+
+        val totalWords = wordRepository.countWords(payload.dictionaryId)
+        if (totalWords <= 0) {
+            repository.updateProgress(task.id, 0, 0, "词组/短语整理完成：辞书为空")
+            return
+        }
+
+        val resume = parseWordPhraseProgress(task.progressMessage)
+        var lastWordId = resume?.lastWordId?.takeIf { it > 0 } ?: 0L
+        var processed = task.progressCurrent.coerceIn(0, totalWords)
+        var success = resume?.success ?: 0
+        var empty = resume?.empty ?: 0
+        var failed = resume?.failed ?: 0
+        var lastProgressWord = resume?.word.orEmpty()
+        val fillMissingOnly = payload.mode.equals("FILL_MISSING", ignoreCase = true)
+
+        val paused = AtomicBoolean(false)
+        val cancelled = AtomicBoolean(false)
+        pauseHandlers[task.id] = { paused.set(true) }
+        unpauseHandlers[task.id] = { paused.set(false) }
+        cancelHandlers[task.id] = { cancelled.set(true) }
+
+        suspend fun awaitIfPaused() {
+            while (paused.get()) {
+                if (cancelled.get()) throw CancellationException("词组/短语整理已停止")
+                delay(300)
+            }
+        }
+
+        suspend fun saveProgress(currentWord: String) {
+            lastProgressWord = currentWord
+            val message = buildWordPhraseProgressMessage(
+                lastWordId = lastWordId,
+                word = currentWord,
+                success = success,
+                empty = empty,
+                failed = failed
+            )
+            repository.updateProgress(task.id, processed.coerceAtMost(totalWords), totalWords, message)
+        }
+
+        try {
+            repository.updateProgress(
+                task.id,
+                processed,
+                totalWords,
+                buildWordPhraseProgressMessage(lastWordId, resume?.word.orEmpty(), success, empty, failed)
+            )
+            while (true) {
+                awaitIfPaused()
+                if (cancelled.get()) throw CancellationException("词组/短语整理已停止")
+                val page = wordRepository.getWordsByDictionaryPage(
+                    dictionaryId = payload.dictionaryId,
+                    lastId = lastWordId,
+                    limit = WORD_PHRASE_PAGE_SIZE
+                )
+                if (page.isEmpty()) break
+
+                for (word in page) {
+                    awaitIfPaused()
+                    if (cancelled.get()) throw CancellationException("词组/短语整理已停止")
+
+                    var currentWord = word.spelling
+                    try {
+                        if (fillMissingOnly && wordPhraseRepository.shouldSkipWord(word.id)) {
+                            currentWord = "${word.spelling}（已存在，跳过）"
+                        } else {
+                            val existingTags = wordPhraseRepository.getExistingTagsForPrompt(
+                                dictionaryId = payload.dictionaryId,
+                                limit = WORD_PHRASE_TAG_PROMPT_LIMIT
+                            )
+                            val result = wordPhraseAiRepository.organizeWordPhrases(
+                                word = word,
+                                existingTags = existingTags,
+                                maxPhrases = payload.maxPhrasesPerWord,
+                                apiKey = apiKey,
+                                model = modelSnapshot.model,
+                                baseUrl = modelSnapshot.baseUrl,
+                                provider = modelSnapshot.provider
+                            )
+                            val status = wordPhraseRepository.saveAiResult(
+                                dictionaryId = payload.dictionaryId,
+                                word = word,
+                                result = result,
+                                modelName = modelSnapshot.model
+                            )
+                            when (status) {
+                                WordPhraseOrganizeStatus.SUCCESS -> success += 1
+                                WordPhraseOrganizeStatus.EMPTY -> empty += 1
+                                WordPhraseOrganizeStatus.FAILED -> {
+                                    failed += 1
+                                    currentWord = "${word.spelling}（无效）"
+                                }
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        failed += 1
+                        currentWord = "${word.spelling}（失败）"
+                        val failureMessage = e.message ?: e.javaClass.simpleName
+                        runCatching {
+                            wordPhraseRepository.markFailed(
+                                dictionaryId = payload.dictionaryId,
+                                wordId = word.id,
+                                errorMessage = failureMessage,
+                                modelName = modelSnapshot.model
+                            )
+                        }.onFailure { markError ->
+                            Log.w(
+                                "BackgroundTaskManager",
+                                "记录词组整理失败标记失败 wordId=${word.id}: ${markError.message?.take(160)}"
+                            )
+                        }
+                        Log.w(
+                            "BackgroundTaskManager",
+                            "词组/短语整理单词失败 task=${task.id} word=${word.spelling}: ${failureMessage.take(160)}"
+                        )
+                    } finally {
+                        lastWordId = word.id
+                        processed = (processed + 1).coerceAtMost(totalWords)
+                        saveProgress(currentWord)
+                    }
+                }
+            }
+
+            repository.updateProgress(
+                task.id,
+                totalWords,
+                totalWords,
+                "词组/短语整理完成：有短语 $success，空结果 $empty，失败 $failed"
+            )
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                repository.updateProgress(
+                    task.id,
+                    processed.coerceAtMost(totalWords),
+                    totalWords,
+                    buildWordPhraseProgressMessage(lastWordId, lastProgressWord, success, empty, failed)
+                )
+            }
+            throw e
+        } catch (e: Exception) {
+            withContext(NonCancellable) {
+                repository.updateProgress(
+                    task.id,
+                    processed.coerceAtMost(totalWords),
+                    totalWords,
+                    buildWordPhraseProgressMessage(lastWordId, lastProgressWord, success, empty, failed)
+                )
+            }
+            throw e
+        } finally {
+            pauseHandlers.remove(task.id)
+            unpauseHandlers.remove(task.id)
+            cancelHandlers.remove(task.id)
+        }
+    }
+
+    private fun parseWordPhraseProgress(message: String?): WordPhraseProgressMessage? {
+        if (message.isNullOrBlank()) return null
+        val parts = message.split("|")
+        if (parts.size < 6 || parts[0] != "phrase") return null
+        val lastWordId = parts.getOrNull(1)?.toLongOrNull() ?: return null
+        val word = parts.getOrNull(2).orEmpty()
+        val success = parts.getOrNull(3)?.toIntOrNull() ?: 0
+        val empty = parts.getOrNull(4)?.toIntOrNull() ?: 0
+        val failed = parts.getOrNull(5)?.toIntOrNull() ?: 0
+        return WordPhraseProgressMessage(
+            lastWordId = lastWordId.coerceAtLeast(0),
+            word = word,
+            success = success.coerceAtLeast(0),
+            empty = empty.coerceAtLeast(0),
+            failed = failed.coerceAtLeast(0)
+        )
+    }
+
+    private fun buildWordPhraseProgressMessage(
+        lastWordId: Long,
+        word: String,
+        success: Int,
+        empty: Int,
+        failed: Int
+    ): String {
+        val safeWord = word.replace("|", " ").take(80)
+        return "phrase|${lastWordId.coerceAtLeast(0)}|$safeWord|${success.coerceAtLeast(0)}|${empty.coerceAtLeast(0)}|${failed.coerceAtLeast(0)}"
     }
 
     private suspend fun organizeWordAndMerge(

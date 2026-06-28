@@ -119,6 +119,7 @@ fun WordDetailScreen(
                     examples = state.examples,
                     onArticleClick = onArticleClick,
                     pools = state.pools,
+                    phrases = state.phrases,
                     cloudExamples = state.cloudExamples,
                     cloudExamplesLoading = state.cloudExamplesLoading,
                     cloudExamplesError = state.cloudExamplesError,

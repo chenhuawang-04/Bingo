@@ -29,8 +29,10 @@ data class DictionaryShardIndexJsonModel(
     val updatedAt: Long = 0,
     val totalWords: Int = 0,
     val totalStudyStates: Int = 0,
+    val totalWordPhrases: Int = 0,
     val units: List<UnitJsonModel> = emptyList(),
     val wordPools: List<WordPoolJsonModel> = emptyList(),
+    val phraseTags: List<WordPhraseTagJsonModel> = emptyList(),
     val chunks: List<DictionaryChunkRefJsonModel> = emptyList()
 )
 
@@ -39,6 +41,7 @@ data class DictionaryChunkRefJsonModel(
     val file: String = "",
     val wordCount: Int = 0,
     val stateCount: Int = 0,
+    val phraseCount: Int = 0,
     val contentHash: String = ""
 )
 
@@ -46,5 +49,6 @@ data class DictionaryChunkRefJsonModel(
 data class DictionaryShardChunkJsonModel(
     val schemaVersion: Int = 1,
     val words: List<WordJsonModel> = emptyList(),
-    val studyStates: List<StudyStateJsonModel> = emptyList()
+    val studyStates: List<StudyStateJsonModel> = emptyList(),
+    val wordPhrases: List<WordPhraseJsonModel> = emptyList()
 )

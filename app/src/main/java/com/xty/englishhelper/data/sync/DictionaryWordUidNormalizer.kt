@@ -59,6 +59,17 @@ class DictionaryWordUidNormalizer @Inject constructor() {
                         )
                     }
                 )
+            },
+            wordPhrases = model.wordPhrases.map { phrase ->
+                phrase.copy(
+                    wordUid = resolveRequiredReference(
+                        dictionaryName = model.name,
+                        referenceType = "词组/短语",
+                        referenceValue = phrase.wordUid,
+                        validWordUids = validWordUids,
+                        blankWordUidReplacement = blankWordUidReplacement
+                    )
+                )
             }
         )
     }

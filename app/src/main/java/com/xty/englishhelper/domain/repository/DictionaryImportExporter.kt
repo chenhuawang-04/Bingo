@@ -4,6 +4,7 @@ import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
 import com.xty.englishhelper.domain.model.WordStudyState
 
 /**
@@ -37,7 +38,8 @@ interface DictionaryImportExporter {
         val dictionary: Dictionary,
         val words: List<WordDetails>,
         val units: List<ImportedUnit>,
-        val studyStates: List<ImportedStudyState>
+        val studyStates: List<ImportedStudyState>,
+        val wordPhraseSnapshot: WordPhraseSyncSnapshot = WordPhraseSyncSnapshot()
     )
 
     fun exportToJson(
@@ -46,7 +48,8 @@ interface DictionaryImportExporter {
         units: List<StudyUnit>,
         unitWordMap: Map<Long, List<String>>,
         studyStates: List<WordStudyState>,
-        wordIdToUid: Map<Long, String>
+        wordIdToUid: Map<Long, String>,
+        wordPhraseSnapshot: WordPhraseSyncSnapshot = WordPhraseSyncSnapshot()
     ): String
 
     fun importFromJson(json: String): ImportResult

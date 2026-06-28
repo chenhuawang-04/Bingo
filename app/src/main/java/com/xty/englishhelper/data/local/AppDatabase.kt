@@ -15,6 +15,7 @@ import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
+import com.xty.englishhelper.data.local.dao.WordPhraseDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.dao.PlanDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
@@ -50,6 +51,10 @@ import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.local.entity.WordEdgeExcludedEntity
 import com.xty.englishhelper.data.local.entity.WordEntity
 import com.xty.englishhelper.data.local.entity.WordExampleEntity
+import com.xty.englishhelper.data.local.entity.WordPhraseEntity
+import com.xty.englishhelper.data.local.entity.WordPhraseOrganizeMarkEntity
+import com.xty.englishhelper.data.local.entity.WordPhraseTagCrossRef
+import com.xty.englishhelper.data.local.entity.WordPhraseTagEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
 import com.xty.englishhelper.data.local.entity.WordStudyStateEntity
@@ -92,9 +97,13 @@ import java.util.UUID
         WordEdgeEntity::class,
         WordEdgeExcludedEntity::class,
         BrainstormDailyGoalEntity::class,
-        BrainstormSettingsEntity::class
+        BrainstormSettingsEntity::class,
+        WordPhraseTagEntity::class,
+        WordPhraseEntity::class,
+        WordPhraseTagCrossRef::class,
+        WordPhraseOrganizeMarkEntity::class
     ],
-    version = 31,
+    version = 32,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -110,6 +119,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun planDao(): PlanDao
     abstract fun wordEdgeDao(): WordEdgeDao
     abstract fun brainstormDao(): BrainstormDao
+    abstract fun wordPhraseDao(): WordPhraseDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -1115,6 +1125,93 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_units_unit_uid` " +
                         "ON `units` (`unit_uid`)"
                 )
+            }
+        }
+
+        val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_phrase_tags` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `tag_uid` TEXT NOT NULL,
+                        `dictionary_id` INTEGER NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `normalized_name` TEXT NOT NULL,
+                        `description` TEXT NOT NULL,
+                        `source` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`dictionary_id`) REFERENCES `dictionaries`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_phrase_tags_dictionary_id` ON `word_phrase_tags` (`dictionary_id`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_word_phrase_tags_dictionary_id_tag_uid` ON `word_phrase_tags` (`dictionary_id`, `tag_uid`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_word_phrase_tags_dictionary_id_normalized_name` ON `word_phrase_tags` (`dictionary_id`, `normalized_name`)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_phrases` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `phrase_uid` TEXT NOT NULL,
+                        `word_id` INTEGER NOT NULL,
+                        `dictionary_id` INTEGER NOT NULL,
+                        `phrase` TEXT NOT NULL,
+                        `normalized_phrase` TEXT NOT NULL,
+                        `meaning` TEXT NOT NULL,
+                        `example` TEXT NOT NULL,
+                        `usage_note` TEXT NOT NULL,
+                        `register` TEXT,
+                        `difficulty` TEXT,
+                        `confidence` REAL NOT NULL,
+                        `source` TEXT NOT NULL,
+                        `model` TEXT,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        `organized_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`word_id`) REFERENCES `words`(`id`) ON DELETE CASCADE,
+                        FOREIGN KEY(`dictionary_id`) REFERENCES `dictionaries`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_phrases_word_id` ON `word_phrases` (`word_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_phrases_dictionary_id` ON `word_phrases` (`dictionary_id`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_word_phrases_dictionary_id_phrase_uid` ON `word_phrases` (`dictionary_id`, `phrase_uid`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_word_phrases_word_id_normalized_phrase` ON `word_phrases` (`word_id`, `normalized_phrase`)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_phrase_tag_cross_refs` (
+                        `phrase_id` INTEGER NOT NULL,
+                        `tag_id` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`phrase_id`, `tag_id`),
+                        FOREIGN KEY(`phrase_id`) REFERENCES `word_phrases`(`id`) ON DELETE CASCADE,
+                        FOREIGN KEY(`tag_id`) REFERENCES `word_phrase_tags`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_phrase_tag_cross_refs_tag_id` ON `word_phrase_tag_cross_refs` (`tag_id`)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_phrase_organize_marks` (
+                        `word_id` INTEGER NOT NULL,
+                        `dictionary_id` INTEGER NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `phrase_count` INTEGER NOT NULL,
+                        `error_message` TEXT,
+                        `model` TEXT,
+                        `organized_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`word_id`),
+                        FOREIGN KEY(`word_id`) REFERENCES `words`(`id`) ON DELETE CASCADE,
+                        FOREIGN KEY(`dictionary_id`) REFERENCES `dictionaries`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_phrase_organize_marks_dictionary_id` ON `word_phrase_organize_marks` (`dictionary_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_phrase_organize_marks_status` ON `word_phrase_organize_marks` (`status`)")
             }
         }
     }

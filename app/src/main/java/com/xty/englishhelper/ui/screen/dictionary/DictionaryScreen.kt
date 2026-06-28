@@ -121,6 +121,13 @@ fun DictionaryScreen(
         }
     }
 
+    LaunchedEffect(state.phraseOrganizeError) {
+        state.phraseOrganizeError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearPhraseOrganizeError()
+        }
+    }
+
     val dictionaryId = state.dictionary?.id
 
     val handleWordClick: (Long, Long) -> Unit = { wordId, _ ->
@@ -194,6 +201,14 @@ fun DictionaryScreen(
                             enabled = state.edgeCount > 0 &&
                                 !state.isRebuildingPools &&
                                 !state.isReviewingPools
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.dict_phrase_organize)) },
+                            onClick = {
+                                showPoolMenu = false
+                                viewModel.requestOrganizePhrases()
+                            },
+                            enabled = !state.isOrganizingPhrases
                         )
                     }
                 }
@@ -407,6 +422,40 @@ fun DictionaryScreen(
             },
             dismissButton = {
                 TextButton(onClick = viewModel::dismissQfConfirmDialog) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
+    if (state.showPhraseOrganizeConfirmDialog) {
+        val wordCount = state.words.size
+        val estimatedTokens = wordCount * 450
+        AlertDialog(
+            onDismissRequest = viewModel::dismissPhraseOrganizeConfirmDialog,
+            title = { Text(stringResource(R.string.dict_phrase_confirm_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(stringResource(R.string.dict_phrase_confirm_detail, wordCount))
+                    Text(
+                        stringResource(R.string.dict_phrase_confirm_tokens, wordCount, estimatedTokens),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        stringResource(R.string.dict_phrase_confirm_incremental),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmOrganizePhrases) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissPhraseOrganizeConfirmDialog) {
                     Text(stringResource(R.string.common_cancel))
                 }
             }
@@ -863,6 +912,90 @@ private fun DictionaryListContent(
                         }
                     }
 
+                    if (state.words.isNotEmpty()) {
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.dict_phrase_stats,
+                                                state.phraseCount,
+                                                state.phraseTagCount,
+                                                state.phraseOrganizedWordCount,
+                                                state.phraseTotalWordCount
+                                            ),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        state.currentPhraseOrganizeMessage?.let { message ->
+                                            Text(
+                                                text = message,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 2
+                                            )
+                                        }
+                                    }
+                                    if (state.isOrganizingPhrases) {
+                                        Text(
+                                            text = if (state.isPhraseOrganizePaused) stringResource(R.string.dict_phrase_paused) else stringResource(R.string.dict_phrase_organizing),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.tertiary
+                                        )
+                                    }
+                                }
+                                if (state.isOrganizingPhrases) {
+                                    val progress = state.phraseOrganizeProgress
+                                    if (progress != null && progress.second > 0) {
+                                        LinearProgressIndicator(
+                                            progress = { progress.first.toFloat() / progress.second },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 6.dp)
+                                        )
+                                    } else {
+                                        LinearProgressIndicator(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 6.dp)
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 4.dp),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = {
+                                                if (state.isPhraseOrganizePaused) {
+                                                    viewModel.resumePhraseOrganize()
+                                                } else {
+                                                    viewModel.pausePhraseOrganize()
+                                                }
+                                            }
+                                        ) {
+                                            Text(if (state.isPhraseOrganizePaused) stringResource(R.string.common_resume) else stringResource(R.string.common_pause))
+                                        }
+                                        TextButton(onClick = viewModel::cancelPhraseOrganize) {
+                                            Text(stringResource(R.string.common_cancel))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (state.organizeTasks.isNotEmpty()) {
                         item {
                             Row(
@@ -1210,7 +1343,8 @@ private fun DetailPane(
                     associatedWords = detailState.associatedWords,
                     linkedWordIds = detailState.linkedWordIds,
                     onWordClick = onWordClick,
-                    pools = detailState.pools
+                    pools = detailState.pools,
+                    phrases = detailState.phrases
                 )
             }
         }

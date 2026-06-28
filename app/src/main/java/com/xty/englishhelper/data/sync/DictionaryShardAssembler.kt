@@ -8,6 +8,7 @@ import com.xty.englishhelper.data.json.DictionaryShardChunkJsonModel
 import com.xty.englishhelper.data.json.DictionaryShardIndexJsonModel
 import com.xty.englishhelper.data.json.StudyStateJsonModel
 import com.xty.englishhelper.data.json.WordJsonModel
+import com.xty.englishhelper.data.json.WordPhraseJsonModel
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,6 +32,7 @@ class DictionaryShardAssembler @Inject constructor(
 
     private val wordAdapter = moshi.adapter(WordJsonModel::class.java)
     private val studyStateAdapter = moshi.adapter(StudyStateJsonModel::class.java)
+    private val wordPhraseAdapter = moshi.adapter(WordPhraseJsonModel::class.java)
     private val chunkAdapter = moshi.adapter(DictionaryShardChunkJsonModel::class.java)
 
     fun buildFolderPath(dictionaryUid: String, dictionaryName: String): String {
@@ -53,6 +55,9 @@ class DictionaryShardAssembler @Inject constructor(
         val stateBuckets = dictionary.studyStates
             .filter { it.wordUid.isNotBlank() }
             .groupBy { it.wordUid }
+        val phraseBuckets = dictionary.wordPhrases
+            .filter { it.wordUid.isNotBlank() }
+            .groupBy { it.wordUid }
 
         val wordsByBucket = Array(BUCKET_COUNT) { mutableListOf<WordJsonModel>() }
         dictionary.words
@@ -66,6 +71,7 @@ class DictionaryShardAssembler @Inject constructor(
             var partIndex = 0
             val currentWords = mutableListOf<WordJsonModel>()
             val currentStates = mutableListOf<StudyStateJsonModel>()
+            val currentPhrases = mutableListOf<WordPhraseJsonModel>()
             var currentEstimatedBytes = emptyChunkEstimatedBytes()
 
             fun flushCurrent() {
@@ -73,7 +79,8 @@ class DictionaryShardAssembler @Inject constructor(
                 val payload = DictionaryShardChunkJsonModel(
                     schemaVersion = CHUNK_SCHEMA_VERSION,
                     words = currentWords.toList(),
-                    studyStates = currentStates.toList()
+                    studyStates = currentStates.toList(),
+                    wordPhrases = currentPhrases.toList()
                 )
                 val payloadJson = chunkAdapter.toJson(payload)
                 val chunkPath = "$folderPath/chunks/b${bucketId.toString().padStart(2, '0')}_part_${partIndex.toString().padStart(3, '0')}.json"
@@ -84,18 +91,23 @@ class DictionaryShardAssembler @Inject constructor(
                         file = chunkPath,
                         wordCount = currentWords.size,
                         stateCount = currentStates.size,
+                        phraseCount = currentPhrases.size,
                         contentHash = shortHash(payloadJson)
                     )
                 )
                 currentWords.clear()
                 currentStates.clear()
+                currentPhrases.clear()
                 currentEstimatedBytes = emptyChunkEstimatedBytes()
                 partIndex += 1
             }
 
             bucketWords.forEach { word ->
                 val linkedStates = stateBuckets[word.wordUid].orEmpty()
-                val estimatedAddedBytes = estimateWordBytes(word) + linkedStates.sumOf(::estimateStudyStateBytes)
+                val linkedPhrases = phraseBuckets[word.wordUid].orEmpty()
+                val estimatedAddedBytes = estimateWordBytes(word) +
+                    linkedStates.sumOf(::estimateStudyStateBytes) +
+                    linkedPhrases.sumOf(::estimateWordPhraseBytes)
                 val wouldOverflow = currentWords.isNotEmpty() &&
                     currentEstimatedBytes + estimatedAddedBytes > TARGET_CHUNK_BYTES
 
@@ -105,6 +117,7 @@ class DictionaryShardAssembler @Inject constructor(
 
                 currentWords += word
                 currentStates += linkedStates
+                currentPhrases += linkedPhrases
                 currentEstimatedBytes += estimatedAddedBytes
             }
 
@@ -123,8 +136,10 @@ class DictionaryShardAssembler @Inject constructor(
             updatedAt = dictionary.updatedAt,
             totalWords = dictionary.words.size,
             totalStudyStates = dictionary.studyStates.size,
+            totalWordPhrases = dictionary.wordPhrases.size,
             units = dictionary.units,
             wordPools = dictionary.wordPools,
+            phraseTags = dictionary.phraseTags,
             chunks = chunkFiles.map { it.ref }
         )
         val entry = DictionaryCloudEntryJsonModel(
@@ -148,6 +163,7 @@ class DictionaryShardAssembler @Inject constructor(
     ): DictionaryJsonModel {
         val words = mutableListOf<WordJsonModel>()
         val studyStates = mutableListOf<StudyStateJsonModel>()
+        val wordPhrases = mutableListOf<WordPhraseJsonModel>()
 
         index.chunks.forEach { ref ->
             val chunk = chunksByPath[ref.file]
@@ -155,6 +171,7 @@ class DictionaryShardAssembler @Inject constructor(
             validateChunk(ref, chunk)
             words += chunk.words
             studyStates += chunk.studyStates
+            wordPhrases += chunk.wordPhrases
         }
 
         return DictionaryJsonModel(
@@ -168,7 +185,9 @@ class DictionaryShardAssembler @Inject constructor(
             words = words,
             units = index.units,
             studyStates = studyStates,
-            wordPools = index.wordPools
+            wordPools = index.wordPools,
+            phraseTags = index.phraseTags,
+            wordPhrases = wordPhrases
         )
     }
 
@@ -184,6 +203,11 @@ class DictionaryShardAssembler @Inject constructor(
         if (ref.stateCount != chunk.studyStates.size) {
             throw IllegalStateException(
                 "Dictionary chunk study state count mismatch: ${ref.file} expected=${ref.stateCount} actual=${chunk.studyStates.size}"
+            )
+        }
+        if (ref.phraseCount != chunk.wordPhrases.size) {
+            throw IllegalStateException(
+                "Dictionary chunk phrase count mismatch: ${ref.file} expected=${ref.phraseCount} actual=${chunk.wordPhrases.size}"
             )
         }
         val actualHash = chunkContentHash(chunk)
@@ -218,6 +242,10 @@ class DictionaryShardAssembler @Inject constructor(
         return studyStateAdapter.toJson(state).toByteArray(Charsets.UTF_8).size + 2
     }
 
+    private fun estimateWordPhraseBytes(phrase: WordPhraseJsonModel): Int {
+        return wordPhraseAdapter.toJson(phrase).toByteArray(Charsets.UTF_8).size + 2
+    }
+
     private fun shortHash(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(input.toByteArray(Charsets.UTF_8))
@@ -227,7 +255,7 @@ class DictionaryShardAssembler @Inject constructor(
     companion object {
         private const val BUCKET_COUNT = 16
         private const val TARGET_CHUNK_BYTES = 350 * 1024
-        private const val INDEX_SCHEMA_VERSION = 1
-        private const val CHUNK_SCHEMA_VERSION = 1
+        private const val INDEX_SCHEMA_VERSION = 2
+        private const val CHUNK_SCHEMA_VERSION = 2
     }
 }

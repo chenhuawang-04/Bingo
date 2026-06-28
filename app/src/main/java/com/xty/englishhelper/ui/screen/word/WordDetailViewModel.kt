@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.CloudExampleSource
+import com.xty.englishhelper.domain.repository.WordPhraseRepository
 import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.dictionary.GetCloudWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetWordPoolsUseCase
@@ -32,6 +33,7 @@ class WordDetailViewModel @Inject constructor(
     private val getWordExamples: GetWordExamplesUseCase,
     private val getCloudWordExamples: GetCloudWordExamplesUseCase,
     private val getWordPools: GetWordPoolsUseCase,
+    private val wordPhraseRepository: WordPhraseRepository,
     private val ttsManager: TtsManager
 ) : ViewModel() {
 
@@ -105,6 +107,13 @@ class WordDetailViewModel @Inject constructor(
                         Log.w("WordDetailVM", "Pools loading failed for wordId=$wordId", e)
                     }
 
+                    try {
+                        val phrases = wordPhraseRepository.getPhrasesForWord(wordId)
+                        _uiState.update { it.copy(phrases = phrases) }
+                    } catch (e: Exception) {
+                        Log.w("WordDetailVM", "Phrases loading failed for wordId=$wordId", e)
+                    }
+
                     loadCloudExamples(word.spelling, _uiState.value.cloudExampleSource)
                 } else {
                     cloudExamplesJob?.cancel()
@@ -112,6 +121,7 @@ class WordDetailViewModel @Inject constructor(
                         it.copy(
                             cloudExamplesLoading = false,
                             cloudExamples = emptyList(),
+                            phrases = emptyList(),
                             cloudExamplesError = null
                         )
                     }

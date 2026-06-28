@@ -80,6 +80,14 @@
     <string name="dict_pool_balanced_ai">풀 생성 (균형+AI)</string>
     <string name="dict_pool_quality_first">풀 생성 (품질·고비용)</string>
     <string name="dict_pool_review">풀 정제 (AI 강등·품질)</string>
+    <string name="dict_phrase_organize">Organize Phrases</string>
+    <string name="dict_phrase_stats">Phrases: %1$d · Tags: %2$d · Organized: %3$d/%4$d</string>
+    <string name="dict_phrase_organizing">Organizing phrases</string>
+    <string name="dict_phrase_paused">Phrase organize paused</string>
+    <string name="dict_phrase_confirm_title">Organize Phrases</string>
+    <string name="dict_phrase_confirm_detail">Fill missing phrases in this dictionary. Word count: %d.</string>
+    <string name="dict_phrase_confirm_tokens">Estimated tokens: %2$d (%1$d x 450).</string>
+    <string name="dict_phrase_confirm_incremental">Words that already have phrases or confirmed empty results will be skipped. Failed words can be retried later.</string>
     <string name="dict_select_word_hint">단어를 선택하여 상세정보를 보세요</string>
     <string name="dict_words_filtered">필터링된 %1$d/%2$d 단어</string>
     <string name="dict_words_total">%d 단어</string>
@@ -146,6 +154,8 @@
     <string name="word_similar_words">유사 단어</string>
     <string name="word_cognates">동계어</string>
     <string name="word_inflections">형태 변화</string>
+    <string name="word_phrases">Phrases</string>
+    <string name="word_phrase_example">Example: %s</string>
     <string name="word_no_data">데이터 없음</string>
     <string name="word_edit_word">단어 편집</string>
     <string name="word_word">단어</string>
@@ -387,6 +397,7 @@
     <!-- ==================== Background Task ==================== -->
     <string name="task_management">백그라운드 작업</string>
     <string name="task_word_organize">단어 정리</string>
+    <string name="task_word_phrase_organize">Phrase Organize</string>
     <string name="task_pool_rebuild">풀 재빌드</string>
     <string name="task_pool_review">풀 정제</string>
     <string name="task_question_generate">문제 생성</string>

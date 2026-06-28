@@ -65,9 +65,8 @@ class AnthropicApiClient @Inject constructor(
     private suspend fun extractContent(response: Response<ResponseBody>): String =
         withContext(Dispatchers.IO) {
             if (!response.isSuccessful) {
-                val errorBody = runCatching { response.errorBody()?.string() }.getOrNull().orEmpty()
                 throw IllegalStateException(
-                    "HTTP ${response.code()} ${response.message()} 调用 AI 失败: ${errorBody.take(500)}"
+                    "HTTP ${response.code()} ${response.message()} 调用 AI 失败"
                 )
             }
             val body = response.body()

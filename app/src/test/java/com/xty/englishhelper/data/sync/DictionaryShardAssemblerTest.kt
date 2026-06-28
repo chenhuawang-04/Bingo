@@ -12,6 +12,8 @@ import com.xty.englishhelper.data.json.SynonymJsonModel
 import com.xty.englishhelper.data.json.SyncManifest
 import com.xty.englishhelper.data.json.UnitJsonModel
 import com.xty.englishhelper.data.json.WordJsonModel
+import com.xty.englishhelper.data.json.WordPhraseJsonModel
+import com.xty.englishhelper.data.json.WordPhraseTagJsonModel
 import com.xty.englishhelper.data.json.WordPoolJsonModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -42,6 +44,7 @@ class DictionaryShardAssemblerTest {
         assertEquals(model.updatedAt, assembled.updatedAt)
         assertEquals(model.units, assembled.units)
         assertEquals(model.wordPools, assembled.wordPools)
+        assertEquals(model.phraseTags, assembled.phraseTags)
         assertEquals(
             model.words.sortedBy { it.wordUid },
             assembled.words.sortedBy { it.wordUid }
@@ -50,6 +53,12 @@ class DictionaryShardAssemblerTest {
             model.studyStates.sortedBy { it.wordUid },
             assembled.studyStates.sortedBy { it.wordUid }
         )
+        assertEquals(
+            model.wordPhrases.sortedBy { it.phraseUid },
+            assembled.wordPhrases.sortedBy { it.phraseUid }
+        )
+        assertEquals(model.wordPhrases.size, sharded.index.totalWordPhrases)
+        assertEquals(model.phraseTags, sharded.index.phraseTags)
     }
 
     @Test
@@ -150,7 +159,7 @@ class DictionaryShardAssemblerTest {
             name = "Large Dictionary",
             description = "Dictionary for shard testing",
             color = 0xFF123456.toInt(),
-            schemaVersion = 8,
+            schemaVersion = 9,
             createdAt = 111L,
             updatedAt = 222L,
             words = words,
@@ -172,7 +181,27 @@ class DictionaryShardAssemblerTest {
                     strategy = "BALANCED",
                     algorithmVersion = "BALANCED_v1"
                 )
-            )
+            ),
+            phraseTags = listOf(
+                WordPhraseTagJsonModel(
+                    tagUid = "tag-writing",
+                    name = "写作表达",
+                    normalizedName = "写作表达",
+                    description = "作文可用表达"
+                )
+            ),
+            wordPhrases = words.take(wordCount / 2).mapIndexed { index, word ->
+                WordPhraseJsonModel(
+                    phraseUid = "phrase-${index + 1}",
+                    wordUid = word.wordUid,
+                    phrase = "phrase for ${word.spelling}",
+                    normalizedPhrase = "phrase for ${word.spelling}",
+                    meaning = "短语-${index + 1}",
+                    example = "${word.spelling} appears in a useful phrase.",
+                    tagUids = listOf("tag-writing"),
+                    updatedAt = 9000L + index
+                )
+            }
         )
     }
 }

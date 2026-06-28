@@ -55,6 +55,7 @@ import com.xty.englishhelper.domain.model.QuestionGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
+import com.xty.englishhelper.domain.model.WordPhraseOrganizePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
@@ -346,6 +347,7 @@ private fun taskTitle(task: BackgroundTask): String {
     return when (task.type) {
         BackgroundTaskType.WORD_ORGANIZE -> stringResource(R.string.task_word_organize)
         BackgroundTaskType.WORD_NOTE_ORGANIZE -> stringResource(R.string.task_word_note_organize)
+        BackgroundTaskType.WORD_PHRASE_ORGANIZE -> stringResource(R.string.task_word_phrase_organize)
         BackgroundTaskType.WORD_POOL_REBUILD -> stringResource(R.string.task_pool_rebuild)
         BackgroundTaskType.WORD_POOL_REVIEW -> stringResource(R.string.task_pool_review)
         BackgroundTaskType.QUESTION_GENERATE -> stringResource(R.string.task_question_generate)
@@ -365,6 +367,18 @@ private fun taskSubtitle(task: BackgroundTask): String {
         is WordOrganizePayload -> payload.spelling
         is WordNoteOrganizePayload ->
             stringResource(R.string.task_subtitle_word_pair, payload.sourceSpelling, payload.targetSpelling)
+        is WordPhraseOrganizePayload -> buildString {
+            if (payload.dictionaryName.isNotBlank()) {
+                append(payload.dictionaryName)
+            } else {
+                append(stringResource(R.string.task_subtitle_dict))
+                append(payload.dictionaryId)
+            }
+            if (payload.mode.isNotBlank()) {
+                append(" · ")
+                append(payload.mode)
+            }
+        }
         is WordPoolRebuildPayload -> buildString {
             append(stringResource(R.string.task_subtitle_dict))
             append(payload.dictionaryId)

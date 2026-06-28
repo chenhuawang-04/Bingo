@@ -31,5 +31,10 @@ output/
 
 # Agent session logs & scripts
 .mimocode/
+.agent-report-bus/
+.codex/
+.compose/
+app/hs_err_pid*.log
+app/replay_pid*.log
 *.txt
 *.py

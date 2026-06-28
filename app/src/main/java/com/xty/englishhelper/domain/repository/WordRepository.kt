@@ -13,6 +13,8 @@ interface WordRepository {
         excludeWordId: Long,
         limit: Int
     ): List<String>
+    suspend fun getWordsByDictionaryPage(dictionaryId: Long, lastId: Long, limit: Int): List<WordDetails>
+    suspend fun countWords(dictionaryId: Long): Int
     suspend fun getWordById(wordId: Long): WordDetails?
     suspend fun insertWord(word: WordDetails): Long
     suspend fun updateWord(word: WordDetails)

@@ -16,6 +16,7 @@ import com.xty.englishhelper.data.local.dao.StudyDao
 import com.xty.englishhelper.data.local.dao.UnitDao
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
+import com.xty.englishhelper.data.local.dao.WordPhraseDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.dao.PlanDao
 import dagger.Module
@@ -69,7 +70,8 @@ object AppModule {
                 AppDatabase.MIGRATION_27_28,
                 AppDatabase.MIGRATION_28_29,
                 AppDatabase.MIGRATION_29_30,
-                AppDatabase.MIGRATION_30_31
+                AppDatabase.MIGRATION_30_31,
+                AppDatabase.MIGRATION_31_32
             )
             .build()
     }
@@ -109,6 +111,9 @@ object AppModule {
 
     @Provides
     fun provideBrainstormDao(db: AppDatabase): BrainstormDao = db.brainstormDao()
+
+    @Provides
+    fun provideWordPhraseDao(db: AppDatabase): WordPhraseDao = db.wordPhraseDao()
 
     @Provides
     @Singleton

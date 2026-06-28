@@ -80,6 +80,14 @@
     <string name="dict_pool_balanced_ai">プール生成（バランス+AI）</string>
     <string name="dict_pool_quality_first">プール生成（品質優先・高コスト）</string>
     <string name="dict_pool_review">プール精製（AI降格・品質）</string>
+    <string name="dict_phrase_organize">Organize Phrases</string>
+    <string name="dict_phrase_stats">Phrases: %1$d · Tags: %2$d · Organized: %3$d/%4$d</string>
+    <string name="dict_phrase_organizing">Organizing phrases</string>
+    <string name="dict_phrase_paused">Phrase organize paused</string>
+    <string name="dict_phrase_confirm_title">Organize Phrases</string>
+    <string name="dict_phrase_confirm_detail">Fill missing phrases in this dictionary. Word count: %d.</string>
+    <string name="dict_phrase_confirm_tokens">Estimated tokens: %2$d (%1$d x 450).</string>
+    <string name="dict_phrase_confirm_incremental">Words that already have phrases or confirmed empty results will be skipped. Failed words can be retried later.</string>
     <string name="dict_select_word_hint">単語を選択して詳細を表示</string>
     <string name="dict_words_filtered">フィルター: %1$d/%2$d語</string>
     <string name="dict_words_total">%d語</string>
@@ -146,6 +154,8 @@
     <string name="word_similar_words">類義語</string>
     <string name="word_cognates">同族語</string>
     <string name="word_inflections">活用形</string>
+    <string name="word_phrases">Phrases</string>
+    <string name="word_phrase_example">Example: %s</string>
     <string name="word_no_data">データなし</string>
     <string name="word_edit_word">単語を編集</string>
     <string name="word_word">単語</string>
@@ -387,6 +397,7 @@
     <!-- ==================== Background Task ==================== -->
     <string name="task_management">バックグラウンドタスク</string>
     <string name="task_word_organize">単語整理</string>
+    <string name="task_word_phrase_organize">Phrase Organize</string>
     <string name="task_pool_rebuild">プール再構築</string>
     <string name="task_pool_review">プール精製</string>
     <string name="task_question_generate">問題生成</string>

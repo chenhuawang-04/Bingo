@@ -5,6 +5,7 @@ import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.CloudWordExample
 import com.xty.englishhelper.domain.model.TtsState
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordPhraseWithTags
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.repository.WordExample
 
@@ -18,6 +19,7 @@ data class WordDetailUiState(
     val associatedWords: List<AssociatedWordInfo> = emptyList(),
     val examples: List<WordExample> = emptyList(),
     val pools: List<WordPool> = emptyList(),
+    val phrases: List<WordPhraseWithTags> = emptyList(),
     val cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
     val cloudExamples: List<CloudWordExample> = emptyList(),
     val cloudExamplesLoading: Boolean = false,

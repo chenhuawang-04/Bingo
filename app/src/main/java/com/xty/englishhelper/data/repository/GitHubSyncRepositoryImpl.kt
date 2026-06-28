@@ -33,7 +33,9 @@ import com.xty.englishhelper.data.json.UnitJsonModel
 import com.xty.englishhelper.data.json.WordJsonModel
 import com.xty.englishhelper.data.json.WordExampleJsonModel
 import com.xty.englishhelper.data.json.WordExamplesExportModel
+import com.xty.englishhelper.data.json.WordPhraseJsonValidator
 import com.xty.englishhelper.data.json.WordPoolJsonModel
+import com.xty.englishhelper.data.json.wordPhraseSyncSnapshotFromJson
 import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
@@ -87,6 +89,7 @@ import com.xty.englishhelper.domain.repository.SyncProgress
 import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordPoolRepository
+import com.xty.englishhelper.domain.repository.WordPhraseRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.repository.PlanRepository
 import com.xty.englishhelper.domain.usecase.importexport.ExportDictionaryUseCase
@@ -125,7 +128,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val dictionaryWordUpdatePlanner: DictionaryWordUpdatePlanner,
     private val dictionaryWordPoolMergePlanner: DictionaryWordPoolMergePlanner,
     private val dictionaryWordUidNormalizer: DictionaryWordUidNormalizer,
-    private val ensureDictionaryWordUids: EnsureDictionaryWordUidsUseCase
+    private val ensureDictionaryWordUids: EnsureDictionaryWordUidsUseCase,
+    private val wordPhraseRepository: WordPhraseRepository
 ) : CloudSyncRepository {
 
     private val dictAdapter = moshi.adapter(DictionaryJsonModel::class.java).indent("  ")
@@ -619,11 +623,17 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                             "Dictionary study state total mismatch for ${entry.name}: expected=${index.totalStudyStates} actual=${assembled.studyStates.size}"
                         )
                     }
+                    if (index.totalWordPhrases > 0 && assembled.wordPhrases.size != index.totalWordPhrases) {
+                        throw IllegalStateException(
+                            "Dictionary phrase total mismatch for ${entry.name}: expected=${index.totalWordPhrases} actual=${assembled.wordPhrases.size}"
+                        )
+                    }
                 }
             }
 
             else -> throw IllegalStateException("Unsupported dictionary cloud format: ${entry.format}")
         }.let(dictionaryWordUidNormalizer::normalize)
+            .also(WordPhraseJsonValidator::validate)
     }
 
     private suspend fun uploadDictionarySnapshot(
@@ -703,10 +713,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     studyStates = cloudJson.studyStates.filter { state ->
                         state.wordUid.isNotBlank() && state.wordUid in cloudOnlyWordUids
                     },
-                    wordPools = emptyList()
+                    wordPools = emptyList(),
+                    phraseTags = cloudJson.phraseTags,
+                    wordPhrases = cloudJson.wordPhrases.filter { phrase ->
+                        phrase.wordUid.isNotBlank() && phrase.wordUid in cloudOnlyWordUids
+                    }
                 ))
             )
             transactionRunner.runInTransaction {
+                val importedWordUidToId = mutableMapOf<String, Long>()
                 importResult.words.forEach { word ->
                     val existing = wordRepository.findByNormalizedSpelling(resolvedLocalDict.id, word.normalizedSpelling)
                     if (existing == null) {
@@ -715,6 +730,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                             wordUid = word.wordUid
                         )
                         val wordId = wordRepository.insertWord(wordWithDict)
+                        importedWordUidToId[wordWithDict.wordUid] = wordId
                         // Import study states if available
                         val stateData = importResult.studyStates.filter { it.wordUid == word.wordUid }
                         if (stateData.isNotEmpty()) {
@@ -736,6 +752,13 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                             }
                         }
                     }
+                }
+                if (importedWordUidToId.isNotEmpty()) {
+                    wordPhraseRepository.mergeSnapshot(
+                        dictionaryId = resolvedLocalDict.id,
+                        snapshot = importResult.wordPhraseSnapshot,
+                        wordUidToId = importedWordUidToId
+                    )
                 }
                 dictionaryRepository.updateWordCount(resolvedLocalDict.id)
             }
@@ -808,6 +831,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 }
             }
         }
+
+        wordPhraseRepository.mergeSnapshot(
+            dictionaryId = resolvedLocalDict.id,
+            snapshot = wordPhraseSyncSnapshotFromJson(
+                phraseTags = cloudJson.phraseTags,
+                wordPhrases = cloudJson.wordPhrases
+            ),
+            wordUidToId = wordUidToId
+        )
 
         mergeUnits(
             dictionaryId = resolvedLocalDict.id,
@@ -1581,6 +1613,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     }
 
                     importWordPools(dictId, cloudDict.wordPools, wordUidToId)
+                    wordPhraseRepository.replaceSnapshot(
+                        dictionaryId = dictId,
+                        snapshot = result.wordPhraseSnapshot,
+                        wordUidToId = wordUidToId
+                    )
 
                     wordRepository.recomputeAllAssociationsForDictionary(dictId)
                 }

@@ -3,6 +3,7 @@ package com.xty.englishhelper.data.preferences
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
 import com.xty.englishhelper.data.json.SettingsPreferenceEntryJsonModel
 import com.xty.englishhelper.data.json.SettingsSyncJsonModel
 import io.mockk.coVerify
@@ -79,6 +80,23 @@ class SettingsDataStoreImportTest {
     }
 
     @Test
+    fun `exportSyncSnapshot excludes credential-like keys`() = runTest {
+        val (subject, dataStore) = createRealSubjectWithDataStore()
+        dataStore.edit { prefs ->
+            prefs[SettingsDataStore.API_KEY] = "legacy-secret"
+        }
+
+        val snapshot = subject.exportSyncSnapshot(
+            appVersion = "8.1.3",
+            deviceName = "unit-test"
+        )
+        val decoded = SettingsSyncCodec.decodeSnapshot(snapshot)
+
+        assertFalse(decoded.containsKey("api_key"))
+        assertFalse(snapshot.preferences.any { it.key.startsWith("api_key_") })
+    }
+
+    @Test
     fun `exportSyncSnapshot keeps zero exportedAt when only github transport settings changed`() = runTest {
         val subject = createRealSubject()
 
@@ -117,6 +135,30 @@ class SettingsDataStoreImportTest {
         assertTrue(subject.getStudyWordNoteEnabled())
         assertEquals(123456789L, subject.lastSyncAt.first())
         assertEquals(setOf(9L), subject.getLastSelectedUnitIds(7L))
+    }
+
+    @Test
+    fun `importSyncSnapshot ignores credential-like keys`() = runTest {
+        val (subject, dataStore) = createRealSubjectWithDataStore()
+        dataStore.edit { prefs ->
+            prefs[SettingsDataStore.API_KEY] = "local-secret"
+        }
+
+        subject.importSyncSnapshot(
+            SettingsSyncJsonModel(
+                preferences = SettingsSyncCodec.encodePreferences(
+                    preferences = mapOf(
+                        "api_key" to "cloud-secret",
+                        "api_key_provider_Main" to "provider-secret",
+                        "study_word_note_enabled" to true
+                    )
+                )
+            )
+        )
+
+        val prefs = dataStore.data.first()
+        assertEquals("local-secret", prefs[SettingsDataStore.API_KEY])
+        assertTrue(subject.getStudyWordNoteEnabled())
     }
 
     @Test
@@ -171,6 +213,10 @@ class SettingsDataStoreImportTest {
     }
 
     private fun TestScope.createRealSubject(): SettingsDataStore {
+        return createRealSubjectWithDataStore().first
+    }
+
+    private fun TestScope.createRealSubjectWithDataStore(): Pair<SettingsDataStore, DataStore<Preferences>> {
         val file = File.createTempFile("settings-datastore-import", ".preferences_pb").apply {
             deleteOnExit()
         }
@@ -178,9 +224,10 @@ class SettingsDataStoreImportTest {
             scope = backgroundScope,
             produceFile = { file }
         )
-        return SettingsDataStore(
+        val subject = SettingsDataStore(
             dataStore = dataStore,
             encryptedApiKeyStore = mockk(relaxed = true)
         )
+        return subject to dataStore
     }
 }

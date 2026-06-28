@@ -13,6 +13,7 @@ import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.repository.DictionaryImportExporter
 import java.util.UUID
@@ -33,7 +34,8 @@ class JsonImportExporter @Inject constructor(
         units: List<StudyUnit>,
         unitWordMap: Map<Long, List<String>>,
         studyStates: List<WordStudyState>,
-        wordIdToUid: Map<Long, String>
+        wordIdToUid: Map<Long, String>,
+        wordPhraseSnapshot: WordPhraseSyncSnapshot
     ): String {
         words.forEach { word ->
             require(word.wordUid.isNotBlank()) {
@@ -56,7 +58,7 @@ class JsonImportExporter @Inject constructor(
             name = dictionary.name,
             description = dictionary.description,
             color = dictionary.color,
-            schemaVersion = 8,
+            schemaVersion = 9,
             createdAt = dictionary.createdAt,
             updatedAt = dictionary.updatedAt,
             words = words.map { word ->
@@ -107,7 +109,9 @@ class JsonImportExporter @Inject constructor(
                     reps = state.reps,
                     lapses = state.lapses
                 )
-            }
+            },
+            phraseTags = wordPhraseSnapshot.toPhraseTagJsonModels(),
+            wordPhrases = wordPhraseSnapshot.toWordPhraseJsonModels()
         )
         return adapter.toJson(model)
     }
@@ -116,8 +120,8 @@ class JsonImportExporter @Inject constructor(
         val parsedModel = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
 
         // Validate schema version
-        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7, 8)) {
-            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5、6、7 或 8）")
+        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7, 8, 9)) {
+            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5、6、7、8 或 9）")
         }
 
         // Validate no empty spellings
@@ -163,6 +167,8 @@ class JsonImportExporter @Inject constructor(
                 "第 ${index + 1} 个学习状态的 mode 值无效：${state.mode}"
             )
         }
+
+        WordPhraseJsonValidator.validate(model)
 
         val now = System.currentTimeMillis()
         val dictionaryCreatedAt = model.createdAt.takeIf { it > 0 } ?: now
@@ -234,7 +240,11 @@ class JsonImportExporter @Inject constructor(
                     reps = it.reps,
                     lapses = it.lapses
                 )
-            }
+            },
+            wordPhraseSnapshot = wordPhraseSyncSnapshotFromJson(
+                phraseTags = model.phraseTags,
+                wordPhrases = model.wordPhrases
+            )
         )
     }
 

@@ -80,6 +80,14 @@
     <string name="dict_pool_balanced_ai">Generate Pool (Balanced+AI)</string>
     <string name="dict_pool_quality_first">Generate Pool (Quality·High Cost)</string>
     <string name="dict_pool_review">Refine Pool (AI Downgrade·Quality)</string>
+    <string name="dict_phrase_organize">Organize Phrases</string>
+    <string name="dict_phrase_stats">Phrases: %1$d · Tags: %2$d · Organized: %3$d/%4$d</string>
+    <string name="dict_phrase_organizing">Organizing phrases</string>
+    <string name="dict_phrase_paused">Phrase organize paused</string>
+    <string name="dict_phrase_confirm_title">Organize Phrases</string>
+    <string name="dict_phrase_confirm_detail">Fill missing phrases in this dictionary. Word count: %d.</string>
+    <string name="dict_phrase_confirm_tokens">Estimated tokens: %2$d (%1$d x 450).</string>
+    <string name="dict_phrase_confirm_incremental">Words that already have phrases or confirmed empty results will be skipped. Failed words can be retried later.</string>
     <string name="dict_select_word_hint">Select a word to view details</string>
     <string name="dict_words_filtered">Filtered %1$d/%2$d words</string>
     <string name="dict_words_total">%d words</string>
@@ -146,6 +154,8 @@
     <string name="word_similar_words">Similar Words</string>
     <string name="word_cognates">Cognates</string>
     <string name="word_inflections">Inflections</string>
+    <string name="word_phrases">Phrases</string>
+    <string name="word_phrase_example">Example: %s</string>
     <string name="word_no_data">No data</string>
     <string name="word_edit_word">Edit Word</string>
     <string name="word_word">Word</string>
@@ -403,6 +413,7 @@
     <string name="task_management">Background Tasks</string>
     <string name="task_word_organize">Word Organize</string>
     <string name="task_word_note_organize">Word Note Organize</string>
+    <string name="task_word_phrase_organize">Phrase Organize</string>
     <string name="task_pool_rebuild">Pool Rebuild</string>
     <string name="task_pool_review">Pool Refinement</string>
     <string name="task_question_generate">Question Generate</string>

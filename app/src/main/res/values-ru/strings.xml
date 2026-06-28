@@ -80,6 +80,14 @@
     <string name="dict_pool_balanced_ai">Сформировать пул (Сбалансированный+AI)</string>
     <string name="dict_pool_quality_first">Сформировать пул (Качество·Высокая стоимость)</string>
     <string name="dict_pool_review">Очистка пула (AI-понижение·Качество)</string>
+    <string name="dict_phrase_organize">Organize Phrases</string>
+    <string name="dict_phrase_stats">Phrases: %1$d · Tags: %2$d · Organized: %3$d/%4$d</string>
+    <string name="dict_phrase_organizing">Organizing phrases</string>
+    <string name="dict_phrase_paused">Phrase organize paused</string>
+    <string name="dict_phrase_confirm_title">Organize Phrases</string>
+    <string name="dict_phrase_confirm_detail">Fill missing phrases in this dictionary. Word count: %d.</string>
+    <string name="dict_phrase_confirm_tokens">Estimated tokens: %2$d (%1$d x 450).</string>
+    <string name="dict_phrase_confirm_incremental">Words that already have phrases or confirmed empty results will be skipped. Failed words can be retried later.</string>
     <string name="dict_select_word_hint">Выберите слово для просмотра</string>
     <string name="dict_words_filtered">Отфильтровано %1$d/%2$d слов</string>
     <string name="dict_words_total">%d слов</string>
@@ -146,6 +154,8 @@
     <string name="word_similar_words">Похожие слова</string>
     <string name="word_cognates">Однокоренные</string>
     <string name="word_inflections">Формы слова</string>
+    <string name="word_phrases">Phrases</string>
+    <string name="word_phrase_example">Example: %s</string>
     <string name="word_no_data">Нет данных</string>
     <string name="word_edit_word">Редактировать слово</string>
     <string name="word_word">Слово</string>
@@ -387,6 +397,7 @@
     <!-- ==================== Background Task ==================== -->
     <string name="task_management">Фоновые задачи</string>
     <string name="task_word_organize">Сортировка слов</string>
+    <string name="task_word_phrase_organize">Phrase Organize</string>
     <string name="task_pool_rebuild">Пересборка пула</string>
     <string name="task_pool_review">Очистка пула</string>
     <string name="task_question_generate">Генерация вопросов</string>

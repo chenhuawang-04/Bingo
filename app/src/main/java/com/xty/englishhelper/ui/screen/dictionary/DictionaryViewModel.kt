@@ -14,7 +14,9 @@ import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import com.xty.englishhelper.domain.organize.OrganizeTaskStatus
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
+import com.xty.englishhelper.domain.model.WordPhraseOrganizePayload
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
+import com.xty.englishhelper.domain.repository.WordPhraseRepository
 import com.xty.englishhelper.domain.usecase.dictionary.GetDictionaryByIdUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetPoolCountUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetPoolEdgeCountUseCase
@@ -48,7 +50,8 @@ class DictionaryViewModel @Inject constructor(
     private val getPoolVersionInfo: GetPoolVersionInfoUseCase,
     private val backgroundOrganizeManager: BackgroundOrganizeManager,
     private val backgroundTaskManager: BackgroundTaskManager,
-    private val taskRepository: BackgroundTaskRepository
+    private val taskRepository: BackgroundTaskRepository,
+    private val wordPhraseRepository: WordPhraseRepository
 ) : ViewModel() {
 
     private val dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
@@ -58,6 +61,7 @@ class DictionaryViewModel @Inject constructor(
 
     private var poolTaskId: Long? = null
     private var reviewTaskId: Long? = null
+    private var phraseTaskId: Long? = null
     private var jumpToLastUnitPage = false
 
     init {
@@ -65,9 +69,11 @@ class DictionaryViewModel @Inject constructor(
         observeWords()
         observeUnits()
         loadPoolInfo()
+        loadPhraseInfo()
         observeOrganizeTasks()
         observePoolRebuildTasks()
         observePoolReviewTasks()
+        observeWordPhraseOrganizeTasks()
     }
 
     private fun loadDictionary() {
@@ -94,6 +100,7 @@ class DictionaryViewModel @Inject constructor(
                             )
                         )
                     }
+                    loadPhraseInfo()
                 }
         }
     }
@@ -375,6 +382,13 @@ class DictionaryViewModel @Inject constructor(
         val modifiedEdges: Int
     )
 
+    private data class PhraseProgressMessage(
+        val word: String,
+        val success: Int,
+        val empty: Int,
+        val failed: Int
+    )
+
     private fun parseBuildProgressMessage(message: String?): PoolProgressMessage? {
         if (message.isNullOrBlank()) return null
         val parts = message.split("|")
@@ -398,6 +412,18 @@ class DictionaryViewModel @Inject constructor(
         return ReviewProgressMessage(completed, total, modified)
     }
 
+    private fun parsePhraseProgressMessage(message: String?): PhraseProgressMessage? {
+        if (message.isNullOrBlank()) return null
+        val parts = message.split("|")
+        if (parts.size < 6 || parts[0] != "phrase") return null
+        return PhraseProgressMessage(
+            word = parts.getOrNull(2).orEmpty(),
+            success = parts.getOrNull(3)?.toIntOrNull()?.coerceAtLeast(0) ?: 0,
+            empty = parts.getOrNull(4)?.toIntOrNull()?.coerceAtLeast(0) ?: 0,
+            failed = parts.getOrNull(5)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+        )
+    }
+
     private fun formatReviewMessage(task: BackgroundTask): String? {
         val reviewProgress = parseReviewProgressMessage(task.progressMessage)
         return when {
@@ -408,6 +434,40 @@ class DictionaryViewModel @Inject constructor(
                 "已处理 ${task.progressCurrent}/${task.progressTotal} 条边"
             }
             else -> task.progressMessage
+        }
+    }
+
+    private fun formatPhraseMessage(task: BackgroundTask): String? {
+        val phraseProgress = parsePhraseProgressMessage(task.progressMessage)
+        return when {
+            phraseProgress != null -> buildString {
+                if (phraseProgress.word.isNotBlank()) {
+                    append(phraseProgress.word)
+                    append(" · ")
+                }
+                append("有短语 ${phraseProgress.success}")
+                append(" · 空 ${phraseProgress.empty}")
+                append(" · 失败 ${phraseProgress.failed}")
+            }
+            task.progressMessage.isNullOrBlank() -> null
+            else -> task.progressMessage
+        }
+    }
+
+    private fun loadPhraseInfo() {
+        viewModelScope.launch {
+            runCatching {
+                wordPhraseRepository.getStats(dictionaryId, _uiState.value.words.size)
+            }.onSuccess { stats ->
+                _uiState.update {
+                    it.copy(
+                        phraseCount = stats.phraseCount,
+                        phraseTagCount = stats.tagCount,
+                        phraseOrganizedWordCount = stats.organizedWordCount,
+                        phraseTotalWordCount = stats.totalWordCount
+                    )
+                }
+            }
         }
     }
 
@@ -597,6 +657,114 @@ class DictionaryViewModel @Inject constructor(
 
     fun clearReviewError() {
         _uiState.update { it.copy(reviewError = null) }
+    }
+
+    // ── 词组/短语整理 ──
+
+    private fun observeWordPhraseOrganizeTasks() {
+        viewModelScope.launch {
+            var lastStatus: BackgroundTaskStatus? = null
+            taskRepository.observeAllTasks().collect { tasks ->
+                val phraseTask = tasks
+                    .filter { it.type == BackgroundTaskType.WORD_PHRASE_ORGANIZE }
+                    .filter { (it.payload as? WordPhraseOrganizePayload)?.dictionaryId == dictionaryId }
+                    .maxByOrNull { it.updatedAt }
+
+                if (phraseTask == null) {
+                    phraseTaskId = null
+                    _uiState.update {
+                        it.copy(
+                            isOrganizingPhrases = false,
+                            phraseOrganizeProgress = null,
+                            phraseOrganizeError = null,
+                            currentPhraseOrganizeMessage = null,
+                            isPhraseOrganizePaused = false
+                        )
+                    }
+                    lastStatus = null
+                    return@collect
+                }
+
+                phraseTaskId = phraseTask.id
+                val inProgress = phraseTask.status == BackgroundTaskStatus.PENDING ||
+                    phraseTask.status == BackgroundTaskStatus.RUNNING ||
+                    phraseTask.status == BackgroundTaskStatus.PAUSED
+                val progress = if (phraseTask.progressTotal > 0) {
+                    phraseTask.progressCurrent to phraseTask.progressTotal
+                } else {
+                    null
+                }
+                val error = if (phraseTask.status == BackgroundTaskStatus.FAILED) phraseTask.errorMessage else null
+                _uiState.update {
+                    it.copy(
+                        isOrganizingPhrases = inProgress,
+                        phraseOrganizeProgress = progress,
+                        phraseOrganizeError = error,
+                        currentPhraseOrganizeMessage = formatPhraseMessage(phraseTask),
+                        isPhraseOrganizePaused = phraseTask.status == BackgroundTaskStatus.PAUSED
+                    )
+                }
+
+                if (phraseTask.status != lastStatus && phraseTask.status == BackgroundTaskStatus.SUCCESS) {
+                    loadPhraseInfo()
+                }
+                lastStatus = phraseTask.status
+            }
+        }
+    }
+
+    fun requestOrganizePhrases() {
+        if (_uiState.value.isOrganizingPhrases) return
+        _uiState.update { it.copy(showPhraseOrganizeConfirmDialog = true) }
+    }
+
+    fun confirmOrganizePhrases() {
+        val dictName = _uiState.value.dictionary?.name.orEmpty()
+        _uiState.update {
+            it.copy(
+                showPhraseOrganizeConfirmDialog = false,
+                isOrganizingPhrases = true,
+                phraseOrganizeProgress = null,
+                phraseOrganizeError = null,
+                currentPhraseOrganizeMessage = null
+            )
+        }
+        backgroundTaskManager.enqueueWordPhraseOrganize(
+            dictionaryId = dictionaryId,
+            dictionaryName = dictName,
+            force = true,
+            mode = "FILL_MISSING"
+        )
+    }
+
+    fun dismissPhraseOrganizeConfirmDialog() {
+        _uiState.update { it.copy(showPhraseOrganizeConfirmDialog = false) }
+    }
+
+    fun pausePhraseOrganize() {
+        val taskId = phraseTaskId ?: return
+        backgroundTaskManager.pauseTask(taskId)
+    }
+
+    fun resumePhraseOrganize() {
+        val taskId = phraseTaskId ?: return
+        backgroundTaskManager.resumeTask(taskId)
+    }
+
+    fun cancelPhraseOrganize() {
+        val taskId = phraseTaskId ?: return
+        backgroundTaskManager.cancelTask(taskId)
+        _uiState.update {
+            it.copy(
+                isOrganizingPhrases = false,
+                phraseOrganizeProgress = null,
+                currentPhraseOrganizeMessage = null
+            )
+        }
+    }
+
+    fun clearPhraseOrganizeError() {
+        _uiState.update { it.copy(phraseOrganizeError = null) }
     }
 
     fun clearError() {

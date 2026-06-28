@@ -125,8 +125,19 @@ class SettingsDataStore @Inject constructor(
     private val defaultImageCompressionTargetBytes = 1_000_000
     private val minImageCompressionTargetBytes = 200 * 1024
     private val maxImageCompressionTargetBytes = 4 * 1024 * 1024
-    private val nonSyncablePreferenceKeys = setOf(LAST_SYNC_AT.name)
-    private val nonSyncablePreferencePrefixes = setOf("last_selected_unit_ids_")
+    private val nonSyncablePreferenceKeys = setOf(
+        LAST_SYNC_AT.name,
+        API_KEY.name,
+        "github_pat"
+    )
+    private val nonSyncablePreferencePrefixes = setOf(
+        "last_selected_unit_ids_",
+        "api_key_",
+        "token_",
+        "secret_",
+        "credential_",
+        "password_"
+    )
     private val syncablePreferenceTypes: Map<String, SyncValueType> = buildSyncablePreferenceTypes()
 
     val providers: Flow<List<AiProviderProfile>> = dataStore.data.map { prefs ->
@@ -987,7 +998,6 @@ class SettingsDataStore @Inject constructor(
             put(key.name, SyncValueType.BOOLEAN)
         }
 
-        register(API_KEY)
         register(MODEL)
         register(BASE_URL)
         register(PROVIDER)
