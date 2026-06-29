@@ -92,6 +92,7 @@ data class ReaderUiState(
     // Practice
     val selectedAnswers: Map<Long, String> = emptyMap(),
     val isSubmitted: Boolean = false,
+    val isSubmitting: Boolean = false,
     val showingAnswers: Boolean = false,
     val wrongItemIds: Set<Long> = emptySet(),
     val practiceResults: Map<Long, Boolean> = emptyMap(),
@@ -195,28 +196,20 @@ class QuestionBankReaderViewModel @Inject constructor(
                     emptyList()
                 }
 
-                // Scan word links
-                val links = if (paragraphs.isNotEmpty()) {
-                    val paraWithContentId = paragraphs.map { it.copy(articleId = contentId) }
-                    scanWordLinks(paraWithContentId)
-                } else emptyList()
-
-                val linkMap = links.groupBy { it.matchedToken.lowercase() }
-
                 _uiState.update {
                     it.copy(
                         group = group,
                         paperTitle = paperTitle,
                         paragraphs = paragraphs,
                         items = items,
-                        wordLinks = links,
-                        wordLinkMap = linkMap,
                         wrongItemIds = wrongIds,
                         sentenceInsertionOptions = sentenceOptions,
                         linkedArticleId = linkedId,
                         isLoading = false
                     )
                 }
+
+                scanWordLinksAsync(paragraphs)
 
                 // Prewarm TTS
                 val texts = paragraphs
@@ -579,133 +572,159 @@ class QuestionBankReaderViewModel @Inject constructor(
     // ── Practice ──
 
     fun selectAnswer(itemId: Long, answer: String) {
-        if (_uiState.value.isSubmitted) return
-        _uiState.update { it.copy(selectedAnswers = it.selectedAnswers + (itemId to answer)) }
+        if (!QuestionPracticeRules.canSelectAnswer(_uiState.value)) return
+        _uiState.update {
+            if (!QuestionPracticeRules.canSelectAnswer(it)) {
+                it
+            } else {
+                it.copy(selectedAnswers = it.selectedAnswers + (itemId to answer))
+            }
+        }
     }
 
     fun submitAnswers() {
         val state = _uiState.value
-        if (state.isSubmitted || state.items.isEmpty()) return
+        if (state.isSubmitted || state.isSubmitting || state.items.isEmpty()) return
+
+        val validationError = QuestionPracticeRules.submissionValidationError(state)
+        if (validationError != null) {
+            _uiState.update { it.copy(error = validationError) }
+            return
+        }
+
+        _uiState.update {
+            if (it.isSubmitted || it.isSubmitting || it.items.isEmpty()) {
+                it
+            } else {
+                it.copy(isSubmitting = true, error = null)
+            }
+        }
 
         viewModelScope.launch {
-            val records = mutableListOf<PracticeRecord>()
-            val now = System.currentTimeMillis()
+            try {
+                val submitState = _uiState.value
+                val records = mutableListOf<PracticeRecord>()
+                val now = System.currentTimeMillis()
 
-            val isWriting = state.group?.questionType == QuestionType.WRITING
-            val isTranslation = state.group?.questionType == QuestionType.TRANSLATION
-            if (isWriting) {
-                val item = state.items.firstOrNull()
-                val essayText = item?.let { state.selectedAnswers[it.id]?.trim() }.orEmpty()
-                if (item == null || essayText.isBlank()) {
-                    _uiState.update { it.copy(error = "请先输入作文内容") }
-                    return@launch
-                }
-                if (state.writingPracticeEnabled && state.isPreparingWritingPractice) {
-                    _uiState.update { it.copy(error = "写作练习短语仍在准备中，请稍后提交") }
-                    return@launch
-                }
-                if (state.writingPracticeEnabled && state.writingPracticePhrases.isEmpty()) {
-                    _uiState.update { it.copy(error = "写作练习模式尚未选出短语，请先关闭或重新开启") }
-                    return@launch
-                }
-                val phraseUsage = if (state.writingPracticeEnabled) {
-                    evaluateWritingPracticeUsage(state.writingPracticePhrases, essayText)
-                } else {
-                    emptyList()
-                }
-                records.add(
-                    PracticeRecord(
-                        questionItemId = item.id,
-                        userAnswer = essayText,
-                        isCorrect = true,
-                        practicedAt = now
-                    )
-                )
-                repository.insertPracticeRecords(records)
-                if (state.writingPracticeEnabled) {
-                    wordPhraseRepository.incrementPracticeCounts(state.writingPracticePhrases.map { it.phraseId })
-                }
-                _uiState.update {
-                    it.copy(
-                        isSubmitted = true,
-                        isScoringWriting = true,
-                        writingPracticeUsage = phraseUsage
-                    )
-                }
-                trackQuestionPracticeProgress()
-                scoreWritingAnswers()
-                return@launch
-            }
-            if (isTranslation) {
-                for (item in state.items) {
-                    val userAnswer = state.selectedAnswers[item.id] ?: continue
+                val isWriting = submitState.group?.questionType == QuestionType.WRITING
+                val isTranslation = submitState.group?.questionType == QuestionType.TRANSLATION
+                if (isWriting) {
+                    val item = submitState.items.firstOrNull()
+                    val essayText = item?.let { submitState.selectedAnswers[it.id]?.trim() }.orEmpty()
+                    if (item == null || essayText.isBlank()) {
+                        _uiState.update { it.copy(isSubmitting = false, error = "请先输入作文内容") }
+                        return@launch
+                    }
+                    val phraseUsage = if (submitState.writingPracticeEnabled) {
+                        evaluateWritingPracticeUsage(submitState.writingPracticePhrases, essayText)
+                    } else {
+                        emptyList()
+                    }
                     records.add(
                         PracticeRecord(
                             questionItemId = item.id,
-                            userAnswer = userAnswer,
+                            userAnswer = essayText,
                             isCorrect = true,
                             practicedAt = now
                         )
                     )
-                }
-                if (records.isNotEmpty()) {
                     repository.insertPracticeRecords(records)
+                    if (submitState.writingPracticeEnabled) {
+                        wordPhraseRepository.incrementPracticeCounts(submitState.writingPracticePhrases.map { it.phraseId })
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isSubmitted = true,
+                            isSubmitting = false,
+                            isScoringWriting = true,
+                            writingPracticeUsage = phraseUsage
+                        )
+                    }
+                    trackQuestionPracticeProgress()
+                    scoreWritingAnswers()
+                    return@launch
                 }
-                _uiState.update { it.copy(isSubmitted = true, isScoringTranslation = true) }
-                trackQuestionPracticeProgress()
-                scoreTranslationAnswers()
-                return@launch
-            }
+                if (isTranslation) {
+                    for (item in submitState.items) {
+                        val userAnswer = submitState.selectedAnswers[item.id] ?: continue
+                        records.add(
+                            PracticeRecord(
+                                questionItemId = item.id,
+                                userAnswer = userAnswer,
+                                isCorrect = true,
+                                practicedAt = now
+                            )
+                        )
+                    }
+                    if (records.isNotEmpty()) {
+                        repository.insertPracticeRecords(records)
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isSubmitted = true,
+                            isSubmitting = false,
+                            isScoringTranslation = true
+                        )
+                    }
+                    trackQuestionPracticeProgress()
+                    scoreTranslationAnswers()
+                    return@launch
+                }
 
-            val results = mutableMapOf<Long, Boolean>()
+                val results = mutableMapOf<Long, Boolean>()
 
-            for (item in state.items) {
-                val userAnswer = state.selectedAnswers[item.id]
-                if (userAnswer == null) continue
-                // Skip scoring when no correct answer is available
-                if (item.correctAnswer == null) {
+                for (item in submitState.items) {
+                    val userAnswer = submitState.selectedAnswers[item.id]
+                    if (userAnswer == null) continue
+                    // Skip scoring when no correct answer is available
+                    if (item.correctAnswer == null) {
+                        records.add(
+                            PracticeRecord(
+                                questionItemId = item.id,
+                                userAnswer = userAnswer,
+                                isCorrect = false,
+                                practicedAt = now
+                            )
+                        )
+                        continue
+                    }
+                    val correct = userAnswer.equals(item.correctAnswer, ignoreCase = true)
+                    results[item.id] = correct
                     records.add(
                         PracticeRecord(
                             questionItemId = item.id,
                             userAnswer = userAnswer,
-                            isCorrect = false,
+                            isCorrect = correct,
                             practicedAt = now
                         )
                     )
-                    continue
+                    if (!correct) {
+                        repository.incrementWrongCount(item.id)
+                    }
                 }
-                val correct = userAnswer.equals(item.correctAnswer, ignoreCase = true)
-                results[item.id] = correct
-                records.add(
-                    PracticeRecord(
-                        questionItemId = item.id,
-                        userAnswer = userAnswer,
-                        isCorrect = correct,
-                        practicedAt = now
+
+                if (records.isNotEmpty()) {
+                    repository.insertPracticeRecords(records)
+                }
+
+                // Refresh wrong IDs and items
+                val wrongIds = repository.getWrongItemIds(groupId).toSet()
+                val refreshedItems = repository.getItemsByGroup(groupId)
+
+                _uiState.update {
+                    it.copy(
+                        isSubmitted = true,
+                        isSubmitting = false,
+                        practiceResults = results,
+                        wrongItemIds = wrongIds,
+                        items = refreshedItems
                     )
-                )
-                if (!correct) {
-                    repository.incrementWrongCount(item.id)
                 }
+                trackQuestionPracticeProgress()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isSubmitting = false, error = "提交失败：${e.message}") }
             }
-
-            if (records.isNotEmpty()) {
-                repository.insertPracticeRecords(records)
-            }
-
-            // Refresh wrong IDs and items
-            val wrongIds = repository.getWrongItemIds(groupId).toSet()
-            val refreshedItems = repository.getItemsByGroup(groupId)
-
-            _uiState.update {
-                it.copy(
-                    isSubmitted = true,
-                    practiceResults = results,
-                    wrongItemIds = wrongIds,
-                    items = refreshedItems
-                )
-            }
-            trackQuestionPracticeProgress()
         }
     }
 
@@ -799,7 +818,13 @@ class QuestionBankReaderViewModel @Inject constructor(
     }
 
     fun showAnswers() {
-        _uiState.update { it.copy(showingAnswers = true) }
+        _uiState.update {
+            if (it.isSubmitted || it.isSubmitting) {
+                it
+            } else {
+                it.copy(showingAnswers = true)
+            }
+        }
     }
 
     fun retryPractice() {
@@ -807,6 +832,7 @@ class QuestionBankReaderViewModel @Inject constructor(
             it.copy(
                 selectedAnswers = emptyMap(),
                 isSubmitted = false,
+                isSubmitting = false,
                 showingAnswers = false,
                 practiceResults = emptyMap(),
                 translationScores = emptyMap(),
@@ -818,9 +844,31 @@ class QuestionBankReaderViewModel @Inject constructor(
         }
     }
 
+    private fun scanWordLinksAsync(paragraphs: List<ArticleParagraph>) {
+        if (paragraphs.isEmpty()) return
+        val paraWithContentId = paragraphs.map { it.copy(articleId = contentId) }
+        viewModelScope.launch {
+            try {
+                val links = withContext(Dispatchers.Default) {
+                    scanWordLinks(paraWithContentId)
+                }
+                val linkMap = links.groupBy { it.matchedToken.lowercase() }
+                _uiState.update {
+                    it.copy(
+                        wordLinks = links,
+                        wordLinkMap = linkMap
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(error = "词链扫描失败：${e.message}") }
+            }
+        }
+    }
+
     fun setWritingPracticeEnabled(enabled: Boolean) {
         val state = _uiState.value
-        if (state.isSubmitted) return
+        if (state.isSubmitted || state.isSubmitting || state.showingAnswers) return
         if (state.group?.questionType != QuestionType.WRITING) return
         writingPracticeJob?.cancel()
         if (!enabled) {
@@ -853,7 +901,7 @@ class QuestionBankReaderViewModel @Inject constructor(
 
     fun refreshWritingPracticePhrases() {
         val state = _uiState.value
-        if (state.group?.questionType != QuestionType.WRITING || state.isSubmitted) return
+        if (state.group?.questionType != QuestionType.WRITING || state.isSubmitted || state.isSubmitting) return
         setWritingPracticeEnabled(true)
     }
 
@@ -1122,7 +1170,8 @@ class QuestionBankReaderViewModel @Inject constructor(
     }
 
     fun scanWritingImages(uris: List<Uri>) {
-        if (uris.isEmpty()) return
+        val state = _uiState.value
+        if (uris.isEmpty() || state.isSubmitted || state.isSubmitting) return
         _uiState.update { it.copy(isOcrWriting = true, isCompressingWriting = false) }
         viewModelScope.launch {
             try {
@@ -1155,7 +1204,12 @@ class QuestionBankReaderViewModel @Inject constructor(
                 }
                 val item = _uiState.value.items.firstOrNull()
                 if (item != null) {
-                    val shouldAutoSubmit = _uiState.value.pendingWritingAutoSubmit
+                    val currentState = _uiState.value
+                    if (currentState.isSubmitted || currentState.isSubmitting) {
+                        _uiState.update { it.copy(isOcrWriting = false, pendingWritingAutoSubmit = false) }
+                        return@launch
+                    }
+                    val shouldAutoSubmit = currentState.pendingWritingAutoSubmit
                     _uiState.update {
                         it.copy(
                             selectedAnswers = it.selectedAnswers + (item.id to essayText),
@@ -1176,7 +1230,13 @@ class QuestionBankReaderViewModel @Inject constructor(
     }
 
     fun prepareWritingOcrSubmit() {
-        _uiState.update { it.copy(pendingWritingAutoSubmit = true) }
+        _uiState.update {
+            if (it.isSubmitted || it.isSubmitting) {
+                it
+            } else {
+                it.copy(pendingWritingAutoSubmit = true)
+            }
+        }
     }
 
     fun cancelWritingOcrSubmit() {

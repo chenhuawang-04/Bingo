@@ -994,7 +994,7 @@ private fun QuestionCard(
                             .padding(vertical = 2.dp)
                             .selectable(
                                 selected = isSelected,
-                                onClick = { if (!isSubmitted) onSelectAnswer(letter) },
+                                onClick = { if (!isSubmitted && !showingAnswers) onSelectAnswer(letter) },
                                 role = Role.RadioButton
                             )
                     ) {
@@ -1004,8 +1004,8 @@ private fun QuestionCard(
                         ) {
                             RadioButton(
                                 selected = isSelected,
-                                onClick = { if (!isSubmitted) onSelectAnswer(letter) },
-                                enabled = !isSubmitted
+                                onClick = { if (!isSubmitted && !showingAnswers) onSelectAnswer(letter) },
+                                enabled = !isSubmitted && !showingAnswers
                             )
                             Text(
                                 "[$letter] $text",
@@ -1059,7 +1059,7 @@ private fun PracticeActionBar(
     onScanAnswers: () -> Unit
 ) {
     val hasAnswers = state.items.any { it.correctAnswer != null }
-    val hasSelection = state.selectedAnswers.isNotEmpty()
+    val canSubmit = QuestionPracticeRules.canSubmitObjectiveAnswers(state)
     val statusColors = rememberPracticeStatusColors()
 
     Column(
@@ -1074,7 +1074,7 @@ private fun PracticeActionBar(
                 // Submit
                 Button(
                     onClick = onSubmit,
-                    enabled = hasAnswers && hasSelection,
+                    enabled = canSubmit,
                     modifier = Modifier.weight(1f)
                 ) { Text(stringResource(R.string.reader_submit_answers)) }
 
@@ -1082,6 +1082,7 @@ private fun PracticeActionBar(
                 if (hasAnswers) {
                     OutlinedButton(
                         onClick = onShowAnswers,
+                        enabled = !state.isSubmitting,
                         modifier = Modifier.weight(1f)
                     ) { Text(stringResource(R.string.reader_show_answers)) }
                 }
@@ -1503,7 +1504,7 @@ private fun ClozeOptionRow(
                     color = optionColors.content,
                     modifier = Modifier
                         .background(optionColors.container, RoundedCornerShape(4.dp))
-                        .clickable(enabled = !isSubmitted) { onSelectAnswer(letter) }
+                        .clickable(enabled = !isSubmitted && !showingAnswers) { onSelectAnswer(letter) }
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
@@ -2031,7 +2032,7 @@ private fun SentenceInsertionQuestionCard(
                             modifier = Modifier
                                 .selectable(
                                     selected = isSelected,
-                                    onClick = { if (!isSubmitted) onSelectAnswer(letter) },
+                                    onClick = { if (!isSubmitted && !showingAnswers) onSelectAnswer(letter) },
                                     role = Role.RadioButton
                                 )
                         ) {
@@ -2634,7 +2635,7 @@ private fun InfoMatchQuestionCard(
                             modifier = Modifier
                                 .selectable(
                                     selected = isSelected,
-                                    onClick = { if (!isSubmitted) onSelectAnswer(letter) },
+                                    onClick = { if (!isSubmitted && !showingAnswers) onSelectAnswer(letter) },
                                     role = Role.RadioButton
                                 )
                         ) {
@@ -2782,7 +2783,7 @@ private fun CommentOpinionQuestionCard(
                             modifier = Modifier
                                 .selectable(
                                     selected = isSelected,
-                                    onClick = { if (!isSubmitted) onSelectAnswer(letter) },
+                                    onClick = { if (!isSubmitted && !showingAnswers) onSelectAnswer(letter) },
                                     role = Role.RadioButton
                                 )
                         ) {
@@ -3212,8 +3213,8 @@ private fun TranslationActionBar(
     onShowAnswers: () -> Unit,
     onRetry: () -> Unit
 ) {
-    val hasSelection = state.selectedAnswers.isNotEmpty()
     val hasAnswers = state.items.any { it.correctAnswer != null }
+    val canSubmit = QuestionPracticeRules.canSubmitTranslationAnswers(state)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -3226,13 +3227,14 @@ private fun TranslationActionBar(
             if (!state.isSubmitted && !state.showingAnswers) {
                 Button(
                     onClick = onSubmit,
-                    enabled = hasSelection,
+                    enabled = canSubmit,
                     modifier = Modifier.weight(1f)
                 ) { Text(stringResource(R.string.question_submit_translation)) }
 
                 if (hasAnswers) {
                     OutlinedButton(
                         onClick = onShowAnswers,
+                        enabled = !state.isSubmitting,
                         modifier = Modifier.weight(1f)
                     ) { Text(stringResource(R.string.question_view_reference)) }
                 }
@@ -3531,7 +3533,7 @@ private fun ParagraphOrderQuestionCard(
                             modifier = Modifier
                                 .selectable(
                                     selected = isSelected,
-                                    onClick = { if (!isSubmitted) onSelectAnswer(letter) },
+                                    onClick = { if (!isSubmitted && !showingAnswers) onSelectAnswer(letter) },
                                     role = Role.RadioButton
                                 )
                         ) {
@@ -3844,6 +3846,7 @@ private fun WritingAnswerPanel(
                 minLines = 6,
                 maxLines = 12,
                 enabled = !state.isSubmitted
+                    && !state.isSubmitting
             )
         }
 
@@ -3856,6 +3859,7 @@ private fun WritingAnswerPanel(
                     onClick = onScanWriting,
                     modifier = Modifier.weight(1f),
                     enabled = !state.isSubmitted && !state.isOcrWriting
+                        && !state.isSubmitting
                 ) {
                     Icon(Icons.Default.CameraAlt, contentDescription = stringResource(R.string.question_scan_cd), modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
@@ -3873,7 +3877,10 @@ private fun WritingAnswerPanel(
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        enabled = item != null && !state.isOcrWriting && !state.isCompressingWriting
+                        enabled = item != null &&
+                            !state.isOcrWriting &&
+                            !state.isCompressingWriting &&
+                            !state.isSubmitting
                     ) { Text(stringResource(R.string.question_submit_review)) }
                 } else {
                     Button(
@@ -3938,7 +3945,7 @@ private fun WritingPracticeModePanel(
                 Switch(
                     checked = state.writingPracticeEnabled,
                     onCheckedChange = onToggleWritingPractice,
-                    enabled = !state.isSubmitted
+                    enabled = !state.isSubmitted && !state.isSubmitting
                 )
             }
 
@@ -4003,7 +4010,7 @@ private fun WritingPracticeModePanel(
                         )
                     }
 
-                    if (!state.isSubmitted && !state.isPreparingWritingPractice) {
+                    if (!state.isSubmitted && !state.isSubmitting && !state.isPreparingWritingPractice) {
                         OutlinedButton(onClick = onRefreshWritingPractice) {
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh), modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
