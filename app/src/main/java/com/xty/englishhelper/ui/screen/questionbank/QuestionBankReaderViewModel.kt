@@ -64,7 +64,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 
@@ -815,20 +814,14 @@ class QuestionBankReaderViewModel @Inject constructor(
                     _uiState.update { it.copy(isScoringWriting = false, error = "请先输入作文内容") }
                     return@launch
                 }
-                val score = withTimeoutOrNull(WRITING_SCORE_TIMEOUT_MS) {
-                    aiRepository.scoreWriting(
-                        item.questionText,
-                        essayText,
-                        config.apiKey,
-                        config.model,
-                        config.baseUrl,
-                        config.provider
-                    )
-                }
-                if (score == null) {
-                    _uiState.update { it.copy(isScoringWriting = false, error = "作文批阅超时，请稍后重试") }
-                    return@launch
-                }
+                val score = aiRepository.scoreWriting(
+                    item.questionText,
+                    essayText,
+                    config.apiKey,
+                    config.model,
+                    config.baseUrl,
+                    config.provider
+                )
                 _uiState.update {
                     it.copy(
                         writingScores = mapOf(item.id to score),
@@ -1365,7 +1358,6 @@ class QuestionBankReaderViewModel @Inject constructor(
     }
 
     private companion object {
-        const val WRITING_SCORE_TIMEOUT_MS = 180_000L
         const val WRITING_PRACTICE_TARGET_PHRASE_COUNT = 10
         const val WRITING_PRACTICE_CANDIDATE_PAGE_SIZE = 40
     }

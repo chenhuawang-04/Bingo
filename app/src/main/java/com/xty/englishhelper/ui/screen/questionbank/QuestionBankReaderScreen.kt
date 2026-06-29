@@ -3946,40 +3946,45 @@ private fun WritingPassagePanel(
             }
         }
 
-        if (state.paragraphs.isNotEmpty() || group.passageText.isNotBlank()) {
+        if (state.paragraphs.isNotEmpty()) {
+            item(key = "writing_passage_header") {
+                Text(
+                    stringResource(R.string.question_background_material),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            items(state.paragraphs, key = { "writing_passage_p_${it.id}" }) { paragraph ->
+                ParagraphBlock(
+                    paragraph = paragraph,
+                    wordLinkMap = state.wordLinkMap,
+                    analysis = state.paragraphAnalysis[paragraph.id],
+                    isAnalyzing = state.analyzingParagraphId == paragraph.id,
+                    isSpeaking = false,
+                    translationEnabled = state.translationEnabled,
+                    translation = state.paragraphTranslations[paragraph.id],
+                    isTranslating = paragraph.id in state.translatingParagraphIds,
+                    translationFailed = paragraph.id in state.translationFailedParagraphIds,
+                    analysisExpanded = paragraph.id in state.expandedParagraphIds,
+                    onAnalyze = { onAnalyzeParagraph(paragraph.id, paragraph.text) },
+                    onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) },
+                    onToggleAnalysisExpanded = { onToggleAnalysisExpanded(paragraph.id) },
+                    onWordClick = onWordClick,
+                    onCollectWord = onCollectWord
+                )
+            }
+        } else if (group.passageText.isNotBlank()) {
             item(key = "writing_passage") {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(stringResource(R.string.question_background_material), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        if (state.paragraphs.isNotEmpty()) {
-                            state.paragraphs.forEach { paragraph ->
-                                ParagraphBlock(
-                                    paragraph = paragraph,
-                                    wordLinkMap = state.wordLinkMap,
-                                    analysis = state.paragraphAnalysis[paragraph.id],
-                                    isAnalyzing = state.analyzingParagraphId == paragraph.id,
-                                    isSpeaking = false,
-                                    translationEnabled = state.translationEnabled,
-                                    translation = state.paragraphTranslations[paragraph.id],
-                                    isTranslating = paragraph.id in state.translatingParagraphIds,
-                                    translationFailed = paragraph.id in state.translationFailedParagraphIds,
-                                    analysisExpanded = paragraph.id in state.expandedParagraphIds,
-                                    onAnalyze = { onAnalyzeParagraph(paragraph.id, paragraph.text) },
-                                    onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) },
-                                    onToggleAnalysisExpanded = { onToggleAnalysisExpanded(paragraph.id) },
-                                    onWordClick = onWordClick,
-                                    onCollectWord = onCollectWord
-                                )
-                            }
-                        } else {
-                            HighlightedParagraphText(
-                                text = group.passageText,
-                                wordLinkMap = state.wordLinkMap,
-                                onWordClick = onWordClick,
-                                onCollectWord = onCollectWord,
-                                style = ArticleTypography.QuestionSupport
-                            )
-                        }
+                        HighlightedParagraphText(
+                            text = group.passageText,
+                            wordLinkMap = state.wordLinkMap,
+                            onWordClick = onWordClick,
+                            onCollectWord = onCollectWord,
+                            style = ArticleTypography.QuestionSupport
+                        )
                     }
                 }
             }
