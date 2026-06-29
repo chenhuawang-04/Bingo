@@ -113,10 +113,11 @@ import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
 import com.xty.englishhelper.domain.repository.TranslationScore
 import com.xty.englishhelper.domain.repository.WritingScore
+import com.xty.englishhelper.ui.components.reading.HighlightedParagraphText
 import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TtsPlaybackBar
+import com.xty.englishhelper.ui.components.reading.TranslationBlock
 import com.xty.englishhelper.ui.components.reading.extractContextSentence
-import com.xty.englishhelper.ui.components.reading.extractWordAtOffset
 import com.xty.englishhelper.ui.components.reading.extractWordRangeAtOffset
 import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
 import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
@@ -321,6 +322,9 @@ fun QuestionBankReaderScreen(
             when {
                 isCloze -> ClozeReaderContent(
                     state = state,
+                    onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
+                    onWordClick = onWordClick,
+                    onCollectWord = viewModel::collectWord,
                     onSelectAnswer = viewModel::selectAnswer,
                     onSubmitAnswers = { viewModel.submitAnswers() },
                     onShowAnswers = { viewModel.showAnswers() },
@@ -404,6 +408,9 @@ fun QuestionBankReaderScreen(
                 )
                 isTranslation -> TranslationReaderContent(
                     state = state,
+                    onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
+                    onWordClick = onWordClick,
+                    onCollectWord = viewModel::collectWord,
                     onSelectAnswer = viewModel::selectAnswer,
                     onSubmitAnswers = { viewModel.submitAnswers() },
                     onShowAnswers = { viewModel.showAnswers() },
@@ -412,6 +419,11 @@ fun QuestionBankReaderScreen(
                 )
                 isWriting -> WritingReaderContent(
                     state = state,
+                    onAnalyzeParagraph = viewModel::analyzeParagraph,
+                    onRetryTranslateParagraph = viewModel::retryTranslateParagraph,
+                    onToggleAnalysisExpanded = viewModel::toggleParagraphAnalysisExpanded,
+                    onWordClick = onWordClick,
+                    onCollectWord = viewModel::collectWord,
                     onSelectAnswer = viewModel::selectAnswer,
                     onSubmitAnswers = { viewModel.submitAnswers() },
                     onRetryPractice = { viewModel.retryPractice() },
@@ -856,6 +868,77 @@ private fun answerSourceText(source: AnswerSource?, scannedText: String, essayTe
     }
 }
 
+private val InlineWordSplitRegex = Regex("(?<=\\s)|(?=\\s)|(?<=[,.:;!?\"'()\\[\\]{}])|(?=[,.:;!?\"'()\\[\\]{}])")
+
+private fun cleanWordToken(token: String): String {
+    return token.trim()
+        .lowercase()
+        .trimEnd(',', '.', ':', ';', '!', '?', '"', '\'', ')', ']', '}')
+        .trimStart('"', '\'', '(', '[', '{')
+}
+
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendLinkedTextSegment(
+    segment: String,
+    wordLinkMap: Map<String, List<ArticleWordLink>>,
+    linkStyle: SpanStyle,
+    baseStyle: SpanStyle? = null
+) {
+    val parts = segment.split(InlineWordSplitRegex)
+    for (part in parts) {
+        val cleaned = cleanWordToken(part)
+        val links = wordLinkMap[cleaned]
+        if (links != null && links.isNotEmpty() && cleaned.isNotEmpty()) {
+            pushStringAnnotation(tag = "word", annotation = "${links.first().wordId}:${links.first().dictionaryId}")
+            withStyle(baseStyle ?: linkStyle) {
+                append(part)
+            }
+            pop()
+        } else if (baseStyle != null) {
+            withStyle(baseStyle) { append(part) }
+        } else {
+            append(part)
+        }
+    }
+}
+
+@Composable
+private fun ParagraphTranslationArea(
+    translationEnabled: Boolean,
+    translation: String?,
+    isTranslating: Boolean,
+    translationFailed: Boolean,
+    onRetryTranslate: () -> Unit
+) {
+    if (!translationEnabled) return
+    if (isTranslating) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 10.dp, top = 2.dp)
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                stringResource(R.string.article_translating),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+    if (translation != null) {
+        TranslationBlock(translation)
+    }
+    if (translation != null || translationFailed) {
+        TextButton(
+            onClick = onRetryTranslate,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            modifier = Modifier.padding(start = 10.dp)
+        ) {
+            Text(stringResource(R.string.article_retry_translate), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
 @Composable
 private fun PracticeResultRow(
     correctAnswer: String,
@@ -1179,6 +1262,9 @@ private fun buildOptionLetters(count: Int): List<String> {
 @Composable
 private fun ClozeReaderContent(
     state: ReaderUiState,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
     onSelectAnswer: (Long, String) -> Unit,
     onSubmitAnswers: () -> Unit,
     onShowAnswers: () -> Unit,
@@ -1208,6 +1294,9 @@ private fun ClozeReaderContent(
             // Left: passage
             ClozePassagePanel(
                 state = state,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
                 onBlankClick = onBlankClick,
                 modifier = Modifier.weight(0.6f).fillMaxHeight()
             )
@@ -1230,6 +1319,9 @@ private fun ClozeReaderContent(
             // Top: passage
             ClozePassagePanel(
                 state = state,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
                 onBlankClick = onBlankClick,
                 modifier = Modifier.weight(0.55f)
             )
@@ -1253,6 +1345,9 @@ private fun ClozeReaderContent(
 @Composable
 private fun ClozePassagePanel(
     state: ReaderUiState,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
     onBlankClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1294,12 +1389,22 @@ private fun ClozePassagePanel(
         items(state.paragraphs, key = { "cloze_p_${it.id}" }) { paragraph ->
             ClozePassageText(
                 text = paragraph.text,
+                wordLinkMap = state.wordLinkMap,
                 itemByNumber = itemByNumber,
                 selectedAnswers = state.selectedAnswers,
                 isSubmitted = state.isSubmitted,
                 showingAnswers = state.showingAnswers,
                 practiceResults = state.practiceResults,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
                 onBlankClick = onBlankClick
+            )
+            ParagraphTranslationArea(
+                translationEnabled = state.translationEnabled,
+                translation = state.paragraphTranslations[paragraph.id],
+                isTranslating = paragraph.id in state.translatingParagraphIds,
+                translationFailed = paragraph.id in state.translationFailedParagraphIds,
+                onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) }
             )
         }
     }
@@ -1356,11 +1461,14 @@ private fun ClozeOptionsPanel(
 @Composable
 private fun ClozePassageText(
     text: String,
+    wordLinkMap: Map<String, List<ArticleWordLink>>,
     itemByNumber: Map<Int, QuestionItem>,
     selectedAnswers: Map<Long, String>,
     isSubmitted: Boolean,
     showingAnswers: Boolean,
     practiceResults: Map<Long, Boolean>,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
     onBlankClick: (Int) -> Unit
 ) {
     val statusColors = rememberPracticeStatusColors()
@@ -1369,14 +1477,22 @@ private fun ClozePassageText(
     val errorColor = MaterialTheme.colorScheme.error
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val bodyStyle = ArticleTypography.ReaderBody
+    val wordLinkStyle = SpanStyle(
+        textDecoration = TextDecoration.Underline,
+        color = primary
+    )
 
-    val annotated = remember(text, itemByNumber, selectedAnswers, isSubmitted, showingAnswers, practiceResults) {
+    val annotated = remember(text, wordLinkMap, itemByNumber, selectedAnswers, isSubmitted, showingAnswers, practiceResults) {
         buildAnnotatedString {
             var lastEnd = 0
             val matches = BlankRegex.findAll(text).toList()
             for (match in matches) {
                 // Text before the blank
-                append(text.substring(lastEnd, match.range.first))
+                appendLinkedTextSegment(
+                    segment = text.substring(lastEnd, match.range.first),
+                    wordLinkMap = wordLinkMap,
+                    linkStyle = wordLinkStyle
+                )
                 val number = match.groupValues[1].toIntOrNull() ?: 0
                 val item = itemByNumber[number]
                 val itemId = item?.id ?: 0L
@@ -1414,7 +1530,11 @@ private fun ClozePassageText(
                 lastEnd = match.range.last + 1
             }
             if (lastEnd < text.length) {
-                append(text.substring(lastEnd))
+                appendLinkedTextSegment(
+                    segment = text.substring(lastEnd),
+                    wordLinkMap = wordLinkMap,
+                    linkStyle = wordLinkStyle
+                )
             }
         }
     }
@@ -1427,7 +1547,22 @@ private fun ClozePassageText(
             annotated.getStringAnnotations("blank", offset, offset)
                 .firstOrNull()?.let { annotation ->
                     annotation.item.toIntOrNull()?.let { onBlankClick(it) }
+                    return@ClickableText
                 }
+            annotated.getStringAnnotations("word", offset, offset)
+                .firstOrNull()?.let { annotation ->
+                    val parts = annotation.item.split(":")
+                    if (parts.size == 2) {
+                        onWordClick(parts[0].toLong(), parts[1].toLong())
+                        return@ClickableText
+                    }
+                }
+            val tappedRange = extractWordRangeAtOffset(annotated.text, offset)
+            val tappedWord = tappedRange?.let { annotated.text.substring(it) }
+            if (tappedWord != null) {
+                val context = extractContextSentence(annotated.text, offset)
+                onCollectWord(tappedWord, context)
+            }
         }
     )
 }
@@ -2845,6 +2980,9 @@ private val TranslationMarkerRegex = Regex("""\(\((\d+)\)\)(.*?)\(\(/\1\)\)""", 
 @Composable
 private fun TranslationReaderContent(
     state: ReaderUiState,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
     onSelectAnswer: (Long, String) -> Unit,
     onSubmitAnswers: () -> Unit,
     onShowAnswers: () -> Unit,
@@ -2858,6 +2996,9 @@ private fun TranslationReaderContent(
         Row(modifier = modifier.fillMaxSize()) {
             TranslationPassagePanel(
                 state = state,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
                 modifier = Modifier.weight(0.5f).fillMaxHeight()
             )
             VerticalDivider()
@@ -2874,6 +3015,9 @@ private fun TranslationReaderContent(
         Column(modifier = modifier) {
             TranslationPassagePanel(
                 state = state,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
                 modifier = Modifier.weight(0.45f)
             )
             HorizontalDivider()
@@ -2892,6 +3036,9 @@ private fun TranslationReaderContent(
 @Composable
 private fun TranslationPassagePanel(
     state: ReaderUiState,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val group = state.group ?: return
@@ -2929,7 +3076,17 @@ private fun TranslationPassagePanel(
         items(state.paragraphs, key = { "trans_p_${it.id}" }) { paragraph ->
             TranslationPassageText(
                 text = paragraph.text,
-                items = state.items
+                wordLinkMap = state.wordLinkMap,
+                items = state.items,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord
+            )
+            ParagraphTranslationArea(
+                translationEnabled = state.translationEnabled,
+                translation = state.paragraphTranslations[paragraph.id],
+                isTranslating = paragraph.id in state.translatingParagraphIds,
+                translationFailed = paragraph.id in state.translationFailedParagraphIds,
+                onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) }
             )
         }
     }
@@ -2938,35 +3095,54 @@ private fun TranslationPassagePanel(
 @Composable
 private fun TranslationPassageText(
     text: String,
-    items: List<QuestionItem>
+    wordLinkMap: Map<String, List<ArticleWordLink>>,
+    items: List<QuestionItem>,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val bodyStyle = ArticleTypography.ReaderBody
+    val underlineStyle = SpanStyle(
+        textDecoration = TextDecoration.Underline,
+        color = primary
+    )
+    val linkStyle = SpanStyle(
+        textDecoration = TextDecoration.Underline,
+        color = primary
+    )
 
     val matches = remember(text) { TranslationMarkerRegex.findAll(text).toList() }
     val hasMarkers = matches.isNotEmpty()
 
     if (!hasMarkers) {
-        Text(text, style = bodyStyle)
+        HighlightedParagraphText(
+            text = text,
+            wordLinkMap = wordLinkMap,
+            onWordClick = onWordClick,
+            onCollectWord = onCollectWord,
+            style = bodyStyle
+        )
         return
     }
 
-    val annotated = remember(text, items) {
+    val annotated = remember(text, wordLinkMap, items) {
         buildAnnotatedString {
             var lastEnd = 0
             for (match in TranslationMarkerRegex.findAll(text)) {
-                append(text.substring(lastEnd, match.range.first))
+                appendLinkedTextSegment(
+                    segment = text.substring(lastEnd, match.range.first),
+                    wordLinkMap = wordLinkMap,
+                    linkStyle = linkStyle
+                )
                 val number = match.groupValues[1].toIntOrNull() ?: 0
                 val sentenceText = match.groupValues[2]
 
-                withStyle(
-                    SpanStyle(
-                        textDecoration = TextDecoration.Underline,
-                        color = primary
-                    )
-                ) {
-                    append(sentenceText)
-                }
+                appendLinkedTextSegment(
+                    segment = sentenceText,
+                    wordLinkMap = wordLinkMap,
+                    linkStyle = linkStyle,
+                    baseStyle = underlineStyle
+                )
                 withStyle(
                     SpanStyle(
                         fontSize = 9.sp,
@@ -2981,14 +3157,35 @@ private fun TranslationPassageText(
                 lastEnd = match.range.last + 1
             }
             if (lastEnd < text.length) {
-                append(text.substring(lastEnd))
+                appendLinkedTextSegment(
+                    segment = text.substring(lastEnd),
+                    wordLinkMap = wordLinkMap,
+                    linkStyle = linkStyle
+                )
             }
         }
     }
 
-    Text(
+    @Suppress("DEPRECATION")
+    ClickableText(
         text = annotated,
-        style = bodyStyle.copy(color = MaterialTheme.colorScheme.onSurface)
+        style = bodyStyle.copy(color = MaterialTheme.colorScheme.onSurface),
+        onClick = { offset ->
+            annotated.getStringAnnotations("word", offset, offset)
+                .firstOrNull()?.let { annotation ->
+                    val parts = annotation.item.split(":")
+                    if (parts.size == 2) {
+                        onWordClick(parts[0].toLong(), parts[1].toLong())
+                        return@ClickableText
+                    }
+                }
+            val tappedRange = extractWordRangeAtOffset(annotated.text, offset)
+            val tappedWord = tappedRange?.let { annotated.text.substring(it) }
+            if (tappedWord != null) {
+                val context = extractContextSentence(annotated.text, offset)
+                onCollectWord(tappedWord, context)
+            }
+        }
     )
 }
 
@@ -3576,6 +3773,11 @@ private fun ParagraphOrderQuestionCard(
 @Composable
 private fun WritingReaderContent(
     state: ReaderUiState,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
     onSelectAnswer: (Long, String) -> Unit,
     onSubmitAnswers: () -> Unit,
     onRetryPractice: () -> Unit,
@@ -3594,6 +3796,11 @@ private fun WritingReaderContent(
         Row(modifier = modifier.fillMaxSize()) {
             WritingPassagePanel(
                 state = state,
+                onAnalyzeParagraph = onAnalyzeParagraph,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onToggleAnalysisExpanded = onToggleAnalysisExpanded,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
                 onSearchSample = onSearchSample,
                 onSearchPromptSource = onSearchPromptSource,
                 modifier = Modifier.weight(0.5f).fillMaxHeight()
@@ -3615,6 +3822,11 @@ private fun WritingReaderContent(
         Column(modifier = modifier) {
             WritingPassagePanel(
                 state = state,
+                onAnalyzeParagraph = onAnalyzeParagraph,
+                onRetryTranslateParagraph = onRetryTranslateParagraph,
+                onToggleAnalysisExpanded = onToggleAnalysisExpanded,
+                onWordClick = onWordClick,
+                onCollectWord = onCollectWord,
                 onSearchSample = onSearchSample,
                 onSearchPromptSource = onSearchPromptSource,
                 modifier = Modifier.weight(0.45f)
@@ -3638,6 +3850,11 @@ private fun WritingReaderContent(
 @Composable
 private fun WritingPassagePanel(
     state: ReaderUiState,
+    onAnalyzeParagraph: (Long, String) -> Unit,
+    onRetryTranslateParagraph: (Long, String) -> Unit,
+    onToggleAnalysisExpanded: (Long) -> Unit,
+    onWordClick: (Long, Long) -> Unit,
+    onCollectWord: (String, String) -> Unit,
     onSearchSample: () -> Unit,
     onSearchPromptSource: () -> Unit,
     modifier: Modifier = Modifier
@@ -3681,8 +3898,11 @@ private fun WritingPassagePanel(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(stringResource(R.string.question_stem), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        item?.questionText.orEmpty(),
+                    HighlightedParagraphText(
+                        text = item?.questionText.orEmpty(),
+                        wordLinkMap = state.wordLinkMap,
+                        onWordClick = onWordClick,
+                        onCollectWord = onCollectWord,
                         style = ArticleTypography.QuestionStem
                     )
                     if (!group.sourceUrl.isNullOrBlank()) {
@@ -3726,12 +3946,40 @@ private fun WritingPassagePanel(
             }
         }
 
-        if (group.passageText.isNotBlank()) {
+        if (state.paragraphs.isNotEmpty() || group.passageText.isNotBlank()) {
             item(key = "writing_passage") {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(stringResource(R.string.question_background_material), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text(group.passageText, style = ArticleTypography.QuestionSupport)
+                        if (state.paragraphs.isNotEmpty()) {
+                            state.paragraphs.forEach { paragraph ->
+                                ParagraphBlock(
+                                    paragraph = paragraph,
+                                    wordLinkMap = state.wordLinkMap,
+                                    analysis = state.paragraphAnalysis[paragraph.id],
+                                    isAnalyzing = state.analyzingParagraphId == paragraph.id,
+                                    isSpeaking = false,
+                                    translationEnabled = state.translationEnabled,
+                                    translation = state.paragraphTranslations[paragraph.id],
+                                    isTranslating = paragraph.id in state.translatingParagraphIds,
+                                    translationFailed = paragraph.id in state.translationFailedParagraphIds,
+                                    analysisExpanded = paragraph.id in state.expandedParagraphIds,
+                                    onAnalyze = { onAnalyzeParagraph(paragraph.id, paragraph.text) },
+                                    onRetryTranslate = { onRetryTranslateParagraph(paragraph.id, paragraph.text) },
+                                    onToggleAnalysisExpanded = { onToggleAnalysisExpanded(paragraph.id) },
+                                    onWordClick = onWordClick,
+                                    onCollectWord = onCollectWord
+                                )
+                            }
+                        } else {
+                            HighlightedParagraphText(
+                                text = group.passageText,
+                                wordLinkMap = state.wordLinkMap,
+                                onWordClick = onWordClick,
+                                onCollectWord = onCollectWord,
+                                style = ArticleTypography.QuestionSupport
+                            )
+                        }
                     }
                 }
             }
@@ -3775,7 +4023,13 @@ private fun WritingPassagePanel(
                         )
                     }
                     if (!sampleText.isNullOrBlank()) {
-                        Text(sampleText, style = ArticleTypography.QuestionSupport)
+                        HighlightedParagraphText(
+                            text = sampleText,
+                            wordLinkMap = state.wordLinkMap,
+                            onWordClick = onWordClick,
+                            onCollectWord = onCollectWord,
+                            style = ArticleTypography.QuestionSupport
+                        )
                     } else if (!state.writingSampleError.isNullOrBlank()) {
                         Text(
                             stringResource(R.string.question_research_failed, state.writingSampleError),

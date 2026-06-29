@@ -121,6 +121,23 @@ class QuestionBankReaderViewModelTest {
         assertTrue(QuestionPracticeRules.canSubmitTranslationAnswers(complete))
     }
 
+    @Test
+    fun `load data builds display paragraphs from legacy passage text`() = runTest(mainDispatcherRule.dispatcher.scheduler) {
+        val repository = questionBankRepository(
+            group = questionGroup(
+                type = QuestionType.WRITING,
+                passageText = "First paragraph.\n\nSecond paragraph.",
+                items = listOf(questionItem(id = 1L, correctAnswer = null))
+            )
+        )
+
+        val viewModel = createViewModel(repository)
+        advanceUntilIdle()
+
+        assertEquals(listOf("First paragraph.", "Second paragraph."), viewModel.uiState.value.paragraphs.map { it.text })
+        assertTrue(viewModel.uiState.value.paragraphs.all { it.id < 0 })
+    }
+
     private fun createViewModel(repository: QuestionBankRepository): QuestionBankReaderViewModel {
         val ttsState = MutableStateFlow(TtsState())
         val ttsManager = mockk<TtsManager>(relaxed = true)
@@ -172,12 +189,14 @@ class QuestionBankReaderViewModelTest {
 
     private fun questionGroup(
         type: QuestionType,
+        passageText: String = "",
         items: List<QuestionItem> = emptyList()
     ): QuestionGroup = QuestionGroup(
         id = GROUP_ID,
         uid = "group-$GROUP_ID",
         examPaperId = 10L,
         questionType = type,
+        passageText = passageText,
         createdAt = 1L,
         updatedAt = 1L,
         items = items

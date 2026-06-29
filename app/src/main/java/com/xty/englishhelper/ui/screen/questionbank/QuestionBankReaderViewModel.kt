@@ -64,6 +64,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 
@@ -179,7 +180,9 @@ class QuestionBankReaderViewModel @Inject constructor(
                     return@launch
                 }
 
-                val paragraphs = group.paragraphs
+                val paragraphs = group.paragraphs.ifEmpty {
+                    buildFallbackParagraphs(group.passageText)
+                }
                 val items = group.items
                 val wrongIds = repository.getWrongItemIds(groupId).toSet()
                 val linkedId = group.linkedArticleId
@@ -222,6 +225,21 @@ class QuestionBankReaderViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, error = "加载失败：${e.message}") }
             }
         }
+    }
+
+    private fun buildFallbackParagraphs(passageText: String): List<ArticleParagraph> {
+        return passageText
+            .split(Regex("\\n\\s*\\n|\\r\\n\\s*\\r\\n"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .mapIndexed { index, text ->
+                ArticleParagraph(
+                    id = -1L - index,
+                    articleId = contentId,
+                    paragraphIndex = index,
+                    text = text
+                )
+            }
     }
 
     private fun loadDictionaries() {
@@ -797,14 +815,20 @@ class QuestionBankReaderViewModel @Inject constructor(
                     _uiState.update { it.copy(isScoringWriting = false, error = "请先输入作文内容") }
                     return@launch
                 }
-                val score = aiRepository.scoreWriting(
-                    item.questionText,
-                    essayText,
-                    config.apiKey,
-                    config.model,
-                    config.baseUrl,
-                    config.provider
-                )
+                val score = withTimeoutOrNull(WRITING_SCORE_TIMEOUT_MS) {
+                    aiRepository.scoreWriting(
+                        item.questionText,
+                        essayText,
+                        config.apiKey,
+                        config.model,
+                        config.baseUrl,
+                        config.provider
+                    )
+                }
+                if (score == null) {
+                    _uiState.update { it.copy(isScoringWriting = false, error = "作文批阅超时，请稍后重试") }
+                    return@launch
+                }
                 _uiState.update {
                     it.copy(
                         writingScores = mapOf(item.id to score),
@@ -1341,6 +1365,7 @@ class QuestionBankReaderViewModel @Inject constructor(
     }
 
     private companion object {
+        const val WRITING_SCORE_TIMEOUT_MS = 180_000L
         const val WRITING_PRACTICE_TARGET_PHRASE_COUNT = 10
         const val WRITING_PRACTICE_CANDIDATE_PAGE_SIZE = 40
     }
