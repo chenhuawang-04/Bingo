@@ -103,7 +103,7 @@ import java.util.UUID
         WordPhraseTagCrossRef::class,
         WordPhraseOrganizeMarkEntity::class
     ],
-    version = 32,
+    version = 33,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1212,6 +1212,12 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_phrase_organize_marks_dictionary_id` ON `word_phrase_organize_marks` (`dictionary_id`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_phrase_organize_marks_status` ON `word_phrase_organize_marks` (`status`)")
+            }
+        }
+
+        val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE word_phrases ADD COLUMN practice_count INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

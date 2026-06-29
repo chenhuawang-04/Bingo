@@ -36,6 +36,7 @@ import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.TranslationScore
 import com.xty.englishhelper.domain.repository.TranslationScoreInput
+import com.xty.englishhelper.domain.repository.WordPhraseRepository
 import com.xty.englishhelper.domain.repository.WritingScore
 import com.xty.englishhelper.domain.usecase.article.AnalyzeParagraphUseCase
 import com.xty.englishhelper.domain.usecase.article.QuickAnalyzeWordUseCase
@@ -45,10 +46,14 @@ import com.xty.englishhelper.domain.usecase.questionbank.questionBankContentId
 import com.xty.englishhelper.domain.usecase.word.SaveWordUseCase
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.Meaning
+import com.xty.englishhelper.domain.model.WritingPracticePhraseCandidate
+import com.xty.englishhelper.domain.model.WritingPracticePhraseRequirement
+import com.xty.englishhelper.domain.model.WritingPracticePhraseUsage
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.organize.BackgroundOrganizeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,6 +109,11 @@ data class ReaderUiState(
     val isSearchingWritingSource: Boolean = false,
     val pendingWritingAutoSubmit: Boolean = false,
     val writingSampleError: String? = null,
+    val writingPracticeEnabled: Boolean = false,
+    val isPreparingWritingPractice: Boolean = false,
+    val writingPracticePhrases: List<WritingPracticePhraseRequirement> = emptyList(),
+    val writingPracticeUsage: List<WritingPracticePhraseUsage> = emptyList(),
+    val writingPracticeError: String? = null,
     // Source
     val linkedArticleId: Long? = null,
     val isVerifying: Boolean = false,
@@ -129,6 +139,7 @@ class QuestionBankReaderViewModel @Inject constructor(
     private val ttsManager: TtsManager,
     private val settingsDataStore: SettingsDataStore,
     private val dictionaryRepository: DictionaryRepository,
+    private val wordPhraseRepository: WordPhraseRepository,
     private val unitRepository: UnitRepository,
     private val backgroundOrganizeManager: BackgroundOrganizeManager,
     private val backgroundTaskManager: BackgroundTaskManager,
@@ -147,6 +158,7 @@ class QuestionBankReaderViewModel @Inject constructor(
     val notebookMessage: Flow<String> = _notebookMessage
 
     private var translationJob: Job? = null
+    private var writingPracticeJob: Job? = null
 
     init {
         observeTtsState()
@@ -588,6 +600,19 @@ class QuestionBankReaderViewModel @Inject constructor(
                     _uiState.update { it.copy(error = "请先输入作文内容") }
                     return@launch
                 }
+                if (state.writingPracticeEnabled && state.isPreparingWritingPractice) {
+                    _uiState.update { it.copy(error = "写作练习短语仍在准备中，请稍后提交") }
+                    return@launch
+                }
+                if (state.writingPracticeEnabled && state.writingPracticePhrases.isEmpty()) {
+                    _uiState.update { it.copy(error = "写作练习模式尚未选出短语，请先关闭或重新开启") }
+                    return@launch
+                }
+                val phraseUsage = if (state.writingPracticeEnabled) {
+                    evaluateWritingPracticeUsage(state.writingPracticePhrases, essayText)
+                } else {
+                    emptyList()
+                }
                 records.add(
                     PracticeRecord(
                         questionItemId = item.id,
@@ -597,7 +622,16 @@ class QuestionBankReaderViewModel @Inject constructor(
                     )
                 )
                 repository.insertPracticeRecords(records)
-                _uiState.update { it.copy(isSubmitted = true, isScoringWriting = true) }
+                if (state.writingPracticeEnabled) {
+                    wordPhraseRepository.incrementPracticeCounts(state.writingPracticePhrases.map { it.phraseId })
+                }
+                _uiState.update {
+                    it.copy(
+                        isSubmitted = true,
+                        isScoringWriting = true,
+                        writingPracticeUsage = phraseUsage
+                    )
+                }
                 trackQuestionPracticeProgress()
                 scoreWritingAnswers()
                 return@launch
@@ -778,10 +812,169 @@ class QuestionBankReaderViewModel @Inject constructor(
                 translationScores = emptyMap(),
                 isScoringTranslation = false,
                 writingScores = emptyMap(),
-                isScoringWriting = false
+                isScoringWriting = false,
+                writingPracticeUsage = emptyList()
             )
         }
     }
+
+    fun setWritingPracticeEnabled(enabled: Boolean) {
+        val state = _uiState.value
+        if (state.isSubmitted) return
+        if (state.group?.questionType != QuestionType.WRITING) return
+        writingPracticeJob?.cancel()
+        if (!enabled) {
+            writingPracticeJob = null
+            _uiState.update {
+                it.copy(
+                    writingPracticeEnabled = false,
+                    isPreparingWritingPractice = false,
+                    writingPracticePhrases = emptyList(),
+                    writingPracticeUsage = emptyList(),
+                    writingPracticeError = null
+                )
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                writingPracticeEnabled = true,
+                isPreparingWritingPractice = true,
+                writingPracticePhrases = emptyList(),
+                writingPracticeUsage = emptyList(),
+                writingPracticeError = null
+            )
+        }
+        writingPracticeJob = viewModelScope.launch {
+            prepareWritingPracticePhrases()
+        }
+    }
+
+    fun refreshWritingPracticePhrases() {
+        val state = _uiState.value
+        if (state.group?.questionType != QuestionType.WRITING || state.isSubmitted) return
+        setWritingPracticeEnabled(true)
+    }
+
+    private suspend fun prepareWritingPracticePhrases() {
+        try {
+            val config = settingsDataStore.getAiConfig(AiSettingsScope.WRITING_PRACTICE)
+            if (config.apiKey.isBlank()) {
+                _uiState.update {
+                    it.copy(
+                        isPreparingWritingPractice = false,
+                        writingPracticeError = "请先配置写作练习模型",
+                        error = "请先配置写作练习模型"
+                    )
+                }
+                return
+            }
+
+            val state = _uiState.value
+            val item = state.items.firstOrNull()
+            if (item == null) {
+                _uiState.update {
+                    it.copy(
+                        isPreparingWritingPractice = false,
+                        writingPracticeError = "作文题不存在"
+                    )
+                }
+                return
+            }
+
+            val selected = mutableListOf<WritingPracticePhraseRequirement>()
+            val selectedIds = mutableSetOf<Long>()
+            var offset = 0
+            val pageSize = WRITING_PRACTICE_CANDIDATE_PAGE_SIZE
+            val targetCount = WRITING_PRACTICE_TARGET_PHRASE_COUNT
+            val backgroundText = buildWritingBackgroundText(state)
+
+            while (selected.size < targetCount) {
+                val page = wordPhraseRepository.getWritingPracticeCandidates(pageSize, offset)
+                if (page.isEmpty()) break
+                val remaining = targetCount - selected.size
+                val choices = aiRepository.selectWritingPracticePhrases(
+                    questionText = item.questionText,
+                    backgroundText = backgroundText,
+                    candidates = page.filter { it.phraseId !in selectedIds },
+                    maxCount = remaining,
+                    apiKey = config.apiKey,
+                    model = config.model,
+                    baseUrl = config.baseUrl,
+                    provider = config.provider
+                )
+                val candidateById = page.associateBy { it.phraseId }
+                choices.forEach { choice ->
+                    val candidate = candidateById[choice.phraseId] ?: return@forEach
+                    if (selectedIds.add(candidate.phraseId)) {
+                        selected += candidate.toRequirement(choice.reason)
+                    }
+                }
+                offset += pageSize
+            }
+
+            val error = when {
+                selected.isEmpty() -> "未找到可用于本题的写作练习短语"
+                selected.size < targetCount -> "当前仅选出 ${selected.size} 个写作练习短语"
+                else -> null
+            }
+            _uiState.update {
+                it.copy(
+                    isPreparingWritingPractice = false,
+                    writingPracticePhrases = selected,
+                    writingPracticeError = error,
+                    error = error ?: it.error
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(
+                    isPreparingWritingPractice = false,
+                    writingPracticeError = "写作练习短语准备失败：${e.message}",
+                    error = "写作练习短语准备失败：${e.message}"
+                )
+            }
+        }
+    }
+
+    private fun buildWritingBackgroundText(state: ReaderUiState): String {
+        val parts = buildList {
+            val passage = state.group?.passageText.orEmpty()
+            if (passage.isNotBlank()) add(passage)
+            state.paragraphs.mapNotNullTo(this) { it.text.takeIf(String::isNotBlank) }
+        }
+        return parts.joinToString("\n\n").take(2400)
+    }
+
+    private fun WritingPracticePhraseCandidate.toRequirement(reason: String): WritingPracticePhraseRequirement =
+        WritingPracticePhraseRequirement(
+            phraseId = phraseId,
+            phrase = phrase,
+            reason = reason,
+            practiceCount = practiceCount
+        )
+
+    private fun evaluateWritingPracticeUsage(
+        requirements: List<WritingPracticePhraseRequirement>,
+        essayText: String
+    ): List<WritingPracticePhraseUsage> {
+        val normalizedEssay = normalizeWritingPracticeText(essayText)
+        return requirements.map { requirement ->
+            val normalizedPhrase = normalizeWritingPracticeText(requirement.phrase)
+            val used = normalizedPhrase.isNotBlank() &&
+                " $normalizedEssay ".contains(" $normalizedPhrase ")
+            WritingPracticePhraseUsage(requirement = requirement, used = used)
+        }
+    }
+
+    private fun normalizeWritingPracticeText(text: String): String =
+        text.lowercase()
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
 
     // ── Source Operations ──
 
@@ -1084,5 +1277,11 @@ class QuestionBankReaderViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         translationJob?.cancel()
+        writingPracticeJob?.cancel()
+    }
+
+    private companion object {
+        const val WRITING_PRACTICE_TARGET_PHRASE_COUNT = 10
+        const val WRITING_PRACTICE_CANDIDATE_PAGE_SIZE = 40
     }
 }

@@ -2,6 +2,7 @@ package com.xty.englishhelper.domain.repository
 
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.QuestionItem
+import com.xty.englishhelper.domain.model.WritingPracticePhraseCandidate
 
 interface QuestionBankAiRepository {
 
@@ -70,6 +71,15 @@ interface QuestionBankAiRepository {
         essayText: String,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): WritingScore
+
+    // ── Writing: practice phrase selection ──
+    suspend fun selectWritingPracticePhrases(
+        questionText: String,
+        backgroundText: String,
+        candidates: List<WritingPracticePhraseCandidate>,
+        maxCount: Int,
+        apiKey: String, model: String, baseUrl: String, provider: AiProvider
+    ): List<WritingPracticePhraseSelection>
 }
 
 data class TranslationScoreInput(
@@ -126,6 +136,11 @@ data class WritingSubScores(
 data class WritingDeduction(
     val reason: String = "",
     val score: Float = 0f
+)
+
+data class WritingPracticePhraseSelection(
+    val phraseId: Long = 0,
+    val reason: String = ""
 )
 
 data class ScanResult(

@@ -2,6 +2,7 @@ package com.xty.englishhelper.data.local.dao
 
 import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
@@ -49,6 +50,31 @@ interface WordPhraseDao {
 
     @Query(
         """
+        SELECT
+            p.*,
+            w.spelling AS word_spelling
+        FROM word_phrases p
+        INNER JOIN words w ON w.id = p.word_id
+        INNER JOIN dictionaries d ON d.id = p.dictionary_id
+        LEFT JOIN unit_word_cross_ref ref ON ref.word_id = w.id
+        LEFT JOIN units u ON u.id = ref.unit_id AND u.dictionary_id = p.dictionary_id
+        GROUP BY p.id
+        ORDER BY
+            d.created_at ASC,
+            d.id ASC,
+            CASE WHEN MIN(u.created_at) IS NULL THEN 1 ELSE 0 END ASC,
+            MIN(u.created_at) ASC,
+            MIN(u.id) ASC,
+            w.spelling COLLATE NOCASE ASC,
+            p.practice_count ASC,
+            p.phrase COLLATE NOCASE ASC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    suspend fun getWritingPracticeCandidates(limit: Int, offset: Int): List<WordPhrasePracticeProjection>
+
+    @Query(
+        """
         SELECT * FROM word_phrases
         WHERE word_id = :wordId AND normalized_phrase = :normalizedPhrase
         LIMIT 1
@@ -70,6 +96,16 @@ interface WordPhraseDao {
 
     @Update
     suspend fun updatePhrase(phrase: WordPhraseEntity)
+
+    @Query(
+        """
+        UPDATE word_phrases
+        SET practice_count = practice_count + 1,
+            updated_at = :updatedAt
+        WHERE id IN (:phraseIds)
+        """
+    )
+    suspend fun incrementPracticeCounts(phraseIds: List<Long>, updatedAt: Long)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertPhraseTagCrossRef(ref: WordPhraseTagCrossRef)
@@ -167,4 +203,11 @@ data class PhraseTagLinkProjection(
 data class PhraseTagRefProjection(
     val phraseId: Long,
     val tagId: Long
+)
+
+data class WordPhrasePracticeProjection(
+    @Embedded
+    val phrase: WordPhraseEntity,
+    @ColumnInfo(name = "word_spelling")
+    val wordSpelling: String
 )

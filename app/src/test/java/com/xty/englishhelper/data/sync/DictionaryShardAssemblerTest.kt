@@ -39,6 +39,8 @@ class DictionaryShardAssemblerTest {
         assertEquals(model.name, assembled.name)
         assertEquals(model.description, assembled.description)
         assertEquals(model.dictionaryUid, assembled.dictionaryUid)
+        assertEquals(model.schemaVersion, sharded.index.dictionarySchemaVersion)
+        assertEquals(model.schemaVersion, assembled.schemaVersion)
         assertEquals(model.color, assembled.color)
         assertEquals(model.createdAt, assembled.createdAt)
         assertEquals(model.updatedAt, assembled.updatedAt)
@@ -159,7 +161,7 @@ class DictionaryShardAssemblerTest {
             name = "Large Dictionary",
             description = "Dictionary for shard testing",
             color = 0xFF123456.toInt(),
-            schemaVersion = 9,
+            schemaVersion = 10,
             createdAt = 111L,
             updatedAt = 222L,
             words = words,
@@ -198,6 +200,7 @@ class DictionaryShardAssemblerTest {
                     normalizedPhrase = "phrase for ${word.spelling}",
                     meaning = "短语-${index + 1}",
                     example = "${word.spelling} appears in a useful phrase.",
+                    practiceCount = index + 1,
                     tagUids = listOf("tag-writing"),
                     updatedAt = 9000L + index
                 )

@@ -18,6 +18,7 @@ import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
 import com.xty.englishhelper.domain.model.WordPhraseTag
 import com.xty.englishhelper.domain.model.WordPhraseTagCandidate
 import com.xty.englishhelper.domain.model.WordPhraseWithTags
+import com.xty.englishhelper.domain.model.WritingPracticePhraseCandidate
 import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.WordPhraseRepository
 import java.util.UUID
@@ -42,6 +43,36 @@ class WordPhraseRepositoryImpl @Inject constructor(
                 tags = tagsByPhraseId[phrase.id].orEmpty()
             )
         }
+    }
+
+    override suspend fun getWritingPracticeCandidates(limit: Int, offset: Int): List<WritingPracticePhraseCandidate> {
+        if (limit <= 0 || offset < 0) return emptyList()
+        val projections = dao.getWritingPracticeCandidates(limit, offset)
+        if (projections.isEmpty()) return emptyList()
+        val tagsByPhraseId = dao.getTagsForPhraseIds(projections.map { it.phrase.id })
+            .groupBy { it.phraseId }
+            .mapValues { (_, links) -> links.map { it.toDomainTag() } }
+        return projections.map { item ->
+            val phrase = item.phrase
+            WritingPracticePhraseCandidate(
+                phraseId = phrase.id,
+                wordId = phrase.wordId,
+                dictionaryId = phrase.dictionaryId,
+                word = item.wordSpelling,
+                phrase = phrase.phrase,
+                meaning = phrase.meaning,
+                example = phrase.example,
+                usageNote = phrase.usageNote,
+                practiceCount = phrase.practiceCount,
+                tags = tagsByPhraseId[phrase.id].orEmpty()
+            )
+        }
+    }
+
+    override suspend fun incrementPracticeCounts(phraseIds: List<Long>) {
+        val ids = phraseIds.filter { it > 0 }.distinct()
+        if (ids.isEmpty()) return
+        dao.incrementPracticeCounts(ids, System.currentTimeMillis())
     }
 
     override suspend fun getExistingTagsForPrompt(dictionaryId: Long, limit: Int): List<WordPhraseTag> {
@@ -200,6 +231,7 @@ class WordPhraseRepositoryImpl @Inject constructor(
                 source = phrase.source.ifBlank { WordPhraseSource.AI.name },
                 phraseUid = phrase.phraseUid.ifBlank { UUID.randomUUID().toString() },
                 modelName = phrase.model,
+                practiceCount = phrase.practiceCount,
                 createdAt = phrase.createdAt,
                 updatedAt = phrase.updatedAt,
                 organizedAt = phrase.organizedAt
@@ -321,6 +353,7 @@ class WordPhraseRepositoryImpl @Inject constructor(
         candidate: WordPhraseCandidate,
         source: String,
         modelName: String?,
+        practiceCount: Int = 0,
         phraseUid: String = UUID.randomUUID().toString(),
         createdAt: Long = System.currentTimeMillis(),
         updatedAt: Long = System.currentTimeMillis(),
@@ -347,6 +380,7 @@ class WordPhraseRepositoryImpl @Inject constructor(
             val nextConfidence = maxOf(existing.confidence, candidate.confidence.coerceIn(0f, 1f))
             val nextSource = existing.source.ifBlank { source }
             val nextModel = modelName ?: existing.model
+            val nextPracticeCount = maxOf(existing.practiceCount, practiceCount.coerceAtLeast(0))
             val contentChanged = nextPhraseUid != existing.phraseUid ||
                 nextPhrase != existing.phrase ||
                 nextMeaning != existing.meaning ||
@@ -356,7 +390,8 @@ class WordPhraseRepositoryImpl @Inject constructor(
                 nextDifficulty != existing.difficulty ||
                 nextConfidence != existing.confidence ||
                 nextSource != existing.source ||
-                nextModel != existing.model
+                nextModel != existing.model ||
+                nextPracticeCount != existing.practiceCount
             val nextUpdatedAt = when {
                 contentChanged -> maxOf(existing.updatedAt, incomingUpdatedAt ?: now)
                 incomingUpdatedAt != null && incomingUpdatedAt > existing.updatedAt -> incomingUpdatedAt
@@ -378,6 +413,7 @@ class WordPhraseRepositoryImpl @Inject constructor(
                 confidence = nextConfidence,
                 source = nextSource,
                 model = nextModel,
+                practiceCount = nextPracticeCount,
                 updatedAt = nextUpdatedAt,
                 organizedAt = nextOrganizedAt
             )
@@ -399,6 +435,7 @@ class WordPhraseRepositoryImpl @Inject constructor(
             confidence = candidate.confidence.coerceIn(0f, 1f),
             source = source,
             model = modelName,
+            practiceCount = practiceCount.coerceAtLeast(0),
             createdAt = createdAt.takeIf { it > 0 } ?: now,
             updatedAt = updatedAt.takeIf { it > 0 } ?: now,
             organizedAt = organizedAt.takeIf { it > 0 } ?: now
@@ -519,6 +556,7 @@ class WordPhraseRepositoryImpl @Inject constructor(
         confidence = confidence,
         source = source,
         model = model,
+        practiceCount = practiceCount,
         createdAt = createdAt,
         updatedAt = updatedAt,
         organizedAt = organizedAt

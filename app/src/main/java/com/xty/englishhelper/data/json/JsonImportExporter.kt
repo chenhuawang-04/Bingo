@@ -58,7 +58,7 @@ class JsonImportExporter @Inject constructor(
             name = dictionary.name,
             description = dictionary.description,
             color = dictionary.color,
-            schemaVersion = 9,
+            schemaVersion = 10,
             createdAt = dictionary.createdAt,
             updatedAt = dictionary.updatedAt,
             words = words.map { word ->
@@ -120,8 +120,8 @@ class JsonImportExporter @Inject constructor(
         val parsedModel = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
 
         // Validate schema version
-        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7, 8, 9)) {
-            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5、6、7、8 或 9）")
+        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7, 8, 9, 10)) {
+            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5、6、7、8、9 或 10）")
         }
 
         // Validate no empty spellings

@@ -70,6 +70,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -418,6 +419,8 @@ fun QuestionBankReaderScreen(
                     onSearchSample = { viewModel.searchWritingSample(true) },
                     onSearchPromptSource = { viewModel.searchWritingPromptSource() },
                     onPrepareOcrSubmit = { viewModel.prepareWritingOcrSubmit() },
+                    onToggleWritingPractice = viewModel::setWritingPracticeEnabled,
+                    onRefreshWritingPractice = viewModel::refreshWritingPracticePhrases,
                     modifier = Modifier.fillMaxSize().padding(padding)
                 )
                 else -> ReaderContent(
@@ -3578,6 +3581,8 @@ private fun WritingReaderContent(
     onSearchSample: () -> Unit,
     onSearchPromptSource: () -> Unit,
     onPrepareOcrSubmit: () -> Unit,
+    onToggleWritingPractice: (Boolean) -> Unit,
+    onRefreshWritingPractice: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
@@ -3599,6 +3604,8 @@ private fun WritingReaderContent(
                 onRetryPractice = onRetryPractice,
                 onScanWriting = onScanWriting,
                 onPrepareOcrSubmit = onPrepareOcrSubmit,
+                onToggleWritingPractice = onToggleWritingPractice,
+                onRefreshWritingPractice = onRefreshWritingPractice,
                 modifier = Modifier.weight(0.5f).fillMaxHeight()
             )
         }
@@ -3618,6 +3625,8 @@ private fun WritingReaderContent(
                 onRetryPractice = onRetryPractice,
                 onScanWriting = onScanWriting,
                 onPrepareOcrSubmit = onPrepareOcrSubmit,
+                onToggleWritingPractice = onToggleWritingPractice,
+                onRefreshWritingPractice = onRefreshWritingPractice,
                 modifier = Modifier.weight(0.55f)
             )
         }
@@ -3792,6 +3801,8 @@ private fun WritingAnswerPanel(
     onRetryPractice: () -> Unit,
     onScanWriting: () -> Unit,
     onPrepareOcrSubmit: () -> Unit,
+    onToggleWritingPractice: (Boolean) -> Unit,
+    onRefreshWritingPractice: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val item = state.items.firstOrNull()
@@ -3813,6 +3824,14 @@ private fun WritingAnswerPanel(
                     Text(stringResource(R.string.question_compressing), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        }
+
+        item(key = "writing_practice_mode") {
+            WritingPracticeModePanel(
+                state = state,
+                onToggleWritingPractice = onToggleWritingPractice,
+                onRefreshWritingPractice = onRefreshWritingPractice
+            )
         }
 
         item(key = "writing_input") {
@@ -3879,10 +3898,160 @@ private fun WritingAnswerPanel(
             if (score != null) {
                 WritingScoreCard(score = score)
             }
+            if (state.writingPracticeEnabled && state.writingPracticeUsage.isNotEmpty()) {
+                WritingPracticeUsageCard(state = state)
+            }
         }
 
         item(key = "writing_bottom") {
             Spacer(Modifier.height(80.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WritingPracticeModePanel(
+    state: ReaderUiState,
+    onToggleWritingPractice: (Boolean) -> Unit,
+    onRefreshWritingPractice: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.question_writing_practice_mode),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        stringResource(R.string.question_writing_practice_mode_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = state.writingPracticeEnabled,
+                    onCheckedChange = onToggleWritingPractice,
+                    enabled = !state.isSubmitted
+                )
+            }
+
+            AnimatedVisibility(visible = state.writingPracticeEnabled) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.isPreparingWritingPractice) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Text(
+                                stringResource(R.string.question_writing_practice_preparing),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (state.writingPracticePhrases.isNotEmpty()) {
+                        Text(
+                            stringResource(R.string.question_writing_practice_required),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            state.writingPracticePhrases.forEach { item ->
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                        Text(
+                                            item.phrase,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        if (item.reason.isNotBlank()) {
+                                            Text(
+                                                item.reason,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (!state.writingPracticeError.isNullOrBlank()) {
+                        Text(
+                            state.writingPracticeError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    if (!state.isSubmitted && !state.isPreparingWritingPractice) {
+                        OutlinedButton(onClick = onRefreshWritingPractice) {
+                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh), modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.question_writing_practice_refresh))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WritingPracticeUsageCard(state: ReaderUiState) {
+    val usedCount = state.writingPracticeUsage.count { it.used }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                stringResource(R.string.question_writing_practice_usage, usedCount, state.writingPracticeUsage.size),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                state.writingPracticeUsage.forEach { item ->
+                    val colors = if (item.used) {
+                        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    } else {
+                        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    }
+                    Card(colors = colors) {
+                        Text(
+                            item.requirement.phrase,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (item.used) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+            Text(
+                stringResource(R.string.question_writing_practice_usage_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

@@ -7,9 +7,12 @@ import com.xty.englishhelper.domain.model.WordPhraseStats
 import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
 import com.xty.englishhelper.domain.model.WordPhraseTag
 import com.xty.englishhelper.domain.model.WordPhraseWithTags
+import com.xty.englishhelper.domain.model.WritingPracticePhraseCandidate
 
 interface WordPhraseRepository {
     suspend fun getPhrasesForWord(wordId: Long): List<WordPhraseWithTags>
+    suspend fun getWritingPracticeCandidates(limit: Int, offset: Int): List<WritingPracticePhraseCandidate>
+    suspend fun incrementPracticeCounts(phraseIds: List<Long>)
     suspend fun getExistingTagsForPrompt(dictionaryId: Long, limit: Int = 80): List<WordPhraseTag>
     suspend fun getStats(dictionaryId: Long, totalWordCount: Int): WordPhraseStats
     suspend fun shouldSkipWord(wordId: Long): Boolean

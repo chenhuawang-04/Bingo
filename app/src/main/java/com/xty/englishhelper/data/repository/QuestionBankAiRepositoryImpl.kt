@@ -17,9 +17,11 @@ import com.xty.englishhelper.domain.repository.TranslationScoreInput
 import com.xty.englishhelper.domain.repository.VerifyResult
 import com.xty.englishhelper.domain.repository.WritingDeduction
 import com.xty.englishhelper.domain.repository.WritingPromptSourceResult
+import com.xty.englishhelper.domain.repository.WritingPracticePhraseSelection
 import com.xty.englishhelper.domain.repository.WritingSampleResult
 import com.xty.englishhelper.domain.repository.WritingScore
 import com.xty.englishhelper.domain.repository.WritingSubScores
+import com.xty.englishhelper.domain.model.WritingPracticePhraseCandidate
 import com.xty.englishhelper.util.AiResponseUnwrapper
 import com.xty.englishhelper.util.AiJsonRepairer
 import com.xty.englishhelper.util.Constants
@@ -682,6 +684,80 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         return parseWritingScore(responseText, unwrapEnabled, repairEnabled)
     }
 
+    override suspend fun selectWritingPracticePhrases(
+        questionText: String,
+        backgroundText: String,
+        candidates: List<WritingPracticePhraseCandidate>,
+        maxCount: Int,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): List<WritingPracticePhraseSelection> {
+        if (candidates.isEmpty() || maxCount <= 0) return emptyList()
+        val candidateLines = candidates.joinToString("\n") { item ->
+            val tags = item.tags.joinToString(", ") { it.name }.takeIf { it.isNotBlank() } ?: "none"
+            buildString {
+                append("- id=").append(item.phraseId)
+                append("; phrase=\"").append(item.phrase).append("\"")
+                append("; word=\"").append(item.word).append("\"")
+                if (item.meaning.isNotBlank()) append("; meaning=\"").append(item.meaning.take(80)).append("\"")
+                if (item.usageNote.isNotBlank()) append("; usage=\"").append(item.usageNote.take(100)).append("\"")
+                append("; practiceCount=").append(item.practiceCount)
+                append("; tags=").append(tags)
+            }
+        }
+        val prompt = buildString {
+            appendLine("You are an English writing practice phrase selector.")
+            appendLine("Select phrases that a student can naturally use in the given writing task.")
+            appendLine("Prefer phrases that match the topic, task type, tone, and common exam-writing needs.")
+            appendLine("If multiple phrases are similarly suitable, prefer lower practiceCount.")
+            appendLine("Only select from the provided candidate ids. Do not invent phrases.")
+            appendLine("Return at most $maxCount items. Use English reasons.")
+            appendLine()
+            appendLine("Writing prompt:")
+            appendLine(questionText.take(1200))
+            if (backgroundText.isNotBlank()) {
+                appendLine()
+                appendLine("Background material:")
+                appendLine(backgroundText.take(1200))
+            }
+            appendLine()
+            appendLine("Candidates:")
+            appendLine(candidateLines)
+            appendLine()
+            appendLine("Return strict JSON:")
+            appendLine(
+                """
+{
+  "selected": [
+    {"phraseId": 123, "reason": "Useful for describing public concern."}
+  ]
+}
+                """.trimIndent()
+            )
+            appendLine(Constants.JSON_STRICT_RULES)
+        }
+
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = prompt)),
+            maxTokens = 2048
+        )
+
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        val allowedIds = candidates.map { it.phraseId }.toSet()
+        return parseWritingPracticePhraseSelection(responseText, unwrapEnabled, repairEnabled)
+            .filter { it.phraseId in allowedIds }
+            .distinctBy { it.phraseId }
+            .take(maxCount)
+    }
+
     // ── JSON Parsing ──
 
     private fun parseScanResult(
@@ -1032,6 +1108,22 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         }
     }
 
+    private fun parseWritingPracticePhraseSelection(
+        responseText: String,
+        unwrapEnabled: Boolean,
+        repairEnabled: Boolean
+    ): List<WritingPracticePhraseSelection> {
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
+        val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+        val adapter = moshi.adapter(WritingPracticePhraseSelectionJson::class.java).lenient()
+        val parsed = runCatching { adapter.fromJson(json) }.getOrNull()
+            ?: runCatching { adapter.fromJson(removeTrailingCommas(json)) }.getOrNull()
+        return parsed?.selected
+            ?.map { WritingPracticePhraseSelection(it.phraseId ?: 0L, it.reason.orEmpty()) }
+            ?.filter { it.phraseId > 0L }
+            .orEmpty()
+    }
+
     // ── Utility functions ──
 
     private fun stripCodeFence(text: String): String =
@@ -1226,4 +1318,13 @@ private data class WritingSubScoresJson(
 private data class WritingDeductionJson(
     val reason: String? = null,
     val score: Float? = null
+)
+
+private data class WritingPracticePhraseSelectionJson(
+    val selected: List<WritingPracticePhraseSelectionItemJson>? = null
+)
+
+private data class WritingPracticePhraseSelectionItemJson(
+    val phraseId: Long? = null,
+    val reason: String? = null
 )

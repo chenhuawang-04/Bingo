@@ -91,6 +91,9 @@ object WordPhraseJsonValidator {
             require(phrase.confidence in 0f..1f) {
                 "第 $ordinal 个词组/短语 confidence 无效：${phrase.confidence}"
             }
+            require(phrase.practiceCount >= 0) {
+                "第 $ordinal 个词组/短语 practiceCount 无效：${phrase.practiceCount}"
+            }
             requireNonNegativeTime(phrase.createdAt, "第 $ordinal 个词组/短语创建时间")
             requireNonNegativeTime(phrase.updatedAt, "第 $ordinal 个词组/短语更新时间")
             requireNonNegativeTime(phrase.organizedAt, "第 $ordinal 个词组/短语整理时间")

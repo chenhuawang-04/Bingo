@@ -704,4 +704,14 @@
     <string name="settings_detail_concurrency">Concurrencia de detalles</string>
     <string name="settings_delete_provider_title">Eliminar proveedor</string>
     <string name="settings_delete_provider_confirm">¿Está seguro de que desea eliminar el proveedor "%1$s"?</string>
+    <string name="settings_scope_writing_practice">Writing Practice</string>
+    <string name="settings_scope_writing_practice_desc">Writing practice phrase selection</string>
+    <string name="scope_writing_practice_details">Use cases:\n· Select 10 topic-relevant phrases from the phrase bank for writing practice mode\n· Evaluate whether the required phrases were used as a separate item\n\nEssay scoring still uses the main model; phrase usage does not affect the essay score.</string>
+    <string name="question_writing_practice_mode">Writing practice mode</string>
+    <string name="question_writing_practice_mode_desc">When enabled, ten English phrases are selected from your phrase bank and should be used in this essay attempt.</string>
+    <string name="question_writing_practice_preparing">Preparing writing practice phrases…</string>
+    <string name="question_writing_practice_required">Required phrases</string>
+    <string name="question_writing_practice_refresh">Select again</string>
+    <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
+    <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
 </resources>

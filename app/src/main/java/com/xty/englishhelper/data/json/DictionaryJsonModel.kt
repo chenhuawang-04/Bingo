@@ -133,6 +133,7 @@ data class WordPhraseJsonModel(
     val confidence: Float = 0.8f,
     val source: String = "AI",
     val model: String? = null,
+    val practiceCount: Int = 0,
     val createdAt: Long = 0,
     val updatedAt: Long = 0,
     val organizedAt: Long = 0,

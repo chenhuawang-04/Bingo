@@ -27,6 +27,7 @@ data class WordPhrase(
     val confidence: Float = 0.8f,
     val source: String = WordPhraseSource.AI.name,
     val model: String? = null,
+    val practiceCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val organizedAt: Long = System.currentTimeMillis()
@@ -35,6 +36,31 @@ data class WordPhrase(
 data class WordPhraseWithTags(
     val phrase: WordPhrase,
     val tags: List<WordPhraseTag> = emptyList()
+)
+
+data class WritingPracticePhraseCandidate(
+    val phraseId: Long,
+    val wordId: Long,
+    val dictionaryId: Long,
+    val word: String,
+    val phrase: String,
+    val meaning: String = "",
+    val example: String = "",
+    val usageNote: String = "",
+    val practiceCount: Int = 0,
+    val tags: List<WordPhraseTag> = emptyList()
+)
+
+data class WritingPracticePhraseRequirement(
+    val phraseId: Long,
+    val phrase: String,
+    val reason: String = "",
+    val practiceCount: Int = 0
+)
+
+data class WritingPracticePhraseUsage(
+    val requirement: WritingPracticePhraseRequirement,
+    val used: Boolean
 )
 
 data class WordPhraseCandidate(

@@ -8,5 +8,6 @@ enum class AiSettingsScope(val prefix: String) {
     ARTICLE("article_"),
     SEARCH("search_"),
     REVIEWER("reviewer_"),
-    QUESTION_GENERATE("qgen_")
+    QUESTION_GENERATE("qgen_"),
+    WRITING_PRACTICE("writing_practice_")
 }

@@ -3,6 +3,7 @@ package com.xty.englishhelper.data.repository
 import com.xty.englishhelper.data.local.dao.PhraseTagLinkProjection
 import com.xty.englishhelper.data.local.dao.PhraseTagRefProjection
 import com.xty.englishhelper.data.local.dao.WordPhraseDao
+import com.xty.englishhelper.data.local.dao.WordPhrasePracticeProjection
 import com.xty.englishhelper.data.local.entity.WordPhraseEntity
 import com.xty.englishhelper.data.local.entity.WordPhraseOrganizeMarkEntity
 import com.xty.englishhelper.data.local.entity.WordPhraseTagCrossRef
@@ -202,6 +203,132 @@ class WordPhraseRepositoryImplTest {
     }
 
     @Test
+    fun `mergeSnapshot preserves phrase practice count and never lowers it`() = runTest {
+        val dao = FakeWordPhraseDao()
+        val repository = WordPhraseRepositoryImpl(dao, transactionRunner)
+
+        repository.mergeSnapshot(
+            dictionaryId = 1,
+            snapshot = WordPhraseSyncSnapshot(
+                phrases = listOf(
+                    WordPhraseSyncItem(
+                        wordUid = "word-uid-1",
+                        phrase = WordPhrase(
+                            phraseUid = "phrase-uid-1",
+                            wordId = 0,
+                            dictionaryId = 0,
+                            phrase = "take part in",
+                            normalizedPhrase = "take part in",
+                            practiceCount = 7,
+                            updatedAt = 100L
+                        )
+                    )
+                )
+            ),
+            wordUidToId = mapOf("word-uid-1" to 10L)
+        )
+
+        assertEquals(7, dao.phrases.single().practiceCount)
+
+        repository.mergeSnapshot(
+            dictionaryId = 1,
+            snapshot = WordPhraseSyncSnapshot(
+                phrases = listOf(
+                    WordPhraseSyncItem(
+                        wordUid = "word-uid-1",
+                        phrase = WordPhrase(
+                            phraseUid = "phrase-uid-1",
+                            wordId = 0,
+                            dictionaryId = 0,
+                            phrase = "take part in",
+                            normalizedPhrase = "take part in",
+                            practiceCount = 2,
+                            updatedAt = 200L
+                        )
+                    )
+                )
+            ),
+            wordUidToId = mapOf("word-uid-1" to 10L)
+        )
+
+        assertEquals(7, dao.phrases.single().practiceCount)
+    }
+
+    @Test
+    fun `incrementPracticeCounts increments distinct positive ids only`() = runTest {
+        val dao = FakeWordPhraseDao().apply {
+            seedPhrase(
+                WordPhraseEntity(
+                    id = 10,
+                    phraseUid = "phrase-uid-1",
+                    wordId = 100,
+                    dictionaryId = 1,
+                    phrase = "take part in",
+                    normalizedPhrase = "take part in",
+                    practiceCount = 3,
+                    updatedAt = 100L
+                )
+            )
+            seedPhrase(
+                WordPhraseEntity(
+                    id = 20,
+                    phraseUid = "phrase-uid-2",
+                    wordId = 200,
+                    dictionaryId = 1,
+                    phrase = "play a role in",
+                    normalizedPhrase = "play a role in",
+                    practiceCount = 5,
+                    updatedAt = 100L
+                )
+            )
+        }
+        val repository = WordPhraseRepositoryImpl(dao, transactionRunner)
+
+        repository.incrementPracticeCounts(listOf(10L, 10L, 0L, -1L))
+
+        assertEquals(4, dao.phrases.single { it.id == 10L }.practiceCount)
+        assertEquals(5, dao.phrases.single { it.id == 20L }.practiceCount)
+        assertTrue(dao.phrases.single { it.id == 10L }.updatedAt > 100L)
+    }
+
+    @Test
+    fun `getWritingPracticeCandidates maps practice count and tags`() = runTest {
+        val dao = FakeWordPhraseDao().apply {
+            seedTag(
+                WordPhraseTagEntity(
+                    id = 1,
+                    tagUid = "tag-writing",
+                    dictionaryId = 1,
+                    name = "写作表达",
+                    normalizedName = "写作表达"
+                )
+            )
+            seedPhrase(
+                WordPhraseEntity(
+                    id = 10,
+                    phraseUid = "phrase-uid-1",
+                    wordId = 100,
+                    dictionaryId = 1,
+                    phrase = "take part in",
+                    normalizedPhrase = "take part in",
+                    meaning = "参加",
+                    practiceCount = 4
+                )
+            )
+            crossRefs += WordPhraseTagCrossRef(phraseId = 10, tagId = 1)
+        }
+        val repository = WordPhraseRepositoryImpl(dao, transactionRunner)
+
+        val candidates = repository.getWritingPracticeCandidates(limit = 10, offset = 0)
+
+        assertEquals(1, candidates.size)
+        assertEquals(10L, candidates.single().phraseId)
+        assertEquals("word-100", candidates.single().word)
+        assertEquals(4, candidates.single().practiceCount)
+        assertEquals(listOf("tag-writing"), candidates.single().tags.map { it.tagUid })
+    }
+
+    @Test
     fun `saveAiResult marks explicit empty result as empty and skips later`() = runTest {
         val dao = FakeWordPhraseDao()
         val repository = WordPhraseRepositoryImpl(dao, transactionRunner)
@@ -291,6 +418,18 @@ class WordPhraseRepositoryImplTest {
         override suspend fun getPhrasesByDictionary(dictionaryId: Long): List<WordPhraseEntity> =
             phrases.filter { it.dictionaryId == dictionaryId }.sortedWith(compareBy({ it.wordId }, { it.phrase }))
 
+        override suspend fun getWritingPracticeCandidates(limit: Int, offset: Int): List<WordPhrasePracticeProjection> =
+            phrases
+                .sortedWith(compareBy({ it.dictionaryId }, { it.wordId }, { it.practiceCount }, { it.phrase }))
+                .drop(offset)
+                .take(limit)
+                .map { phrase ->
+                    WordPhrasePracticeProjection(
+                        phrase = phrase,
+                        wordSpelling = "word-${phrase.wordId}"
+                    )
+                }
+
         override suspend fun getPhraseByWordAndNormalized(wordId: Long, normalizedPhrase: String): WordPhraseEntity? =
             phrases.firstOrNull { it.wordId == wordId && it.normalizedPhrase == normalizedPhrase }
 
@@ -307,6 +446,20 @@ class WordPhraseRepositoryImplTest {
 
         override suspend fun updatePhrase(phrase: WordPhraseEntity) {
             phrases.replaceFirst({ it.id == phrase.id }, phrase)
+        }
+
+        override suspend fun incrementPracticeCounts(phraseIds: List<Long>, updatedAt: Long) {
+            val idSet = phraseIds.toSet()
+            phrases.replaceAll { phrase ->
+                if (phrase.id in idSet) {
+                    phrase.copy(
+                        practiceCount = phrase.practiceCount + 1,
+                        updatedAt = updatedAt
+                    )
+                } else {
+                    phrase
+                }
+            }
         }
 
         override suspend fun insertPhraseTagCrossRef(ref: WordPhraseTagCrossRef) {

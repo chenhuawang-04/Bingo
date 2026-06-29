@@ -133,6 +133,7 @@ class JsonImportExporterTest {
                         example = "His daughter is the apple of his eye.",
                         usageNote = "常用于人物关系描写。",
                         confidence = 0.95f,
+                        practiceCount = 6,
                         createdAt = 800L,
                         updatedAt = 801L,
                         organizedAt = 802L
@@ -152,7 +153,7 @@ class JsonImportExporterTest {
         )
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 9"))
+        assertTrue(json.contains("\"schemaVersion\": 10"))
 
         val result = exporter.importFromJson(json)
 
@@ -214,6 +215,7 @@ class JsonImportExporterTest {
         assertEquals("uid-1", importedPhrase.wordUid)
         assertEquals("phrase-apple-1", importedPhrase.phrase.phraseUid)
         assertEquals("the apple of one's eye", importedPhrase.phrase.phrase)
+        assertEquals(6, importedPhrase.phrase.practiceCount)
         assertEquals(listOf("tag-writing"), importedPhrase.tagUids)
     }
 
@@ -294,10 +296,10 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 9`() {
+    fun `export produces schemaVersion 10`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 9"))
+        assertTrue(json.contains("\"schemaVersion\": 10"))
     }
 
     @Test
@@ -540,6 +542,68 @@ class JsonImportExporterTest {
             fail("Expected exception for missing tagUid")
         } catch (e: IllegalArgumentException) {
             assertTrue(e.message!!.contains("tagUid"))
+        }
+    }
+
+    @Test
+    fun `import schema 9 phrase without practiceCount defaults to zero`() {
+        val json = """
+        {
+            "name": "Phrase Test",
+            "description": "",
+            "schemaVersion": 9,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "uid-1"}
+            ],
+            "phraseTags": [
+                {"tagUid": "tag-writing", "name": "写作表达"}
+            ],
+            "wordPhrases": [
+                {
+                    "phraseUid": "phrase-1",
+                    "wordUid": "uid-1",
+                    "phrase": "take part in",
+                    "tagUids": ["tag-writing"]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val result = exporter.importFromJson(json)
+
+        assertEquals(0, result.wordPhraseSnapshot.phrases.single().phrase.practiceCount)
+    }
+
+    @Test
+    fun `import rejects negative phrase practice count`() {
+        val json = """
+        {
+            "name": "Phrase Test",
+            "description": "",
+            "schemaVersion": 10,
+            "words": [
+                {"spelling": "apple", "phonetic": "", "wordUid": "uid-1"}
+            ],
+            "phraseTags": [
+                {"tagUid": "tag-writing", "name": "写作表达"}
+            ],
+            "wordPhrases": [
+                {
+                    "phraseUid": "phrase-1",
+                    "wordUid": "uid-1",
+                    "phrase": "take part in",
+                    "practiceCount": -1,
+                    "tagUids": ["tag-writing"]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        try {
+            exporter.importFromJson(json)
+            fail("Expected exception for negative practiceCount")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("practiceCount"))
         }
     }
 

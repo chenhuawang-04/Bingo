@@ -35,6 +35,7 @@ fun WordPhraseSyncSnapshot.toWordPhraseJsonModels(): List<WordPhraseJsonModel> =
             confidence = phrase.confidence,
             source = phrase.source,
             model = phrase.model,
+            practiceCount = phrase.practiceCount,
             createdAt = phrase.createdAt,
             updatedAt = phrase.updatedAt,
             organizedAt = phrase.organizedAt,
@@ -83,6 +84,7 @@ fun wordPhraseSyncSnapshotFromJson(
                         confidence = item.confidence,
                         source = item.source.ifBlank { WordPhraseSource.AI.name },
                         model = item.model,
+                        practiceCount = item.practiceCount,
                         createdAt = item.createdAt,
                         updatedAt = item.updatedAt,
                         organizedAt = item.organizedAt

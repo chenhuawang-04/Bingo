@@ -411,6 +411,12 @@ private fun ScopeConfigSection(state: SettingsUiState, viewModel: SettingsViewMo
                     stringResource(R.string.settings_scope_question_generate),
                     stringResource(R.string.settings_scope_question_generate_desc),
                     stringResource(R.string.scope_question_generate_details)
+                ),
+                ScopeItem(
+                    AiSettingsScope.WRITING_PRACTICE,
+                    stringResource(R.string.settings_scope_writing_practice),
+                    stringResource(R.string.settings_scope_writing_practice_desc),
+                    stringResource(R.string.scope_writing_practice_details)
                 )
             )
 

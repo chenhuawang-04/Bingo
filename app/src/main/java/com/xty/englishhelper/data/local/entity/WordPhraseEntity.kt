@@ -84,6 +84,8 @@ data class WordPhraseEntity(
     val confidence: Float = 0.8f,
     val source: String = "AI",
     val model: String? = null,
+    @ColumnInfo(name = "practice_count", defaultValue = "0")
+    val practiceCount: Int = 0,
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "updated_at")

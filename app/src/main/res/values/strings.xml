@@ -390,6 +390,7 @@
     <string name="settings_model_input_hint">手动输入或选择模型</string>
     <string name="settings_got_it">知道了</string>
     <string name="settings_scope_question_generate">出题模型</string>
+    <string name="settings_scope_writing_practice">写作练习</string>
     <string name="settings_model_scopes_desc">为不同功能选择提供商与模型，支持手动输入模型或从接口拉取列表。</string>
     <string name="settings_scope_main_desc">常规对话与主任务使用</string>
     <string name="settings_scope_fast_desc">朗读、词链与实时交互使用</string>
@@ -399,6 +400,7 @@
     <string name="settings_scope_search_desc">题库来源验证与搜索</string>
     <string name="settings_scope_reviewer_desc">识别并降权劣质词池边</string>
     <string name="settings_scope_question_generate_desc">文章出题与试卷生成</string>
+    <string name="settings_scope_writing_practice_desc">写作练习短语选择</string>
     <string name="scope_main_details">使用场景：\n· 单词 AI 整理（自动填充音标、释义、词根拆解、近义词等）\n· 文章段落 AI 翻译\n· 文章段落 AI 分析（语法点、关键词汇、句子拆解）\n· 题库 AI 答案生成与解析\n· 后台批量任务（单词整理、答案生成等）\n\n注意：出题功能已独立为「出题模型」作用域。</string>
     <string name="scope_fast_details">使用场景：\n· 文章适配度评分（评估是否适合考研出题，0-100 分）\n· 在线文章批量评分（后台任务）\n· 题库翻译评分（逐句对比参考译文）\n· 题库写作批改（五档评分 + 扣分明细）\n· 文章生词快速分析\n· 即时查词与词链高亮\n\n建议选用响应快、成本低的模型。</string>
     <string name="scope_ocr_details">使用场景：\n· 拍照批量导入单词（识别手写/印刷体）\n· 试卷扫描识别（题型、文章、题目、选项）\n· 答案页扫描提取\n· 文章 OCR 录入（拍照提取标题、正文）\n\n需要支持视觉/多模态输入的模型。</string>
@@ -407,6 +409,7 @@
     <string name="scope_search_details">使用场景：\n· 阅读理解来源验证（联网搜索原文出处）\n· 范文检索（搜索模型范文与链接）\n· 单词整理增强模式的参考检索（当参考来源选\'搜索模型\'时）\n\n需要支持联网搜索/工具调用的模型。</string>
     <string name="scope_reviewer_details">使用场景：\n· 词池边质量提纯\n· 劣质关系降权\n\n作为独立手动任务触发，不重建词池。</string>
     <string name="scope_question_generate_details">使用场景：\n· 阅读理解出题（5 题 · 400-500 词）\n· 完形填空出题（20 空 · 280-360 词）\n· 翻译题出题（英语一/二）\n· 写作出题（小作文/大作文）\n· 新题型出题（段落排序/句子插入/匹配题）\n\n需要支持长文本理解和复杂推理的模型。</string>
+    <string name="scope_writing_practice_details">使用场景：\n· 写作题练习模式下，从词组/短语库中按题目主题选择 10 个可用表达\n· 独立评估用户是否使用了要求短语\n\n作文评分本身仍由主模型完成，短语使用情况不计入作文分。</string>
     <string name="settings_model_advanced">模型高级选项</string>
     <string name="settings_model_advanced_desc">高级调试与解析选项，影响所有模型请求。</string>
     <string name="settings_debug_mode">调试模式</string>
@@ -1192,6 +1195,13 @@
     <string name="question_redo">重做</string>
     <string name="question_reviewing">批阅中…</string>
     <string name="question_score_label">评分：</string>
+    <string name="question_writing_practice_mode">写作练习模式</string>
+    <string name="question_writing_practice_mode_desc">开启后会从词组/短语库中选择 10 个英文表达，本次作文需要使用它们。</string>
+    <string name="question_writing_practice_preparing">正在准备写作练习短语…</string>
+    <string name="question_writing_practice_required">本次要求短语</string>
+    <string name="question_writing_practice_refresh">重新选择短语</string>
+    <string name="question_writing_practice_usage">短语使用：%1$d/%2$d</string>
+    <string name="question_writing_practice_usage_note">短语使用情况是独立评估项，不影响作文评分。</string>
     <string name="question_word_count_format">字数：%d</string>
     <string name="question_sub_content">内容 %d</string>
     <string name="question_sub_language">语言 %d</string>
