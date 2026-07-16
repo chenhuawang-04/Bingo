@@ -3,7 +3,9 @@ package com.xty.englishhelper.domain.usecase.study
 import com.xty.englishhelper.domain.background.BackgroundTaskEnqueueResult
 import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
+import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
@@ -56,28 +58,28 @@ class SearchStudyWordNoteSuggestionsUseCase @Inject constructor(
         currentWord: WordDetails,
         rawInput: String,
         limit: Int = 8
-    ): List<String> {
+    ): List<WordSuggestion> {
         val normalizedQuery = rawInput.trim().lowercase()
         if (normalizedQuery.length < MIN_QUERY_LENGTH || limit <= 0) return emptyList()
         val currentNormalized = currentWord.normalizedSpelling.ifBlank {
             currentWord.spelling.trim().lowercase()
         }
         val fetchLimit = maxOf(limit * FETCH_MULTIPLIER, MIN_FETCH_LIMIT)
-        return wordRepository.suggestWordSpellings(
+        return wordRepository.suggestWords(
             dictionaryId = currentWord.dictionaryId,
             query = normalizedQuery,
             excludeWordId = currentWord.id,
             limit = fetchLimit
         ).asSequence()
-            .map(String::trim)
-            .filter { it.isNotBlank() }
-            .distinctBy { it.lowercase() }
-            .filter { it.lowercase() != currentNormalized }
+            .map { suggestion -> suggestion.copy(spelling = suggestion.spelling.trim()) }
+            .filter { it.spelling.isNotBlank() }
+            .distinctBy { it.spelling.lowercase() }
+            .filter { it.spelling.lowercase() != currentNormalized }
             .sortedWith(
-                compareBy<String>(
-                    { it.lowercase() != normalizedQuery },
-                    { it.length },
-                    { it.lowercase() }
+                compareBy<WordSuggestion>(
+                    { it.spelling.lowercase() != normalizedQuery },
+                    { it.spelling.length },
+                    { it.spelling.lowercase() }
                 )
             )
             .take(limit)
@@ -97,7 +99,8 @@ class SubmitStudyWordNoteUseCase @Inject constructor(
     suspend operator fun invoke(
         currentWord: WordDetails,
         rawInput: String,
-        fallbackUnitIds: List<Long> = emptyList()
+        fallbackUnitIds: List<Long> = emptyList(),
+        edgeType: EdgeType = EdgeType.SEMANTIC_OVERLAP
     ): SubmitStudyWordNoteResult = withContext(Dispatchers.IO) {
         val spelling = rawInput.trim()
         if (spelling.isBlank()) {
@@ -131,7 +134,8 @@ class SubmitStudyWordNoteUseCase @Inject constructor(
         val confirmed = wordPoolRepository.confirmWordRelation(
             dictionaryId = currentWord.dictionaryId,
             wordId = currentWord.id,
-            relatedWordId = relatedWord.id
+            relatedWordId = relatedWord.id,
+            edgeType = edgeType
         )
         if (confirmed) {
             SubmitStudyWordNoteResult(
@@ -139,7 +143,7 @@ class SubmitStudyWordNoteUseCase @Inject constructor(
                 relatedSpelling = relatedWord.spelling,
                 createdWord = existing == null,
                 outcome = StudyWordNoteOutcome.PROMOTED,
-                message = "已将 ${relatedWord.spelling} 标记为强关联"
+                message = "已将 ${relatedWord.spelling} 标记为「${edgeType.label}」强关联"
             )
         } else {
             if (existing != null) {
@@ -153,26 +157,33 @@ class SubmitStudyWordNoteUseCase @Inject constructor(
                 if (existingTask?.status == BackgroundTaskStatus.PENDING ||
                     existingTask?.status == BackgroundTaskStatus.RUNNING
                 ) {
+                    wordPoolRepository.organizeWordNoteRelation(
+                        relatedWordId = relatedWord.id,
+                        dictionaryId = currentWord.dictionaryId,
+                        wordId = currentWord.id,
+                        edgeType = edgeType
+                    )
                     SubmitStudyWordNoteResult(
                         relatedWordId = relatedWord.id,
                         relatedSpelling = relatedWord.spelling,
                         createdWord = false,
-                        outcome = StudyWordNoteOutcome.ALREADY_QUEUED,
-                        message = "${relatedWord.spelling} 的关联整理已在后台队列中"
+                        outcome = StudyWordNoteOutcome.PROMOTED,
+                        message = "已将 ${relatedWord.spelling} 连接为「${edgeType.label}」强关联，词条仍在后台整理"
                     )
                 } else {
-                wordPoolRepository.organizeWordNoteRelation(
-                    relatedWordId = relatedWord.id,
-                    dictionaryId = currentWord.dictionaryId,
-                    wordId = currentWord.id
-                )
-                SubmitStudyWordNoteResult(
-                    relatedWordId = relatedWord.id,
-                    relatedSpelling = relatedWord.spelling,
-                    createdWord = false,
-                    outcome = StudyWordNoteOutcome.PROMOTED,
-                    message = "已将 ${relatedWord.spelling} 连接为强关联"
-                )
+                    wordPoolRepository.organizeWordNoteRelation(
+                        relatedWordId = relatedWord.id,
+                        dictionaryId = currentWord.dictionaryId,
+                        wordId = currentWord.id,
+                        edgeType = edgeType
+                    )
+                    SubmitStudyWordNoteResult(
+                        relatedWordId = relatedWord.id,
+                        relatedSpelling = relatedWord.spelling,
+                        createdWord = false,
+                        outcome = StudyWordNoteOutcome.PROMOTED,
+                        message = "已将 ${relatedWord.spelling} 连接为「${edgeType.label}」强关联"
+                    )
                 }
             } else {
                 val enqueueResult = backgroundTaskManager.enqueueWordNoteOrganize(
@@ -183,6 +194,7 @@ class SubmitStudyWordNoteUseCase @Inject constructor(
                     targetSpelling = relatedWord.spelling,
                     organizeTargetWordFirst = true,
                     targetReferenceHints = listOf(currentWord.spelling),
+                    edgeType = edgeType,
                     force = true
                 )
 
@@ -193,7 +205,7 @@ class SubmitStudyWordNoteUseCase @Inject constructor(
                         relatedSpelling = relatedWord.spelling,
                         createdWord = true,
                         outcome = StudyWordNoteOutcome.QUEUED,
-                        message = "已创建 ${relatedWord.spelling}，并加入后台整理"
+                        message = "已创建 ${relatedWord.spelling}，并按「${edgeType.label}」加入后台整理"
                     )
 
                     BackgroundTaskEnqueueResult.ALREADY_PENDING,
@@ -209,7 +221,8 @@ class SubmitStudyWordNoteUseCase @Inject constructor(
                         val promotedAfterSuccess = wordPoolRepository.confirmWordRelation(
                             dictionaryId = currentWord.dictionaryId,
                             wordId = currentWord.id,
-                            relatedWordId = relatedWord.id
+                            relatedWordId = relatedWord.id,
+                            edgeType = edgeType
                         )
                         if (promotedAfterSuccess) {
                             SubmitStudyWordNoteResult(
@@ -217,7 +230,7 @@ class SubmitStudyWordNoteUseCase @Inject constructor(
                                 relatedSpelling = relatedWord.spelling,
                                 createdWord = true,
                                 outcome = StudyWordNoteOutcome.PROMOTED,
-                                message = "已将 ${relatedWord.spelling} 标记为强关联"
+                                message = "已将 ${relatedWord.spelling} 标记为「${edgeType.label}」强关联"
                             )
                         } else {
                             SubmitStudyWordNoteResult(

@@ -23,27 +23,30 @@ interface WordPoolRepository {
     ): List<WordEdgeNeighborPreview>
 
     /**
-     * 用户手动确认当前词与另一词相关时，仅把两词之间已存在的边提升为强关联：
-     * - confidence 置为 1.0
+     * 用户手动确认当前词与另一词相关时，确保两词之间存在指定类型的强关联：
+     * - 已有该类型边时，confidence 置为 1.0
+     * - 只有其他类型边时，新增用户选定类型的边
      * - 不触发 QUALITY_FIRST 词池重算
      * 返回 false 表示当前两词之间尚无任何边。
      */
     suspend fun confirmWordRelation(
         dictionaryId: Long,
         wordId: Long,
-        relatedWordId: Long
+        relatedWordId: Long,
+        edgeType: EdgeType = EdgeType.SEMANTIC_OVERLAP
     ): Boolean
 
     /**
-     * 用户在背词页手动补便签、但当前两词尚无边时，只为这对词直连一条边：
-     * - 若已存在边，则仅把其 confidence 置为 1.0
-     * - 若不存在边，则基于拼写/词根启发式落一条边
+     * 用户在背词页手动补便签时，为这对词确保一条指定类型的直连边：
+     * - 若已存在同类型边，则把其 confidence 置为 1.0
+     * - 若不存在同类型边，则按用户选定类型落一条边
      * - 不触发 QUALITY_FIRST 词池重算
      */
     suspend fun organizeWordNoteRelation(
         dictionaryId: Long,
         wordId: Long,
-        relatedWordId: Long
+        relatedWordId: Long,
+        edgeType: EdgeType = EdgeType.SEMANTIC_OVERLAP
     )
 
     /**

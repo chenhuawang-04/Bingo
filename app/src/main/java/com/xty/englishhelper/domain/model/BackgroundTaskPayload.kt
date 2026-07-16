@@ -31,6 +31,7 @@ data class WordNoteOrganizePayload(
     val sourceSpelling: String,
     val targetWordId: Long,
     val targetSpelling: String,
+    val edgeType: String = EdgeType.SEMANTIC_OVERLAP.dbValue,
     val organizeTargetWordFirst: Boolean = false,
     val targetReferenceHints: List<String> = emptyList(),
     val highQualityEnabled: Boolean = false,
@@ -108,5 +109,4 @@ data class SyncTaskPayload(
     val syncMode: String = "SMART",
     val triggeredBy: String = "manual"
 ) : BackgroundTaskPayload
-
 

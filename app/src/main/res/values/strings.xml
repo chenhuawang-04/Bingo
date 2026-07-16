@@ -207,6 +207,10 @@
     <string name="study_word_note_label">单词便签</string>
     <string name="study_word_note_placeholder">输入你想到的关联词</string>
     <string name="study_word_note_submit">加入便签</string>
+    <string name="study_word_note_expand">展开单词便签</string>
+    <string name="study_word_note_collapse">收起单词便签</string>
+    <string name="study_word_note_relation_type">关系类型</string>
+    <string name="study_word_note_select_suggestion">选中 %1$s</string>
     <string name="study_select_relation">选出它的「%s」</string>
     <string name="study_correct_answer">答对了，记为「良好」</string>
     <string name="study_wrong_answer">答错了，记为「重来」，稍后再练</string>

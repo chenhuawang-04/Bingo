@@ -2,17 +2,18 @@ package com.xty.englishhelper.domain.repository
 
 import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordSuggestion
 import kotlinx.coroutines.flow.Flow
 
 interface WordRepository {
     fun getWordsByDictionary(dictionaryId: Long): Flow<List<WordDetails>>
     fun searchWords(dictionaryId: Long, query: String): Flow<List<WordDetails>>
-    suspend fun suggestWordSpellings(
+    suspend fun suggestWords(
         dictionaryId: Long,
         query: String,
         excludeWordId: Long,
         limit: Int
-    ): List<String>
+    ): List<WordSuggestion>
     suspend fun getWordsByDictionaryPage(dictionaryId: Long, lastId: Long, limit: Int): List<WordDetails>
     suspend fun countWords(dictionaryId: Long): Int
     suspend fun getWordById(wordId: Long): WordDetails?

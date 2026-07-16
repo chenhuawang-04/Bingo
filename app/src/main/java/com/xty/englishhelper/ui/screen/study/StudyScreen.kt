@@ -84,6 +84,8 @@ fun StudyScreen(
                     onWordNoteInputChange = viewModel::onWordNoteInputChange,
                     onWordNoteSuggestionSelected = viewModel::onWordNoteSuggestionSelected,
                     onWordNoteSuggestionsExpandedChange = viewModel::setWordNoteSuggestionsExpanded,
+                    onWordNoteExpandedChange = viewModel::setWordNoteExpanded,
+                    onWordNoteEdgeTypeSelected = viewModel::selectWordNoteEdgeType,
                     onSubmitWordNote = viewModel::submitWordNote,
                     onCloudExampleSourceSelected = viewModel::selectCloudExampleSource,
                     onQuizAnswer = viewModel::onQuizAnswer,

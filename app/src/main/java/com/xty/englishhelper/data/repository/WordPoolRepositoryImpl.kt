@@ -198,15 +198,30 @@ class WordPoolRepositoryImpl @Inject constructor(
     override suspend fun confirmWordRelation(
         dictionaryId: Long,
         wordId: Long,
-        relatedWordId: Long
+        relatedWordId: Long,
+        edgeType: EdgeType
     ): Boolean {
         val edges = wordEdgeDao.getEdgesBetweenWords(dictionaryId, wordId, relatedWordId)
         if (edges.isEmpty()) return false
-        edges.forEach { edge ->
+        val selectedEdge = edges.firstOrNull { it.edgeType == edgeType.dbValue }
+        if (selectedEdge != null) {
             wordEdgeDao.updateEdgeStatus(
-                id = edge.id,
-                status = edge.status,
+                id = selectedEdge.id,
+                status = selectedEdge.status,
                 confidence = 1.0
+            )
+        } else {
+            val currentWord = wordDao.getWordById(wordId)?.toDomain()
+                ?: throw IllegalStateException("当前背诵词不存在")
+            val relatedWord = wordDao.getWordById(relatedWordId)?.toDomain()
+                ?: throw IllegalStateException("便签单词不存在")
+            wordEdgeDao.insertEdgeIfAbsent(
+                toEdgeEntity(
+                    currentWord = currentWord,
+                    otherWord = relatedWord,
+                    edge = buildWordNoteEdge(edgeType),
+                    dictionaryId = dictionaryId
+                )
             )
         }
         invalidateGraphCache(dictionaryId)
@@ -216,7 +231,8 @@ class WordPoolRepositoryImpl @Inject constructor(
     override suspend fun organizeWordNoteRelation(
         dictionaryId: Long,
         wordId: Long,
-        relatedWordId: Long
+        relatedWordId: Long,
+        edgeType: EdgeType
     ) {
         val currentWord = wordDao.getWordById(wordId)?.toDomain()
             ?: throw IllegalStateException("当前背诵词不存在")
@@ -227,26 +243,27 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
 
         val existingEdges = wordEdgeDao.getEdgesBetweenWords(dictionaryId, wordId, relatedWordId)
-        if (existingEdges.isNotEmpty()) {
-            existingEdges.forEach { edge ->
-                wordEdgeDao.updateEdgeStatus(
-                    id = edge.id,
-                    status = edge.status,
-                    confidence = 1.0
-                )
-            }
+        val selectedEdge = existingEdges.firstOrNull { it.edgeType == edgeType.dbValue }
+        if (selectedEdge != null) {
+            wordEdgeDao.updateEdgeStatus(
+                id = selectedEdge.id,
+                status = selectedEdge.status,
+                confidence = 1.0
+            )
         } else {
-            val fallbackEdge = buildFallbackNoteEdge(currentWord, relatedWord).copy(confidence = 1.0)
+            val fallbackEdge = buildWordNoteEdge(edgeType)
             wordEdgeDao.insertEdgeIfAbsent(
                 toEdgeEntity(currentWord, relatedWord, fallbackEdge, dictionaryId)
             )
-            wordEdgeDao.getEdgesBetweenWords(dictionaryId, wordId, relatedWordId).forEach { edge ->
-                wordEdgeDao.updateEdgeStatus(
-                    id = edge.id,
-                    status = edge.status,
-                    confidence = 1.0
-                )
-            }
+            wordEdgeDao.getEdgesBetweenWords(dictionaryId, wordId, relatedWordId)
+                .firstOrNull { it.edgeType == edgeType.dbValue }
+                ?.let { edge ->
+                    wordEdgeDao.updateEdgeStatus(
+                        id = edge.id,
+                        status = edge.status,
+                        confidence = 1.0
+                    )
+                }
         }
         invalidateGraphCache(dictionaryId)
     }
@@ -1012,18 +1029,12 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun buildFallbackNoteEdge(
-        currentWord: WordDetails,
-        otherWord: WordDetails
+    private fun buildWordNoteEdge(
+        selectedEdgeType: EdgeType
     ): com.xty.englishhelper.data.repository.pool.ParsedEdge {
-        val edgeType = when {
-            spellingDistance(currentWord.spelling, otherWord.spelling) <= 2 -> EdgeType.FORM_SPELLING
-            shareLikelyRoot(currentWord.spelling, otherWord.spelling) -> EdgeType.FAMILY_SAME_ROOT
-            else -> EdgeType.SEMANTIC_OVERLAP
-        }
         return com.xty.englishhelper.data.repository.pool.ParsedEdge(
             index = 0,
-            edgeType = edgeType,
+            edgeType = selectedEdgeType,
             status = "support",
             learningValue = 4,
             relationStrength = 3,
@@ -1035,38 +1046,6 @@ class WordPoolRepositoryImpl @Inject constructor(
             exampleSentence = null,
             difficultyCefr = null
         )
-    }
-
-    private fun shareLikelyRoot(a: String, b: String): Boolean {
-        val left = a.trim().lowercase()
-        val right = b.trim().lowercase()
-        if (left.length < 4 || right.length < 4) return false
-        val prefix = left.commonPrefixWith(right)
-        return prefix.length >= 4
-    }
-
-    private fun spellingDistance(a: String, b: String): Int {
-        val left = a.trim().lowercase()
-        val right = b.trim().lowercase()
-        if (left == right) return 0
-        if (left.isEmpty()) return right.length
-        if (right.isEmpty()) return left.length
-        val dp = IntArray(right.length + 1) { it }
-        for (i in left.indices) {
-            var prev = dp[0]
-            dp[0] = i + 1
-            for (j in right.indices) {
-                val temp = dp[j + 1]
-                val cost = if (left[i] == right[j]) 0 else 1
-                dp[j + 1] = minOf(
-                    dp[j + 1] + 1,
-                    dp[j] + 1,
-                    prev + cost
-                )
-                prev = temp
-            }
-        }
-        return dp[right.length]
     }
 
     /** 把一条 AI 解析出的边转换为可入库实体（按 wordIdA < wordIdB 规范化）。 */

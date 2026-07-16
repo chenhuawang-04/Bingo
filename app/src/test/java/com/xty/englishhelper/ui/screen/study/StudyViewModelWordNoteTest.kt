@@ -7,9 +7,11 @@ import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
+import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.usecase.brainstorm.BuildBrainstormSessionUseCase
@@ -82,22 +84,22 @@ class StudyViewModelWordNoteTest {
         coEvery { getStudyWordEdgePreviews.invoke(1L, 1L, 1.0) } returns emptyList()
         coEvery { searchStudyWordNoteSuggestions.invoke(any(), any(), any()) } returns emptyList()
         coEvery {
-            submitStudyWordNote.invoke(currentWord, "alpha", emptyList())
+            submitStudyWordNote.invoke(currentWord, "alpha", emptyList(), EdgeType.FAMILY_SAME_ROOT)
         } returns SubmitStudyWordNoteResult(
             relatedWordId = 2L,
             relatedSpelling = "alpha",
             createdWord = true,
             outcome = StudyWordNoteOutcome.QUEUED,
-            message = "已创建 alpha，并加入后台整理"
+            message = "已创建 alpha，并按「同词根」加入后台整理"
         )
         coEvery {
-            submitStudyWordNote.invoke(currentWord, "beta", emptyList())
+            submitStudyWordNote.invoke(currentWord, "beta", emptyList(), EdgeType.FAMILY_SAME_ROOT)
         } returns SubmitStudyWordNoteResult(
             relatedWordId = 3L,
             relatedSpelling = "beta",
             createdWord = true,
             outcome = StudyWordNoteOutcome.QUEUED,
-            message = "已创建 beta，并加入后台整理"
+            message = "已创建 beta，并按「同词根」加入后台整理"
         )
 
         val viewModel = StudyViewModel(
@@ -123,8 +125,15 @@ class StudyViewModelWordNoteTest {
 
         advanceUntilIdle()
         coVerify(exactly = 1) { getStudyWordEdgePreviews.invoke(1L, 1L, 1.0) }
+        assertEquals(false, viewModel.uiState.value.wordNoteExpanded)
 
-        viewModel.onWordNoteInputChange("alpha")
+        viewModel.setWordNoteExpanded(true)
+        viewModel.selectWordNoteEdgeType(EdgeType.FAMILY_SAME_ROOT)
+        assertEquals(true, viewModel.uiState.value.wordNoteExpanded)
+        assertEquals(EdgeType.FAMILY_SAME_ROOT, viewModel.uiState.value.wordNoteEdgeType)
+
+        viewModel.onWordNoteSuggestionSelected(WordSuggestion(wordId = 2L, spelling = "alpha"))
+        assertEquals("alpha", viewModel.uiState.value.wordNoteInput)
         viewModel.submitWordNote()
         advanceUntilIdle()
 
@@ -152,7 +161,7 @@ class StudyViewModelWordNoteTest {
         )
         advanceUntilIdle()
 
-        assertEquals("alpha 已加入强关联", viewModel.uiState.value.wordNoteMessage)
+        assertEquals("alpha 已加入「同词根」强关联", viewModel.uiState.value.wordNoteMessage)
         coVerify(exactly = 2) { getStudyWordEdgePreviews.invoke(1L, 1L, 1.0) }
 
         backgroundTaskRepository.emit(
@@ -175,7 +184,7 @@ class StudyViewModelWordNoteTest {
         )
         advanceUntilIdle()
 
-        assertEquals("beta 已加入强关联", viewModel.uiState.value.wordNoteMessage)
+        assertEquals("beta 已加入「同词根」强关联", viewModel.uiState.value.wordNoteMessage)
         coVerify(exactly = 3) { getStudyWordEdgePreviews.invoke(1L, 1L, 1.0) }
     }
 
@@ -194,7 +203,8 @@ class StudyViewModelWordNoteTest {
             sourceWordId = sourceWordId,
             sourceSpelling = "adapt",
             targetWordId = targetWordId,
-            targetSpelling = targetSpelling
+            targetSpelling = targetSpelling,
+            edgeType = EdgeType.FAMILY_SAME_ROOT.dbValue
         ),
         progressCurrent = 0,
         progressTotal = 1,

@@ -1,5 +1,11 @@
 package com.xty.englishhelper.ui.screen.study
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,12 +26,20 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
@@ -33,6 +48,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.EdgeType
+import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.domain.study.formatInterval
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
@@ -61,8 +81,10 @@ internal fun StudyingContent(
     onRate: (Rating) -> Unit,
     onOpenRelatedWord: (Long, Long) -> Unit,
     onWordNoteInputChange: (String) -> Unit,
-    onWordNoteSuggestionSelected: (String) -> Unit,
+    onWordNoteSuggestionSelected: (WordSuggestion) -> Unit,
     onWordNoteSuggestionsExpandedChange: (Boolean) -> Unit,
+    onWordNoteExpandedChange: (Boolean) -> Unit,
+    onWordNoteEdgeTypeSelected: (EdgeType) -> Unit,
     onSubmitWordNote: () -> Unit,
     onCloudExampleSourceSelected: (CloudExampleSource) -> Unit,
     onQuizAnswer: (Long) -> Unit,
@@ -125,16 +147,21 @@ internal fun StudyingContent(
                         phonetic = word.phonetic,
                         relatedEdges = state.currentWordEdges,
                         wordNoteEnabled = state.wordNoteEnabled,
+                        wordNoteExpanded = state.wordNoteExpanded,
                         wordNoteInput = state.wordNoteInput,
                         wordNoteSuggestions = state.wordNoteSuggestions,
                         wordNoteSuggestionsLoading = state.wordNoteSuggestionsLoading,
                         wordNoteSuggestionsExpanded = state.wordNoteSuggestionsExpanded,
                         wordNoteSubmitting = state.wordNoteSubmitting,
+                        wordNoteEdgeType = state.wordNoteEdgeType,
                         wordNoteMessage = state.wordNoteMessage,
                         wordNoteError = state.wordNoteError,
                         onWordNoteInputChange = onWordNoteInputChange,
                         onWordNoteSuggestionSelected = onWordNoteSuggestionSelected,
                         onWordNoteSuggestionsExpandedChange = onWordNoteSuggestionsExpandedChange,
+                        onWordNoteSuggestionOpenDetail = { wordId -> onOpenRelatedWord(wordId, word.dictionaryId) },
+                        onWordNoteExpandedChange = onWordNoteExpandedChange,
+                        onWordNoteEdgeTypeSelected = onWordNoteEdgeTypeSelected,
                         onSubmitWordNote = onSubmitWordNote,
                         onRevealAnswer = onRevealAnswer,
                         modifier = Modifier.weight(1f)
@@ -193,16 +220,21 @@ internal fun StudyingContent(
                     phonetic = word.phonetic,
                     relatedEdges = state.currentWordEdges,
                     wordNoteEnabled = state.wordNoteEnabled,
+                    wordNoteExpanded = state.wordNoteExpanded,
                     wordNoteInput = state.wordNoteInput,
                     wordNoteSuggestions = state.wordNoteSuggestions,
                     wordNoteSuggestionsLoading = state.wordNoteSuggestionsLoading,
                     wordNoteSuggestionsExpanded = state.wordNoteSuggestionsExpanded,
                     wordNoteSubmitting = state.wordNoteSubmitting,
+                    wordNoteEdgeType = state.wordNoteEdgeType,
                     wordNoteMessage = state.wordNoteMessage,
                     wordNoteError = state.wordNoteError,
                     onWordNoteInputChange = onWordNoteInputChange,
                     onWordNoteSuggestionSelected = onWordNoteSuggestionSelected,
                     onWordNoteSuggestionsExpandedChange = onWordNoteSuggestionsExpandedChange,
+                    onWordNoteSuggestionOpenDetail = { wordId -> onOpenRelatedWord(wordId, word.dictionaryId) },
+                    onWordNoteExpandedChange = onWordNoteExpandedChange,
+                    onWordNoteEdgeTypeSelected = onWordNoteEdgeTypeSelected,
                     onSubmitWordNote = onSubmitWordNote,
                     onRevealAnswer = onRevealAnswer,
                     modifier = Modifier.weight(1f)
@@ -368,16 +400,21 @@ private fun QuestionView(
     phonetic: String,
     relatedEdges: List<WordEdgePreview>,
     wordNoteEnabled: Boolean,
+    wordNoteExpanded: Boolean,
     wordNoteInput: String,
-    wordNoteSuggestions: List<String>,
+    wordNoteSuggestions: List<WordSuggestion>,
     wordNoteSuggestionsLoading: Boolean,
     wordNoteSuggestionsExpanded: Boolean,
     wordNoteSubmitting: Boolean,
+    wordNoteEdgeType: EdgeType,
     wordNoteMessage: String?,
     wordNoteError: String?,
     onWordNoteInputChange: (String) -> Unit,
-    onWordNoteSuggestionSelected: (String) -> Unit,
+    onWordNoteSuggestionSelected: (WordSuggestion) -> Unit,
     onWordNoteSuggestionsExpandedChange: (Boolean) -> Unit,
+    onWordNoteSuggestionOpenDetail: (Long) -> Unit,
+    onWordNoteExpandedChange: (Boolean) -> Unit,
+    onWordNoteEdgeTypeSelected: (EdgeType) -> Unit,
     onSubmitWordNote: () -> Unit,
     onRevealAnswer: () -> Unit,
     modifier: Modifier = Modifier
@@ -413,53 +450,106 @@ private fun QuestionView(
             }
             if (wordNoteEnabled) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = stringResource(R.string.study_word_note_label),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                WordNoteInputField(
-                    value = wordNoteInput,
-                    suggestions = wordNoteSuggestions,
-                    suggestionsLoading = wordNoteSuggestionsLoading,
-                    suggestionsExpanded = wordNoteSuggestionsExpanded,
+                Surface(
+                    onClick = { onWordNoteExpandedChange(!wordNoteExpanded) },
                     enabled = !wordNoteSubmitting,
-                    onValueChange = onWordNoteInputChange,
-                    onSuggestionSelected = onWordNoteSuggestionSelected,
-                    onSuggestionsExpandedChange = onWordNoteSuggestionsExpandedChange,
-                    onSubmit = onSubmitWordNote,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = onSubmitWordNote,
-                    enabled = wordNoteInput.isNotBlank() && !wordNoteSubmitting,
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    if (wordNoteSubmitting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .padding(end = 8.dp)
-                                .size(18.dp),
-                            strokeWidth = 2.dp
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.NoteAdd,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.study_word_note_label),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (!wordNoteExpanded) {
+                            Text(
+                                text = wordNoteEdgeType.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                            )
+                        }
+                        Icon(
+                            imageVector = if (wordNoteExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = stringResource(
+                                if (wordNoteExpanded) R.string.study_word_note_collapse else R.string.study_word_note_expand
+                            ),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
-                    Text(stringResource(R.string.study_word_note_submit))
                 }
-                val feedback = wordNoteError ?: wordNoteMessage
-                if (!feedback.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = feedback,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (wordNoteError != null) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+
+                AnimatedVisibility(
+                    visible = wordNoteExpanded,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        WordNoteInputField(
+                            value = wordNoteInput,
+                            suggestions = wordNoteSuggestions,
+                            suggestionsLoading = wordNoteSuggestionsLoading,
+                            suggestionsExpanded = wordNoteSuggestionsExpanded,
+                            enabled = !wordNoteSubmitting,
+                            onValueChange = onWordNoteInputChange,
+                            onSuggestionSelected = onWordNoteSuggestionSelected,
+                            onSuggestionOpenDetail = onWordNoteSuggestionOpenDetail,
+                            onSuggestionsExpandedChange = onWordNoteSuggestionsExpandedChange,
+                            onSubmit = onSubmitWordNote,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        WordNoteEdgeTypeSelector(
+                            selectedEdgeType = wordNoteEdgeType,
+                            enabled = !wordNoteSubmitting,
+                            onEdgeTypeSelected = onWordNoteEdgeTypeSelected,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = onSubmitWordNote,
+                            enabled = wordNoteInput.isNotBlank() && !wordNoteSubmitting,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (wordNoteSubmitting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier
+                                        .padding(end = 8.dp)
+                                        .size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                            Text(stringResource(R.string.study_word_note_submit))
+                        }
+                        val feedback = wordNoteError ?: wordNoteMessage
+                        if (!feedback.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = feedback,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (wordNoteError != null) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -478,12 +568,13 @@ private fun QuestionView(
 @Composable
 private fun WordNoteInputField(
     value: String,
-    suggestions: List<String>,
+    suggestions: List<WordSuggestion>,
     suggestionsLoading: Boolean,
     suggestionsExpanded: Boolean,
     enabled: Boolean,
     onValueChange: (String) -> Unit,
-    onSuggestionSelected: (String) -> Unit,
+    onSuggestionSelected: (WordSuggestion) -> Unit,
+    onSuggestionOpenDetail: (Long) -> Unit,
     onSuggestionsExpandedChange: (Boolean) -> Unit,
     onSubmit: () -> Unit,
     modifier: Modifier = Modifier
@@ -532,9 +623,121 @@ private fun WordNoteInputField(
         ) {
             suggestions.forEach { suggestion ->
                 DropdownMenuItem(
-                    text = { Text(text = suggestion) },
-                    onClick = { onSuggestionSelected(suggestion) },
+                    text = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = suggestion.spelling,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    },
+                    onClick = {
+                        onSuggestionsExpandedChange(false)
+                        onSuggestionOpenDetail(suggestion.wordId)
+                    },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = { onSuggestionSelected(suggestion) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = stringResource(
+                                    R.string.study_word_note_select_suggestion,
+                                    suggestion.spelling
+                                ),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    },
                     contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WordNoteEdgeTypeSelector(
+    selectedEdgeType: EdgeType,
+    enabled: Boolean,
+    onEdgeTypeSelected: (EdgeType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (enabled) expanded = !expanded },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = "${selectedEdgeType.cluster.label} · ${selectedEdgeType.label}",
+            onValueChange = {},
+            readOnly = true,
+            enabled = enabled,
+            singleLine = true,
+            label = { Text(stringResource(R.string.study_word_note_relation_type)) },
+            leadingIcon = {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .background(edgeTypeColor(selectedEdgeType), CircleShape)
+                )
+            },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            EdgeType.entries.forEach { edgeType ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(edgeType.label)
+                            Text(
+                                text = edgeType.cluster.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    leadingIcon = {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .background(edgeTypeColor(edgeType), CircleShape)
+                        )
+                    },
+                    trailingIcon = {
+                        if (edgeType == selectedEdgeType) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    },
+                    onClick = {
+                        onEdgeTypeSelected(edgeType)
+                        expanded = false
+                    }
                 )
             }
         }

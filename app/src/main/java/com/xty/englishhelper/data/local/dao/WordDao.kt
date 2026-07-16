@@ -39,7 +39,7 @@ interface WordDao {
 
     @Query(
         """
-        SELECT spelling FROM words
+        SELECT id, spelling FROM words
         WHERE dictionary_id = :dictionaryId
           AND id != :excludeWordId
           AND normalized_spelling LIKE :normalizedQuery || '%'
@@ -47,12 +47,12 @@ interface WordDao {
         LIMIT :limit
         """
     )
-    suspend fun suggestWordSpellings(
+    suspend fun suggestWords(
         dictionaryId: Long,
         normalizedQuery: String,
         excludeWordId: Long,
         limit: Int
-    ): List<String>
+    ): List<WordSuggestionProjection>
 
     @Transaction
     @Query("SELECT * FROM words WHERE id = :wordId")
@@ -154,6 +154,11 @@ interface WordDao {
     @Query("SELECT COUNT(*) FROM words WHERE dictionary_id = :dictionaryId AND entry_type = :entryType")
     suspend fun countByEntryType(dictionaryId: Long, entryType: String): Int
 }
+
+data class WordSuggestionProjection(
+    val id: Long,
+    val spelling: String
+)
 
 data class WordIdSpelling(val id: Long, @ColumnInfo(name = "normalized_spelling") val normalizedSpelling: String)
 data class AssociationWithSpelling(val wordId: Long, val spelling: String, val similarity: Float, val commonSegmentsJson: String)

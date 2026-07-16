@@ -213,13 +213,53 @@ class WordPoolRepositoryImplGraphTest {
         )
         coEvery { wordEdgeDao.updateEdgeStatus(any(), any(), any()) } returns Unit
 
-        val confirmed = repository.confirmWordRelation(1L, 10L, 20L)
+        val confirmed = repository.confirmWordRelation(
+            dictionaryId = 1L,
+            wordId = 10L,
+            relatedWordId = 20L,
+            edgeType = EdgeType.FORM_SPELLING
+        )
 
         assertTrue(confirmed)
         coVerify(exactly = 1) { wordEdgeDao.updateEdgeStatus(7L, "optional", 1.0) }
         coVerify(exactly = 0) { wordPoolDao.deleteByDictionaryAndStrategy(any(), any()) }
         coVerify(exactly = 0) { wordPoolDao.insertPool(any()) }
         coVerify(exactly = 0) { wordPoolDao.insertMembers(any()) }
+    }
+
+    @Test
+    fun `confirm word relation adds the user selected edge type when it differs`() = runTest {
+        val wordDao = mockk<WordDao>()
+        val wordEdgeDao = mockk<WordEdgeDao>()
+        val insertedEdge = slot<WordEdgeEntity>()
+        val repository = repository(wordDao = wordDao, wordEdgeDao = wordEdgeDao)
+
+        coEvery { wordEdgeDao.getEdgesBetweenWords(1L, 10L, 20L) } returns listOf(
+            WordEdgeEntity(
+                id = 7L,
+                wordIdA = 10L,
+                wordIdB = 20L,
+                edgeType = EdgeType.FORM_SPELLING.dbValue,
+                dictionaryId = 1L,
+                confidence = 0.42
+            )
+        )
+        coEvery { wordDao.getWordById(10L) } returns wordWithDetails(10L, 1L, "adapt")
+        coEvery { wordDao.getWordById(20L) } returns wordWithDetails(20L, 1L, "adopt")
+        coEvery { wordEdgeDao.insertEdgeIfAbsent(capture(insertedEdge)) } returns 8L
+
+        val confirmed = repository.confirmWordRelation(
+            dictionaryId = 1L,
+            wordId = 10L,
+            relatedWordId = 20L,
+            edgeType = EdgeType.SEMANTIC_ANTONYM
+        )
+
+        assertTrue(confirmed)
+        assertEquals(EdgeType.SEMANTIC_ANTONYM.dbValue, insertedEdge.captured.edgeType)
+        assertEquals(1.0, insertedEdge.captured.confidence, 0.0)
+        assertEquals("user_note", insertedEdge.captured.evidenceSource)
+        coVerify(exactly = 0) { wordEdgeDao.updateEdgeStatus(any(), any(), any()) }
     }
 
     @Test
@@ -243,7 +283,7 @@ class WordPoolRepositoryImplGraphTest {
                     id = 8L,
                     wordIdA = 10L,
                     wordIdB = 20L,
-                    edgeType = EdgeType.LEARNING_CONFUSABLE.dbValue,
+                    edgeType = EdgeType.FORM_SPELLING.dbValue,
                     dictionaryId = 1L,
                     status = "warning",
                     confidence = 0.63,
@@ -255,7 +295,12 @@ class WordPoolRepositoryImplGraphTest {
         coEvery { wordEdgeDao.insertEdgeIfAbsent(capture(insertedEdge)) } returns -1L
         coEvery { wordEdgeDao.updateEdgeStatus(any(), any(), any()) } returns Unit
 
-        repository.organizeWordNoteRelation(1L, 10L, 20L)
+        repository.organizeWordNoteRelation(
+            dictionaryId = 1L,
+            wordId = 10L,
+            relatedWordId = 20L,
+            edgeType = EdgeType.FORM_SPELLING
+        )
 
         coVerify(exactly = 1) { wordEdgeDao.insertEdgeIfAbsent(any()) }
         coVerify(exactly = 1) { wordEdgeDao.updateEdgeStatus(8L, "warning", 1.0) }

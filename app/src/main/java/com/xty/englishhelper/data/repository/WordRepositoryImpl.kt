@@ -6,6 +6,7 @@ import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.data.mapper.commonSegmentsToJson
 import com.xty.englishhelper.data.mapper.parseCommonSegments
@@ -32,20 +33,25 @@ class WordRepositoryImpl @Inject constructor(
     override fun searchWords(dictionaryId: Long, query: String): Flow<List<WordDetails>> =
         wordDao.searchWords(dictionaryId, query).map { list -> list.map { it.toDomain() } }
 
-    override suspend fun suggestWordSpellings(
+    override suspend fun suggestWords(
         dictionaryId: Long,
         query: String,
         excludeWordId: Long,
         limit: Int
-    ): List<String> {
+    ): List<WordSuggestion> {
         val normalizedQuery = query.trim().lowercase()
         if (normalizedQuery.isBlank() || limit <= 0) return emptyList()
-        return wordDao.suggestWordSpellings(
+        return wordDao.suggestWords(
             dictionaryId = dictionaryId,
             normalizedQuery = normalizedQuery,
             excludeWordId = excludeWordId,
             limit = limit
-        )
+        ).map { projection ->
+            WordSuggestion(
+                wordId = projection.id,
+                spelling = projection.spelling
+            )
+        }
     }
 
     override suspend fun getWordsByDictionaryPage(dictionaryId: Long, lastId: Long, limit: Int): List<WordDetails> {

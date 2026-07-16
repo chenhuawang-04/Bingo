@@ -5,7 +5,9 @@ import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
@@ -31,7 +33,7 @@ class StudyWordNoteUseCasesTest {
         val result = useCase(currentWord(), "   ")
 
         assertTrue(result.isEmpty())
-        coVerify(exactly = 0) { wordRepository.suggestWordSpellings(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { wordRepository.suggestWords(any(), any(), any(), any()) }
     }
 
     @Test
@@ -42,7 +44,7 @@ class StudyWordNoteUseCasesTest {
         val result = useCase(currentWord(), "a")
 
         assertTrue(result.isEmpty())
-        coVerify(exactly = 0) { wordRepository.suggestWordSpellings(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { wordRepository.suggestWords(any(), any(), any(), any()) }
     }
 
     @Test
@@ -50,19 +52,26 @@ class StudyWordNoteUseCasesTest {
         val wordRepository = mockk<WordRepository>()
         val useCase = SearchStudyWordNoteSuggestionsUseCase(wordRepository)
 
-        coEvery { wordRepository.suggestWordSpellings(1L, "ad", 1L, 12) } returns listOf(
-            "ad",
-            "adapt",
-            "add",
-            "adapter",
-            "Adapter",
-            "adopt"
+        coEvery { wordRepository.suggestWords(1L, "ad", 1L, 12) } returns listOf(
+            WordSuggestion(10L, "ad"),
+            WordSuggestion(1L, "adapt"),
+            WordSuggestion(11L, "add"),
+            WordSuggestion(12L, "adapter"),
+            WordSuggestion(13L, "Adapter"),
+            WordSuggestion(14L, "adopt")
         )
 
         val result = useCase(currentWord(), " ad ", limit = 3)
 
-        assertEquals(listOf("ad", "add", "adopt"), result)
-        coVerify(exactly = 1) { wordRepository.suggestWordSpellings(1L, "ad", 1L, 12) }
+        assertEquals(
+            listOf(
+                WordSuggestion(10L, "ad"),
+                WordSuggestion(11L, "add"),
+                WordSuggestion(14L, "adopt")
+            ),
+            result
+        )
+        coVerify(exactly = 1) { wordRepository.suggestWords(1L, "ad", 1L, 12) }
     }
 
     @Test
@@ -86,14 +95,21 @@ class StudyWordNoteUseCasesTest {
         )
 
         coEvery { wordRepository.findByNormalizedSpelling(1L, "adopt") } returns relatedWord
-        coEvery { wordPoolRepository.confirmWordRelation(1L, 1L, 2L) } returns true
+        coEvery {
+            wordPoolRepository.confirmWordRelation(1L, 1L, 2L, EdgeType.SEMANTIC_ANTONYM)
+        } returns true
 
-        val result = useCase(currentWord, " adopt ")
+        val result = useCase(
+            currentWord = currentWord,
+            rawInput = " adopt ",
+            edgeType = EdgeType.SEMANTIC_ANTONYM
+        )
 
         assertEquals(StudyWordNoteOutcome.PROMOTED, result.outcome)
         assertEquals(2L, result.relatedWordId)
         assertEquals("adopt", result.relatedSpelling)
         assertFalse(result.createdWord)
+        assertEquals("已将 adopt 标记为「反义」强关联", result.message)
         coVerify(exactly = 0) {
             backgroundTaskManager.enqueueWordNoteOrganize(
                 any(), any(), any(), any(), any(), any(), any(), any()
@@ -122,15 +138,23 @@ class StudyWordNoteUseCasesTest {
         )
 
         coEvery { wordRepository.findByNormalizedSpelling(1L, "adapter") } returns relatedWord
-        coEvery { wordPoolRepository.confirmWordRelation(1L, 1L, 3L) } returns false
+        coEvery {
+            wordPoolRepository.confirmWordRelation(1L, 1L, 3L, EdgeType.FAMILY_SAME_ROOT)
+        } returns false
         coEvery { backgroundTaskRepository.getTaskByDedupeKey("word_note:1:1:3") } returns null
 
-        val result = useCase(currentWord, "adapter")
+        val result = useCase(
+            currentWord = currentWord,
+            rawInput = "adapter",
+            edgeType = EdgeType.FAMILY_SAME_ROOT
+        )
 
         assertEquals(StudyWordNoteOutcome.PROMOTED, result.outcome)
         assertEquals(3L, result.relatedWordId)
         assertFalse(result.createdWord)
-        coVerify(exactly = 1) { wordPoolRepository.organizeWordNoteRelation(1L, 1L, 3L) }
+        coVerify(exactly = 1) {
+            wordPoolRepository.organizeWordNoteRelation(1L, 1L, 3L, EdgeType.FAMILY_SAME_ROOT)
+        }
         coVerify(exactly = 0) {
             backgroundTaskManager.enqueueWordNoteOrganize(
                 any(), any(), any(), any(), any(), any(), any(), any()
@@ -139,7 +163,7 @@ class StudyWordNoteUseCasesTest {
     }
 
     @Test
-    fun `returns already queued when repeated submit hits pending word note organize task`() = runTest {
+    fun `applies selected edge type while related word is still being organized`() = runTest {
         val wordRepository = mockk<WordRepository>()
         val wordPoolRepository = mockk<WordPoolRepository>(relaxed = true)
         val backgroundTaskRepository = mockk<BackgroundTaskRepository>()
@@ -173,15 +197,24 @@ class StudyWordNoteUseCasesTest {
         )
 
         coEvery { wordRepository.findByNormalizedSpelling(1L, "adaptation") } returns relatedWord
-        coEvery { wordPoolRepository.confirmWordRelation(1L, 1L, 7L) } returns false
+        coEvery {
+            wordPoolRepository.confirmWordRelation(1L, 1L, 7L, EdgeType.USAGE_COLLOCATION)
+        } returns false
         coEvery { backgroundTaskRepository.getTaskByDedupeKey("word_note:1:1:7") } returns pendingTask
 
-        val result = useCase(currentWord, "adaptation")
+        val result = useCase(
+            currentWord = currentWord,
+            rawInput = "adaptation",
+            edgeType = EdgeType.USAGE_COLLOCATION
+        )
 
-        assertEquals(StudyWordNoteOutcome.ALREADY_QUEUED, result.outcome)
+        assertEquals(StudyWordNoteOutcome.PROMOTED, result.outcome)
         assertEquals(7L, result.relatedWordId)
         assertFalse(result.createdWord)
-        coVerify(exactly = 0) { wordPoolRepository.organizeWordNoteRelation(any(), any(), any()) }
+        assertEquals("已将 adaptation 连接为「搭配」强关联，词条仍在后台整理", result.message)
+        coVerify(exactly = 1) {
+            wordPoolRepository.organizeWordNoteRelation(1L, 1L, 7L, EdgeType.USAGE_COLLOCATION)
+        }
         coVerify(exactly = 0) {
             backgroundTaskManager.enqueueWordNoteOrganize(
                 any(), any(), any(), any(), any(), any(), any(), any()
@@ -227,6 +260,7 @@ class StudyWordNoteUseCasesTest {
                 targetSpelling = "adaptation",
                 organizeTargetWordFirst = true,
                 targetReferenceHints = listOf("adapt"),
+                edgeType = EdgeType.SEMANTIC_OVERLAP,
                 force = true
             )
         } returns BackgroundTaskEnqueueResult.ENQUEUED
@@ -246,6 +280,7 @@ class StudyWordNoteUseCasesTest {
                 targetSpelling = "adaptation",
                 organizeTargetWordFirst = true,
                 targetReferenceHints = listOf("adapt"),
+                edgeType = EdgeType.SEMANTIC_OVERLAP,
                 force = true
             )
         }

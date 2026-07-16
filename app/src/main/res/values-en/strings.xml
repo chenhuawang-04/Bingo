@@ -201,6 +201,10 @@
     <string name="study_word_note_label">Word Note</string>
     <string name="study_word_note_placeholder">Type a related word you recall</string>
     <string name="study_word_note_submit">Add Note</string>
+    <string name="study_word_note_expand">Expand word note</string>
+    <string name="study_word_note_collapse">Collapse word note</string>
+    <string name="study_word_note_relation_type">Relation type</string>
+    <string name="study_word_note_select_suggestion">Select %1$s</string>
     <string name="study_select_relation">Select its \"%s\"</string>
     <string name="study_correct_answer">Correct! Marked as \"Good\"</string>
     <string name="study_wrong_answer">Wrong! Marked as \"Again\", retry later</string>

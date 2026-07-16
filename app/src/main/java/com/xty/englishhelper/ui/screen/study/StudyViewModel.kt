@@ -15,6 +15,7 @@ import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.BrainstormDailyGoal
 import com.xty.englishhelper.domain.model.BrainstormProgressResult
 import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
+import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
@@ -165,6 +166,7 @@ class StudyViewModel @Inject constructor(
                 _uiState.update { state ->
                     state.copy(
                         wordNoteEnabled = enabled,
+                        wordNoteExpanded = if (enabled) state.wordNoteExpanded else false,
                         wordNoteInput = if (enabled) state.wordNoteInput else "",
                         wordNoteSuggestions = if (enabled) state.wordNoteSuggestions else emptyList(),
                         wordNoteSuggestionsLoading = if (enabled) state.wordNoteSuggestionsLoading else false,
@@ -218,9 +220,9 @@ class StudyViewModel @Inject constructor(
 
                 when {
                     successTasks.isNotEmpty() -> {
-                        val successSpellings = successTasks.map { it.second.targetSpelling }
+                        val successPayloads = successTasks.map { it.second }
                         val failureCount = failedTasks.size
-                        val message = buildWordNoteCompletionMessage(successSpellings, failureCount)
+                        val message = buildWordNoteCompletionMessage(successPayloads, failureCount)
                         _uiState.update { state ->
                             state.copy(
                                 wordNoteSubmitting = false,
@@ -396,10 +398,12 @@ class StudyViewModel @Inject constructor(
                     currentWordRelatedSpellings = relatedSpellings,
                     currentWordEdges = edgePreviews,
                     wordNoteEnabled = noteEnabled,
+                    wordNoteExpanded = false,
                     wordNoteInput = "",
                     wordNoteSuggestions = emptyList(),
                     wordNoteSuggestionsLoading = false,
                     wordNoteSuggestionsExpanded = false,
+                    wordNoteEdgeType = EdgeType.SEMANTIC_OVERLAP,
                     wordNoteSubmitting = false,
                     wordNoteMessage = null,
                     wordNoteError = null,
@@ -745,6 +749,7 @@ class StudyViewModel @Inject constructor(
     fun onWordNoteInputChange(value: String) {
         _uiState.update {
             it.copy(
+                wordNoteExpanded = true,
                 wordNoteInput = value,
                 wordNoteSuggestionsExpanded = value.isNotBlank(),
                 wordNoteError = null,
@@ -754,12 +759,43 @@ class StudyViewModel @Inject constructor(
         requestWordNoteSuggestions(value)
     }
 
-    fun onWordNoteSuggestionSelected(suggestion: String) {
+    fun onWordNoteSuggestionSelected(suggestion: WordSuggestion) {
         cancelWordNoteSuggestionRequest()
         _uiState.update {
             it.copy(
-                wordNoteInput = suggestion,
+                wordNoteInput = suggestion.spelling,
+                wordNoteSuggestions = emptyList(),
+                wordNoteSuggestionsLoading = false,
                 wordNoteSuggestionsExpanded = false,
+                wordNoteError = null,
+                wordNoteMessage = null
+            )
+        }
+    }
+
+    fun setWordNoteExpanded(expanded: Boolean) {
+        val state = _uiState.value
+        if (!state.wordNoteEnabled || state.wordNoteSubmitting) return
+        if (expanded) {
+            _uiState.update { it.copy(wordNoteExpanded = true) }
+            requestWordNoteSuggestions(state.wordNoteInput)
+        } else {
+            cancelWordNoteSuggestionRequest()
+            _uiState.update {
+                it.copy(
+                    wordNoteExpanded = false,
+                    wordNoteSuggestions = emptyList(),
+                    wordNoteSuggestionsLoading = false,
+                    wordNoteSuggestionsExpanded = false
+                )
+            }
+        }
+    }
+
+    fun selectWordNoteEdgeType(edgeType: EdgeType) {
+        _uiState.update {
+            it.copy(
+                wordNoteEdgeType = edgeType,
                 wordNoteError = null,
                 wordNoteMessage = null
             )
@@ -798,7 +834,8 @@ class StudyViewModel @Inject constructor(
                 val result = submitStudyWordNote(
                     currentWord = currentWord,
                     rawInput = state.wordNoteInput,
-                    fallbackUnitIds = unitIds
+                    fallbackUnitIds = unitIds,
+                    edgeType = state.wordNoteEdgeType
                 )
                 if (_uiState.value.currentWord?.id != currentWord.id) return@launch
 
@@ -841,7 +878,7 @@ class StudyViewModel @Inject constructor(
 
     private fun requestWordNoteSuggestions(rawInput: String) {
         val currentWord = _uiState.value.currentWord
-        if (!_uiState.value.wordNoteEnabled || currentWord == null) {
+        if (!_uiState.value.wordNoteEnabled || !_uiState.value.wordNoteExpanded || currentWord == null) {
             clearWordNoteSuggestions()
             return
         }
@@ -921,13 +958,15 @@ class StudyViewModel @Inject constructor(
     }
 
     private fun buildWordNoteCompletionMessage(
-        successSpellings: List<String>,
+        successPayloads: List<WordNoteOrganizePayload>,
         failureCount: Int
     ): String {
-        val successPart = if (successSpellings.size == 1) {
-            "${successSpellings.first()} 已加入强关联"
+        val successPart = if (successPayloads.size == 1) {
+            val payload = successPayloads.first()
+            val edgeType = EdgeType.fromDbValue(payload.edgeType) ?: EdgeType.SEMANTIC_OVERLAP
+            "${payload.targetSpelling} 已加入「${edgeType.label}」强关联"
         } else {
-            "已加入 ${successSpellings.size} 个强关联词"
+            "已加入 ${successPayloads.size} 个指定类型的强关联词"
         }
         return if (failureCount > 0) {
             "$successPart，另有 $failureCount 个整理失败"

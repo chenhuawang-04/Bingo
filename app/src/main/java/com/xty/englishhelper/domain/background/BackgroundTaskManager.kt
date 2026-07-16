@@ -10,6 +10,7 @@ import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.ExamPaper
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
@@ -238,6 +239,7 @@ class BackgroundTaskManager @Inject constructor(
         targetSpelling: String,
         organizeTargetWordFirst: Boolean = false,
         targetReferenceHints: List<String> = emptyList(),
+        edgeType: EdgeType = EdgeType.SEMANTIC_OVERLAP,
         force: Boolean = true
     ): BackgroundTaskEnqueueResult {
         val highQualityEnabled = if (organizeTargetWordFirst) {
@@ -270,6 +272,7 @@ class BackgroundTaskManager @Inject constructor(
             sourceSpelling = sourceSpelling,
             targetWordId = targetWordId,
             targetSpelling = targetSpelling,
+            edgeType = edgeType.dbValue,
             organizeTargetWordFirst = organizeTargetWordFirst,
             targetReferenceHints = targetReferenceHints
                 .map { it.trim() }
@@ -736,7 +739,8 @@ class BackgroundTaskManager @Inject constructor(
         wordPoolRepository.organizeWordNoteRelation(
             dictionaryId = payload.dictionaryId,
             wordId = payload.sourceWordId,
-            relatedWordId = payload.targetWordId
+            relatedWordId = payload.targetWordId,
+            edgeType = EdgeType.fromDbValue(payload.edgeType) ?: EdgeType.SEMANTIC_OVERLAP
         )
         repository.updateProgress(task.id, totalSteps, totalSteps, "已连接到当前单词")
     }

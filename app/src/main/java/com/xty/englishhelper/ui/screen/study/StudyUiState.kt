@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.CloudWordExample
 import com.xty.englishhelper.domain.study.Rating
@@ -21,10 +22,12 @@ data class StudyUiState(
     val currentWordRelatedSpellings: List<String> = emptyList(),
     val currentWordEdges: List<WordEdgePreview> = emptyList(),
     val wordNoteEnabled: Boolean = false,
+    val wordNoteExpanded: Boolean = false,
     val wordNoteInput: String = "",
-    val wordNoteSuggestions: List<String> = emptyList(),
+    val wordNoteSuggestions: List<WordSuggestion> = emptyList(),
     val wordNoteSuggestionsLoading: Boolean = false,
     val wordNoteSuggestionsExpanded: Boolean = false,
+    val wordNoteEdgeType: EdgeType = EdgeType.SEMANTIC_OVERLAP,
     val wordNoteSubmitting: Boolean = false,
     val wordNoteMessage: String? = null,
     val wordNoteError: String? = null,
