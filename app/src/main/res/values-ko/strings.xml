@@ -452,7 +452,7 @@
     <string name="pool_graph_hide_unlinked">연결되지 않은 단어 숨기기</string>
     <string name="pool_graph_show_unlinked">연결되지 않은 단어 표시</string>
     <string name="pool_graph_load_failed">로드 실패: %s</string>
-    <string name="pool_graph_no_data">관계 데이터가 없습니다.\n먼저 사전 페이지에서 \"풀 생성 (품질)\"을 사용하여 단어 관계를 구축하세요.</string>
+    <string name="pool_graph_no_data">관계 데이터가 없습니다.\n먼저 사전 페이지에서 단어 풀을 생성하세요.</string>
     <string name="pool_graph_zoom_in">확대</string>
     <string name="pool_graph_zoom_out">축소</string>
     <string name="pool_graph_fit_all">전체 보기</string>
@@ -711,4 +711,20 @@
     <string name="question_writing_practice_refresh">Select again</string>
     <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
     <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
+    <string name="dict_pool_health">품질 우선 풀 검사 및 복구</string>
+    <string name="pool_health_title">품질 우선 풀 상태</string>
+    <string name="pool_health_auditing">기존 풀을 검사하는 중…</string>
+    <string name="pool_health_healthy">저장된 풀 구조가 정상입니다</string>
+    <string name="pool_health_needs_repair">풀 구성원 문제가 발견되었습니다</string>
+    <string name="pool_health_pool_count">기존 풀: %1$d · 예상 풀: %2$d</string>
+    <string name="pool_health_coverage">포함된 단어: %1$d · 예상: %2$d</string>
+    <string name="pool_health_edges_components">유효 관계: %1$d · 연결 요소: %2$d</string>
+    <string name="pool_health_oversized">15단어 초과 요소: %d</string>
+    <string name="pool_health_invalid">크기 오류 풀: %1$d · 비연결 풀: %2$d</string>
+    <string name="pool_health_uncovered">누락 단어: %1$d · 추가 구성원: %2$d</string>
+    <string name="pool_health_layout_mismatch">저장된 구성원 그룹이 현재 유효한 관계에서 계산한 전체 구성과 일치하지 않습니다.</string>
+    <string name="pool_health_edge_warnings">관계 경고: 고아 %1$d · 자기 루프 %2$d · 알 수 없는 유형 %3$d</string>
+    <string name="pool_health_repair">기존 관계로 복구</string>
+    <string name="pool_health_repairing">잘못된 관계를 정리하고 풀을 원자적으로 교체합니다. AI를 호출하지 않습니다.</string>
+    <string name="pool_health_failed">풀 상태를 읽을 수 없습니다</string>
 </resources>

@@ -4,6 +4,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.PoolHealthReport
 import com.xty.englishhelper.domain.organize.OrganizeTask
 
 enum class BuildStatus {
@@ -93,6 +94,11 @@ data class DictionaryUiState(
     val showQfConfirmDialog: Boolean = false,
     val qfWordCount: Int = 0,
     val outdatedStrategies: Set<String> = emptySet(),
+    val showPoolHealthDialog: Boolean = false,
+    val isAuditingPoolHealth: Boolean = false,
+    val isRepairingPools: Boolean = false,
+    val poolHealthReport: PoolHealthReport? = null,
+    val poolHealthError: String? = null,
     val organizeTasks: Map<Long, OrganizeTask> = emptyMap(),
     val organizingWordIds: Set<Long> = emptySet(),
     val showOrganizeDetailDialog: Boolean = false

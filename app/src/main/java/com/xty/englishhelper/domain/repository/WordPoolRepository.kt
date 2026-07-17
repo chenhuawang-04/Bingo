@@ -3,6 +3,8 @@ package com.xty.englishhelper.domain.repository
 import com.xty.englishhelper.domain.model.EdgeNeighbor
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolStrategy
+import com.xty.englishhelper.domain.model.PoolHealthReport
+import com.xty.englishhelper.domain.model.PoolRepairResult
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordGraph
@@ -11,6 +13,15 @@ import com.xty.englishhelper.domain.model.WordPool
 
 interface WordPoolRepository {
     suspend fun getPoolsForWord(wordId: Long): List<WordPool>
+
+    /** Read-only audit of persisted QUALITY_FIRST pools against the current effective edge graph. */
+    suspend fun auditQualityFirstPools(dictionaryId: Long): PoolHealthReport
+
+    /** Rebuilds QUALITY_FIRST pool rows from existing edges and removes structurally invalid edge rows; no AI calls. */
+    suspend fun repairQualityFirstPoolsFromExistingEdges(dictionaryId: Long): PoolRepairResult
+
+    /** Invalidates the in-memory relation graph after external word/dictionary mutations. */
+    suspend fun invalidateRelationGraph(dictionaryId: Long)
 
     /**
      * 轻量预览：仅取当前词满足最低置信度门槛的邻居，用于背词页预答案态的关系图。

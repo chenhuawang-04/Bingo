@@ -1,8 +1,10 @@
 package com.xty.englishhelper.data.repository
 
 import com.xty.englishhelper.data.local.dao.DictionaryDao
+import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.repository.DictionaryRepository
+import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.data.mapper.toDomain
 import com.xty.englishhelper.data.mapper.toEntity
 import kotlinx.coroutines.flow.Flow
@@ -12,7 +14,9 @@ import javax.inject.Singleton
 
 @Singleton
 class DictionaryRepositoryImpl @Inject constructor(
-    private val dao: DictionaryDao
+    private val dao: DictionaryDao,
+    private val wordEdgeDao: WordEdgeDao,
+    private val transactionRunner: TransactionRunner
 ) : DictionaryRepository {
 
     override fun getAllDictionaries(): Flow<List<Dictionary>> =
@@ -31,8 +35,13 @@ class DictionaryRepositoryImpl @Inject constructor(
     override suspend fun updateDictionary(dictionary: Dictionary) =
         dao.update(dictionary.toEntity())
 
-    override suspend fun deleteDictionary(id: Long) =
-        dao.deleteById(id)
+    override suspend fun deleteDictionary(id: Long) {
+        transactionRunner.runInTransaction {
+            wordEdgeDao.deleteByDictionary(id)
+            wordEdgeDao.deleteExcludedByDictionary(id)
+            dao.deleteById(id)
+        }
+    }
 
     override suspend fun updateWordCount(dictionaryId: Long) =
         dao.updateWordCount(dictionaryId)

@@ -12,6 +12,7 @@ import com.xty.englishhelper.data.json.SynonymJsonModel
 import com.xty.englishhelper.data.json.SyncManifest
 import com.xty.englishhelper.data.json.UnitJsonModel
 import com.xty.englishhelper.data.json.WordJsonModel
+import com.xty.englishhelper.data.json.WordEdgeJsonModel
 import com.xty.englishhelper.data.json.WordPhraseJsonModel
 import com.xty.englishhelper.data.json.WordPhraseTagJsonModel
 import com.xty.englishhelper.data.json.WordPoolJsonModel
@@ -46,6 +47,7 @@ class DictionaryShardAssemblerTest {
         assertEquals(model.updatedAt, assembled.updatedAt)
         assertEquals(model.units, assembled.units)
         assertEquals(model.wordPools, assembled.wordPools)
+        assertEquals(model.wordEdges.sortedBy { it.wordUidB }, assembled.wordEdges.sortedBy { it.wordUidB })
         assertEquals(model.phraseTags, assembled.phraseTags)
         assertEquals(
             model.words.sortedBy { it.wordUid },
@@ -60,6 +62,9 @@ class DictionaryShardAssemblerTest {
             assembled.wordPhrases.sortedBy { it.phraseUid }
         )
         assertEquals(model.wordPhrases.size, sharded.index.totalWordPhrases)
+        assertEquals(model.wordEdges.size, sharded.index.totalWordEdges)
+        assertTrue(sharded.index.wordEdges.isEmpty())
+        assertEquals(model.wordEdges.size, sharded.chunks.sumOf { it.payload.wordEdges.size })
         assertEquals(model.phraseTags, sharded.index.phraseTags)
     }
 
@@ -161,7 +166,7 @@ class DictionaryShardAssemblerTest {
             name = "Large Dictionary",
             description = "Dictionary for shard testing",
             color = 0xFF123456.toInt(),
-            schemaVersion = 10,
+            schemaVersion = 11,
             createdAt = 111L,
             updatedAt = 222L,
             words = words,
@@ -184,6 +189,15 @@ class DictionaryShardAssemblerTest {
                     algorithmVersion = "BALANCED_v1"
                 )
             ),
+            wordEdges = (2..wordCount).map { index ->
+                WordEdgeJsonModel(
+                    wordUidA = "uid-1",
+                    wordUidB = "uid-$index",
+                    edgeType = "SEMANTIC_SYNONYM",
+                    confidence = 0.8,
+                    updatedAt = 8000L + index
+                )
+            },
             phraseTags = listOf(
                 WordPhraseTagJsonModel(
                     tagUid = "tag-writing",

@@ -103,7 +103,6 @@ internal fun poolTaskMutexKey(task: BackgroundTask): PoolTaskMutexKey? {
 
         BackgroundTaskType.WORD_POOL_REBUILD -> {
             val payload = task.payload as? WordPoolRebuildPayload ?: return null
-            if (payload.strategy != PoolStrategy.QUALITY_FIRST.name) return null
             PoolTaskMutexKey(payload.dictionaryId, EDGE_WRITE_MUTEX)
         }
 

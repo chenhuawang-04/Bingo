@@ -452,7 +452,7 @@
     <string name="pool_graph_hide_unlinked">Скрыть слова без связей</string>
     <string name="pool_graph_show_unlinked">Показать слова без связей</string>
     <string name="pool_graph_load_failed">Ошибка загрузки: %s</string>
-    <string name="pool_graph_no_data">Нет данных о связях.\nСначала используйте «Сформировать пул (Качество)» на странице словаря для построения связей между словами.</string>
+    <string name="pool_graph_no_data">Нет данных о связях.\nСначала сформируйте пул слов на странице словаря.</string>
     <string name="pool_graph_zoom_in">Приблизить</string>
     <string name="pool_graph_zoom_out">Отдалить</string>
     <string name="pool_graph_fit_all">Вписать все</string>
@@ -709,4 +709,20 @@
     <string name="question_writing_practice_refresh">Select again</string>
     <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
     <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
+    <string name="dict_pool_health">Проверить и восстановить качественные пулы</string>
+    <string name="pool_health_title">Состояние качественных пулов</string>
+    <string name="pool_health_auditing">Проверка существующих пулов…</string>
+    <string name="pool_health_healthy">Сохранённая структура пулов исправна</string>
+    <string name="pool_health_needs_repair">Обнаружены проблемы состава пулов</string>
+    <string name="pool_health_pool_count">Существующие пулы: %1$d · План: %2$d</string>
+    <string name="pool_health_coverage">Охвачено слов: %1$d · Ожидается: %2$d</string>
+    <string name="pool_health_edges_components">Действующие связи: %1$d · Компоненты: %2$d</string>
+    <string name="pool_health_oversized">Компоненты больше 15 слов: %d</string>
+    <string name="pool_health_invalid">Неверный размер: %1$d · Несвязные пулы: %2$d</string>
+    <string name="pool_health_uncovered">Пропущено слов: %1$d · Лишние участники: %2$d</string>
+    <string name="pool_health_layout_mismatch">Сохранённые группы не соответствуют полной структуре, рассчитанной по текущим действующим связям.</string>
+    <string name="pool_health_edge_warnings">Предупреждения: потерянные %1$d · петли %2$d · неизвестный тип %3$d</string>
+    <string name="pool_health_repair">Восстановить по существующим связям</string>
+    <string name="pool_health_repairing">Удаление неверных связей и атомарная замена пулов. Вызовы ИИ не выполняются.</string>
+    <string name="pool_health_failed">Не удалось прочитать состояние пулов</string>
 </resources>

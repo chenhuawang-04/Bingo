@@ -43,7 +43,7 @@ class BackgroundTaskManagerSelectionTest {
         assertEquals(PoolTaskMutexKey(10L, "__EDGE_WRITE__"), poolTaskMutexKey(reviewTask))
         assertEquals(PoolTaskMutexKey(10L, "__EDGE_WRITE__"), poolTaskMutexKey(qualityFirstTask))
         assertEquals(PoolTaskMutexKey(10L, "__EDGE_WRITE__"), poolTaskMutexKey(noteTask))
-        assertEquals(null, poolTaskMutexKey(balancedTask))
+        assertEquals(PoolTaskMutexKey(10L, "__EDGE_WRITE__"), poolTaskMutexKey(balancedTask))
     }
 
     @Test
@@ -91,7 +91,7 @@ class BackgroundTaskManagerSelectionTest {
             slots = 3
         )
 
-        assertEquals(listOf(2L, 3L), selected.map { it.id })
+        assertEquals(listOf(2L), selected.map { it.id })
     }
 
     @Test
@@ -132,6 +132,26 @@ class BackgroundTaskManagerSelectionTest {
         )
 
         assertEquals(listOf(11L, 13L), selected.map { it.id })
+    }
+
+    @Test
+    fun `balanced and balanced ai rebuilds cannot write the same dictionary concurrently`() {
+        val pending = listOf(
+            poolTaskTask(
+                id = 21L,
+                type = BackgroundTaskType.WORD_POOL_REBUILD,
+                payload = WordPoolRebuildPayload(dictionaryId = 9L, strategy = "BALANCED")
+            ),
+            poolTaskTask(
+                id = 22L,
+                type = BackgroundTaskType.WORD_POOL_REBUILD,
+                payload = WordPoolRebuildPayload(dictionaryId = 9L, strategy = "BALANCED_WITH_AI")
+            )
+        )
+
+        val selected = selectLaunchablePendingTasks(pending, emptyList(), slots = 2)
+
+        assertEquals(listOf(21L), selected.map { it.id })
     }
 
     private fun poolTaskTask(

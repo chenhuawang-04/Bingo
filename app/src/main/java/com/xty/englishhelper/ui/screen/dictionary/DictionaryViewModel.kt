@@ -21,12 +21,15 @@ import com.xty.englishhelper.domain.usecase.dictionary.GetDictionaryByIdUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetPoolCountUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetPoolEdgeCountUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetPoolVersionInfoUseCase
+import com.xty.englishhelper.domain.usecase.pool.AuditQualityFirstPoolsUseCase
+import com.xty.englishhelper.domain.usecase.pool.RepairQualityFirstPoolsUseCase
 import com.xty.englishhelper.domain.usecase.unit.CreateUnitUseCase
 import com.xty.englishhelper.domain.usecase.unit.GetUnitsWithWordCountUseCase
 import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
 import com.xty.englishhelper.domain.usecase.word.GetWordsByDictionaryUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +37,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -48,6 +52,8 @@ class DictionaryViewModel @Inject constructor(
     private val getPoolCount: GetPoolCountUseCase,
     private val getPoolEdgeCount: GetPoolEdgeCountUseCase,
     private val getPoolVersionInfo: GetPoolVersionInfoUseCase,
+    private val auditQualityFirstPoolsUseCase: AuditQualityFirstPoolsUseCase,
+    private val repairQualityFirstPoolsUseCase: RepairQualityFirstPoolsUseCase,
     private val backgroundOrganizeManager: BackgroundOrganizeManager,
     private val backgroundTaskManager: BackgroundTaskManager,
     private val taskRepository: BackgroundTaskRepository,
@@ -101,6 +107,7 @@ class DictionaryViewModel @Inject constructor(
                         )
                     }
                     loadPhraseInfo()
+                    loadPoolInfo()
                 }
         }
     }
@@ -657,6 +664,71 @@ class DictionaryViewModel @Inject constructor(
 
     fun clearReviewError() {
         _uiState.update { it.copy(reviewError = null) }
+    }
+
+    fun requestPoolHealthAudit() {
+        if (_uiState.value.isAuditingPoolHealth || _uiState.value.isRepairingPools) return
+        _uiState.update {
+            it.copy(
+                showPoolHealthDialog = true,
+                isAuditingPoolHealth = true,
+                poolHealthReport = null,
+                poolHealthError = null
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { auditQualityFirstPoolsUseCase(dictionaryId) }
+            }.onSuccess { report ->
+                _uiState.update {
+                    it.copy(isAuditingPoolHealth = false, poolHealthReport = report)
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isAuditingPoolHealth = false,
+                        poolHealthError = error.message ?: "词池健康检查失败"
+                    )
+                }
+            }
+        }
+    }
+
+    fun repairQualityFirstPools() {
+        val report = _uiState.value.poolHealthReport ?: return
+        if (!report.canRepairFromExistingEdges || _uiState.value.isRepairingPools) return
+        _uiState.update { it.copy(isRepairingPools = true, poolHealthError = null) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { repairQualityFirstPoolsUseCase(dictionaryId) }
+            }.onSuccess { result ->
+                _uiState.update {
+                    it.copy(
+                        isRepairingPools = false,
+                        poolHealthReport = result.after
+                    )
+                }
+                loadPoolInfo()
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isRepairingPools = false,
+                        poolHealthError = error.message ?: "词池修复失败"
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissPoolHealthDialog() {
+        if (_uiState.value.isAuditingPoolHealth || _uiState.value.isRepairingPools) return
+        _uiState.update {
+            it.copy(
+                showPoolHealthDialog = false,
+                isAuditingPoolHealth = false,
+                poolHealthError = null
+            )
+        }
     }
 
     // ── 词组/短语整理 ──

@@ -457,7 +457,7 @@
     <string name="pool_graph_hide_unlinked">Masquer les mots non liés</string>
     <string name="pool_graph_show_unlinked">Afficher les mots non liés</string>
     <string name="pool_graph_load_failed">Échec du chargement : %s</string>
-    <string name="pool_graph_no_data">Aucune donnée de relation.\nUtilisez d\'abord « Générer le pool (Qualité) » pour construire les relations.</string>
+    <string name="pool_graph_no_data">Aucune donnée de relation.\nGénérez d’abord un pool de mots depuis la page du dictionnaire.</string>
     <string name="pool_graph_zoom_in">Zoom avant</string>
     <string name="pool_graph_zoom_out">Zoom arrière</string>
     <string name="pool_graph_fit_all">Tout afficher</string>
@@ -714,4 +714,20 @@
     <string name="question_writing_practice_refresh">Select again</string>
     <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
     <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
+    <string name="dict_pool_health">Auditer et réparer les pools prioritaires</string>
+    <string name="pool_health_title">Santé des pools prioritaires</string>
+    <string name="pool_health_auditing">Audit des pools existants…</string>
+    <string name="pool_health_healthy">La structure enregistrée est saine</string>
+    <string name="pool_health_needs_repair">Des problèmes de membres ont été détectés</string>
+    <string name="pool_health_pool_count">Pools existants : %1$d · Prévus : %2$d</string>
+    <string name="pool_health_coverage">Mots couverts : %1$d · Attendus : %2$d</string>
+    <string name="pool_health_edges_components">Relations actives : %1$d · Composantes : %2$d</string>
+    <string name="pool_health_oversized">Composantes de plus de 15 mots : %d</string>
+    <string name="pool_health_invalid">Taille invalide : %1$d · Pools déconnectés : %2$d</string>
+    <string name="pool_health_uncovered">Mots manquants : %1$d · Membres en trop : %2$d</string>
+    <string name="pool_health_layout_mismatch">Les groupes enregistrés ne correspondent pas à la disposition complète dérivée des relations effectives actuelles.</string>
+    <string name="pool_health_edge_warnings">Alertes : orphelines %1$d · boucles %2$d · type inconnu %3$d</string>
+    <string name="pool_health_repair">Réparer depuis les relations existantes</string>
+    <string name="pool_health_repairing">Nettoyage des relations invalides et remplacement atomique des pools. Aucun appel IA.</string>
+    <string name="pool_health_failed">Impossible de lire la santé des pools</string>
 </resources>

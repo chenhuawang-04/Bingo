@@ -452,7 +452,7 @@
     <string name="pool_graph_hide_unlinked">Nicht verknüpfte Wörter ausblenden</string>
     <string name="pool_graph_show_unlinked">Nicht verknüpfte Wörter anzeigen</string>
     <string name="pool_graph_load_failed">Laden fehlgeschlagen: %s</string>
-    <string name="pool_graph_no_data">Keine Beziehungsdaten.\nVerwende zuerst „Pool erstellen (Qualität)" auf der Wörterbuchseite, um Wortbeziehungen aufzubauen.</string>
+    <string name="pool_graph_no_data">Keine Beziehungsdaten.\nErstelle zuerst einen Wortpool auf der Wörterbuchseite.</string>
     <string name="pool_graph_zoom_in">Hineinzoomen</string>
     <string name="pool_graph_zoom_out">Herauszoomen</string>
     <string name="pool_graph_fit_all">Alle einpassen</string>
@@ -712,4 +712,20 @@
     <string name="question_writing_practice_refresh">Select again</string>
     <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
     <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
+    <string name="dict_pool_health">Quality-First-Pools prüfen und reparieren</string>
+    <string name="pool_health_title">Zustand der Quality-First-Pools</string>
+    <string name="pool_health_auditing">Vorhandene Pools werden geprüft…</string>
+    <string name="pool_health_healthy">Die gespeicherte Pool-Struktur ist fehlerfrei</string>
+    <string name="pool_health_needs_repair">Probleme mit Pool-Mitgliedschaften gefunden</string>
+    <string name="pool_health_pool_count">Vorhandene Pools: %1$d · Geplant: %2$d</string>
+    <string name="pool_health_coverage">Abgedeckte Wörter: %1$d · Erwartet: %2$d</string>
+    <string name="pool_health_edges_components">Wirksame Kanten: %1$d · Komponenten: %2$d</string>
+    <string name="pool_health_oversized">Komponenten mit mehr als 15 Wörtern: %d</string>
+    <string name="pool_health_invalid">Pools mit falscher Größe: %1$d · Nicht verbundene Pools: %2$d</string>
+    <string name="pool_health_uncovered">Fehlende Wörter: %1$d · Überzählige Mitglieder: %2$d</string>
+    <string name="pool_health_layout_mismatch">Die gespeicherten Gruppen entsprechen nicht dem vollständigen Layout der aktuell wirksamen Kanten.</string>
+    <string name="pool_health_edge_warnings">Kantenwarnungen: verwaist %1$d · Schleifen %2$d · unbekannt %3$d</string>
+    <string name="pool_health_repair">Aus vorhandenen Kanten reparieren</string>
+    <string name="pool_health_repairing">Ungültige Kanten werden bereinigt und Quality-First-Pools atomar ersetzt. Keine KI-Aufrufe.</string>
+    <string name="pool_health_failed">Pool-Zustand konnte nicht gelesen werden</string>
 </resources>

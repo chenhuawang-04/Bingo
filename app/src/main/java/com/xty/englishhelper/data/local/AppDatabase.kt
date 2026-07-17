@@ -103,7 +103,7 @@ import java.util.UUID
         WordPhraseTagCrossRef::class,
         WordPhraseOrganizeMarkEntity::class
     ],
-    version = 33,
+    version = 34,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1218,6 +1218,13 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_32_33 = object : Migration(32, 33) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE word_phrases ADD COLUMN practice_count INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_33_34 = object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE word_edges ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE word_edges SET updated_at = created_at WHERE updated_at = 0")
             }
         }
     }

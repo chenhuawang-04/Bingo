@@ -7,8 +7,10 @@ import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordLabelProjection
 import com.xty.englishhelper.data.local.dao.WordPoolDao
+import com.xty.englishhelper.data.local.dao.WordPoolMembership
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.local.entity.WordEntity
+import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.relation.WordWithDetails
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.AiApiClientProvider
@@ -30,6 +32,52 @@ import org.junit.Test
 class WordPoolRepositoryImplGraphTest {
 
     @Test
+    fun `health audit reports a persisted quality-first pool that dropped an edge endpoint`() = runTest {
+        val wordDao = mockk<WordDao>()
+        val wordEdgeDao = mockk<WordEdgeDao>()
+        val wordPoolDao = mockk<WordPoolDao>()
+        val repository = repository(wordDao = wordDao, wordEdgeDao = wordEdgeDao, wordPoolDao = wordPoolDao)
+        val edges = (2L..16L).map { leafId ->
+            WordEdgeEntity(
+                id = leafId - 1,
+                wordIdA = 1L,
+                wordIdB = leafId,
+                edgeType = EdgeType.SEMANTIC_SYNONYM.dbValue,
+                dictionaryId = 1L,
+                status = "support",
+                confidence = 0.9
+            )
+        }
+
+        coEvery { wordDao.getWordLabels(1L) } returns (1L..16L).map { id ->
+            WordLabelProjection(id = id, spelling = "word-$id")
+        }
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 0L, any()) } returns edges
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 15L, any()) } returns emptyList()
+        coEvery { wordPoolDao.getPoolsByDictionary(1L) } returns listOf(
+            WordPoolEntity(
+                id = 100L,
+                dictionaryId = 1L,
+                strategy = PoolStrategy.QUALITY_FIRST.dbValue,
+                algorithmVersion = "QF_v3"
+            )
+        )
+        coEvery { wordPoolDao.getAllMemberships(1L) } returns (1L..15L).map { wordId ->
+            WordPoolMembership(wordId = wordId, poolId = 100L)
+        }
+
+        val report = repository.auditQualityFirstPools(1L)
+
+        assertEquals(15, report.validEdgeCount)
+        assertEquals(16, report.expectedCoveredWordCount)
+        assertEquals(15, report.existingCoveredWordCount)
+        assertEquals(1, report.uncoveredWordCount)
+        assertEquals(2, report.plannedPoolCount)
+        assertTrue(report.layoutMismatch)
+        assertTrue(!report.isHealthy)
+    }
+
+    @Test
     fun `relation graph uses lightweight edge projection and caches immediate reloads`() = runTest {
         val wordDao = mockk<WordDao>()
         val wordEdgeDao = mockk<WordEdgeDao>()
@@ -40,7 +88,7 @@ class WordPoolRepositoryImplGraphTest {
             WordLabelProjection(id = 20L, spelling = "adopt")
         )
         coEvery { wordEdgeDao.countEdges(1L) } returns 1
-        coEvery { wordEdgeDao.getGraphEdgesPage(1L, 0L, any()) } returns listOf(
+        coEvery { wordEdgeDao.getEffectiveGraphEdgesPage(1L, 0L, any(), any(), any()) } returns listOf(
             GraphEdgeProjection(
                 id = 7L,
                 wordIdA = 10L,
@@ -50,7 +98,7 @@ class WordPoolRepositoryImplGraphTest {
                 confidence = 0.8
             )
         )
-        coEvery { wordEdgeDao.getGraphEdgesPage(1L, 7L, any()) } returns emptyList()
+        coEvery { wordEdgeDao.getEffectiveGraphEdgesPage(1L, 7L, any(), any(), any()) } returns emptyList()
 
         val first = repository.getWordRelationGraph(1L)
         val second = repository.getWordRelationGraph(1L)
@@ -61,8 +109,8 @@ class WordPoolRepositoryImplGraphTest {
         assertEquals(EdgeType.FORM_SPELLING, first.edges.single().type)
         coVerify(exactly = 1) { wordDao.getWordLabels(1L) }
         coVerify(exactly = 1) { wordEdgeDao.countEdges(1L) }
-        coVerify(exactly = 1) { wordEdgeDao.getGraphEdgesPage(1L, 0L, any()) }
-        coVerify(exactly = 1) { wordEdgeDao.getGraphEdgesPage(1L, 7L, any()) }
+        coVerify(exactly = 1) { wordEdgeDao.getEffectiveGraphEdgesPage(1L, 0L, any(), any(), any()) }
+        coVerify(exactly = 1) { wordEdgeDao.getEffectiveGraphEdgesPage(1L, 7L, any(), any(), any()) }
         coVerify(exactly = 0) { wordEdgeDao.getGraphEdges(any()) }
         coVerify(exactly = 0) { wordEdgeDao.getAllEdges(any()) }
     }
@@ -196,22 +244,24 @@ class WordPoolRepositoryImplGraphTest {
 
     @Test
     fun `confirm word relation only promotes confidence without rebuilding pools`() = runTest {
+        val wordDao = mockk<WordDao>()
         val wordEdgeDao = mockk<WordEdgeDao>()
         val wordPoolDao = mockk<WordPoolDao>(relaxed = true)
-        val repository = repository(wordEdgeDao = wordEdgeDao, wordPoolDao = wordPoolDao)
+        val repository = repository(wordDao = wordDao, wordEdgeDao = wordEdgeDao, wordPoolDao = wordPoolDao)
 
-        coEvery { wordEdgeDao.getEdgesBetweenWords(1L, 10L, 20L) } returns listOf(
-            WordEdgeEntity(
-                id = 7L,
-                wordIdA = 10L,
-                wordIdB = 20L,
-                edgeType = EdgeType.FORM_SPELLING.dbValue,
-                dictionaryId = 1L,
-                status = "optional",
-                confidence = 0.42
-            )
+        val existingEdge = WordEdgeEntity(
+            id = 7L,
+            wordIdA = 10L,
+            wordIdB = 20L,
+            edgeType = EdgeType.FORM_SPELLING.dbValue,
+            dictionaryId = 1L,
+            status = "optional",
+            confidence = 0.42
         )
-        coEvery { wordEdgeDao.updateEdgeStatus(any(), any(), any()) } returns Unit
+        coEvery { wordDao.getWordById(10L) } returns wordWithDetails(10L, 1L, "adapt")
+        coEvery { wordDao.getWordById(20L) } returns wordWithDetails(20L, 1L, "adopt")
+        coEvery { wordEdgeDao.getEdgesBetweenWords(1L, 10L, 20L) } returns listOf(existingEdge)
+        coEvery { wordEdgeDao.promoteUserEdge(any(), any(), any(), any()) } returns Unit
 
         val confirmed = repository.confirmWordRelation(
             dictionaryId = 1L,
@@ -221,7 +271,7 @@ class WordPoolRepositoryImplGraphTest {
         )
 
         assertTrue(confirmed)
-        coVerify(exactly = 1) { wordEdgeDao.updateEdgeStatus(7L, "optional", 1.0) }
+        coVerify(exactly = 1) { wordEdgeDao.promoteUserEdge(7L, "support", 1.0, "user_note") }
         coVerify(exactly = 0) { wordPoolDao.deleteByDictionaryAndStrategy(any(), any()) }
         coVerify(exactly = 0) { wordPoolDao.insertPool(any()) }
         coVerify(exactly = 0) { wordPoolDao.insertMembers(any()) }
@@ -234,19 +284,28 @@ class WordPoolRepositoryImplGraphTest {
         val insertedEdge = slot<WordEdgeEntity>()
         val repository = repository(wordDao = wordDao, wordEdgeDao = wordEdgeDao)
 
-        coEvery { wordEdgeDao.getEdgesBetweenWords(1L, 10L, 20L) } returns listOf(
-            WordEdgeEntity(
-                id = 7L,
-                wordIdA = 10L,
-                wordIdB = 20L,
-                edgeType = EdgeType.FORM_SPELLING.dbValue,
-                dictionaryId = 1L,
-                confidence = 0.42
-            )
+        val existingEdge = WordEdgeEntity(
+            id = 7L,
+            wordIdA = 10L,
+            wordIdB = 20L,
+            edgeType = EdgeType.FORM_SPELLING.dbValue,
+            dictionaryId = 1L,
+            confidence = 0.42
+        )
+        val selectedEdge = existingEdge.copy(
+            id = 8L,
+            edgeType = EdgeType.SEMANTIC_ANTONYM.dbValue,
+            confidence = 1.0,
+            evidenceSource = "user_note"
+        )
+        coEvery { wordEdgeDao.getEdgesBetweenWords(1L, 10L, 20L) } returnsMany listOf(
+            listOf(existingEdge),
+            listOf(existingEdge, selectedEdge)
         )
         coEvery { wordDao.getWordById(10L) } returns wordWithDetails(10L, 1L, "adapt")
         coEvery { wordDao.getWordById(20L) } returns wordWithDetails(20L, 1L, "adopt")
         coEvery { wordEdgeDao.insertEdgeIfAbsent(capture(insertedEdge)) } returns 8L
+        coEvery { wordEdgeDao.promoteUserEdge(any(), any(), any(), any()) } returns Unit
 
         val confirmed = repository.confirmWordRelation(
             dictionaryId = 1L,
@@ -259,7 +318,7 @@ class WordPoolRepositoryImplGraphTest {
         assertEquals(EdgeType.SEMANTIC_ANTONYM.dbValue, insertedEdge.captured.edgeType)
         assertEquals(1.0, insertedEdge.captured.confidence, 0.0)
         assertEquals("user_note", insertedEdge.captured.evidenceSource)
-        coVerify(exactly = 0) { wordEdgeDao.updateEdgeStatus(any(), any(), any()) }
+        coVerify(exactly = 1) { wordEdgeDao.promoteUserEdge(8L, "support", 1.0, "user_note") }
     }
 
     @Test
@@ -293,7 +352,7 @@ class WordPoolRepositoryImplGraphTest {
             )
         )
         coEvery { wordEdgeDao.insertEdgeIfAbsent(capture(insertedEdge)) } returns -1L
-        coEvery { wordEdgeDao.updateEdgeStatus(any(), any(), any()) } returns Unit
+        coEvery { wordEdgeDao.promoteUserEdge(any(), any(), any(), any()) } returns Unit
 
         repository.organizeWordNoteRelation(
             dictionaryId = 1L,
@@ -303,7 +362,7 @@ class WordPoolRepositoryImplGraphTest {
         )
 
         coVerify(exactly = 1) { wordEdgeDao.insertEdgeIfAbsent(any()) }
-        coVerify(exactly = 1) { wordEdgeDao.updateEdgeStatus(8L, "warning", 1.0) }
+        coVerify(exactly = 1) { wordEdgeDao.promoteUserEdge(8L, "support", 1.0, "user_note") }
         coVerify(exactly = 0) { wordEdgeDao.upsertEdge(any()) }
         assertEquals(10L, insertedEdge.captured.wordIdA)
         assertEquals(20L, insertedEdge.captured.wordIdB)

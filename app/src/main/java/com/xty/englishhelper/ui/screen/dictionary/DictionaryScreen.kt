@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -63,6 +64,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.PoolStrategy
+import com.xty.englishhelper.domain.model.PoolHealthReport
 import com.xty.englishhelper.domain.organize.OrganizeTaskStatus
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
 import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
@@ -199,6 +201,16 @@ fun DictionaryScreen(
                                 viewModel.requestReviewPools()
                             },
                             enabled = state.edgeCount > 0 &&
+                                !state.isRebuildingPools &&
+                                !state.isReviewingPools
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.dict_pool_health)) },
+                            onClick = {
+                                showPoolMenu = false
+                                viewModel.requestPoolHealthAudit()
+                            },
+                            enabled = (state.edgeCount > 0 || state.poolCount > 0) &&
                                 !state.isRebuildingPools &&
                                 !state.isReviewingPools
                         )
@@ -428,6 +440,17 @@ fun DictionaryScreen(
         )
     }
 
+    if (state.showPoolHealthDialog) {
+        PoolHealthDialog(
+            report = state.poolHealthReport,
+            isLoading = state.isAuditingPoolHealth,
+            isRepairing = state.isRepairingPools,
+            error = state.poolHealthError,
+            onRepair = viewModel::repairQualityFirstPools,
+            onDismiss = viewModel::dismissPoolHealthDialog
+        )
+    }
+
     if (state.showPhraseOrganizeConfirmDialog) {
         val wordCount = state.words.size
         val estimatedTokens = wordCount * 450
@@ -555,6 +578,106 @@ fun DictionaryScreen(
             }
         )
     }
+}
+
+@Composable
+private fun PoolHealthDialog(
+    report: PoolHealthReport?,
+    isLoading: Boolean,
+    isRepairing: Boolean,
+    error: String?,
+    onRepair: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.pool_health_title)) },
+        text = {
+            when {
+                isLoading -> Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.size(12.dp))
+                    Text(stringResource(R.string.pool_health_auditing))
+                }
+
+                report != null -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = if (report.isHealthy) {
+                            stringResource(R.string.pool_health_healthy)
+                        } else {
+                            stringResource(R.string.pool_health_needs_repair)
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (report.isHealthy) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        }
+                    )
+                    Text(stringResource(R.string.pool_health_pool_count, report.existingPoolCount, report.plannedPoolCount))
+                    Text(stringResource(R.string.pool_health_coverage, report.existingCoveredWordCount, report.expectedCoveredWordCount))
+                    Text(stringResource(R.string.pool_health_edges_components, report.validEdgeCount, report.connectedComponentCount))
+                    Text(stringResource(R.string.pool_health_oversized, report.oversizedComponentCount))
+                    Text(stringResource(R.string.pool_health_invalid, report.invalidSizePoolCount, report.disconnectedPoolCount))
+                    Text(stringResource(R.string.pool_health_uncovered, report.uncoveredWordCount, report.extraneousMemberCount))
+                    if (report.layoutMismatch) {
+                        Text(
+                            stringResource(R.string.pool_health_layout_mismatch),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    if (report.orphanEdgeCount + report.selfLoopEdgeCount + report.unknownTypeEdgeCount > 0) {
+                        Text(
+                            stringResource(
+                                R.string.pool_health_edge_warnings,
+                                report.orphanEdgeCount,
+                                report.selfLoopEdgeCount,
+                                report.unknownTypeEdgeCount
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    if (!error.isNullOrBlank()) {
+                        Text(
+                            error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    if (isRepairing) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Text(
+                            stringResource(R.string.pool_health_repairing),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+                else -> Text(error ?: stringResource(R.string.pool_health_failed))
+            }
+        },
+        confirmButton = {
+            if (report != null && !report.isHealthy) {
+                TextButton(
+                    onClick = onRepair,
+                    enabled = report.canRepairFromExistingEdges && !isRepairing
+                ) {
+                    Text(stringResource(R.string.pool_health_repair))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading && !isRepairing) {
+                Text(stringResource(R.string.common_close))
+            }
+        }
+    )
 }
 
 @Composable

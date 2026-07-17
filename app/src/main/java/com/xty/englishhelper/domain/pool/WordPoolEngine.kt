@@ -1,5 +1,7 @@
 package com.xty.englishhelper.domain.pool
 
+import com.xty.englishhelper.domain.model.EdgeType
+
 data class PoolCandidate(
     val index: Int,
     val wordId: Long,
@@ -14,6 +16,18 @@ data class PoolCandidate(
 data class BuiltPool(
     val memberIndices: List<Int>,
     val coreIndex: Int? = null
+)
+
+data class BalancedPoolRelation(
+    val indexA: Int,
+    val indexB: Int,
+    val edgeType: EdgeType,
+    val evidenceSource: String
+)
+
+data class BalancedPoolBuild(
+    val pools: List<BuiltPool>,
+    val relations: List<BalancedPoolRelation>
 )
 
 class WordPoolEngine {
@@ -33,10 +47,20 @@ class WordPoolEngine {
             .trim()
     }
 
-    fun buildPools(candidates: List<PoolCandidate>): List<BuiltPool> {
-        if (candidates.isEmpty()) return emptyList()
+    fun buildPools(candidates: List<PoolCandidate>): List<BuiltPool> =
+        buildPoolsWithRelations(candidates).pools
+
+    fun buildPoolsWithRelations(candidates: List<PoolCandidate>): BalancedPoolBuild {
+        if (candidates.isEmpty()) return BalancedPoolBuild(emptyList(), emptyList())
         val n = candidates.size
         val uf = UnionFind(n)
+        val relations = linkedSetOf<BalancedPoolRelation>()
+
+        fun addRelation(a: Int, b: Int, type: EdgeType, source: String) {
+            if (a == b) return
+            val (first, second) = if (a < b) a to b else b to a
+            relations += BalancedPoolRelation(first, second, type, source)
+        }
 
         // Build normalized spelling lookup: normalizedSpelling -> list of candidate indices
         val normalizedLookup = mutableMapOf<String, MutableList<Int>>()
@@ -64,14 +88,17 @@ class WordPoolEngine {
                     uf.union(i, j)
                     val edge = if (i < j) Pair(i, j) else Pair(j, i)
                     editDistEdges.add(edge)
+                    addRelation(i, j, EdgeType.FORM_SPELLING, "balanced_local")
                 }
             }
         }
 
         // Signal B: Direct cross-reference
         candidates.forEach { c ->
-            val allRefSpellings = c.synonymSpellings + c.similarSpellings + c.cognateSpellings
-            allRefSpellings.forEach { ref ->
+            val typedRefs = c.synonymSpellings.map { it to EdgeType.SEMANTIC_SYNONYM } +
+                c.similarSpellings.map { it to EdgeType.LEARNING_CONFUSABLE } +
+                c.cognateSpellings.map { it to EdgeType.FAMILY_SAME_ROOT }
+            typedRefs.forEach { (ref, edgeType) ->
                 val normRef = normalize(ref)
                 val targets = normalizedLookup[normRef]
                 if (targets != null) {
@@ -80,6 +107,7 @@ class WordPoolEngine {
                             uf.union(c.index, targetIdx)
                             val edge = if (c.index < targetIdx) Pair(c.index, targetIdx) else Pair(targetIdx, c.index)
                             directRefEdges.add(edge)
+                            addRelation(c.index, targetIdx, edgeType, "balanced_local")
                         }
                     }
                 }
@@ -104,6 +132,7 @@ class WordPoolEngine {
                             uf.union(sources[i], sources[j])
                             val edge = if (sources[i] < sources[j]) Pair(sources[i], sources[j]) else Pair(sources[j], sources[i])
                             directRefEdges.add(edge)
+                            addRelation(sources[i], sources[j], EdgeType.SEMANTIC_OVERLAP, "balanced_local")
                         }
                     }
                 }
@@ -132,6 +161,7 @@ class WordPoolEngine {
                         uf.union(indices[i], indices[j])
                         val edge = if (indices[i] < indices[j]) Pair(indices[i], indices[j]) else Pair(indices[j], indices[i])
                         directRefEdges.add(edge)
+                        addRelation(indices[i], indices[j], EdgeType.SEMANTIC_OVERLAP, "balanced_local")
                     }
                 }
             }
@@ -145,6 +175,7 @@ class WordPoolEngine {
                     uf.union(c.index, targetIdx)
                     val edge = if (c.index < targetIdx) Pair(c.index, targetIdx) else Pair(targetIdx, c.index)
                     directRefEdges.add(edge)
+                    addRelation(c.index, targetIdx, EdgeType.FAMILY_SAME_ROOT, "balanced_local")
                 }
             }
         }
@@ -170,7 +201,7 @@ class WordPoolEngine {
             }
         }
 
-        return result
+        return BalancedPoolBuild(result, relations.toList())
     }
 
     /**
@@ -182,21 +213,50 @@ class WordPoolEngine {
         candidates: List<PoolCandidate>,
         existingPools: List<BuiltPool>,
         aiGroups: List<List<Int>>
-    ): List<BuiltPool> {
+    ): List<BuiltPool> = mergeAiGroupsWithRelations(
+        candidates = candidates,
+        existingBuild = BalancedPoolBuild(existingPools, emptyList()),
+        aiGroups = aiGroups
+    ).pools
+
+    fun mergeAiGroupsWithRelations(
+        candidates: List<PoolCandidate>,
+        existingBuild: BalancedPoolBuild,
+        aiGroups: List<List<Int>>
+    ): BalancedPoolBuild {
         val n = candidates.size
         val uf = UnionFind(n)
         val mergedEdges = mutableSetOf<Pair<Int, Int>>()
+        val relations = existingBuild.relations.toMutableSet()
 
-        // Replay existing pools as chain edges (O(k) per pool)
-        existingPools.forEach { pool ->
-            val members = pool.memberIndices.sorted()
-            addChainEdges(members, uf, mergedEdges, n)
+        if (existingBuild.relations.isNotEmpty()) {
+            existingBuild.relations.forEach { relation ->
+                val a = relation.indexA
+                val b = relation.indexB
+                if (a in 0 until n && b in 0 until n && a != b) {
+                    uf.union(a, b)
+                    mergedEdges += if (a < b) a to b else b to a
+                }
+            }
+        } else {
+            // Compatibility path for callers that only provide legacy pool membership.
+            existingBuild.pools.forEach { pool ->
+                addChainEdges(pool.memberIndices.sorted(), uf, mergedEdges, n)
+            }
         }
 
         // Apply AI groups as chain edges (O(k) per group)
         aiGroups.forEach { group ->
             val valid = group.filter { it in 0 until n }.distinct().sorted()
             addChainEdges(valid, uf, mergedEdges, n)
+            for (i in 0 until valid.size - 1) {
+                relations += BalancedPoolRelation(
+                    indexA = valid[i],
+                    indexB = valid[i + 1],
+                    edgeType = EdgeType.LEARNING_CONFUSABLE,
+                    evidenceSource = "balanced_ai"
+                )
+            }
         }
 
         // Extract and split
@@ -217,7 +277,7 @@ class WordPoolEngine {
                 )
             }
         }
-        return result
+        return BalancedPoolBuild(result, relations.toList())
     }
 
     /** Build sorted chain edges: (a0,a1), (a1,a2), … — O(k) edges, keeps group connected. */
@@ -243,98 +303,28 @@ class WordPoolEngine {
         directRefEdges: Set<Pair<Int, Int>>,
         editDistEdges: Set<Pair<Int, Int>>
     ): List<BuiltPool> {
-        val remaining = component.toMutableSet()
-        val result = mutableListOf<BuiltPool>()
-        val dropped = mutableListOf<Int>()
-
-        // Build adjacency in component
-        val adjacency = mutableMapOf<Int, MutableSet<Int>>()
-        for (idx in component) adjacency[idx] = mutableSetOf()
-
         val allEdges = directRefEdges + editDistEdges
+        val componentSet = component.toSet()
+        val plan = QualityFirstPoolPlanner.plan(
+            allEdges
+                .filter { (a, b) -> a in componentSet && b in componentSet }
+                .map { (a, b) -> QualityPoolEdge(a.toLong(), b.toLong()) }
+        )
+        val adjacency = mutableMapOf<Int, MutableSet<Int>>()
         allEdges.forEach { (a, b) ->
-            if (a in remaining && b in remaining) {
-                adjacency[a]?.add(b)
-                adjacency[b]?.add(a)
+            if (a in componentSet && b in componentSet) {
+                adjacency.getOrPut(a) { linkedSetOf() }.add(b)
+                adjacency.getOrPut(b) { linkedSetOf() }.add(a)
             }
         }
-
-        while (remaining.isNotEmpty()) {
-            // Calculate connection strength: directRef x 2, editDist x 1
-            val strength = mutableMapOf<Int, Int>()
-            remaining.forEach { idx ->
-                var s = 0
-                adjacency[idx]?.forEach { neighbor ->
-                    if (neighbor in remaining) {
-                        val edge = if (idx < neighbor) Pair(idx, neighbor) else Pair(neighbor, idx)
-                        s += if (edge in directRefEdges) 2 else 1
-                    }
-                }
-                strength[idx] = s
-            }
-
-            // Pick core: strength descending, then wordId ascending
-            val core = remaining.sortedWith(
-                compareByDescending<Int> { strength[it] ?: 0 }
-                    .thenBy { candidates[it].wordId }
-            ).first()
-
-            // Get neighbors sorted by connection strength to core, then wordId ascending
-            val neighbors = (adjacency[core] ?: emptySet())
-                .filter { it in remaining && it != core }
-                .sortedWith(
-                    compareByDescending<Int> { strength[it] ?: 0 }
-                        .thenBy { candidates[it].wordId }
-                )
-                .take(MAX_POOL_SIZE - 1)
-
-            val poolMembers = mutableListOf(core)
-            poolMembers.addAll(neighbors)
-
-            if (poolMembers.size >= 2) {
-                result.add(BuiltPool(memberIndices = poolMembers.sorted(), coreIndex = core))
-            } else {
-                // No neighbors via edges -- fallback: grab closest nodes by wordId
-                val fallbackNeighbors = remaining
-                    .filter { it != core }
-                    .sortedBy { candidates[it].wordId }
-                    .take(MAX_POOL_SIZE - 1)
-                poolMembers.addAll(fallbackNeighbors)
-                if (poolMembers.size >= 2) {
-                    result.add(BuiltPool(memberIndices = poolMembers.sorted(), coreIndex = core))
-                } else {
-                    // N10 fix: singletons that cannot form a pool are tracked for reassignment
-                    dropped.addAll(poolMembers)
-                }
-            }
-
-            remaining.removeAll(poolMembers.toSet())
+        return plan.pools.map { members ->
+            val indices = members.map(Long::toInt)
+            val core = indices.maxWithOrNull(
+                compareBy<Int> { adjacency[it].orEmpty().size }
+                    .thenByDescending { candidates[it].wordId }
+            )
+            BuiltPool(memberIndices = indices.sorted(), coreIndex = core)
         }
-
-        // N10 fix: reassign dropped singletons to the existing pool sharing the most edges
-        // Issue A fix: only reassign if target pool has room (< MAX_POOL_SIZE)
-        if (dropped.isNotEmpty() && result.isNotEmpty()) {
-            val mutableResult = result.toMutableList()
-            dropped.forEach { orphan ->
-                val orphanNeighbors = adjacency[orphan] ?: emptySet()
-                // Find pool with room that shares the most edges with this orphan
-                val bestPoolIdx = mutableResult.indices
-                    .filter { mutableResult[it].memberIndices.size < MAX_POOL_SIZE }
-                    .maxByOrNull { poolIdx ->
-                        mutableResult[poolIdx].memberIndices.count { it in orphanNeighbors }
-                    }
-                if (bestPoolIdx != null) {
-                    val updatedMembers = (mutableResult[bestPoolIdx].memberIndices + orphan).sorted()
-                    mutableResult[bestPoolIdx] = BuiltPool(
-                        memberIndices = updatedMembers,
-                        coreIndex = mutableResult[bestPoolIdx].coreIndex
-                    )
-                }
-            }
-            return mutableResult
-        }
-
-        return result
     }
 
     private fun extractChineseSubstrings(text: String, minLength: Int): List<String> {

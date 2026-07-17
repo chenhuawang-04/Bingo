@@ -4,6 +4,7 @@ import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.WordRepository
+import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.usecase.article.LinkWordToArticlesUseCase
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
@@ -93,11 +94,13 @@ class SaveWordUseCase @Inject constructor(
 
 class DeleteWordUseCase @Inject constructor(
     private val wordRepository: WordRepository,
-    private val dictionaryRepository: DictionaryRepository
+    private val dictionaryRepository: DictionaryRepository,
+    private val wordPoolRepository: WordPoolRepository
 ) {
     suspend operator fun invoke(wordId: Long, dictionaryId: Long) {
         wordRepository.deleteWord(wordId)
         dictionaryRepository.updateWordCount(dictionaryId)
+        wordPoolRepository.invalidateRelationGraph(dictionaryId)
     }
 }
 

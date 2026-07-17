@@ -24,6 +24,21 @@ interface WordPoolDao {
     @Query("DELETE FROM word_pools WHERE dictionary_id = :dictionaryId")
     suspend fun deleteByDictionary(dictionaryId: Long)
 
+    @Query(
+        "DELETE FROM word_pools WHERE id IN (" +
+            "SELECT pool_id FROM word_pool_members WHERE word_id = :wordId)"
+    )
+    suspend fun deletePoolsContainingWord(wordId: Long)
+
+    @Query(
+        "DELETE FROM word_pools WHERE dictionary_id = :dictionaryId AND id IN (" +
+            "SELECT wp.id FROM word_pools wp " +
+            "LEFT JOIN word_pool_members wpm ON wpm.pool_id = wp.id " +
+            "WHERE wp.dictionary_id = :dictionaryId " +
+            "GROUP BY wp.id HAVING COUNT(wpm.word_id) < 2)"
+    )
+    suspend fun deletePoolsWithFewerThanTwoMembers(dictionaryId: Long)
+
     @Query("SELECT * FROM word_pools WHERE id IN (:poolIds)")
     suspend fun getPoolsByIds(poolIds: List<Long>): List<WordPoolEntity>
 

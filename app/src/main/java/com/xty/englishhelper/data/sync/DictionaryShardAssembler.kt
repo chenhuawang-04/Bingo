@@ -8,6 +8,7 @@ import com.xty.englishhelper.data.json.DictionaryShardChunkJsonModel
 import com.xty.englishhelper.data.json.DictionaryShardIndexJsonModel
 import com.xty.englishhelper.data.json.StudyStateJsonModel
 import com.xty.englishhelper.data.json.WordJsonModel
+import com.xty.englishhelper.data.json.WordEdgeJsonModel
 import com.xty.englishhelper.data.json.WordPhraseJsonModel
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -31,6 +32,7 @@ class DictionaryShardAssembler @Inject constructor(
     )
 
     private val wordAdapter = moshi.adapter(WordJsonModel::class.java)
+    private val wordEdgeAdapter = moshi.adapter(WordEdgeJsonModel::class.java)
     private val studyStateAdapter = moshi.adapter(StudyStateJsonModel::class.java)
     private val wordPhraseAdapter = moshi.adapter(WordPhraseJsonModel::class.java)
     private val chunkAdapter = moshi.adapter(DictionaryShardChunkJsonModel::class.java)
@@ -58,7 +60,6 @@ class DictionaryShardAssembler @Inject constructor(
         val phraseBuckets = dictionary.wordPhrases
             .filter { it.wordUid.isNotBlank() }
             .groupBy { it.wordUid }
-
         val wordsByBucket = Array(BUCKET_COUNT) { mutableListOf<WordJsonModel>() }
         dictionary.words
             .sortedBy { stableWordKey(it) }
@@ -124,6 +125,46 @@ class DictionaryShardAssembler @Inject constructor(
             flushCurrent()
         }
 
+        var edgePartIndex = 0
+        val currentEdges = mutableListOf<WordEdgeJsonModel>()
+        var currentEdgeBytes = emptyChunkEstimatedBytes()
+
+        fun flushEdges() {
+            if (currentEdges.isEmpty()) return
+            val payload = DictionaryShardChunkJsonModel(
+                schemaVersion = CHUNK_SCHEMA_VERSION,
+                wordEdges = currentEdges.toList()
+            )
+            val payloadJson = chunkAdapter.toJson(payload)
+            val chunkPath = "$folderPath/chunks/edges_part_${edgePartIndex.toString().padStart(3, '0')}.json"
+            chunkFiles += ChunkFile(
+                path = chunkPath,
+                payload = payload,
+                ref = DictionaryChunkRefJsonModel(
+                    file = chunkPath,
+                    edgeCount = currentEdges.size,
+                    contentHash = shortHash(payloadJson)
+                )
+            )
+            currentEdges.clear()
+            currentEdgeBytes = emptyChunkEstimatedBytes()
+            edgePartIndex++
+        }
+
+        dictionary.wordEdges
+            .sortedWith(compareBy<WordEdgeJsonModel> { minOf(it.wordUidA, it.wordUidB) }
+                .thenBy { maxOf(it.wordUidA, it.wordUidB) }
+                .thenBy { it.edgeType })
+            .forEach { edge ->
+                val estimatedAddedBytes = estimateWordEdgeBytes(edge)
+                if (currentEdges.isNotEmpty() && currentEdgeBytes + estimatedAddedBytes > TARGET_CHUNK_BYTES) {
+                    flushEdges()
+                }
+                currentEdges += edge
+                currentEdgeBytes += estimatedAddedBytes
+            }
+        flushEdges()
+
         val indexPath = "$folderPath/index.json"
         val index = DictionaryShardIndexJsonModel(
             dictionaryUid = dictionary.dictionaryUid,
@@ -137,8 +178,10 @@ class DictionaryShardAssembler @Inject constructor(
             totalWords = dictionary.words.size,
             totalStudyStates = dictionary.studyStates.size,
             totalWordPhrases = dictionary.wordPhrases.size,
+            totalWordEdges = dictionary.wordEdges.size,
             units = dictionary.units,
             wordPools = dictionary.wordPools,
+            wordEdges = emptyList(),
             phraseTags = dictionary.phraseTags,
             chunks = chunkFiles.map { it.ref }
         )
@@ -164,6 +207,7 @@ class DictionaryShardAssembler @Inject constructor(
         val words = mutableListOf<WordJsonModel>()
         val studyStates = mutableListOf<StudyStateJsonModel>()
         val wordPhrases = mutableListOf<WordPhraseJsonModel>()
+        val wordEdges = mutableListOf<WordEdgeJsonModel>()
 
         index.chunks.forEach { ref ->
             val chunk = chunksByPath[ref.file]
@@ -172,6 +216,7 @@ class DictionaryShardAssembler @Inject constructor(
             words += chunk.words
             studyStates += chunk.studyStates
             wordPhrases += chunk.wordPhrases
+            wordEdges += chunk.wordEdges
         }
 
         return DictionaryJsonModel(
@@ -186,6 +231,7 @@ class DictionaryShardAssembler @Inject constructor(
             units = index.units,
             studyStates = studyStates,
             wordPools = index.wordPools,
+            wordEdges = index.wordEdges + wordEdges,
             phraseTags = index.phraseTags,
             wordPhrases = wordPhrases
         )
@@ -208,6 +254,11 @@ class DictionaryShardAssembler @Inject constructor(
         if (ref.phraseCount != chunk.wordPhrases.size) {
             throw IllegalStateException(
                 "Dictionary chunk phrase count mismatch: ${ref.file} expected=${ref.phraseCount} actual=${chunk.wordPhrases.size}"
+            )
+        }
+        if (ref.edgeCount != chunk.wordEdges.size) {
+            throw IllegalStateException(
+                "Dictionary chunk edge count mismatch: ${ref.file} expected=${ref.edgeCount} actual=${chunk.wordEdges.size}"
             )
         }
         val actualHash = chunkContentHash(chunk)
@@ -246,6 +297,10 @@ class DictionaryShardAssembler @Inject constructor(
         return wordPhraseAdapter.toJson(phrase).toByteArray(Charsets.UTF_8).size + 2
     }
 
+    private fun estimateWordEdgeBytes(edge: WordEdgeJsonModel): Int {
+        return wordEdgeAdapter.toJson(edge).toByteArray(Charsets.UTF_8).size + 2
+    }
+
     private fun shortHash(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(input.toByteArray(Charsets.UTF_8))
@@ -255,7 +310,7 @@ class DictionaryShardAssembler @Inject constructor(
     companion object {
         private const val BUCKET_COUNT = 16
         private const val TARGET_CHUNK_BYTES = 350 * 1024
-        private const val INDEX_SCHEMA_VERSION = 2
-        private const val CHUNK_SCHEMA_VERSION = 2
+        private const val INDEX_SCHEMA_VERSION = 3
+        private const val CHUNK_SCHEMA_VERSION = 3
     }
 }

@@ -452,7 +452,7 @@
     <string name="pool_graph_hide_unlinked">未リンク単語を非表示</string>
     <string name="pool_graph_show_unlinked">未リンク単語を表示</string>
     <string name="pool_graph_load_failed">読み込み失敗: %s</string>
-    <string name="pool_graph_no_data">関係データがありません。\nまず辞書ページで「プール生成（品質）」を使用して単語間の関係を構築してください。</string>
+    <string name="pool_graph_no_data">関係データがありません。\nまず辞書ページで単語プールを生成してください。</string>
     <string name="pool_graph_zoom_in">拡大</string>
     <string name="pool_graph_zoom_out">縮小</string>
     <string name="pool_graph_fit_all">全体を表示</string>
@@ -712,4 +712,20 @@
     <string name="question_writing_practice_refresh">Select again</string>
     <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
     <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
+    <string name="dict_pool_health">品質優先プールを検査・修復</string>
+    <string name="pool_health_title">品質優先プールの健全性</string>
+    <string name="pool_health_auditing">既存プールを検査しています…</string>
+    <string name="pool_health_healthy">保存済みプール構造は正常です</string>
+    <string name="pool_health_needs_repair">プールメンバーの問題が見つかりました</string>
+    <string name="pool_health_pool_count">既存プール：%1$d · 修復後：%2$d</string>
+    <string name="pool_health_coverage">現在の対象語：%1$d · 期待値：%2$d</string>
+    <string name="pool_health_edges_components">有効な関係：%1$d · 連結成分：%2$d</string>
+    <string name="pool_health_oversized">15語を超える成分：%d</string>
+    <string name="pool_health_invalid">サイズ異常：%1$d · 非連結：%2$d</string>
+    <string name="pool_health_uncovered">欠落語：%1$d · 余分なメンバー：%2$d</string>
+    <string name="pool_health_layout_mismatch">保存済みのメンバー構成が、現在有効な関係から導かれる完全な構成と一致しません。</string>
+    <string name="pool_health_edge_warnings">関係警告：孤立 %1$d · 自己ループ %2$d · 不明タイプ %3$d</string>
+    <string name="pool_health_repair">既存の関係から修復</string>
+    <string name="pool_health_repairing">無効な関係を整理し、品質優先プールを原子的に置換しています。AIは使用しません。</string>
+    <string name="pool_health_failed">プールの健全性を読み取れません</string>
 </resources>

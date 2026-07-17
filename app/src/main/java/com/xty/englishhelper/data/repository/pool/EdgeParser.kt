@@ -138,7 +138,9 @@ internal object EdgeParser {
             try {
                 val index = extractJsonInt(obj, "i")
                     ?: throw RetryableEdgeException("Missing 'i' field")
-                if (index !in 0 until maxValue) return@forEach
+                if (index !in 0 until maxValue) {
+                    throw RetryableEdgeException("Candidate index $index is outside 0 until $maxValue")
+                }
 
                 val edgeTypeStr = extractJsonString(obj, "edge_type")
                     ?: throw RetryableEdgeException("Missing edge_type field")
@@ -198,10 +200,6 @@ internal object EdgeParser {
             // Gate 4: naturalness_rule -- minimum confidence
             if (edge.confidence < 0.4) return@filter false
 
-            // Gate 5: incremental_value_rule -- deduplicate same index + same cluster
-            val key = edge.index to edge.edgeType.cluster
-            if (!seen.add(key)) return@filter false
-
             // Gate 1: sense_match -- SEMANTIC cluster edges must bind to a specific sense
             // BUG 4 fix: added the missing sense_match gate
             // N6 fix: use more specific word-boundary patterns to reduce false positives
@@ -251,7 +249,9 @@ internal object EdgeParser {
                 }
             }
 
-            true
+            // Gate 5: only accepted edges reserve the deduplication key. A rejected edge must
+            // not suppress a later valid edge for the same candidate and relationship cluster.
+            seen.add(edge.index to edge.edgeType.cluster)
         }
     }
 

@@ -14,6 +14,7 @@ import com.xty.englishhelper.data.remote.dto.GitHubPutRequest
 import com.xty.englishhelper.data.remote.dto.GitHubPutResponse
 import com.xty.englishhelper.data.sync.DictionaryShardAssembler
 import com.xty.englishhelper.data.sync.DictionaryWordMergePlanner
+import com.xty.englishhelper.data.sync.DictionaryWordEdgeMergePlanner
 import com.xty.englishhelper.data.sync.DictionaryWordPoolMergePlanner
 import com.xty.englishhelper.data.sync.DictionaryWordUidNormalizer
 import com.xty.englishhelper.data.sync.DictionaryWordUpdatePlanner
@@ -275,6 +276,7 @@ class GitHubSyncRepositoryImplConfigSyncTest {
         moshi = Moshi.Builder().build(),
         dictionaryShardAssembler = mockk<DictionaryShardAssembler>(relaxed = true),
         dictionaryWordMergePlanner = mockk<DictionaryWordMergePlanner>(relaxed = true),
+        dictionaryWordEdgeMergePlanner = mockk<DictionaryWordEdgeMergePlanner>(relaxed = true),
         dictionaryWordUpdatePlanner = mockk<DictionaryWordUpdatePlanner>(relaxed = true),
         dictionaryWordPoolMergePlanner = mockk<DictionaryWordPoolMergePlanner>(relaxed = true),
         dictionaryWordUidNormalizer = mockk<DictionaryWordUidNormalizer>(relaxed = true),

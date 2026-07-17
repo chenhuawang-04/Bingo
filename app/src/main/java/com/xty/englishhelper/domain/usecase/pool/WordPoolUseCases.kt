@@ -49,3 +49,16 @@ class GetPoolVersionInfoUseCase @Inject constructor(
     suspend operator fun invoke(dictionaryId: Long): List<Pair<String, String>> =
         repo.getPoolVersionInfo(dictionaryId)
 }
+
+class AuditQualityFirstPoolsUseCase @Inject constructor(
+    private val repo: WordPoolRepository
+) {
+    suspend operator fun invoke(dictionaryId: Long) = repo.auditQualityFirstPools(dictionaryId)
+}
+
+class RepairQualityFirstPoolsUseCase @Inject constructor(
+    private val repo: WordPoolRepository
+) {
+    suspend operator fun invoke(dictionaryId: Long) =
+        repo.repairQualityFirstPoolsFromExistingEdges(dictionaryId)
+}

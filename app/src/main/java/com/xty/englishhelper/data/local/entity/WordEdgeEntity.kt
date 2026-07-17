@@ -22,6 +22,7 @@ data class WordEdgeEntity(
     @ColumnInfo(name = "edge_type") val edgeType: String,
     @ColumnInfo(name = "dictionary_id") val dictionaryId: Long,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "updated_at", defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "status", defaultValue = "core") val status: String = "core",
     @ColumnInfo(name = "learning_value", defaultValue = "3") val learningValue: Int = 3,
     @ColumnInfo(name = "relation_strength", defaultValue = "3") val relationStrength: Int = 3,

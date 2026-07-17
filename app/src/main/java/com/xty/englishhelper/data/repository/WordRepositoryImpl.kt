@@ -1,6 +1,8 @@
 package com.xty.englishhelper.data.repository
 
 import com.xty.englishhelper.data.local.dao.WordDao
+import com.xty.englishhelper.data.local.dao.WordEdgeDao
+import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.WordAssociationEntity
 import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
@@ -8,6 +10,7 @@ import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.repository.WordRepository
+import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.data.mapper.commonSegmentsToJson
 import com.xty.englishhelper.data.mapper.parseCommonSegments
 import com.xty.englishhelper.data.mapper.parseDecomposition
@@ -24,7 +27,10 @@ import kotlin.math.min
 
 @Singleton
 class WordRepositoryImpl @Inject constructor(
-    private val wordDao: WordDao
+    private val wordDao: WordDao,
+    private val wordEdgeDao: WordEdgeDao,
+    private val wordPoolDao: WordPoolDao,
+    private val transactionRunner: TransactionRunner
 ) : WordRepository {
 
     override fun getWordsByDictionary(dictionaryId: Long): Flow<List<WordDetails>> =
@@ -80,8 +86,16 @@ class WordRepositoryImpl @Inject constructor(
         saveRelatedEntities(word, word.id)
     }
 
-    override suspend fun deleteWord(wordId: Long) =
-        wordDao.deleteWord(wordId)
+    override suspend fun deleteWord(wordId: Long) {
+        val dictionaryId = wordDao.getWordById(wordId)?.word?.dictionaryId ?: return
+        transactionRunner.runInTransaction {
+            wordPoolDao.deletePoolsContainingWord(wordId)
+            wordEdgeDao.deleteEdgesForWord(dictionaryId, wordId)
+            wordEdgeDao.deleteExcludedForWord(dictionaryId, wordId)
+            wordDao.deleteWord(wordId)
+            wordPoolDao.deletePoolsWithFewerThanTwoMembers(dictionaryId)
+        }
+    }
 
     override suspend fun findByNormalizedSpelling(dictionaryId: Long, normalizedSpelling: String): WordDetails? =
         wordDao.findByNormalizedSpelling(dictionaryId, normalizedSpelling)?.toDomain()

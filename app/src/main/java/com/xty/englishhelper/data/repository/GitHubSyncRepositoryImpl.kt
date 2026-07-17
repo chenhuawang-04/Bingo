@@ -32,6 +32,7 @@ import com.xty.englishhelper.data.json.SettingsSyncJsonModel
 import com.xty.englishhelper.data.json.UnitJsonModel
 import com.xty.englishhelper.data.json.WordJsonModel
 import com.xty.englishhelper.data.json.WordExampleJsonModel
+import com.xty.englishhelper.data.json.WordEdgeJsonModel
 import com.xty.englishhelper.data.json.WordExamplesExportModel
 import com.xty.englishhelper.data.json.WordPhraseJsonValidator
 import com.xty.englishhelper.data.json.WordPoolJsonModel
@@ -48,11 +49,14 @@ import com.xty.englishhelper.data.local.entity.QuestionItemEntity
 import com.xty.englishhelper.data.local.entity.QuestionSourceArticleEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
+import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.GitHubApiService
 import com.xty.englishhelper.data.remote.dto.GitHubPutRequest
+import com.xty.englishhelper.data.repository.pool.EdgeParser
 import com.xty.englishhelper.data.sync.DictionaryShardAssembler
 import com.xty.englishhelper.data.sync.DictionaryWordMergePlanner
+import com.xty.englishhelper.data.sync.DictionaryWordEdgeMergePlanner
 import com.xty.englishhelper.data.sync.DictionaryWordPoolMergePlanner
 import com.xty.englishhelper.data.sync.DictionaryWordUidNormalizer
 import com.xty.englishhelper.data.sync.DictionaryWordUpdatePlanner
@@ -73,6 +77,7 @@ import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.model.PlanBackup
 import com.xty.englishhelper.domain.model.PlanDayRecordBackup
@@ -125,6 +130,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val moshi: Moshi,
     private val dictionaryShardAssembler: DictionaryShardAssembler,
     private val dictionaryWordMergePlanner: DictionaryWordMergePlanner,
+    private val dictionaryWordEdgeMergePlanner: DictionaryWordEdgeMergePlanner,
     private val dictionaryWordUpdatePlanner: DictionaryWordUpdatePlanner,
     private val dictionaryWordPoolMergePlanner: DictionaryWordPoolMergePlanner,
     private val dictionaryWordUidNormalizer: DictionaryWordUidNormalizer,
@@ -628,6 +634,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                             "Dictionary phrase total mismatch for ${entry.name}: expected=${index.totalWordPhrases} actual=${assembled.wordPhrases.size}"
                         )
                     }
+                    if (index.schemaVersion >= 3 && assembled.wordEdges.size != index.totalWordEdges) {
+                        throw IllegalStateException(
+                            "Dictionary edge total mismatch for ${entry.name}: expected=${index.totalWordEdges} actual=${assembled.wordEdges.size}"
+                        )
+                    }
                 }
             }
 
@@ -714,6 +725,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         state.wordUid.isNotBlank() && state.wordUid in cloudOnlyWordUids
                     },
                     wordPools = emptyList(),
+                    wordEdges = emptyList(),
                     phraseTags = cloudJson.phraseTags,
                     wordPhrases = cloudJson.wordPhrases.filter { phrase ->
                         phrase.wordUid.isNotBlank() && phrase.wordUid in cloudOnlyWordUids
@@ -814,6 +826,21 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     )
                 }
             }
+        }
+
+        val wordEdgePlan = dictionaryWordEdgeMergePlanner.plan(
+            localEdges = localJson.wordEdges,
+            cloudEdges = cloudJson.wordEdges
+        )
+        if (wordEdgePlan.cloudEdgesToApply.isNotEmpty()) {
+            transactionRunner.runInTransaction {
+                applySyncedWordEdges(
+                    dictionaryId = resolvedLocalDict.id,
+                    edges = wordEdgePlan.cloudEdgesToApply,
+                    wordUidToId = wordUidToId
+                )
+            }
+            wordPoolRepository.invalidateRelationGraph(resolvedLocalDict.id)
         }
 
         for (key in allStudyKeys) {
@@ -1208,8 +1235,30 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             )
         }
 
+        val wordEdges = wordEdgeDao.getAllEdgesFull(dict.id).mapNotNull { edge ->
+            val uidA = wordIdToUid[edge.wordIdA] ?: return@mapNotNull null
+            val uidB = wordIdToUid[edge.wordIdB] ?: return@mapNotNull null
+            WordEdgeJsonModel(
+                wordUidA = minOf(uidA, uidB),
+                wordUidB = maxOf(uidA, uidB),
+                edgeType = edge.edgeType,
+                status = edge.status,
+                learningValue = edge.learningValue,
+                relationStrength = edge.relationStrength,
+                confidence = edge.confidence,
+                reason = edge.reason,
+                warningNote = edge.warningNote,
+                evidenceSource = edge.evidenceSource,
+                register = edge.register,
+                exampleSentence = edge.exampleSentence,
+                difficultyCefr = edge.difficultyCefr,
+                createdAt = edge.createdAt,
+                updatedAt = edge.updatedAt
+            )
+        }
+
         return dictionaryWordUidNormalizer.normalize(
-            normalizedModel.copy(wordPools = wordPools)
+            normalizedModel.copy(wordPools = wordPools, wordEdges = wordEdges)
         )
     }
 
@@ -1510,6 +1559,86 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             }
     }
 
+    private suspend fun importWordEdges(
+        dictionaryId: Long,
+        edges: List<WordEdgeJsonModel>,
+        wordUidToId: Map<String, Long>
+    ) {
+        dictionaryWordEdgeMergePlanner.validateSnapshot(edges)
+        wordEdgeDao.deleteByDictionary(dictionaryId)
+        if (edges.isEmpty()) return
+        val entities = edges.map { edge ->
+            edge.toEntity(dictionaryId, wordUidToId)
+        }
+        entities.chunked(500).forEach { wordEdgeDao.insertEdges(it) }
+    }
+
+    private suspend fun applySyncedWordEdges(
+        dictionaryId: Long,
+        edges: List<WordEdgeJsonModel>,
+        wordUidToId: Map<String, Long>
+    ) {
+        edges.forEach { edgeJson ->
+            val candidate = edgeJson.toEntity(dictionaryId, wordUidToId)
+            val existing = wordEdgeDao.getEdgesBetweenWords(
+                dictionaryId,
+                candidate.wordIdA,
+                candidate.wordIdB
+            ).firstOrNull { it.edgeType == candidate.edgeType }
+            if (existing == null) {
+                wordEdgeDao.insertEdgeIfAbsent(candidate)
+            } else if (candidate.updatedAt > existing.updatedAt) {
+                wordEdgeDao.updateSyncedEdge(
+                    id = existing.id,
+                    dictionaryId = dictionaryId,
+                    status = candidate.status,
+                    learningValue = candidate.learningValue,
+                    relationStrength = candidate.relationStrength,
+                    confidence = candidate.confidence,
+                    reason = candidate.reason,
+                    warningNote = candidate.warningNote,
+                    evidenceSource = candidate.evidenceSource,
+                    register = candidate.register,
+                    exampleSentence = candidate.exampleSentence,
+                    difficultyCefr = candidate.difficultyCefr,
+                    createdAt = candidate.createdAt,
+                    updatedAt = candidate.updatedAt
+                )
+            }
+        }
+    }
+
+    private fun WordEdgeJsonModel.toEntity(
+        dictionaryId: Long,
+        wordUidToId: Map<String, Long>
+    ): WordEdgeEntity {
+        val rawA = wordUidToId[wordUidA]
+            ?: throw IllegalStateException("词池边引用了不存在的单词：$wordUidA")
+        val rawB = wordUidToId[wordUidB]
+            ?: throw IllegalStateException("词池边引用了不存在的单词：$wordUidB")
+        require(rawA != rawB) { "词池边不能连接同一个单词" }
+        require(EdgeType.fromDbValue(edgeType) != null) { "未知词池边类型：$edgeType" }
+        val now = System.currentTimeMillis()
+        return WordEdgeEntity(
+            wordIdA = minOf(rawA, rawB),
+            wordIdB = maxOf(rawA, rawB),
+            edgeType = edgeType,
+            dictionaryId = dictionaryId,
+            createdAt = createdAt.takeIf { it > 0 } ?: now,
+            updatedAt = updatedAt.takeIf { it > 0 } ?: createdAt.takeIf { it > 0 } ?: now,
+            status = status.takeIf { it in EdgeParser.VALID_STATUSES } ?: "support",
+            learningValue = learningValue.coerceIn(1, 5),
+            relationStrength = relationStrength.coerceIn(1, 5),
+            confidence = confidence.coerceIn(0.0, 1.0),
+            reason = reason,
+            warningNote = warningNote,
+            evidenceSource = evidenceSource,
+            register = register,
+            exampleSentence = exampleSentence,
+            difficultyCefr = difficultyCefr
+        )
+    }
+
     private suspend fun replaceWordPoolStrategy(
         dictionaryId: Long,
         strategy: String,
@@ -1613,6 +1742,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     }
 
                     importWordPools(dictId, cloudDict.wordPools, wordUidToId)
+                    importWordEdges(dictId, cloudDict.wordEdges, wordUidToId)
                     wordPhraseRepository.replaceSnapshot(
                         dictionaryId = dictId,
                         snapshot = result.wordPhraseSnapshot,
@@ -2216,4 +2346,3 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
     }
 }
-

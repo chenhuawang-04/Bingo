@@ -60,6 +60,24 @@ class DictionaryWordUidNormalizer @Inject constructor() {
                     }
                 )
             },
+            wordEdges = model.wordEdges.map { edge ->
+                edge.copy(
+                    wordUidA = resolveRequiredReference(
+                        dictionaryName = model.name,
+                        referenceType = "词池边端点",
+                        referenceValue = edge.wordUidA,
+                        validWordUids = validWordUids,
+                        blankWordUidReplacement = blankWordUidReplacement
+                    ),
+                    wordUidB = resolveRequiredReference(
+                        dictionaryName = model.name,
+                        referenceType = "词池边端点",
+                        referenceValue = edge.wordUidB,
+                        validWordUids = validWordUids,
+                        blankWordUidReplacement = blankWordUidReplacement
+                    )
+                )
+            },
             wordPhrases = model.wordPhrases.map { phrase ->
                 phrase.copy(
                     wordUid = resolveRequiredReference(
