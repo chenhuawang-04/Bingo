@@ -153,7 +153,7 @@ class JsonImportExporterTest {
         )
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 10"))
+        assertTrue(json.contains("\"schemaVersion\": 11"))
 
         val result = exporter.importFromJson(json)
 
@@ -296,10 +296,10 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 10`() {
+    fun `export produces schemaVersion 11`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 10"))
+        assertTrue(json.contains("\"schemaVersion\": 11"))
     }
 
     @Test

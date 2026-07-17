@@ -205,6 +205,15 @@ internal object EdgeParser {
             // N6 fix: use more specific word-boundary patterns to reduce false positives
             if (edge.edgeType.cluster == EdgeCluster.SEMANTIC) {
                 val reasonLower = edge.reason?.lowercase() ?: ""
+                val explicitlyUnboundSense = listOf(
+                    "未绑定义项",
+                    "没有绑定义项",
+                    "未指明释义",
+                    "未说明释义",
+                    "no specific sense",
+                    "not tied to a sense"
+                ).any(reasonLower::contains)
+                if (explicitlyUnboundSense) return@filter false
                 // The reason should reference a specific sense/meaning/definition.
                 // Use longer, more specific Chinese phrases (>=2 chars) and word-boundary
                 // English terms to avoid false positives from single characters like "指".
