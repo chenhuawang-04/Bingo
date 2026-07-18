@@ -5,6 +5,7 @@ import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.TransactionRunner
+import com.xty.englishhelper.domain.background.PoolEdgeWriteCoordinator
 import com.xty.englishhelper.data.mapper.toDomain
 import com.xty.englishhelper.data.mapper.toEntity
 import kotlinx.coroutines.flow.Flow
@@ -16,7 +17,9 @@ import javax.inject.Singleton
 class DictionaryRepositoryImpl @Inject constructor(
     private val dao: DictionaryDao,
     private val wordEdgeDao: WordEdgeDao,
-    private val transactionRunner: TransactionRunner
+    private val wordPoolDao: com.xty.englishhelper.data.local.dao.WordPoolDao,
+    private val transactionRunner: TransactionRunner,
+    private val poolEdgeWriteCoordinator: PoolEdgeWriteCoordinator
 ) : DictionaryRepository {
 
     override fun getAllDictionaries(): Flow<List<Dictionary>> =
@@ -36,10 +39,14 @@ class DictionaryRepositoryImpl @Inject constructor(
         dao.update(dictionary.toEntity())
 
     override suspend fun deleteDictionary(id: Long) {
-        transactionRunner.runInTransaction {
-            wordEdgeDao.deleteByDictionary(id)
-            wordEdgeDao.deleteExcludedByDictionary(id)
-            dao.deleteById(id)
+        poolEdgeWriteCoordinator.withLock(id) {
+            transactionRunner.runInTransaction {
+                wordEdgeDao.deleteByDictionary(id)
+                wordEdgeDao.deleteExcludedByDictionary(id)
+                wordEdgeDao.deleteStagedEdges(id)
+                wordPoolDao.deleteStrategyStates(id)
+                dao.deleteById(id)
+            }
         }
     }
 

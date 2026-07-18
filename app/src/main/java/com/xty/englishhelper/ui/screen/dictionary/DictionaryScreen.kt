@@ -1,6 +1,8 @@
 package com.xty.englishhelper.ui.screen.dictionary
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -604,7 +607,13 @@ private fun PoolHealthDialog(
                     Text(stringResource(R.string.pool_health_auditing))
                 }
 
-                report != null -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                report != null -> Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
                         text = if (report.isHealthy) {
                             stringResource(R.string.pool_health_healthy)
@@ -623,11 +632,28 @@ private fun PoolHealthDialog(
                     Text(stringResource(R.string.pool_health_edges_components, report.validEdgeCount, report.connectedComponentCount))
                     Text(stringResource(R.string.pool_health_oversized, report.oversizedComponentCount))
                     Text(stringResource(R.string.pool_health_invalid, report.invalidSizePoolCount, report.disconnectedPoolCount))
+                    Text(
+                        stringResource(
+                            R.string.pool_health_invalid_focus,
+                            report.invalidFocusPoolCount,
+                            report.duplicatePoolCount
+                        )
+                    )
                     Text(stringResource(R.string.pool_health_uncovered, report.uncoveredWordCount, report.extraneousMemberCount))
+                    if (report.missingSupportingEdgePoolCount > 0) {
+                        Text(
+                            stringResource(
+                                R.string.pool_health_missing_supporting_edges,
+                                report.missingSupportingEdgePoolCount
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                     if (report.layoutMismatch) {
                         Text(
                             stringResource(R.string.pool_health_layout_mismatch),
-                            color = MaterialTheme.colorScheme.error,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }

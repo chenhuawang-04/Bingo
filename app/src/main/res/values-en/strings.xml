@@ -737,7 +737,7 @@
     <string name="common_import">Import</string>
     <string name="common_export">Export</string>
     <string name="dict_pool_health">Audit and Repair Quality-First Pools</string>
-    <string name="pool_health_title">Quality-First Pool Health</string>
+    <string name="pool_health_title">Word Pool Health</string>
     <string name="pool_health_auditing">Auditing existing pools…</string>
     <string name="pool_health_healthy">The stored pool structure is healthy</string>
     <string name="pool_health_needs_repair">Pool membership problems were found</string>
@@ -746,10 +746,12 @@
     <string name="pool_health_edges_components">Effective edges: %1$d · Components: %2$d</string>
     <string name="pool_health_oversized">Components over 15 words: %d</string>
     <string name="pool_health_invalid">Invalid-size pools: %1$d · Disconnected pools: %2$d</string>
+    <string name="pool_health_invalid_focus">Focus not a member: %1$d · Duplicate pools: %2$d</string>
+    <string name="pool_health_missing_supporting_edges">%d existing pools have no supporting edges and cannot be repaired losslessly. Restore a complete backup or rebuild them.</string>
     <string name="pool_health_uncovered">Missing words: %1$d · Extraneous members: %2$d</string>
     <string name="pool_health_layout_mismatch">Persisted membership groups do not match the complete layout derived from the current effective edges.</string>
     <string name="pool_health_edge_warnings">Edge warnings: orphan %1$d · self-loop %2$d · unknown type %3$d</string>
     <string name="pool_health_repair">Repair from Existing Edges</string>
-    <string name="pool_health_repairing">Cleaning invalid edges and atomically replacing quality-first pools. No AI calls; effective edges stay unchanged.</string>
+    <string name="pool_health_repairing">Cleaning invalid edges and atomically replacing pools by strategy. No AI calls; effective edges stay unchanged.</string>
     <string name="pool_health_failed">Unable to read pool health</string>
 </resources>

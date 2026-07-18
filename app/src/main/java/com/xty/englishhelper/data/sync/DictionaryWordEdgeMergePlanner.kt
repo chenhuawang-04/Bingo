@@ -22,6 +22,8 @@ class DictionaryWordEdgeMergePlanner @Inject constructor() {
             val local = localByKey[key]
             when {
                 local == null -> toApply += cloud
+                local.evidenceSource == "user_note" && cloud.evidenceSource != "user_note" -> Unit
+                cloud.evidenceSource == "user_note" && local.evidenceSource != "user_note" -> toApply += cloud
                 canonical(local) == canonical(cloud) && cloud.updatedAt > local.updatedAt -> toApply += cloud
                 canonical(local) == canonical(cloud) -> Unit
                 cloud.updatedAt > local.updatedAt -> toApply += cloud

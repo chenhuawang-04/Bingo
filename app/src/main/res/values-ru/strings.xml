@@ -710,7 +710,7 @@
     <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
     <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
     <string name="dict_pool_health">Проверить и восстановить качественные пулы</string>
-    <string name="pool_health_title">Состояние качественных пулов</string>
+    <string name="pool_health_title">Состояние пулов слов</string>
     <string name="pool_health_auditing">Проверка существующих пулов…</string>
     <string name="pool_health_healthy">Сохранённая структура пулов исправна</string>
     <string name="pool_health_needs_repair">Обнаружены проблемы состава пулов</string>
@@ -719,6 +719,8 @@
     <string name="pool_health_edges_components">Действующие связи: %1$d · Компоненты: %2$d</string>
     <string name="pool_health_oversized">Компоненты больше 15 слов: %d</string>
     <string name="pool_health_invalid">Неверный размер: %1$d · Несвязные пулы: %2$d</string>
+    <string name="pool_health_invalid_focus">Фокус вне состава: %1$d · Дубликаты пулов: %2$d</string>
+    <string name="pool_health_missing_supporting_edges">У %d существующих пулов нет поддерживающих связей, поэтому восстановление без потерь невозможно. Восстановите полную резервную копию или перестройте их.</string>
     <string name="pool_health_uncovered">Пропущено слов: %1$d · Лишние участники: %2$d</string>
     <string name="pool_health_layout_mismatch">Сохранённые группы не соответствуют полной структуре, рассчитанной по текущим действующим связям.</string>
     <string name="pool_health_edge_warnings">Предупреждения: потерянные %1$d · петли %2$d · неизвестный тип %3$d</string>

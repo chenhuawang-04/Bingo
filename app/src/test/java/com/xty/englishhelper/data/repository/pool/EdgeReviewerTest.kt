@@ -53,7 +53,6 @@ class EdgeReviewerTest {
         )
         val text = """
             [
-              {"i":0,"verdict":"remove","note":"证据不足"},
               {"i":0,"verdict":"adjust","new_status":"core","new_confidence":0.9}
             ]
         """.trimIndent()
@@ -63,7 +62,7 @@ class EdgeReviewerTest {
         assertEquals(1, updates.size)
         assertEquals(7L, updates[0].edgeId)
         assertEquals("core", updates[0].newStatus)
-        assertEquals(0.9, updates[0].newConfidence, 0.0)
+        assertEquals(0.42, updates[0].newConfidence, 0.0)
 
         val removeOnly = parseReviewUpdates("""[{"i":0,"verdict":"remove"}]""", listOf(edge))
         assertEquals(1, removeOnly.size)
@@ -272,7 +271,7 @@ class EdgeReviewerTest {
             openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
         }
         coVerify(exactly = 1) {
-            wordEdgeDao.updateEdgeStatus(11L, "core", 0.91)
+            wordEdgeDao.updateEdgeStatus(11L, "core", 0.21)
         }
     }
 
@@ -312,9 +311,9 @@ class EdgeReviewerTest {
             model = "gpt-test",
             baseUrl = "https://example.com"
         )
-        coEvery { wordEdgeDao.countEdges(1L) } returns 3
-        coEvery { wordEdgeDao.getEdgesPageFull(1L, 0L, 2) } returns edges.subList(0, 2)
-        coEvery { wordEdgeDao.getEdgesPageFull(1L, 2L, 2) } returns listOf(edges[2])
+        coEvery { wordEdgeDao.countEdgesExcludingSources(1L, any()) } returns 3
+        coEvery { wordEdgeDao.getEdgesPageExcludingSources(1L, 0L, any(), 2) } returns edges.subList(0, 2)
+        coEvery { wordEdgeDao.getEdgesPageExcludingSources(1L, 2L, any(), 2) } returns listOf(edges[2])
         coEvery {
             openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
         } returns """[{"i":0,"verdict":"keep","note":"关系成立"}]"""
@@ -335,9 +334,9 @@ class EdgeReviewerTest {
         assertFalse(modified)
         assertEquals(3 to 3, reviewStart)
         assertEquals(listOf(0 to 3, 1 to 3, 2 to 3, 3 to 3), progress)
-        coVerify(exactly = 1) { wordEdgeDao.countEdges(1L) }
-        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 0L, 2) }
-        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 2L, 2) }
+        coVerify(exactly = 1) { wordEdgeDao.countEdgesExcludingSources(1L, any()) }
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageExcludingSources(1L, 0L, any(), 2) }
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageExcludingSources(1L, 2L, any(), 2) }
         coVerify(exactly = 0) { wordEdgeDao.getAllEdgesFull(any()) }
         coVerify(exactly = 3) {
             openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
@@ -383,10 +382,10 @@ class EdgeReviewerTest {
             model = "gpt-test",
             baseUrl = "https://example.com"
         )
-        coEvery { wordEdgeDao.countEdges(1L) } returns 3
-        coEvery { wordEdgeDao.getEdgesPageFull(1L, 0L, 1) } returns listOf(edges[0])
-        coEvery { wordEdgeDao.getEdgesPageFull(1L, 11L, 1) } returns listOf(edges[1])
-        coEvery { wordEdgeDao.getEdgesPageFull(1L, 12L, 1) } returns listOf(edges[2])
+        coEvery { wordEdgeDao.countEdgesExcludingSources(1L, any()) } returns 3
+        coEvery { wordEdgeDao.getEdgesPageExcludingSources(1L, 0L, any(), 1) } returns listOf(edges[0])
+        coEvery { wordEdgeDao.getEdgesPageExcludingSources(1L, 11L, any(), 1) } returns listOf(edges[1])
+        coEvery { wordEdgeDao.getEdgesPageExcludingSources(1L, 12L, any(), 1) } returns listOf(edges[2])
         coEvery {
             openAiClient.sendMessage(any(), any(), any(), any(), any(), any())
         } returnsMany listOf(
@@ -406,11 +405,11 @@ class EdgeReviewerTest {
         }.exceptionOrNull()
 
         assertTrue("Actual error: $error", error is IllegalStateException)
-        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 0L, 1) }
-        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 11L, 1) }
-        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageFull(1L, 12L, 1) }
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageExcludingSources(1L, 0L, any(), 1) }
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageExcludingSources(1L, 11L, any(), 1) }
+        coVerify(exactly = 1) { wordEdgeDao.getEdgesPageExcludingSources(1L, 12L, any(), 1) }
         coVerify(exactly = 1) {
-            wordEdgeDao.updateEdgeStatus(11L, "core", 0.91)
+            wordEdgeDao.updateEdgeStatus(11L, "core", 0.5)
         }
     }
 }

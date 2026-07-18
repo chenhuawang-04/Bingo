@@ -8,6 +8,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
+import com.xty.englishhelper.data.local.entity.WordPoolStrategyStateEntity
 import com.xty.englishhelper.data.local.relation.WordWithDetails
 
 @Dao
@@ -17,6 +18,18 @@ interface WordPoolDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertMembers(members: List<WordPoolMemberEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertStrategyState(state: WordPoolStrategyStateEntity)
+
+    @Query("SELECT * FROM word_pool_strategy_states WHERE dictionary_id = :dictionaryId")
+    suspend fun getStrategyStates(dictionaryId: Long): List<WordPoolStrategyStateEntity>
+
+    @Query("DELETE FROM word_pool_strategy_states WHERE dictionary_id = :dictionaryId")
+    suspend fun deleteStrategyStates(dictionaryId: Long)
+
+    @Query("DELETE FROM word_pool_strategy_states WHERE dictionary_id = :dictionaryId AND strategy = :strategy")
+    suspend fun deleteStrategyState(dictionaryId: Long, strategy: String)
 
     @Query("DELETE FROM word_pools WHERE dictionary_id = :dictionaryId AND strategy = :strategy")
     suspend fun deleteByDictionaryAndStrategy(dictionaryId: Long, strategy: String)

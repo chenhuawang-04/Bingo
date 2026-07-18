@@ -27,6 +27,7 @@ import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
+import com.xty.englishhelper.domain.background.PoolEdgeWriteCoordinator
 import com.xty.englishhelper.domain.usecase.importexport.ExportDictionaryUseCase
 import com.xty.englishhelper.domain.usecase.word.EnsureDictionaryWordUidsUseCase
 import io.mockk.coEvery
@@ -280,6 +281,7 @@ class GitHubSyncRepositoryImplConfigSyncTest {
         dictionaryWordUpdatePlanner = mockk<DictionaryWordUpdatePlanner>(relaxed = true),
         dictionaryWordPoolMergePlanner = mockk<DictionaryWordPoolMergePlanner>(relaxed = true),
         dictionaryWordUidNormalizer = mockk<DictionaryWordUidNormalizer>(relaxed = true),
+        poolEdgeWriteCoordinator = PoolEdgeWriteCoordinator(),
         ensureDictionaryWordUids = mockk<EnsureDictionaryWordUidsUseCase>(relaxed = true),
         wordPhraseRepository = mockk(relaxed = true)
     )

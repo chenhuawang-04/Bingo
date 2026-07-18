@@ -44,7 +44,6 @@ internal data class ParsedEdge(
  */
 internal object EdgeParser {
 
-    private val INT_ARRAY_PATTERN = Regex("""\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]""")
     internal val VALID_STATUSES = setOf("core", "support", "warning", "optional")
     internal val ENTRY_TYPE_PATTERN = Regex(""""entry_type"\s*:\s*"(word|root|phrase)"""")
 
@@ -290,16 +289,72 @@ internal object EdgeParser {
     // ── Int array of arrays parsing ──
 
     fun parseJsonIntArrayOfArrays(text: String, maxValue: Int): List<List<Int>> {
+        if (maxValue <= 0) throw RetryableEdgeException("候选列表为空")
+        val source = text.trim()
+        var cursor = 0
+        fun skipWhitespace() {
+            while (cursor < source.length && source[cursor].isWhitespace()) cursor++
+        }
+        fun expect(expected: Char) {
+            skipWhitespace()
+            if (cursor >= source.length || source[cursor] != expected) {
+                throw RetryableEdgeException("AI 分组不是严格 JSON 二维整数数组")
+            }
+            cursor++
+        }
+        fun parseInt(): Int {
+            skipWhitespace()
+            val start = cursor
+            while (cursor < source.length && source[cursor].isDigit()) cursor++
+            if (start == cursor) throw RetryableEdgeException("AI 分组包含非整数索引")
+            return source.substring(start, cursor).toIntOrNull()
+                ?: throw RetryableEdgeException("AI 分组索引超出整数范围")
+        }
+
         val result = mutableListOf<List<Int>>()
-        INT_ARRAY_PATTERN.findAll(text).forEach { match ->
-            val indices = match.groupValues[1]
-                .split(",")
-                .mapNotNull { it.trim().toIntOrNull() }
-                .filter { it in 0 until maxValue }
-            if (indices.size >= 2) {
-                result.add(indices)
+        expect('[')
+        skipWhitespace()
+        if (cursor < source.length && source[cursor] == ']') {
+            cursor++
+            skipWhitespace()
+            if (cursor != source.length) throw RetryableEdgeException("AI 分组 JSON 后存在多余内容")
+            return emptyList()
+        }
+        while (true) {
+            expect('[')
+            val indices = mutableListOf<Int>()
+            while (true) {
+                val index = parseInt()
+                if (index !in 0 until maxValue) {
+                    throw RetryableEdgeException("AI 分组索引越界：$index，候选数=$maxValue")
+                }
+                indices += index
+                skipWhitespace()
+                when (source.getOrNull(cursor)) {
+                    ',' -> cursor++
+                    ']' -> {
+                        cursor++
+                        break
+                    }
+                    else -> throw RetryableEdgeException("AI 分组内部格式错误")
+                }
+            }
+            if (indices.size < 2 || indices.distinct().size != indices.size) {
+                throw RetryableEdgeException("AI 每个分组必须包含至少两个不重复索引")
+            }
+            result += indices
+            skipWhitespace()
+            when (source.getOrNull(cursor)) {
+                ',' -> cursor++
+                ']' -> {
+                    cursor++
+                    break
+                }
+                else -> throw RetryableEdgeException("AI 分组外层格式错误")
             }
         }
+        skipWhitespace()
+        if (cursor != source.length) throw RetryableEdgeException("AI 分组 JSON 后存在多余内容")
         return result
     }
 }

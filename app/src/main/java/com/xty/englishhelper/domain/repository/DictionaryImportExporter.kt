@@ -1,6 +1,7 @@
 package com.xty.englishhelper.domain.repository
 
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.domain.model.DictionaryPoolBackup
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordDetails
@@ -39,7 +40,8 @@ interface DictionaryImportExporter {
         val words: List<WordDetails>,
         val units: List<ImportedUnit>,
         val studyStates: List<ImportedStudyState>,
-        val wordPhraseSnapshot: WordPhraseSyncSnapshot = WordPhraseSyncSnapshot()
+        val wordPhraseSnapshot: WordPhraseSyncSnapshot = WordPhraseSyncSnapshot(),
+        val poolBackup: DictionaryPoolBackup = DictionaryPoolBackup()
     )
 
     fun exportToJson(
@@ -49,7 +51,8 @@ interface DictionaryImportExporter {
         unitWordMap: Map<Long, List<String>>,
         studyStates: List<WordStudyState>,
         wordIdToUid: Map<Long, String>,
-        wordPhraseSnapshot: WordPhraseSyncSnapshot = WordPhraseSyncSnapshot()
+        wordPhraseSnapshot: WordPhraseSyncSnapshot = WordPhraseSyncSnapshot(),
+        poolBackup: DictionaryPoolBackup = DictionaryPoolBackup()
     ): String
 
     fun importFromJson(json: String): ImportResult

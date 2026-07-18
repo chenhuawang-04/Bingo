@@ -65,6 +65,26 @@ class DictionaryWordEdgeMergePlannerTest {
         assertTrue(error is IllegalArgumentException)
     }
 
+    @Test
+    fun `older user note remains authoritative over newer generated evidence`() {
+        val local = edge(updatedAt = 10L).copy(evidenceSource = "user_note", confidence = 1.0)
+        val cloud = edge(updatedAt = 20L).copy(evidenceSource = "balanced_local", confidence = 0.4)
+
+        val plan = planner.plan(listOf(local), listOf(cloud))
+
+        assertTrue(plan.cloudEdgesToApply.isEmpty())
+    }
+
+    @Test
+    fun `cloud user note replaces newer generated evidence`() {
+        val local = edge(updatedAt = 20L).copy(evidenceSource = "balanced_local", confidence = 0.4)
+        val cloud = edge(updatedAt = 10L).copy(evidenceSource = "user_note", confidence = 1.0)
+
+        val plan = planner.plan(listOf(local), listOf(cloud))
+
+        assertEquals(listOf(cloud), plan.cloudEdgesToApply)
+    }
+
     private fun edge(
         confidence: Double = 0.8,
         updatedAt: Long

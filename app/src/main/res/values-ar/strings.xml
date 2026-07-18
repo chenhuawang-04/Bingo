@@ -704,7 +704,7 @@
     <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
     <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
     <string name="dict_pool_health">فحص مجموعات الجودة وإصلاحها</string>
-    <string name="pool_health_title">سلامة مجموعات الجودة</string>
+    <string name="pool_health_title">سلامة مجموعات الكلمات</string>
     <string name="pool_health_auditing">جارٍ فحص المجموعات الحالية…</string>
     <string name="pool_health_healthy">بنية المجموعات المخزنة سليمة</string>
     <string name="pool_health_needs_repair">تم العثور على مشكلات في عضوية المجموعات</string>
@@ -713,6 +713,8 @@
     <string name="pool_health_edges_components">العلاقات الفعالة: %1$d · المكونات: %2$d</string>
     <string name="pool_health_oversized">مكونات تتجاوز 15 كلمة: %d</string>
     <string name="pool_health_invalid">حجم غير صالح: %1$d · مجموعات غير متصلة: %2$d</string>
+    <string name="pool_health_invalid_focus">كلمة التركيز ليست عضوًا: %1$d · مجموعات مكررة: %2$d</string>
+    <string name="pool_health_missing_supporting_edges">هناك %d من المجموعات الحالية بلا علاقات داعمة ولا يمكن إصلاحها دون فقدان. استعد نسخة احتياطية كاملة أو أعد بناءها.</string>
     <string name="pool_health_uncovered">كلمات مفقودة: %1$d · أعضاء إضافيون: %2$d</string>
     <string name="pool_health_layout_mismatch">مجموعات الأعضاء المحفوظة لا تطابق التخطيط الكامل المشتق من العلاقات الفعالة الحالية.</string>
     <string name="pool_health_edge_warnings">تحذيرات العلاقات: يتيمة %1$d · حلقات ذاتية %2$d · نوع مجهول %3$d</string>

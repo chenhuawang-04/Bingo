@@ -1,6 +1,7 @@
 package com.xty.englishhelper.domain.repository
 
 import com.xty.englishhelper.domain.model.EdgeNeighbor
+import com.xty.englishhelper.domain.model.DictionaryPoolBackup
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.PoolHealthReport
@@ -12,6 +13,14 @@ import com.xty.englishhelper.domain.model.WordGraphEdgeDetail
 import com.xty.englishhelper.domain.model.WordPool
 
 interface WordPoolRepository {
+    suspend fun exportBackup(dictionaryId: Long, wordIdToUid: Map<Long, String>): DictionaryPoolBackup
+
+    suspend fun restoreBackup(
+        dictionaryId: Long,
+        backup: DictionaryPoolBackup,
+        wordUidToId: Map<String, Long>
+    )
+
     suspend fun getPoolsForWord(wordId: Long): List<WordPool>
 
     /** Read-only audit of persisted QUALITY_FIRST pools against the current effective edge graph. */

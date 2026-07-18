@@ -33,6 +33,7 @@ data class DictionaryShardIndexJsonModel(
     val totalWordEdges: Int = 0,
     val units: List<UnitJsonModel> = emptyList(),
     val wordPools: List<WordPoolJsonModel> = emptyList(),
+    val wordPoolStrategies: List<WordPoolStrategyJsonModel> = emptyList(),
     val wordEdges: List<WordEdgeJsonModel> = emptyList(),
     val phraseTags: List<WordPhraseTagJsonModel> = emptyList(),
     val chunks: List<DictionaryChunkRefJsonModel> = emptyList()

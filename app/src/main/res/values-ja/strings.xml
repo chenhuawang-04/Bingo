@@ -713,7 +713,7 @@
     <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
     <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
     <string name="dict_pool_health">品質優先プールを検査・修復</string>
-    <string name="pool_health_title">品質優先プールの健全性</string>
+    <string name="pool_health_title">単語プールの健全性</string>
     <string name="pool_health_auditing">既存プールを検査しています…</string>
     <string name="pool_health_healthy">保存済みプール構造は正常です</string>
     <string name="pool_health_needs_repair">プールメンバーの問題が見つかりました</string>
@@ -722,6 +722,8 @@
     <string name="pool_health_edges_components">有効な関係：%1$d · 連結成分：%2$d</string>
     <string name="pool_health_oversized">15語を超える成分：%d</string>
     <string name="pool_health_invalid">サイズ異常：%1$d · 非連結：%2$d</string>
+    <string name="pool_health_invalid_focus">中心語がメンバー外：%1$d · 重複プール：%2$d</string>
+    <string name="pool_health_missing_supporting_edges">既存プール %d 件に対応する関係がなく、損失なしでは修復できません。完全なバックアップから復元するか再構築してください。</string>
     <string name="pool_health_uncovered">欠落語：%1$d · 余分なメンバー：%2$d</string>
     <string name="pool_health_layout_mismatch">保存済みのメンバー構成が、現在有効な関係から導かれる完全な構成と一致しません。</string>
     <string name="pool_health_edge_warnings">関係警告：孤立 %1$d · 自己ループ %2$d · 不明タイプ %3$d</string>

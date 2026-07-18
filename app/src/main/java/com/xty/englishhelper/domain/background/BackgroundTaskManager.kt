@@ -660,8 +660,11 @@ class BackgroundTaskManager @Inject constructor(
             repository.updateStatus(task.id, BackgroundTaskStatus.RUNNING, null)
             try {
                 executeTask(task)
-                repository.updateStatus(task.id, BackgroundTaskStatus.SUCCESS, null)
-                cancelManagedResume(task.id)
+                val current = repository.getTaskById(task.id)
+                if (current?.status == BackgroundTaskStatus.RUNNING) {
+                    repository.updateStatus(task.id, BackgroundTaskStatus.SUCCESS, null)
+                    cancelManagedResume(task.id)
+                }
             } catch (e: CancellationException) {
                 val current = repository.getTaskById(task.id)
                 if (current?.status == BackgroundTaskStatus.PAUSED || current?.status == BackgroundTaskStatus.CANCELED) {

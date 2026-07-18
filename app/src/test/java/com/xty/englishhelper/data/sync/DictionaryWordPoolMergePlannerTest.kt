@@ -1,6 +1,8 @@
 package com.xty.englishhelper.data.sync
 
 import com.xty.englishhelper.data.json.WordPoolJsonModel
+import com.xty.englishhelper.data.json.DictionaryJsonModel
+import com.xty.englishhelper.data.json.WordPoolStrategyJsonModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,6 +54,40 @@ class DictionaryWordPoolMergePlannerTest {
 
         assertTrue(error is IllegalStateException)
         assertTrue(error?.message?.contains("缺少可判定的新旧顺序") == true)
+    }
+
+    @Test
+    fun `newer empty cloud strategy propagates pool deletion tombstone`() {
+        val local = DictionaryJsonModel(
+            wordPoolStrategies = listOf(
+                WordPoolStrategyJsonModel(
+                    strategy = "BALANCED",
+                    updatedAt = 10L,
+                    pools = listOf(pool("BALANCED", listOf("a", "b"), 10L))
+                )
+            )
+        )
+        val cloud = DictionaryJsonModel(
+            wordPoolStrategies = listOf(
+                WordPoolStrategyJsonModel(strategy = "BALANCED", updatedAt = 20L, pools = emptyList())
+            )
+        )
+
+        val plan = planner.plan(local, cloud)
+
+        assertEquals(1, plan.cloudSnapshotsToApply.size)
+        assertTrue(plan.cloudSnapshotsToApply.single().pools.isEmpty())
+        assertEquals(20L, plan.cloudSnapshotsToApply.single().updatedAt)
+    }
+
+    @Test
+    fun `newer quality score change is synchronized`() {
+        val localPool = pool("QUALITY_FIRST", listOf("a", "b"), 10L).copy(qualityScore = 40)
+        val cloudPool = localPool.copy(updatedAt = 20L, qualityScore = 90)
+
+        val plan = planner.plan(listOf(localPool), listOf(cloudPool))
+
+        assertEquals(90, plan.cloudSnapshotsToApply.single().pools.single().qualityScore)
     }
 
     private fun pool(

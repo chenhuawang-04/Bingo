@@ -19,6 +19,13 @@ jobs:
         run: chmod +x gradlew
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest
+      - name: Upload Room schemas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-schemas
+          path: app/schemas/
+          if-no-files-found: error
       - name: Upload Test Results
         if: failure()
         uses: actions/upload-artifact@v4

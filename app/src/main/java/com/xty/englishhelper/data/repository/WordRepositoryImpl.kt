@@ -4,6 +4,7 @@ import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.WordAssociationEntity
+import com.xty.englishhelper.data.local.entity.WordPoolStrategyStateEntity
 import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.MorphemeRole
@@ -11,6 +12,7 @@ import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.repository.TransactionRunner
+import com.xty.englishhelper.domain.background.PoolEdgeWriteCoordinator
 import com.xty.englishhelper.data.mapper.commonSegmentsToJson
 import com.xty.englishhelper.data.mapper.parseCommonSegments
 import com.xty.englishhelper.data.mapper.parseDecomposition
@@ -30,7 +32,8 @@ class WordRepositoryImpl @Inject constructor(
     private val wordDao: WordDao,
     private val wordEdgeDao: WordEdgeDao,
     private val wordPoolDao: WordPoolDao,
-    private val transactionRunner: TransactionRunner
+    private val transactionRunner: TransactionRunner,
+    private val poolEdgeWriteCoordinator: PoolEdgeWriteCoordinator
 ) : WordRepository {
 
     override fun getWordsByDictionary(dictionaryId: Long): Flow<List<WordDetails>> =
@@ -88,12 +91,27 @@ class WordRepositoryImpl @Inject constructor(
 
     override suspend fun deleteWord(wordId: Long) {
         val dictionaryId = wordDao.getWordById(wordId)?.word?.dictionaryId ?: return
-        transactionRunner.runInTransaction {
-            wordPoolDao.deletePoolsContainingWord(wordId)
-            wordEdgeDao.deleteEdgesForWord(dictionaryId, wordId)
-            wordEdgeDao.deleteExcludedForWord(dictionaryId, wordId)
-            wordDao.deleteWord(wordId)
-            wordPoolDao.deletePoolsWithFewerThanTwoMembers(dictionaryId)
+        poolEdgeWriteCoordinator.withLock(dictionaryId) {
+            val affectedPoolIds = wordPoolDao.getPoolIdsForWord(wordId)
+            val affectedStrategies = if (affectedPoolIds.isEmpty()) {
+                emptyList()
+            } else {
+                wordPoolDao.getPoolsByIds(affectedPoolIds).map { it.strategy }.distinct()
+            }
+            transactionRunner.runInTransaction {
+                wordPoolDao.deletePoolsContainingWord(wordId)
+                wordEdgeDao.deleteEdgesForWord(dictionaryId, wordId)
+                wordEdgeDao.deleteExcludedForWord(dictionaryId, wordId)
+                wordEdgeDao.deleteStagedEdgesForWord(dictionaryId, wordId)
+                wordDao.deleteWord(wordId)
+                wordPoolDao.deletePoolsWithFewerThanTwoMembers(dictionaryId)
+                val now = System.currentTimeMillis()
+                affectedStrategies.forEach { strategy ->
+                    wordPoolDao.upsertStrategyState(
+                        WordPoolStrategyStateEntity(dictionaryId, strategy, now)
+                    )
+                }
+            }
         }
     }
 

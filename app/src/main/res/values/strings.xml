@@ -654,7 +654,7 @@
     <string name="pool_overview_edges">关系边</string>
     <string name="pool_overview_isolated_count">另有 %d 个未关联词</string>
     <string name="pool_overview_cluster_word_count">%d 词</string>
-    <string name="pool_health_title">质量优先词池健康度</string>
+    <string name="pool_health_title">词池健康度</string>
     <string name="pool_health_auditing">正在检查现有词池…</string>
     <string name="pool_health_healthy">现有词池结构健康</string>
     <string name="pool_health_needs_repair">发现词池成员结构问题</string>
@@ -663,11 +663,13 @@
     <string name="pool_health_edges_components">有效边：%1$d · 连通分量：%2$d</string>
     <string name="pool_health_oversized">超过 15 词的分量：%d</string>
     <string name="pool_health_invalid">大小异常池：%1$d · 内部不连通池：%2$d</string>
+    <string name="pool_health_invalid_focus">焦点词不属于成员：%1$d · 重复词池：%2$d</string>
+    <string name="pool_health_missing_supporting_edges">有 %d 个现有词池缺少支持边，无法无损修复；请从完整备份恢复边或重新构建。</string>
     <string name="pool_health_uncovered">遗漏词：%1$d · 多余成员：%2$d</string>
     <string name="pool_health_layout_mismatch">现有成员分组与当前有效边推导出的完整布局不一致。</string>
     <string name="pool_health_edge_warnings">边数据警告：孤儿 %1$d · 自环 %2$d · 未知类型 %3$d</string>
     <string name="pool_health_repair">使用现有边修复</string>
-    <string name="pool_health_repairing">正在清理无效边并原子替换质量优先词池；不会调用 AI，也不会修改有效边。</string>
+    <string name="pool_health_repairing">正在清理无效边并按策略原子替换词池；不会调用 AI，也不会修改有效边。</string>
     <string name="pool_health_failed">无法读取词池健康度</string>
 
     <!-- ==================== Pool Graph ==================== -->

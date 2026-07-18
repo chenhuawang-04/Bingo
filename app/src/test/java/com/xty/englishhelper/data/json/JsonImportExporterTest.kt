@@ -5,12 +5,16 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.xty.englishhelper.data.sync.DictionaryWordUidNormalizer
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.domain.model.DictionaryPoolBackup
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.SimilarWordInfo
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordEdgeBackup
+import com.xty.englishhelper.domain.model.WordPoolBackup
+import com.xty.englishhelper.domain.model.WordPoolStrategyBackup
 import com.xty.englishhelper.domain.model.WordPhrase
 import com.xty.englishhelper.domain.model.WordPhraseSyncItem
 import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
@@ -153,7 +157,7 @@ class JsonImportExporterTest {
         )
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 11"))
+        assertTrue(json.contains("\"schemaVersion\": 12"))
 
         val result = exporter.importFromJson(json)
 
@@ -296,10 +300,64 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 11`() {
+    fun `export produces schemaVersion 12`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 11"))
+        assertTrue(json.contains("\"schemaVersion\": 12"))
+    }
+
+    @Test
+    fun `schema 12 round trip preserves pools edges and empty strategy tombstones`() {
+        val dictionary = Dictionary(name = "Test", description = "")
+        val words = listOf(
+            WordDetails(dictionaryId = 1L, spelling = "adapt", normalizedSpelling = "adapt", wordUid = "uid-a"),
+            WordDetails(dictionaryId = 1L, spelling = "adopt", normalizedSpelling = "adopt", wordUid = "uid-b")
+        )
+        val backup = DictionaryPoolBackup(
+            strategies = listOf(
+                WordPoolStrategyBackup(
+                    strategy = "QUALITY_FIRST",
+                    updatedAt = 50L,
+                    pools = listOf(
+                        WordPoolBackup(
+                            focusWordUid = "uid-a",
+                            memberWordUids = listOf("uid-a", "uid-b"),
+                            algorithmVersion = "QF_v4",
+                            updatedAt = 50L,
+                            qualityScore = 88
+                        )
+                    )
+                ),
+                WordPoolStrategyBackup(strategy = "BALANCED", updatedAt = 60L, pools = emptyList())
+            ),
+            edges = listOf(
+                WordEdgeBackup(
+                    wordUidA = "uid-a",
+                    wordUidB = "uid-b",
+                    edgeType = "FORM_SPELLING",
+                    status = "support",
+                    learningValue = 4,
+                    relationStrength = 5,
+                    confidence = 0.0,
+                    evidenceSource = "user_note",
+                    createdAt = 10L,
+                    updatedAt = 20L
+                )
+            )
+        )
+
+        val json = exporter.exportToJson(
+            dictionary,
+            words,
+            emptyList(),
+            emptyMap(),
+            emptyList(),
+            emptyMap(),
+            poolBackup = backup
+        )
+        val imported = exporter.importFromJson(json)
+
+        assertEquals(backup, imported.poolBackup)
     }
 
     @Test

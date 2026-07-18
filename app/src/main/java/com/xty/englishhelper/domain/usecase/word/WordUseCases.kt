@@ -98,9 +98,10 @@ class DeleteWordUseCase @Inject constructor(
     private val wordPoolRepository: WordPoolRepository
 ) {
     suspend operator fun invoke(wordId: Long, dictionaryId: Long) {
+        val actualDictionaryId = wordRepository.getWordById(wordId)?.dictionaryId ?: return
         wordRepository.deleteWord(wordId)
-        dictionaryRepository.updateWordCount(dictionaryId)
-        wordPoolRepository.invalidateRelationGraph(dictionaryId)
+        dictionaryRepository.updateWordCount(actualDictionaryId)
+        wordPoolRepository.invalidateRelationGraph(actualDictionaryId)
     }
 }
 

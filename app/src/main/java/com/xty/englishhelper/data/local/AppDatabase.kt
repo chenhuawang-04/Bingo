@@ -49,6 +49,7 @@ import com.xty.englishhelper.data.local.entity.BrainstormDailyGoalEntity
 import com.xty.englishhelper.data.local.entity.BrainstormSettingsEntity
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.local.entity.WordEdgeExcludedEntity
+import com.xty.englishhelper.data.local.entity.WordEdgeStagingEntity
 import com.xty.englishhelper.data.local.entity.WordEntity
 import com.xty.englishhelper.data.local.entity.WordExampleEntity
 import com.xty.englishhelper.data.local.entity.WordPhraseEntity
@@ -57,6 +58,7 @@ import com.xty.englishhelper.data.local.entity.WordPhraseTagCrossRef
 import com.xty.englishhelper.data.local.entity.WordPhraseTagEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
+import com.xty.englishhelper.data.local.entity.WordPoolStrategyStateEntity
 import com.xty.englishhelper.data.local.entity.WordStudyStateEntity
 import java.util.UUID
 
@@ -96,6 +98,8 @@ import java.util.UUID
         PlanEventLogEntity::class,
         WordEdgeEntity::class,
         WordEdgeExcludedEntity::class,
+        WordEdgeStagingEntity::class,
+        WordPoolStrategyStateEntity::class,
         BrainstormDailyGoalEntity::class,
         BrainstormSettingsEntity::class,
         WordPhraseTagEntity::class,
@@ -103,7 +107,7 @@ import java.util.UUID
         WordPhraseTagCrossRef::class,
         WordPhraseOrganizeMarkEntity::class
     ],
-    version = 34,
+    version = 35,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1225,6 +1229,60 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE word_edges ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("UPDATE word_edges SET updated_at = created_at WHERE updated_at = 0")
+            }
+        }
+
+        val MIGRATION_34_35 = object : Migration(34, 35) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_edge_staging` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `word_id_a` INTEGER NOT NULL,
+                        `word_id_b` INTEGER NOT NULL,
+                        `edge_type` TEXT NOT NULL,
+                        `dictionary_id` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `learning_value` INTEGER NOT NULL,
+                        `relation_strength` INTEGER NOT NULL,
+                        `confidence` REAL NOT NULL,
+                        `reason` TEXT,
+                        `warning_note` TEXT,
+                        `evidence_source` TEXT,
+                        `register` TEXT,
+                        `example_sentence` TEXT,
+                        `difficulty_cefr` TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_word_edge_staging_dictionary_id` " +
+                        "ON `word_edge_staging` (`dictionary_id`)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_word_edge_staging_word_id_a_word_id_b_edge_type` " +
+                        "ON `word_edge_staging` (`word_id_a`, `word_id_b`, `edge_type`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_pool_strategy_states` (
+                        `dictionary_id` INTEGER NOT NULL,
+                        `strategy` TEXT NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`dictionary_id`, `strategy`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT OR REPLACE INTO word_pool_strategy_states(dictionary_id, strategy, updated_at)
+                    SELECT dictionary_id, strategy, MAX(updated_at)
+                    FROM word_pools
+                    GROUP BY dictionary_id, strategy
+                    """.trimIndent()
+                )
             }
         }
     }

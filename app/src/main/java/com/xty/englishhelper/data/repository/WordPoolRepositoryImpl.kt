@@ -8,8 +8,10 @@ import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
+import com.xty.englishhelper.data.local.entity.WordEdgeStagingEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
+import com.xty.englishhelper.data.local.entity.WordPoolStrategyStateEntity
 import com.xty.englishhelper.data.local.relation.WordWithDetails
 import com.xty.englishhelper.data.mapper.toDomain
 import com.xty.englishhelper.data.preferences.SettingsDataStore
@@ -27,8 +29,10 @@ import com.xty.englishhelper.data.repository.pool.PoolQualityScorer
 import com.xty.englishhelper.data.repository.pool.RetryableEdgeException
 import java.util.concurrent.atomic.AtomicInteger
 import com.xty.englishhelper.domain.background.PoolBuildLiveMonitor
+import com.xty.englishhelper.domain.background.PoolEdgeWriteCoordinator
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.AiSettingsScope
+import com.xty.englishhelper.domain.model.DictionaryPoolBackup
 import com.xty.englishhelper.domain.model.EdgeCluster
 import com.xty.englishhelper.domain.model.EdgeNeighbor
 import com.xty.englishhelper.domain.model.EdgeType
@@ -38,6 +42,9 @@ import com.xty.englishhelper.domain.model.PoolRepairResult
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordEdgeBackup
+import com.xty.englishhelper.domain.model.WordPoolBackup
+import com.xty.englishhelper.domain.model.WordPoolStrategyBackup
 import com.xty.englishhelper.domain.model.WordGraph
 import com.xty.englishhelper.domain.model.WordGraphCluster
 import com.xty.englishhelper.domain.model.WordGraphEdge
@@ -79,13 +86,103 @@ private data class RebuildPoolOutput(
     val generatedEdges: List<WordEdgeEntity> = emptyList()
 )
 
+private data class PoolStrategyAudit(
+    val plannedPools: List<List<Long>>,
+    val expectedWordIds: Set<Long>,
+    val existingWordIds: Set<Long>,
+    val validEdgeCount: Int,
+    val storedEdgeCount: Int,
+    val connectedComponentCount: Int,
+    val oversizedComponentCount: Int,
+    val invalidSizePoolCount: Int,
+    val disconnectedPoolCount: Int,
+    val invalidFocusPoolCount: Int,
+    val missingSupportingEdgePoolCount: Int,
+    val duplicatePoolCount: Int,
+    val layoutMismatch: Boolean
+)
+
 private data class QualityEdgeSnapshot(
-    val effectiveEdges: List<WordEdgeEntity>,
+    val qualityFirstEdges: List<WordEdgeEntity>,
+    val balancedEdges: List<WordEdgeEntity>,
+    val qualityFirstStoredEdgeCount: Int,
+    val balancedStoredEdgeCount: Int,
     val invalidEdgeIds: List<Long>,
     val orphanEdgeCount: Int,
     val selfLoopEdgeCount: Int,
     val unknownTypeEdgeCount: Int
+) {
+    val effectiveEdges: List<WordEdgeEntity>
+        get() = (qualityFirstEdges + balancedEdges).distinctBy(WordEdgeEntity::normalizedKey)
+}
+
+private fun WordEdgeEntity.normalizedKey(): String =
+    "${minOf(wordIdA, wordIdB)}|${maxOf(wordIdA, wordIdB)}|$edgeType"
+
+private fun WordEdgeEntity.toStagingEntity() = WordEdgeStagingEntity(
+    wordIdA = minOf(wordIdA, wordIdB),
+    wordIdB = maxOf(wordIdA, wordIdB),
+    edgeType = edgeType,
+    dictionaryId = dictionaryId,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+    status = status,
+    learningValue = learningValue,
+    relationStrength = relationStrength,
+    confidence = confidence,
+    reason = reason,
+    warningNote = warningNote,
+    evidenceSource = evidenceSource,
+    register = register,
+    exampleSentence = exampleSentence,
+    difficultyCefr = difficultyCefr
 )
+
+private fun WordEdgeStagingEntity.toLiveEntity() = WordEdgeEntity(
+    wordIdA = wordIdA,
+    wordIdB = wordIdB,
+    edgeType = edgeType,
+    dictionaryId = dictionaryId,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+    status = status,
+    learningValue = learningValue,
+    relationStrength = relationStrength,
+    confidence = confidence,
+    reason = reason,
+    warningNote = warningNote,
+    evidenceSource = evidenceSource,
+    register = register,
+    exampleSentence = exampleSentence,
+    difficultyCefr = difficultyCefr
+)
+
+private fun WordEdgeBackup.toEntity(
+    dictionaryId: Long,
+    wordUidToId: Map<String, Long>
+): WordEdgeEntity {
+    val rawA = wordUidToId[wordUidA] ?: throw IllegalStateException("词池边端点不存在：$wordUidA")
+    val rawB = wordUidToId[wordUidB] ?: throw IllegalStateException("词池边端点不存在：$wordUidB")
+    val now = System.currentTimeMillis()
+    return WordEdgeEntity(
+        wordIdA = minOf(rawA, rawB),
+        wordIdB = maxOf(rawA, rawB),
+        edgeType = edgeType,
+        dictionaryId = dictionaryId,
+        createdAt = createdAt.takeIf { it > 0 } ?: now,
+        updatedAt = updatedAt.takeIf { it > 0 } ?: createdAt.takeIf { it > 0 } ?: now,
+        status = status,
+        learningValue = learningValue,
+        relationStrength = relationStrength,
+        confidence = confidence,
+        reason = reason,
+        warningNote = warningNote,
+        evidenceSource = evidenceSource,
+        register = register,
+        exampleSentence = exampleSentence,
+        difficultyCefr = difficultyCefr
+    )
+}
 
 private data class CachedWordGraph(
     val dictionaryId: Long,
@@ -131,7 +228,8 @@ class WordPoolRepositoryImpl @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val edgeReviewer: EdgeReviewer,
     private val entryTypeClassifier: EntryTypeClassifier,
-    private val liveMonitor: PoolBuildLiveMonitor
+    private val liveMonitor: PoolBuildLiveMonitor,
+    private val poolEdgeWriteCoordinator: PoolEdgeWriteCoordinator
 ) : WordPoolRepository {
 
     private val engine = WordPoolEngine()
@@ -149,7 +247,127 @@ class WordPoolRepositoryImpl @Inject constructor(
         private const val EXCLUDED_POOL_EDGE_STATUS = "optional"
         private val BALANCED_EDGE_SOURCES = setOf("balanced_local", "balanced_ai")
         private val PROTECTED_EDGE_SOURCES = listOf("user_note", "balanced_local", "balanced_ai")
+        private val REVIEW_EXCLUDED_SOURCES = listOf("user_note", "balanced_local", "balanced_ai")
+        private const val QUALITY_FIRST_STAGING_STATE = "__QUALITY_FIRST_STAGING__"
         private const val GRAPH_CACHE_TTL_MS = 30_000L
+    }
+
+    override suspend fun exportBackup(
+        dictionaryId: Long,
+        wordIdToUid: Map<Long, String>
+    ): DictionaryPoolBackup = withEdgeWriteLock(dictionaryId) {
+        db.withTransaction { exportBackupLocked(dictionaryId, wordIdToUid) }
+    }
+
+    private suspend fun exportBackupLocked(
+        dictionaryId: Long,
+        wordIdToUid: Map<Long, String>
+    ): DictionaryPoolBackup {
+        val pools = wordPoolDao.getPoolsByDictionary(dictionaryId)
+        val membersByPool = wordPoolDao.getAllMemberships(dictionaryId)
+            .groupBy({ it.poolId }, { it.wordId })
+        val statesByStrategy = wordPoolDao.getStrategyStates(dictionaryId)
+            .filter { it.strategy != QUALITY_FIRST_STAGING_STATE }
+            .associateBy { it.strategy }
+        val strategies = (statesByStrategy.keys + pools.map { it.strategy }).toSortedSet().map { strategy ->
+            val strategyPools = pools.filter { it.strategy == strategy }
+            val updatedAt = statesByStrategy[strategy]?.updatedAt
+                ?: strategyPools.maxOfOrNull { it.updatedAt }
+                ?: 0L
+            WordPoolStrategyBackup(
+                strategy = strategy,
+                updatedAt = updatedAt,
+                pools = strategyPools.map { pool ->
+                    val memberUids = membersByPool[pool.id].orEmpty().map { wordId ->
+                        wordIdToUid[wordId]
+                            ?: throw IllegalStateException("词池 ${pool.id} 引用了不存在的单词 $wordId")
+                    }
+                    val focusUid = pool.focusWordId?.let { focusId ->
+                        wordIdToUid[focusId]
+                            ?: throw IllegalStateException("词池 ${pool.id} 的焦点词不存在：$focusId")
+                    }
+                    WordPoolBackup(
+                        focusWordUid = focusUid,
+                        memberWordUids = memberUids,
+                        algorithmVersion = pool.algorithmVersion,
+                        updatedAt = pool.updatedAt,
+                        qualityScore = pool.qualityScore
+                    )
+                }
+            )
+        }
+        val edges = wordEdgeDao.getAllEdgesFull(dictionaryId).map { edge ->
+            val uidA = wordIdToUid[edge.wordIdA]
+                ?: throw IllegalStateException("词池边 ${edge.id} 引用了不存在的单词 ${edge.wordIdA}")
+            val uidB = wordIdToUid[edge.wordIdB]
+                ?: throw IllegalStateException("词池边 ${edge.id} 引用了不存在的单词 ${edge.wordIdB}")
+            WordEdgeBackup(
+                wordUidA = minOf(uidA, uidB),
+                wordUidB = maxOf(uidA, uidB),
+                edgeType = edge.edgeType,
+                status = edge.status,
+                learningValue = edge.learningValue,
+                relationStrength = edge.relationStrength,
+                confidence = edge.confidence,
+                reason = edge.reason,
+                warningNote = edge.warningNote,
+                evidenceSource = edge.evidenceSource,
+                register = edge.register,
+                exampleSentence = edge.exampleSentence,
+                difficultyCefr = edge.difficultyCefr,
+                createdAt = edge.createdAt,
+                updatedAt = edge.updatedAt
+            )
+        }
+        return DictionaryPoolBackup(strategies = strategies, edges = edges)
+    }
+
+    override suspend fun restoreBackup(
+        dictionaryId: Long,
+        backup: DictionaryPoolBackup,
+        wordUidToId: Map<String, Long>
+    ) = withEdgeWriteLock(dictionaryId) {
+        val edges = backup.edges.map { edge -> edge.toEntity(dictionaryId, wordUidToId) }
+        val seenStrategies = mutableSetOf<String>()
+        val resolvedStrategies = backup.strategies.map { snapshot ->
+            require(seenStrategies.add(snapshot.strategy)) { "词池策略重复：${snapshot.strategy}" }
+            snapshot to snapshot.pools.map { pool ->
+                val memberIds = pool.memberWordUids.map { uid ->
+                    wordUidToId[uid] ?: throw IllegalStateException("词池引用了不存在的单词：$uid")
+                }.distinct()
+                val focusId = pool.focusWordUid?.let { uid ->
+                    wordUidToId[uid] ?: throw IllegalStateException("词池焦点词不存在：$uid")
+                }
+                Triple(pool, memberIds, focusId)
+            }
+        }
+        db.withTransaction {
+            wordPoolDao.deleteByDictionary(dictionaryId)
+            wordPoolDao.deleteStrategyStates(dictionaryId)
+            wordEdgeDao.deleteByDictionary(dictionaryId)
+            wordEdgeDao.deleteExcludedByDictionary(dictionaryId)
+            wordEdgeDao.deleteStagedEdges(dictionaryId)
+            edges.chunked(500).forEach { batch -> if (batch.isNotEmpty()) wordEdgeDao.insertEdges(batch) }
+            resolvedStrategies.forEach { (snapshot, pools) ->
+                wordPoolDao.upsertStrategyState(
+                    WordPoolStrategyStateEntity(dictionaryId, snapshot.strategy, snapshot.updatedAt)
+                )
+                pools.forEach { (pool, memberIds, focusId) ->
+                    val poolId = wordPoolDao.insertPool(
+                        WordPoolEntity(
+                            dictionaryId = dictionaryId,
+                            focusWordId = focusId,
+                            strategy = snapshot.strategy,
+                            algorithmVersion = pool.algorithmVersion,
+                            updatedAt = pool.updatedAt,
+                            qualityScore = pool.qualityScore
+                        )
+                    )
+                    wordPoolDao.insertMembers(memberIds.map { WordPoolMemberEntity(it, poolId) })
+                }
+            }
+        }
+        invalidateGraphCache(dictionaryId)
     }
 
     override suspend fun getPoolsForWord(wordId: Long): List<WordPool> {
@@ -186,58 +404,179 @@ class WordPoolRepositoryImpl @Inject constructor(
     override suspend fun auditQualityFirstPools(dictionaryId: Long): PoolHealthReport {
         val validWordIds = wordDao.getWordLabels(dictionaryId).mapTo(linkedSetOf()) { it.id }
         val edgeSnapshot = loadQualityEdgeSnapshot(dictionaryId, validWordIds)
-
-        val planEdges = edgeSnapshot.effectiveEdges.map { QualityPoolEdge(it.wordIdA, it.wordIdB) }
-        val plan = QualityFirstPoolPlanner.plan(planEdges)
         val poolEntities = wordPoolDao.getPoolsByDictionary(dictionaryId)
-            .filter { it.strategy == PoolStrategy.QUALITY_FIRST.dbValue }
-        val poolIds = poolEntities.map { it.id }.toSet()
-        val membersByPool = if (poolIds.isEmpty()) {
-            emptyMap()
-        } else {
-            wordPoolDao.getAllMemberships(dictionaryId)
-                .filter { it.poolId in poolIds }
-                .groupBy({ it.poolId }, { it.wordId })
+        val strategyStates = wordPoolDao.getStrategyStates(dictionaryId)
+            .filter { it.strategy != QUALITY_FIRST_STAGING_STATE }
+            .mapTo(mutableSetOf()) { it.strategy }
+        val membersByPool = wordPoolDao.getAllMemberships(dictionaryId)
+            .groupBy({ it.poolId }, { it.wordId })
+
+        fun auditStrategy(
+            strategy: String,
+            edges: List<WordEdgeEntity>,
+            storedEdgeCount: Int,
+            active: Boolean
+        ): PoolStrategyAudit {
+            val entities = poolEntities.filter { it.strategy == strategy }
+            val existingPools = entities.map { membersByPool[it.id].orEmpty().distinct() }
+            val activeEdges = if (active) edges else emptyList()
+            val planEdges = activeEdges.map { QualityPoolEdge(it.wordIdA, it.wordIdB) }
+            val plan = QualityFirstPoolPlanner.plan(planEdges)
+            val existingWordIds = existingPools.flatten().toSet()
+            val expectedWordIds = plan.coveredWordIds
+            val existingCanonical = existingPools.map { it.sorted() }.sortedBy { it.joinToString(",") }
+            val plannedCanonical = plan.pools.map { it.distinct().sorted() }.sortedBy { it.joinToString(",") }
+            return PoolStrategyAudit(
+                plannedPools = plan.pools,
+                expectedWordIds = expectedWordIds,
+                existingWordIds = existingWordIds,
+                validEdgeCount = activeEdges.size,
+                storedEdgeCount = if (active) storedEdgeCount else 0,
+                connectedComponentCount = plan.connectedComponents.size,
+                oversizedComponentCount = plan.oversizedComponentCount,
+                invalidSizePoolCount = existingPools.count { it.size !in 2..WordPoolEngine.MAX_POOL_SIZE },
+                disconnectedPoolCount = existingPools.count { members ->
+                    members.size >= 2 && !QualityFirstPoolPlanner.isConnectedPool(members, planEdges)
+                },
+                invalidFocusPoolCount = entities.count { entity ->
+                    entity.focusWordId != null && entity.focusWordId !in membersByPool[entity.id].orEmpty()
+                },
+                missingSupportingEdgePoolCount = if (activeEdges.isEmpty() && storedEdgeCount == 0) {
+                    existingPools.size
+                } else {
+                    0
+                },
+                duplicatePoolCount = existingCanonical.size - existingCanonical.toSet().size,
+                layoutMismatch = existingCanonical != plannedCanonical
+            )
         }
-        val existingPools = poolEntities.map { entity -> membersByPool[entity.id].orEmpty().distinct() }
-        val expectedWordIds = plan.coveredWordIds
-        val existingWordIds = existingPools.flatten().toSet()
-        val invalidSizePools = existingPools.count { it.size !in 2..WordPoolEngine.MAX_POOL_SIZE }
-        val disconnectedPools = existingPools.count { members ->
-            members.size >= 2 && !QualityFirstPoolPlanner.isConnectedPool(members, planEdges)
+
+        val qualityFirstActive = PoolStrategy.QUALITY_FIRST.dbValue in strategyStates ||
+            poolEntities.any { it.strategy == PoolStrategy.QUALITY_FIRST.dbValue } ||
+            edgeSnapshot.qualityFirstEdges.any { it.evidenceSource != "user_note" }
+        val balancedActive = PoolStrategy.BALANCED.dbValue in strategyStates ||
+            poolEntities.any { it.strategy == PoolStrategy.BALANCED.dbValue } ||
+            edgeSnapshot.balancedEdges.any { it.evidenceSource in BALANCED_EDGE_SOURCES }
+        val knownAudits = listOf(
+            auditStrategy(
+                PoolStrategy.QUALITY_FIRST.dbValue,
+                edgeSnapshot.qualityFirstEdges,
+                edgeSnapshot.qualityFirstStoredEdgeCount,
+                qualityFirstActive
+            ),
+            auditStrategy(
+                PoolStrategy.BALANCED.dbValue,
+                edgeSnapshot.balancedEdges,
+                edgeSnapshot.balancedStoredEdgeCount,
+                balancedActive
+            )
+        )
+        val unknownStrategyPoolCount = poolEntities.count { entity ->
+            entity.strategy != PoolStrategy.QUALITY_FIRST.dbValue && entity.strategy != PoolStrategy.BALANCED.dbValue
         }
-        val existingCanonical = existingPools.map { it.distinct().sorted() }.sortedBy { it.joinToString(",") }
-        val plannedCanonical = plan.pools.map { it.distinct().sorted() }.sortedBy { it.joinToString(",") }
 
         return PoolHealthReport(
             dictionaryId = dictionaryId,
             strategy = PoolStrategy.QUALITY_FIRST,
-            existingPoolCount = existingPools.size,
-            plannedPoolCount = plan.pools.size,
-            existingCoveredWordCount = existingWordIds.size,
-            expectedCoveredWordCount = expectedWordIds.size,
-            validEdgeCount = edgeSnapshot.effectiveEdges.size,
-            connectedComponentCount = plan.connectedComponents.size,
-            oversizedComponentCount = plan.oversizedComponentCount,
-            invalidSizePoolCount = invalidSizePools,
-            disconnectedPoolCount = disconnectedPools,
-            uncoveredWordCount = (expectedWordIds - existingWordIds).size,
-            extraneousMemberCount = (existingWordIds - expectedWordIds).size,
+            existingPoolCount = poolEntities.size,
+            plannedPoolCount = knownAudits.sumOf { it.plannedPools.size },
+            existingCoveredWordCount = knownAudits.flatMap { it.existingWordIds }.toSet().size,
+            expectedCoveredWordCount = knownAudits.flatMap { it.expectedWordIds }.toSet().size,
+            validEdgeCount = knownAudits.sumOf { it.validEdgeCount },
+            connectedComponentCount = knownAudits.sumOf { it.connectedComponentCount },
+            oversizedComponentCount = knownAudits.sumOf { it.oversizedComponentCount },
+            invalidSizePoolCount = knownAudits.sumOf { it.invalidSizePoolCount } + unknownStrategyPoolCount,
+            disconnectedPoolCount = knownAudits.sumOf { it.disconnectedPoolCount },
+            uncoveredWordCount = knownAudits.sumOf { (it.expectedWordIds - it.existingWordIds).size },
+            extraneousMemberCount = knownAudits.sumOf { (it.existingWordIds - it.expectedWordIds).size },
             orphanEdgeCount = edgeSnapshot.orphanEdgeCount,
             selfLoopEdgeCount = edgeSnapshot.selfLoopEdgeCount,
             unknownTypeEdgeCount = edgeSnapshot.unknownTypeEdgeCount,
-            layoutMismatch = existingCanonical != plannedCanonical
+            layoutMismatch = knownAudits.any { it.layoutMismatch },
+            invalidFocusPoolCount = knownAudits.sumOf { it.invalidFocusPoolCount },
+            missingSupportingEdgePoolCount = knownAudits.sumOf { it.missingSupportingEdgePoolCount } +
+                unknownStrategyPoolCount,
+            storedEdgeCount = knownAudits.sumOf { it.storedEdgeCount },
+            duplicatePoolCount = knownAudits.sumOf { it.duplicatePoolCount }
         )
     }
 
-    override suspend fun repairQualityFirstPoolsFromExistingEdges(dictionaryId: Long): PoolRepairResult {
+    override suspend fun repairQualityFirstPoolsFromExistingEdges(dictionaryId: Long): PoolRepairResult =
+        withEdgeWriteLock(dictionaryId) {
+            repairPoolsFromExistingEdgesLocked(dictionaryId)
+        }
+
+    private suspend fun repairPoolsFromExistingEdgesLocked(dictionaryId: Long): PoolRepairResult {
         val before = auditQualityFirstPools(dictionaryId)
-        check(before.canRepairFromExistingEdges) { "当前词典没有可修复的词池数据" }
+        check(before.canRepairFromExistingEdges) {
+            if (before.missingSupportingEdgePoolCount > 0) {
+                "现有词池缺少支持边，无法无损修复；请先从备份恢复边数据或重新构建"
+            } else {
+                "当前词典没有可修复的有效边"
+            }
+        }
 
         val validWordIds = wordDao.getWordLabels(dictionaryId).mapTo(hashSetOf()) { it.id }
         val edgeSnapshot = loadQualityEdgeSnapshot(dictionaryId, validWordIds)
-        val validEdges = edgeSnapshot.effectiveEdges
-        val planEdges = validEdges.map { QualityPoolEdge(it.wordIdA, it.wordIdB) }
+        val poolEntities = wordPoolDao.getPoolsByDictionary(dictionaryId)
+        val strategyStates = wordPoolDao.getStrategyStates(dictionaryId)
+            .filter { it.strategy != QUALITY_FIRST_STAGING_STATE }
+            .mapTo(hashSetOf()) { it.strategy }
+        val qualityFirstActive = PoolStrategy.QUALITY_FIRST.dbValue in strategyStates ||
+            poolEntities.any { it.strategy == PoolStrategy.QUALITY_FIRST.dbValue } ||
+            edgeSnapshot.qualityFirstEdges.any { it.evidenceSource != "user_note" }
+        val balancedActive = PoolStrategy.BALANCED.dbValue in strategyStates ||
+            poolEntities.any { it.strategy == PoolStrategy.BALANCED.dbValue } ||
+            edgeSnapshot.balancedEdges.any { it.evidenceSource in BALANCED_EDGE_SOURCES }
+        val qualityFirstPools = if (qualityFirstActive) {
+            buildPoolsFromEffectiveEdges(edgeSnapshot.qualityFirstEdges)
+        } else {
+            emptyList()
+        }
+        val balancedPools = if (balancedActive) {
+            buildPoolsFromEffectiveEdges(edgeSnapshot.balancedEdges)
+        } else {
+            emptyList()
+        }
+        db.withTransaction {
+            edgeSnapshot.invalidEdgeIds.chunked(900).forEach { ids ->
+                if (ids.isNotEmpty()) wordEdgeDao.deleteEdgesByIds(ids)
+            }
+            val now = System.currentTimeMillis()
+            if (qualityFirstActive && edgeSnapshot.qualityFirstStoredEdgeCount > 0) {
+                persistPoolsInCurrentTransaction(
+                    dictionaryId = dictionaryId,
+                    strategy = PoolStrategy.QUALITY_FIRST,
+                    pools = qualityFirstPools,
+                    generatedEdges = emptyList(),
+                    updatedAt = now,
+                    replaceGeneratedEdges = false
+                )
+            }
+            if (balancedActive && edgeSnapshot.balancedStoredEdgeCount > 0) {
+                persistPoolsInCurrentTransaction(
+                    dictionaryId = dictionaryId,
+                    strategy = PoolStrategy.BALANCED,
+                    pools = balancedPools,
+                    generatedEdges = emptyList(),
+                    updatedAt = now,
+                    replaceGeneratedEdges = false
+                )
+            }
+        }
+        invalidateGraphCache(dictionaryId)
+        val after = auditQualityFirstPools(dictionaryId)
+        check(after.isHealthy) { "词池修复后的健康检查未通过" }
+        return PoolRepairResult(
+            before = before,
+            after = after,
+            replacedPoolCount = qualityFirstPools.size + balancedPools.size
+        )
+    }
+
+    private fun buildPoolsFromEffectiveEdges(edges: List<WordEdgeEntity>): List<BuiltPoolWithWordIds> {
+        if (edges.isEmpty()) return emptyList()
+        val planEdges = edges.map { QualityPoolEdge(it.wordIdA, it.wordIdB) }
         val plan = QualityFirstPoolPlanner.plan(planEdges)
         check(plan.coveredWordIds == planEdges.flatMapTo(hashSetOf()) { listOf(it.wordIdA, it.wordIdB) }) {
             "修复规划未覆盖全部有效边端点"
@@ -246,13 +585,12 @@ class WordPoolRepositoryImpl @Inject constructor(
             members.size in 2..WordPoolEngine.MAX_POOL_SIZE &&
                 QualityFirstPoolPlanner.isConnectedPool(members, planEdges)
         }) { "修复规划生成了无效或不连通的词池" }
-
         val edgesByWordId = mutableMapOf<Long, MutableList<WordEdgeEntity>>()
-        validEdges.forEach { edge ->
+        edges.forEach { edge ->
             edgesByWordId.getOrPut(edge.wordIdA) { mutableListOf() }.add(edge)
             edgesByWordId.getOrPut(edge.wordIdB) { mutableListOf() }.add(edge)
         }
-        val rebuiltPools = plan.pools.map { members ->
+        return plan.pools.map { members ->
             BuiltPoolWithWordIds(
                 focusWordId = members.maxWithOrNull(
                     compareBy<Long> { edgesByWordId[it].orEmpty().size }.thenByDescending { it }
@@ -261,29 +599,16 @@ class WordPoolRepositoryImpl @Inject constructor(
                 qualityScore = PoolQualityScorer.computePoolQualityScore(members, edgesByWordId)
             )
         }
-        db.withTransaction {
-            edgeSnapshot.invalidEdgeIds.chunked(900).forEach { ids ->
-                if (ids.isNotEmpty()) wordEdgeDao.deleteEdgesByIds(ids)
-            }
-            persistPoolsInCurrentTransaction(
-                dictionaryId = dictionaryId,
-                strategy = PoolStrategy.QUALITY_FIRST,
-                pools = rebuiltPools,
-                generatedEdges = emptyList(),
-                updatedAt = System.currentTimeMillis()
-            )
-        }
-        invalidateGraphCache(dictionaryId)
-        val after = auditQualityFirstPools(dictionaryId)
-        check(after.isHealthy) { "词池修复后的健康检查未通过" }
-        return PoolRepairResult(before = before, after = after, replacedPoolCount = rebuiltPools.size)
     }
 
     private suspend fun loadQualityEdgeSnapshot(
         dictionaryId: Long,
         validWordIds: Set<Long>
     ): QualityEdgeSnapshot {
-        val effectiveEdges = mutableListOf<WordEdgeEntity>()
+        val qualityFirstEdges = mutableListOf<WordEdgeEntity>()
+        val balancedEdges = mutableListOf<WordEdgeEntity>()
+        var qualityFirstStoredEdges = 0
+        var balancedStoredEdges = 0
         val invalidEdgeIds = mutableListOf<Long>()
         var orphanEdges = 0
         var selfLoops = 0
@@ -311,16 +636,39 @@ class WordPoolRepositoryImpl @Inject constructor(
                         unknownTypes++
                         invalidEdgeIds += edge.id
                     }
-                    edge.confidence >= SIGNIFICANT_EDGE_MIN_CONFIDENCE &&
-                        edge.status != EXCLUDED_POOL_EDGE_STATUS &&
-                        edge.evidenceSource !in BALANCED_EDGE_SOURCES -> effectiveEdges += edge
+                    else -> {
+                        if (edge.evidenceSource == "user_note") {
+                            qualityFirstStoredEdges++
+                            balancedStoredEdges++
+                        } else if (edge.evidenceSource in BALANCED_EDGE_SOURCES) {
+                            balancedStoredEdges++
+                        } else {
+                            qualityFirstStoredEdges++
+                        }
+                        if (edge.confidence < SIGNIFICANT_EDGE_MIN_CONFIDENCE ||
+                            edge.status == EXCLUDED_POOL_EDGE_STATUS
+                        ) {
+                            return@forEach
+                        }
+                        if (edge.evidenceSource == "user_note") {
+                            qualityFirstEdges += edge
+                            balancedEdges += edge
+                        } else if (edge.evidenceSource in BALANCED_EDGE_SOURCES) {
+                            balancedEdges += edge
+                        } else {
+                            qualityFirstEdges += edge
+                        }
+                    }
                 }
             }
             lastEdgeId = page.last().id
         }
 
         return QualityEdgeSnapshot(
-            effectiveEdges = effectiveEdges,
+            qualityFirstEdges = qualityFirstEdges,
+            balancedEdges = balancedEdges,
+            qualityFirstStoredEdgeCount = qualityFirstStoredEdges,
+            balancedStoredEdgeCount = balancedStoredEdges,
             invalidEdgeIds = invalidEdgeIds,
             orphanEdgeCount = orphanEdges,
             selfLoopEdgeCount = selfLoops,
@@ -367,7 +715,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         wordId: Long,
         relatedWordId: Long,
         edgeType: EdgeType
-    ): Boolean {
+    ): Boolean = withEdgeWriteLock(dictionaryId) {
         val currentWord = wordDao.getWordById(wordId)?.toDomain()
             ?: throw IllegalStateException("当前背诵词不存在")
         val relatedWord = wordDao.getWordById(relatedWordId)?.toDomain()
@@ -376,7 +724,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             throw IllegalStateException("便签关联的两个单词必须属于同一个词典")
         }
         val edges = wordEdgeDao.getEdgesBetweenWords(dictionaryId, wordId, relatedWordId)
-        if (edges.isEmpty()) return false
+        if (edges.isEmpty()) return@withEdgeWriteLock false
         val selectedEdge = edges.firstOrNull { it.edgeType == edgeType.dbValue }
         if (selectedEdge != null) {
             wordEdgeDao.promoteUserEdge(
@@ -406,7 +754,7 @@ class WordPoolRepositoryImpl @Inject constructor(
                 }
         }
         invalidateGraphCache(dictionaryId)
-        return true
+        true
     }
 
     override suspend fun organizeWordNoteRelation(
@@ -414,7 +762,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         wordId: Long,
         relatedWordId: Long,
         edgeType: EdgeType
-    ) {
+    ) = withEdgeWriteLock(dictionaryId) {
         val currentWord = wordDao.getWordById(wordId)?.toDomain()
             ?: throw IllegalStateException("当前背诵词不存在")
         val relatedWord = wordDao.getWordById(relatedWordId)?.toDomain()
@@ -613,7 +961,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         isCancelled: () -> Boolean,
         isPaused: () -> Boolean,
         onProgress: (Int, Int, String?) -> Unit
-    ) {
+    ) = withEdgeWriteLock(dictionaryId) {
         val output: RebuildPoolOutput = when (strategy) {
             PoolStrategy.BALANCED, PoolStrategy.BALANCED_WITH_AI -> {
                 // BALANCED needs all candidates in memory for the engine
@@ -639,8 +987,12 @@ class WordPoolRepositoryImpl @Inject constructor(
         // Ensure not cancelled before writing
         coroutineContext.ensureActive()
 
-        // Single transaction write
-        persistPools(dictionaryId, strategy, output.pools, output.generatedEdges)
+        if (isCancelled()) throw CancellationException("词池构建已停止")
+        if (strategy == PoolStrategy.QUALITY_FIRST) {
+            persistQualityFirstStagedResult(dictionaryId, output.pools)
+        } else {
+            persistPools(dictionaryId, strategy, output.pools, output.generatedEdges)
+        }
         invalidateGraphCache(dictionaryId)
     }
 
@@ -662,9 +1014,12 @@ class WordPoolRepositoryImpl @Inject constructor(
         strategy: PoolStrategy,
         pools: List<BuiltPoolWithWordIds>,
         generatedEdges: List<WordEdgeEntity>,
-        updatedAt: Long
+        updatedAt: Long,
+        replaceGeneratedEdges: Boolean = true
     ) {
-        if (strategy == PoolStrategy.BALANCED || strategy == PoolStrategy.BALANCED_WITH_AI) {
+        if (replaceGeneratedEdges &&
+            (strategy == PoolStrategy.BALANCED || strategy == PoolStrategy.BALANCED_WITH_AI)
+        ) {
             val replacedSources = if (strategy == PoolStrategy.BALANCED_WITH_AI) {
                 listOf("balanced_local", "balanced_ai")
             } else {
@@ -696,6 +1051,36 @@ class WordPoolRepositoryImpl @Inject constructor(
                 }
             )
         }
+        wordPoolDao.upsertStrategyState(
+            WordPoolStrategyStateEntity(
+                dictionaryId = dictionaryId,
+                strategy = strategy.dbValue,
+                updatedAt = updatedAt
+            )
+        )
+    }
+
+    private suspend fun persistQualityFirstStagedResult(
+        dictionaryId: Long,
+        pools: List<BuiltPoolWithWordIds>
+    ) {
+        val stagedEdges = wordEdgeDao.getStagedEdges(dictionaryId).map(WordEdgeStagingEntity::toLiveEntity)
+        val now = System.currentTimeMillis()
+        db.withTransaction {
+            wordEdgeDao.deleteUnprotectedEdgesByDictionary(dictionaryId, PROTECTED_EDGE_SOURCES)
+            stagedEdges.chunked(500).forEach { batch ->
+                if (batch.isNotEmpty()) wordEdgeDao.insertEdges(batch)
+            }
+            persistPoolsInCurrentTransaction(
+                dictionaryId = dictionaryId,
+                strategy = PoolStrategy.QUALITY_FIRST,
+                pools = pools,
+                generatedEdges = emptyList(),
+                updatedAt = now
+            )
+            wordEdgeDao.deleteStagedEdges(dictionaryId)
+            wordPoolDao.deleteStrategyState(dictionaryId, QUALITY_FIRST_STAGING_STATE)
+        }
     }
 
     override suspend fun getEdgeCount(dictionaryId: Long): Int =
@@ -707,12 +1092,12 @@ class WordPoolRepositoryImpl @Inject constructor(
         isCancelled: () -> Boolean,
         isPaused: () -> Boolean,
         onProgress: (Int, Int, String?) -> Unit
-    ) {
+    ) = withEdgeWriteLock(dictionaryId) {
         coroutineContext.ensureActive()
-        val edgeCount = wordEdgeDao.countEdges(dictionaryId)
+        val edgeCount = wordEdgeDao.countEdgesExcludingSources(dictionaryId, REVIEW_EXCLUDED_SOURCES)
         if (edgeCount <= 0) {
             onProgress(0, 0, null)
-            return
+            return@withEdgeWriteLock
         }
         val wordSpellings = wordDao.getWordLabels(dictionaryId).associate { it.id to it.spelling }
 
@@ -762,6 +1147,10 @@ class WordPoolRepositoryImpl @Inject constructor(
                 graphCache = null
             }
         }
+    }
+
+    private suspend fun <T> withEdgeWriteLock(dictionaryId: Long, block: suspend () -> T): T {
+        return poolEdgeWriteCoordinator.withLock(dictionaryId, block)
     }
 
     override suspend fun getPoolCount(dictionaryId: Long): Int =
@@ -861,10 +1250,10 @@ class WordPoolRepositoryImpl @Inject constructor(
         }
 
         val candidates = words.mapIndexed { index, wwd ->
-            if (isCancelled()) return RebuildPoolOutput(emptyList())
+            if (isCancelled()) throw CancellationException("词池构建已停止")
             while (isPaused()) {
                 kotlinx.coroutines.delay(500)
-                if (isCancelled()) return RebuildPoolOutput(emptyList())
+                if (isCancelled()) throw CancellationException("词池构建已停止")
             }
             coroutineContext.ensureActive()
             onProgress(index, total, wwd.word.spelling)
@@ -948,9 +1337,8 @@ class WordPoolRepositoryImpl @Inject constructor(
         val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
         Log.i("WordPoolRepo", "QUALITY_FIRST 配置: chunkSize=$chunkSize, maxConcurrent=$maxConcurrent, rpm=$requestsPerMinute, retry=$initialRetryMode, mode=$rebuildMode, startIndex=$startIndex, resumeMsg=${resumeProgressMessage ?: "<none>"}")
 
-        // 注意：FULL 的「清库」**不在此处无条件执行**——必须先算出续传点，仅当“全新构建（无任何可续传的已建边）”时才清库。
-        // 否则 FULL 构建被中断后「重试 / 进程重启续传」会再次清库，已建的边全部丢失——这正是“重试仍从头开始”的根因之一。
-        // 实际清库见下方算出 hasResumableWork 之后的判断。
+        // 正式边始终保持不动。全新任务只清 staging；失败任务在 staging 会话存在时继续断点。
+        // 升级前遗留任务没有 staging 会话，必须从头计算，但旧正式数据仍保留到最终原子交换。
 
         // 限流器全程**单实例**（保留全局节奏）：速率改变时用 updateRate 就地更新，绝不重建。
         // Semaphore 改为「每词新建」——permit 数构造后不可变，但每词的块都在下方独立 coroutineScope（栅栏）内跑完，
@@ -965,6 +1353,14 @@ class WordPoolRepositoryImpl @Inject constructor(
         val totalWords = allWords.size
         Log.i("WordPoolRepo", "词典共 $totalWords 个词")
         if (totalWords <= 1) {
+            wordEdgeDao.deleteStagedEdges(dictionaryId)
+            wordPoolDao.upsertStrategyState(
+                WordPoolStrategyStateEntity(
+                    dictionaryId = dictionaryId,
+                    strategy = QUALITY_FIRST_STAGING_STATE,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
             onProgress(totalWords, totalWords, null)
             return emptyList()
         }
@@ -975,7 +1371,10 @@ class WordPoolRepositoryImpl @Inject constructor(
 
         // 已完整处理的词数：用于进度展示与断点续传。
         // 倒序处理时，已处理的是“末尾若干个词”，startIndex 即上次已处理的数量。
-        val alreadyProcessed = if (startIndex > 0) startIndex.coerceIn(0, totalWords) else 0
+        val hasStagingSession = wordPoolDao.getStrategyStates(dictionaryId)
+            .any { it.strategy == QUALITY_FIRST_STAGING_STATE }
+        val requestedAlreadyProcessed = if (startIndex > 0) startIndex.coerceIn(0, totalWords) else 0
+        val alreadyProcessed = if (hasStagingSession) requestedAlreadyProcessed else 0
         val processed = AtomicInteger(alreadyProcessed)
 
         // ============================================================
@@ -992,8 +1391,12 @@ class WordPoolRepositoryImpl @Inject constructor(
         //   块级：startChunk = 断点词已提交的连续前缀块数（来自持久化的 progressMessage，严格校验）。
         // 两者都与模式无关——FULL 被中断后同样要能续传，绝不能丢掉已建的边。
         // ============================================================
-        val startChunk = resolveStartChunk(resumeProgressMessage, allWords, firstIndexToProcess, chunkSize)
-        val hasResumableWork = alreadyProcessed > 0 || startChunk > 0
+        val startChunk = if (hasStagingSession) {
+            resolveStartChunk(resumeProgressMessage, allWords, firstIndexToProcess, chunkSize)
+        } else {
+            0
+        }
+        val hasResumableWork = hasStagingSession && (alreadyProcessed > 0 || startChunk > 0)
         Log.i(
             "WordPoolRepo",
             "续传点解算: alreadyProcessed=$alreadyProcessed, firstIndexToProcess=$firstIndexToProcess, " +
@@ -1001,12 +1404,18 @@ class WordPoolRepositoryImpl @Inject constructor(
                 (if (firstIndexToProcess in allWords.indices) ", 断点词='${allWords[firstIndexToProcess].spelling}'" else "")
         )
 
-        // 清库只发生在「全新的 FULL 构建」：FULL 且没有任何可续传的已建边时，才清空词典所有边。
-        //   · 词典页「完全重建」→ enqueue 走 SUCCESS+force 把进度清零 → 此处 hasResumableWork=false → 清库（符合预期）。
-        //   · FULL 构建中断后「重试 / 进程重启续传」→ 有可续传工作 → **不清库** → 保留已建边，从断点继续。
-        if (rebuildMode == RebuildMode.FULL && !hasResumableWork) {
-            Log.i("WordPoolRepo", "FULL 全新构建：清空词典 $dictionaryId 的所有边")
-            wordEdgeDao.deleteUnprotectedEdgesByDictionary(dictionaryId, PROTECTED_EDGE_SOURCES)
+        // 新边先写入 staging。失败、取消或进程退出时，当前正式边和词池完全不变；
+        // 只有全部分块成功后才在单事务中交换 staging 边与正式池。
+        if (!hasResumableWork) {
+            Log.i("WordPoolRepo", "$rebuildMode 全新构建：清空词典 $dictionaryId 的暂存边")
+            wordEdgeDao.deleteStagedEdges(dictionaryId)
+            wordPoolDao.upsertStrategyState(
+                WordPoolStrategyStateEntity(
+                    dictionaryId = dictionaryId,
+                    strategy = QUALITY_FIRST_STAGING_STATE,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
         }
 
         if (startChunk > 0) {
@@ -1016,10 +1425,10 @@ class WordPoolRepositoryImpl @Inject constructor(
         for (wordIndex in firstIndexToProcess downTo 1) {
             if (isCancelled()) {
                 Log.d("WordPoolRepo", "构建被取消 @wordIndex=$wordIndex")
-                break
+                throw CancellationException("词池构建已停止")
             }
             awaitWhilePaused(isPaused, isCancelled)
-            if (isCancelled()) break
+            if (isCancelled()) throw CancellationException("词池构建已停止")
 
             val currentWord = allWords[wordIndex]
 
@@ -1031,19 +1440,14 @@ class WordPoolRepositoryImpl @Inject constructor(
                 if (startChunk > 0) {
                     val from = (startChunk * chunkSize).coerceAtMost(wordIndex)
                     allWords.subList(from, wordIndex).map { it.id }.chunked(900).forEach { batch ->
-                        wordEdgeDao.deleteGeneratedEdgesForWordAgainst(
+                        wordEdgeDao.deleteStagedEdgesForWordAgainst(
                             dictionaryId,
                             currentWord.id,
-                            batch,
-                            PROTECTED_EDGE_SOURCES
+                            batch
                         )
                     }
                 } else {
-                    wordEdgeDao.deleteGeneratedEdgesForWord(
-                        dictionaryId,
-                        currentWord.id,
-                        PROTECTED_EDGE_SOURCES
-                    )
+                    wordEdgeDao.deleteStagedEdgesForWord(dictionaryId, currentWord.id)
                 }
             }
 
@@ -1092,7 +1496,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             if (startChunkForWord > 0) {
                 val committedUntil = (startChunkForWord * chunkSize).coerceAtMost(wordIndex)
                 allWords.subList(0, committedUntil).map { it.id }.chunked(900).forEach { batch ->
-                    committedEdges += wordEdgeDao.countEdgesForWordAgainst(dictionaryId, currentWord.id, batch)
+                    committedEdges += wordEdgeDao.countStagedEdgesForWordAgainst(dictionaryId, currentWord.id, batch)
                 }
             }
 
@@ -1124,7 +1528,7 @@ class WordPoolRepositoryImpl @Inject constructor(
             // 注意：committedEdges 已在上方以”续传起点边数”初始化；committedChunks 为已提交的连续前缀块数（即续传点）。
             var committedChunks = startChunkForWord
             waveLoop@ while (committedChunks < chunks.size) {
-                if (isCancelled()) break@waveLoop
+                if (isCancelled()) throw CancellationException("词池构建已停止")
                 val waveStart = committedChunks
                 val waveEnd = (waveStart + currentMaxConcurrent).coerceAtMost(chunks.size)
                 coroutineScope {
@@ -1132,9 +1536,9 @@ class WordPoolRepositoryImpl @Inject constructor(
                         async {
                             semaphore.withPermit {
                                 awaitWhilePaused(isPaused, isCancelled)
-                                if (isCancelled()) return@withPermit ChunkOutcome.Ok(emptyList())
+                                if (isCancelled()) throw CancellationException("词池构建已停止")
                                 rateLimiter.acquire()
-                                if (isCancelled()) return@withPermit ChunkOutcome.Ok(emptyList())
+                                if (isCancelled()) throw CancellationException("词池构建已停止")
 
                                 // chunk 本身就是完整的 WordDetails，直接构建 prompt，无需回查数据库。
                                 val chunk = chunks[chunkIndex]
@@ -1174,11 +1578,11 @@ class WordPoolRepositoryImpl @Inject constructor(
                     for (chunkIndex in waveStart until waveEnd) {
                         val outcome = deferreds[chunkIndex]!!.await()
                         // 取消：停止提交，避免把”取消产生的空结果块”误记为已完成（否则续传会跳过未整理的块）。
-                        if (isCancelled()) break
+                        if (isCancelled()) throw CancellationException("词池构建已停止")
                         when (outcome) {
                             is ChunkOutcome.Ok -> {
                                 if (outcome.edges.isNotEmpty()) {
-                                    persistGeneratedEdges(outcome.edges)
+                                    persistStagedGeneratedEdges(outcome.edges)
                                 }
                                 committedEdges += outcome.edges.size
                                 committedChunks = chunkIndex + 1
@@ -1199,23 +1603,21 @@ class WordPoolRepositoryImpl @Inject constructor(
                     }
                 }
                 // 取消时连续前缀未推进到本波末尾 → 跳出，不进入下一波。
-                if (isCancelled()) break@waveLoop
+                if (isCancelled()) throw CancellationException("词池构建已停止")
             }
 
             // 该词处理完毕：完成数 +1，发出一次进度（块数清零，待下一个词重新填充）。
             // 取消时不把”未整理完的当前词”计为已完成（否则续传会跳过该词，缺块）。
-            if (isCancelled()) break
+            if (isCancelled()) throw CancellationException("词池构建已停止")
             val done = processed.incrementAndGet()
             onProgress(done, totalWords, encodeProgress(currentWord.spelling, 0, 0, committedEdges))
         }
 
         // index 0 的词无前驱，处理结束后计入完成数，使进度抵达 100%。
-        if (!isCancelled()) {
-            processed.incrementAndGet()
-            onProgress(processed.get().coerceAtMost(totalWords), totalWords, null)
-            // 全部词处理完毕：清空实时分块网格（详情页随之隐藏方块）。失败/取消时不清，保留现场供点击排查。
-            liveMonitor.clear()
-        }
+        if (isCancelled()) throw CancellationException("词池构建已停止")
+        processed.incrementAndGet()
+        onProgress(processed.get().coerceAtMost(totalWords), totalWords, null)
+        liveMonitor.clear()
 
         // ============================================================
         // 构建完成。任一分块在重试耗尽后失败都会提前抛 PoolBuildDataException 中止，
@@ -1231,7 +1633,7 @@ class WordPoolRepositoryImpl @Inject constructor(
         // 不再附加在整理之后。
         // ============================================================
         coroutineContext.ensureActive()
-        return rebuildPoolsFromDictionaryEdges(dictionaryId)
+        return rebuildPoolsFromStagedDictionaryEdges(dictionaryId)
     }
 
     // ── QUALITY_FIRST 小工具 ──
@@ -1299,32 +1701,8 @@ class WordPoolRepositoryImpl @Inject constructor(
         )
     }
 
-    private suspend fun persistGeneratedEdges(edges: List<WordEdgeEntity>) {
-        edges.forEach { candidate ->
-            val existing = wordEdgeDao.getEdgesBetweenWords(
-                candidate.dictionaryId,
-                candidate.wordIdA,
-                candidate.wordIdB
-            ).firstOrNull { it.edgeType == candidate.edgeType }
-            when {
-                existing == null -> wordEdgeDao.insertEdgeIfAbsent(candidate)
-                existing.evidenceSource == "user_note" -> Unit
-                else -> wordEdgeDao.updateGeneratedEdge(
-                    id = existing.id,
-                    dictionaryId = candidate.dictionaryId,
-                    status = candidate.status,
-                    learningValue = candidate.learningValue,
-                    relationStrength = candidate.relationStrength,
-                    confidence = candidate.confidence,
-                    reason = candidate.reason,
-                    warningNote = candidate.warningNote,
-                    evidenceSource = candidate.evidenceSource,
-                    register = candidate.register,
-                    exampleSentence = candidate.exampleSentence,
-                    difficultyCefr = candidate.difficultyCefr
-                )
-            }
-        }
+    private suspend fun persistStagedGeneratedEdges(edges: List<WordEdgeEntity>) {
+        wordEdgeDao.upsertStagedEdges(edges.map(WordEdgeEntity::toStagingEntity))
     }
 
     /** 把一条 AI 解析出的边转换为可入库实体（按 wordIdA < wordIdB 规范化）。 */
@@ -1464,44 +1842,35 @@ class WordPoolRepositoryImpl @Inject constructor(
 
     // ── Reviewer ──
 
-    /** Builds connected, fully covered pools from the effective edge graph. */
-    private suspend fun rebuildPoolsFromDictionaryEdges(dictionaryId: Long): List<BuiltPoolWithWordIds> {
+    /** Builds the final pool plan from isolated staging edges plus authoritative user edges. */
+    private suspend fun rebuildPoolsFromStagedDictionaryEdges(dictionaryId: Long): List<BuiltPoolWithWordIds> {
         val validWordIds = wordDao.getWordLabels(dictionaryId).mapTo(hashSetOf()) { it.id }
         if (validWordIds.isEmpty()) return emptyList()
+        val edgeByKey = linkedMapOf<String, WordEdgeEntity>()
+        wordEdgeDao.getStagedEdges(dictionaryId)
+            .map(WordEdgeStagingEntity::toLiveEntity)
+            .forEach { edge -> edgeByKey[edge.normalizedKey()] = edge }
+        wordEdgeDao.getEdgesBySource(dictionaryId, "user_note")
+            .forEach { edge -> edgeByKey[edge.normalizedKey()] = edge }
+        val effectiveEdges = edgeByKey.values.filter { edge ->
+            edge.wordIdA != edge.wordIdB &&
+                edge.wordIdA in validWordIds &&
+                edge.wordIdB in validWordIds &&
+                EdgeType.fromDbValue(edge.edgeType) != null &&
+                edge.confidence >= SIGNIFICANT_EDGE_MIN_CONFIDENCE &&
+                edge.status != EXCLUDED_POOL_EDGE_STATUS
+        }
         val adjacency = mutableMapOf<Long, MutableSet<Long>>()
         val degreeByWordId = mutableMapOf<Long, Int>()
-        var lastEdgeId = 0L
-
-        while (true) {
-            val edgePage = wordEdgeDao.getQualityFirstEdgesPageFull(
-                dictionaryId = dictionaryId,
-                lastId = lastEdgeId,
-                minConfidence = SIGNIFICANT_EDGE_MIN_CONFIDENCE,
-                excludedStatus = EXCLUDED_POOL_EDGE_STATUS,
-                excludedSources = BALANCED_EDGE_SOURCES.toList(),
-                limit = REBUILD_EDGE_PAGE_SIZE
-            )
-            if (edgePage.isEmpty()) break
-            edgePage.forEach { edge ->
-                if (
-                    edge.wordIdA == edge.wordIdB ||
-                    edge.wordIdA !in validWordIds ||
-                    edge.wordIdB !in validWordIds ||
-                    EdgeType.fromDbValue(edge.edgeType) == null
-                ) {
-                    return@forEach
-                }
-                adjacency.getOrPut(edge.wordIdA) { linkedSetOf() }.add(edge.wordIdB)
-                adjacency.getOrPut(edge.wordIdB) { linkedSetOf() }.add(edge.wordIdA)
-                degreeByWordId[edge.wordIdA] = (degreeByWordId[edge.wordIdA] ?: 0) + 1
-                degreeByWordId[edge.wordIdB] = (degreeByWordId[edge.wordIdB] ?: 0) + 1
-            }
-            lastEdgeId = edgePage.last().id
+        effectiveEdges.forEach { edge ->
+            adjacency.getOrPut(edge.wordIdA) { linkedSetOf() }.add(edge.wordIdB)
+            adjacency.getOrPut(edge.wordIdB) { linkedSetOf() }.add(edge.wordIdA)
+            degreeByWordId[edge.wordIdA] = (degreeByWordId[edge.wordIdA] ?: 0) + 1
+            degreeByWordId[edge.wordIdB] = (degreeByWordId[edge.wordIdB] ?: 0) + 1
         }
 
         if (degreeByWordId.isEmpty()) return emptyList()
         val membersByPoolIndex = QualityFirstPoolPlanner.planAdjacency(adjacency).pools
-
         if (membersByPoolIndex.isEmpty()) return emptyList()
 
         val scorerByPoolIndex = mutableMapOf<Int, PoolQualityScorer.Accumulator>()
@@ -1511,27 +1880,14 @@ class WordPoolRepositoryImpl @Inject constructor(
                 poolIndicesByWordId.getOrPut(wordId) { linkedSetOf() }.add(poolIndex)
             }
         }
-        lastEdgeId = 0L
-        while (true) {
-            val edgePage = wordEdgeDao.getQualityFirstEdgesPageFull(
-                dictionaryId = dictionaryId,
-                lastId = lastEdgeId,
-                minConfidence = SIGNIFICANT_EDGE_MIN_CONFIDENCE,
-                excludedStatus = EXCLUDED_POOL_EDGE_STATUS,
-                excludedSources = BALANCED_EDGE_SOURCES.toList(),
-                limit = REBUILD_EDGE_PAGE_SIZE
-            )
-            if (edgePage.isEmpty()) break
-            edgePage.forEach { edge ->
-                val commonPools = poolIndicesByWordId[edge.wordIdA].orEmpty()
-                    .intersect(poolIndicesByWordId[edge.wordIdB].orEmpty())
-                commonPools.forEach { poolIndex ->
-                    scorerByPoolIndex
-                        .getOrPut(poolIndex) { PoolQualityScorer.Accumulator() }
-                        .accept(edge)
-                }
+        effectiveEdges.forEach { edge ->
+            val commonPools = poolIndicesByWordId[edge.wordIdA].orEmpty()
+                .intersect(poolIndicesByWordId[edge.wordIdB].orEmpty())
+            commonPools.forEach { poolIndex ->
+                scorerByPoolIndex
+                    .getOrPut(poolIndex) { PoolQualityScorer.Accumulator() }
+                    .accept(edge)
             }
-            lastEdgeId = edgePage.last().id
         }
 
         return membersByPoolIndex.mapIndexed { poolIndex, members ->
@@ -1703,7 +2059,25 @@ class WordPoolRepositoryImpl @Inject constructor(
         chunkIndex: Int,
         totalChunks: Int,
         json: String
+    ): ManualFillResult = withEdgeWriteLock(dictionaryId) {
+        manualFillChunkLocked(dictionaryId, wordSpelling, chunkIndex, totalChunks, json)
+    }
+
+    private suspend fun manualFillChunkLocked(
+        dictionaryId: Long,
+        wordSpelling: String,
+        chunkIndex: Int,
+        totalChunks: Int,
+        json: String
     ): ManualFillResult {
+        val hasStagingSession = wordPoolDao.getStrategyStates(dictionaryId)
+            .any { it.strategy == QUALITY_FIRST_STAGING_STATE }
+        if (!hasStagingSession) {
+            return ManualFillResult(
+                false,
+                error = "This task predates atomic staging. Restart the pool build before filling chunks manually."
+            )
+        }
         val chunkSize = settingsDataStore.getPoolWindowSize()
         if (chunkSize <= 0) return ManualFillResult(false, error = "Invalid window size")
         val allWords = wordDao.getWordsByDictionaryOnce(dictionaryId).map { it.toDomain() }
@@ -1736,17 +2110,11 @@ class WordPoolRepositoryImpl @Inject constructor(
             return ManualFillResult(false, error = "JSON parse error: ${e.message?.take(160) ?: e.javaClass.simpleName}")
         }
 
-        // 幂等：先删该块覆盖的前驱区残边（双向匹配，分批避开 SQLite 参数上限），再插入。
+        // 幂等写入 staging；正式边只会在整个构建完成时原子交换。
         window.map { it.id }.chunked(900).forEach { batch ->
-            wordEdgeDao.deleteGeneratedEdgesForWordAgainst(
-                dictionaryId,
-                target.id,
-                batch,
-                PROTECTED_EDGE_SOURCES
-            )
+            wordEdgeDao.deleteStagedEdgesForWordAgainst(dictionaryId, target.id, batch)
         }
-        if (edges.isNotEmpty()) wordEdgeDao.insertEdges(edges)
-        invalidateGraphCache(dictionaryId)
+        if (edges.isNotEmpty()) persistStagedGeneratedEdges(edges)
 
         // 刷新实时网格（仅当现场正是该词时生效；进程重启后网格为空则 no-op，续传会重填）。
         liveMonitor.recordAttempt(

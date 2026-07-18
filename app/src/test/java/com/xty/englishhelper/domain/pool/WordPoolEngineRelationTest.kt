@@ -96,4 +96,25 @@ class WordPoolEngineRelationTest {
             QualityFirstPoolPlanner.isConnectedPool(pool.memberIndices.map(Int::toLong), persistedEdges)
         })
     }
+
+    @Test
+    fun `shared meaning produces a linear spanning relation set instead of a clique`() {
+        val candidates = (0 until 200).map { index ->
+            PoolCandidate(
+                index = index,
+                wordId = index.toLong() + 1,
+                spelling = "term-${index.toString().padStart(4, '0')}",
+                meanings = listOf("共同语义片段用于规模测试"),
+                synonymSpellings = emptyList(),
+                similarSpellings = emptyList(),
+                cognateSpellings = emptyList(),
+                associatedWordIds = emptyList()
+            )
+        }
+
+        val build = WordPoolEngine().buildPoolsWithRelations(candidates)
+
+        assertEquals(candidates.indices.toSet(), build.pools.flatMap { it.memberIndices }.toSet())
+        assertTrue(build.relations.size <= candidates.size - 1)
+    }
 }

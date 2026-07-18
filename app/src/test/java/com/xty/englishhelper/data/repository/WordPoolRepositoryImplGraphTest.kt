@@ -17,6 +17,7 @@ import com.xty.englishhelper.data.remote.AiApiClientProvider
 import com.xty.englishhelper.data.repository.pool.EdgeReviewer
 import com.xty.englishhelper.data.repository.pool.EntryTypeClassifier
 import com.xty.englishhelper.domain.background.PoolBuildLiveMonitor
+import com.xty.englishhelper.domain.background.PoolEdgeWriteCoordinator
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.PoolStrategy
 import io.mockk.coEvery
@@ -30,6 +31,124 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WordPoolRepositoryImplGraphTest {
+
+    @Test
+    fun `health audit blocks destructive repair when persisted pools have no supporting edges`() = runTest {
+        val wordDao = mockk<WordDao>()
+        val wordEdgeDao = mockk<WordEdgeDao>()
+        val wordPoolDao = mockk<WordPoolDao>()
+        val repository = repository(wordDao = wordDao, wordEdgeDao = wordEdgeDao, wordPoolDao = wordPoolDao)
+        coEvery { wordDao.getWordLabels(1L) } returns listOf(
+            WordLabelProjection(1L, "adapt"),
+            WordLabelProjection(2L, "adopt")
+        )
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 0L, any()) } returns emptyList()
+        coEvery { wordPoolDao.getPoolsByDictionary(1L) } returns listOf(
+            WordPoolEntity(
+                id = 10L,
+                dictionaryId = 1L,
+                strategy = PoolStrategy.QUALITY_FIRST.dbValue,
+                algorithmVersion = "QF_v4"
+            )
+        )
+        coEvery { wordPoolDao.getAllMemberships(1L) } returns listOf(
+            WordPoolMembership(1L, 10L),
+            WordPoolMembership(2L, 10L)
+        )
+        coEvery { wordPoolDao.getStrategyStates(1L) } returns emptyList()
+
+        val report = repository.auditQualityFirstPools(1L)
+
+        assertEquals(1, report.missingSupportingEdgePoolCount)
+        assertTrue(!report.canRepairFromExistingEdges)
+        assertTrue(!report.isHealthy)
+    }
+
+    @Test
+    fun `health audit validates balanced pools against balanced edges`() = runTest {
+        val wordDao = mockk<WordDao>()
+        val wordEdgeDao = mockk<WordEdgeDao>()
+        val wordPoolDao = mockk<WordPoolDao>()
+        val repository = repository(wordDao = wordDao, wordEdgeDao = wordEdgeDao, wordPoolDao = wordPoolDao)
+        val edge = WordEdgeEntity(
+            id = 1L,
+            wordIdA = 1L,
+            wordIdB = 2L,
+            edgeType = EdgeType.FORM_SPELLING.dbValue,
+            dictionaryId = 1L,
+            status = "support",
+            confidence = 0.65,
+            evidenceSource = "balanced_local"
+        )
+        coEvery { wordDao.getWordLabels(1L) } returns listOf(
+            WordLabelProjection(1L, "adapt"),
+            WordLabelProjection(2L, "adopt")
+        )
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 0L, any()) } returns listOf(edge)
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 1L, any()) } returns emptyList()
+        coEvery { wordPoolDao.getPoolsByDictionary(1L) } returns listOf(
+            WordPoolEntity(
+                id = 11L,
+                dictionaryId = 1L,
+                focusWordId = 1L,
+                strategy = PoolStrategy.BALANCED.dbValue,
+                algorithmVersion = "BALANCED_v1"
+            )
+        )
+        coEvery { wordPoolDao.getAllMemberships(1L) } returns listOf(
+            WordPoolMembership(1L, 11L),
+            WordPoolMembership(2L, 11L)
+        )
+        coEvery { wordPoolDao.getStrategyStates(1L) } returns emptyList()
+
+        val report = repository.auditQualityFirstPools(1L)
+
+        assertEquals(1, report.validEdgeCount)
+        assertTrue(report.isHealthy)
+    }
+
+    @Test
+    fun `health audit can safely remove pools when stored edges are explicit zero confidence tombstones`() = runTest {
+        val wordDao = mockk<WordDao>()
+        val wordEdgeDao = mockk<WordEdgeDao>()
+        val wordPoolDao = mockk<WordPoolDao>()
+        val repository = repository(wordDao = wordDao, wordEdgeDao = wordEdgeDao, wordPoolDao = wordPoolDao)
+        val removedEdge = WordEdgeEntity(
+            id = 1L,
+            wordIdA = 1L,
+            wordIdB = 2L,
+            edgeType = EdgeType.SEMANTIC_OVERLAP.dbValue,
+            dictionaryId = 1L,
+            status = "support",
+            confidence = 0.0
+        )
+        coEvery { wordDao.getWordLabels(1L) } returns listOf(
+            WordLabelProjection(1L, "adapt"),
+            WordLabelProjection(2L, "adopt")
+        )
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 0L, any()) } returns listOf(removedEdge)
+        coEvery { wordEdgeDao.getEdgesPageFull(1L, 1L, any()) } returns emptyList()
+        coEvery { wordPoolDao.getPoolsByDictionary(1L) } returns listOf(
+            WordPoolEntity(
+                id = 12L,
+                dictionaryId = 1L,
+                strategy = PoolStrategy.QUALITY_FIRST.dbValue,
+                algorithmVersion = "QF_v4"
+            )
+        )
+        coEvery { wordPoolDao.getAllMemberships(1L) } returns listOf(
+            WordPoolMembership(1L, 12L),
+            WordPoolMembership(2L, 12L)
+        )
+        coEvery { wordPoolDao.getStrategyStates(1L) } returns emptyList()
+
+        val report = repository.auditQualityFirstPools(1L)
+
+        assertEquals(1, report.storedEdgeCount)
+        assertEquals(0, report.validEdgeCount)
+        assertEquals(0, report.missingSupportingEdgePoolCount)
+        assertTrue(report.canRepairFromExistingEdges)
+    }
 
     @Test
     fun `health audit reports a persisted quality-first pool that dropped an edge endpoint`() = runTest {
@@ -62,6 +181,7 @@ class WordPoolRepositoryImplGraphTest {
                 algorithmVersion = "QF_v3"
             )
         )
+        coEvery { wordPoolDao.getStrategyStates(1L) } returns emptyList()
         coEvery { wordPoolDao.getAllMemberships(1L) } returns (1L..15L).map { wordId ->
             WordPoolMembership(wordId = wordId, poolId = 100L)
         }
@@ -160,7 +280,7 @@ class WordPoolRepositoryImplGraphTest {
             edgeReviewer = edgeReviewer
         )
 
-        coEvery { wordEdgeDao.countEdges(1L) } returns 2
+        coEvery { wordEdgeDao.countEdgesExcludingSources(1L, any()) } returns 2
         coEvery { wordDao.getWordLabels(1L) } returns listOf(
             WordLabelProjection(id = 10L, spelling = "adapt"),
             WordLabelProjection(id = 20L, spelling = "adopt")
@@ -410,7 +530,8 @@ class WordPoolRepositoryImplGraphTest {
             settingsDataStore = mockk<SettingsDataStore>(relaxed = true),
             edgeReviewer = edgeReviewer,
             entryTypeClassifier = mockk<EntryTypeClassifier>(relaxed = true),
-            liveMonitor = mockk<PoolBuildLiveMonitor>(relaxed = true)
+            liveMonitor = mockk<PoolBuildLiveMonitor>(relaxed = true),
+            poolEdgeWriteCoordinator = PoolEdgeWriteCoordinator()
         )
 
     private fun wordWithDetails(id: Long, dictionaryId: Long, spelling: String): WordWithDetails =

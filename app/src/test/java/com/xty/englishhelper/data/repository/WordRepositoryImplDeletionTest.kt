@@ -7,6 +7,7 @@ import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.WordEntity
 import com.xty.englishhelper.data.local.relation.WordWithDetails
 import com.xty.englishhelper.domain.repository.TransactionRunner
+import com.xty.englishhelper.domain.background.PoolEdgeWriteCoordinator
 import io.mockk.coEvery
 import io.mockk.coVerifyOrder
 import io.mockk.coVerify
@@ -21,8 +22,15 @@ class WordRepositoryImplDeletionTest {
     fun `deleting a dictionary cleans edge and exclusion rows transactionally`() = runTest {
         val dictionaryDao = mockk<DictionaryDao>(relaxed = true)
         val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
+        val wordPoolDao = mockk<WordPoolDao>(relaxed = true)
         val transactionRunner = RecordingTransactionRunner()
-        val repository = DictionaryRepositoryImpl(dictionaryDao, wordEdgeDao, transactionRunner)
+        val repository = DictionaryRepositoryImpl(
+            dictionaryDao,
+            wordEdgeDao,
+            wordPoolDao,
+            transactionRunner,
+            PoolEdgeWriteCoordinator()
+        )
 
         repository.deleteDictionary(3L)
 
@@ -38,7 +46,13 @@ class WordRepositoryImplDeletionTest {
         val wordEdgeDao = mockk<WordEdgeDao>(relaxed = true)
         val wordPoolDao = mockk<WordPoolDao>(relaxed = true)
         val transactionRunner = RecordingTransactionRunner()
-        val repository = WordRepositoryImpl(wordDao, wordEdgeDao, wordPoolDao, transactionRunner)
+        val repository = WordRepositoryImpl(
+            wordDao,
+            wordEdgeDao,
+            wordPoolDao,
+            transactionRunner,
+            PoolEdgeWriteCoordinator()
+        )
         coEvery { wordDao.getWordById(10L) } returns WordWithDetails(
             word = WordEntity(id = 10L, dictionaryId = 3L, spelling = "adapt"),
             synonyms = emptyList(),
@@ -51,12 +65,14 @@ class WordRepositoryImplDeletionTest {
         coVerify(exactly = 1) { wordPoolDao.deletePoolsContainingWord(10L) }
         coVerify(exactly = 1) { wordEdgeDao.deleteEdgesForWord(3L, 10L) }
         coVerify(exactly = 1) { wordEdgeDao.deleteExcludedForWord(3L, 10L) }
+        coVerify(exactly = 1) { wordEdgeDao.deleteStagedEdgesForWord(3L, 10L) }
         coVerify(exactly = 1) { wordDao.deleteWord(10L) }
         coVerify(exactly = 1) { wordPoolDao.deletePoolsWithFewerThanTwoMembers(3L) }
         coVerifyOrder {
             wordPoolDao.deletePoolsContainingWord(10L)
             wordEdgeDao.deleteEdgesForWord(3L, 10L)
             wordEdgeDao.deleteExcludedForWord(3L, 10L)
+            wordEdgeDao.deleteStagedEdgesForWord(3L, 10L)
             wordDao.deleteWord(10L)
             wordPoolDao.deletePoolsWithFewerThanTwoMembers(3L)
         }

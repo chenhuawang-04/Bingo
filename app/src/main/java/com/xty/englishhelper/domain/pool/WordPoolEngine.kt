@@ -85,10 +85,11 @@ class WordPoolEngine {
                 if (normalizedSpellings[j].length < 4) continue
                 if (kotlin.math.abs(normalizedSpellings[i].length - normalizedSpellings[j].length) > 2) continue
                 if (levenshtein(normalizedSpellings[i], normalizedSpellings[j]) <= 2) {
-                    uf.union(i, j)
-                    val edge = if (i < j) Pair(i, j) else Pair(j, i)
-                    editDistEdges.add(edge)
-                    addRelation(i, j, EdgeType.FORM_SPELLING, "balanced_local")
+                    if (uf.union(i, j)) {
+                        val edge = if (i < j) Pair(i, j) else Pair(j, i)
+                        editDistEdges.add(edge)
+                        addRelation(i, j, EdgeType.FORM_SPELLING, "balanced_local")
+                    }
                 }
             }
         }
@@ -124,17 +125,15 @@ class WordPoolEngine {
                 refToSources.getOrPut(normRef) { mutableListOf() }.add(c.index)
             }
         }
-        refToSources.values.forEach { sources ->
-            if (sources.size >= 2) {
-                for (i in 0 until sources.size - 1) {
-                    for (j in i + 1 until sources.size) {
-                        if (sources[i] != sources[j]) {
-                            uf.union(sources[i], sources[j])
-                            val edge = if (sources[i] < sources[j]) Pair(sources[i], sources[j]) else Pair(sources[j], sources[i])
-                            directRefEdges.add(edge)
-                            addRelation(sources[i], sources[j], EdgeType.SEMANTIC_OVERLAP, "balanced_local")
-                        }
-                    }
+        refToSources.values.forEach { rawSources ->
+            val sources = rawSources.distinct().sorted()
+            for (i in 0 until sources.size - 1) {
+                val a = sources[i]
+                val b = sources[i + 1]
+                if (uf.union(a, b)) {
+                    val edge = a to b
+                    directRefEdges.add(edge)
+                    addRelation(a, b, EdgeType.SEMANTIC_OVERLAP, "balanced_local")
                 }
             }
         }
@@ -154,15 +153,15 @@ class WordPoolEngine {
                 meaningSubstringToWords.getOrPut(sub) { mutableListOf() }.add(c.index)
             }
         }
-        meaningSubstringToWords.values.forEach { indices ->
-            if (indices.size >= 2) {
-                for (i in 0 until indices.size - 1) {
-                    for (j in i + 1 until indices.size) {
-                        uf.union(indices[i], indices[j])
-                        val edge = if (indices[i] < indices[j]) Pair(indices[i], indices[j]) else Pair(indices[j], indices[i])
-                        directRefEdges.add(edge)
-                        addRelation(indices[i], indices[j], EdgeType.SEMANTIC_OVERLAP, "balanced_local")
-                    }
+        meaningSubstringToWords.values.forEach { rawIndices ->
+            val indices = rawIndices.distinct().sorted()
+            for (i in 0 until indices.size - 1) {
+                val a = indices[i]
+                val b = indices[i + 1]
+                if (uf.union(a, b)) {
+                    val edge = a to b
+                    directRefEdges.add(edge)
+                    addRelation(a, b, EdgeType.SEMANTIC_OVERLAP, "balanced_local")
                 }
             }
         }
@@ -172,10 +171,11 @@ class WordPoolEngine {
             c.associatedWordIds.forEach { assocId ->
                 val targetIdx = wordIdToIndex[assocId]
                 if (targetIdx != null && targetIdx != c.index) {
-                    uf.union(c.index, targetIdx)
-                    val edge = if (c.index < targetIdx) Pair(c.index, targetIdx) else Pair(targetIdx, c.index)
-                    directRefEdges.add(edge)
-                    addRelation(c.index, targetIdx, EdgeType.FAMILY_SAME_ROOT, "balanced_local")
+                    if (uf.union(c.index, targetIdx)) {
+                        val edge = if (c.index < targetIdx) Pair(c.index, targetIdx) else Pair(targetIdx, c.index)
+                        directRefEdges.add(edge)
+                        addRelation(c.index, targetIdx, EdgeType.FAMILY_SAME_ROOT, "balanced_local")
+                    }
                 }
             }
         }

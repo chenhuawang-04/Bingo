@@ -713,7 +713,7 @@
     <string name="question_writing_practice_usage">Phrase usage: %1$d/%2$d</string>
     <string name="question_writing_practice_usage_note">Phrase usage is a separate evaluation item and does not affect the essay score.</string>
     <string name="dict_pool_health">Quality-First-Pools prüfen und reparieren</string>
-    <string name="pool_health_title">Zustand der Quality-First-Pools</string>
+    <string name="pool_health_title">Zustand der Wortpools</string>
     <string name="pool_health_auditing">Vorhandene Pools werden geprüft…</string>
     <string name="pool_health_healthy">Die gespeicherte Pool-Struktur ist fehlerfrei</string>
     <string name="pool_health_needs_repair">Probleme mit Pool-Mitgliedschaften gefunden</string>
@@ -722,6 +722,8 @@
     <string name="pool_health_edges_components">Wirksame Kanten: %1$d · Komponenten: %2$d</string>
     <string name="pool_health_oversized">Komponenten mit mehr als 15 Wörtern: %d</string>
     <string name="pool_health_invalid">Pools mit falscher Größe: %1$d · Nicht verbundene Pools: %2$d</string>
+    <string name="pool_health_invalid_focus">Fokus kein Mitglied: %1$d · Doppelte Pools: %2$d</string>
+    <string name="pool_health_missing_supporting_edges">%d vorhandene Pools haben keine unterstützenden Kanten und können nicht verlustfrei repariert werden. Stellen Sie eine vollständige Sicherung wieder her oder erstellen Sie sie neu.</string>
     <string name="pool_health_uncovered">Fehlende Wörter: %1$d · Überzählige Mitglieder: %2$d</string>
     <string name="pool_health_layout_mismatch">Die gespeicherten Gruppen entsprechen nicht dem vollständigen Layout der aktuell wirksamen Kanten.</string>
     <string name="pool_health_edge_warnings">Kantenwarnungen: verwaist %1$d · Schleifen %2$d · unbekannt %3$d</string>

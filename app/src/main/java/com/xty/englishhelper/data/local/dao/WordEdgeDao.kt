@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.local.entity.WordEdgeExcludedEntity
+import com.xty.englishhelper.data.local.entity.WordEdgeStagingEntity
 
 @Dao
 interface WordEdgeDao {
@@ -18,6 +19,32 @@ interface WordEdgeDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEdgeIfAbsent(edge: WordEdgeEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertStagedEdges(edges: List<WordEdgeStagingEntity>)
+
+    @Query("SELECT * FROM word_edge_staging WHERE dictionary_id = :dictionaryId ORDER BY id ASC")
+    suspend fun getStagedEdges(dictionaryId: Long): List<WordEdgeStagingEntity>
+
+    @Query("DELETE FROM word_edge_staging WHERE dictionary_id = :dictionaryId")
+    suspend fun deleteStagedEdges(dictionaryId: Long)
+
+    @Query("DELETE FROM word_edge_staging WHERE dictionary_id = :dictionaryId AND (word_id_a = :wordId OR word_id_b = :wordId)")
+    suspend fun deleteStagedEdgesForWord(dictionaryId: Long, wordId: Long)
+
+    @Query(
+        "DELETE FROM word_edge_staging WHERE dictionary_id = :dictionaryId AND (" +
+            "(word_id_a = :wordId AND word_id_b IN (:otherIds)) OR " +
+            "(word_id_b = :wordId AND word_id_a IN (:otherIds)))"
+    )
+    suspend fun deleteStagedEdgesForWordAgainst(dictionaryId: Long, wordId: Long, otherIds: List<Long>)
+
+    @Query(
+        "SELECT COUNT(*) FROM word_edge_staging WHERE dictionary_id = :dictionaryId AND (" +
+            "(word_id_a = :wordId AND word_id_b IN (:otherIds)) OR " +
+            "(word_id_b = :wordId AND word_id_a IN (:otherIds)))"
+    )
+    suspend fun countStagedEdgesForWordAgainst(dictionaryId: Long, wordId: Long, otherIds: List<Long>): Int
 
     @Query("DELETE FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun deleteByDictionary(dictionaryId: Long)
@@ -91,6 +118,9 @@ interface WordEdgeDao {
     @Query("SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getAllEdgesFull(dictionaryId: Long): List<WordEdgeEntity>
 
+    @Query("SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId AND evidence_source = :source ORDER BY id ASC")
+    suspend fun getEdgesBySource(dictionaryId: Long, source: String): List<WordEdgeEntity>
+
     @Query(
         """
         SELECT * FROM word_edges
@@ -135,6 +165,19 @@ interface WordEdgeDao {
     suspend fun getEdgesPageFull(dictionaryId: Long, lastId: Long, limit: Int): List<WordEdgeEntity>
 
     @Query(
+        "SELECT * FROM word_edges WHERE dictionary_id = :dictionaryId AND id > :lastId " +
+            "AND confidence > 0 " +
+            "AND (evidence_source IS NULL OR evidence_source NOT IN (:excludedSources)) " +
+            "ORDER BY id ASC LIMIT :limit"
+    )
+    suspend fun getEdgesPageExcludingSources(
+        dictionaryId: Long,
+        lastId: Long,
+        excludedSources: List<String>,
+        limit: Int
+    ): List<WordEdgeEntity>
+
+    @Query(
         "SELECT * FROM word_edges " +
             "WHERE dictionary_id = :dictionaryId AND id > :lastId " +
             "AND confidence >= :minConfidence AND status != :excludedStatus " +
@@ -169,6 +212,12 @@ interface WordEdgeDao {
 
     @Query("SELECT id, word_id_a, word_id_b, edge_type, relation_strength, confidence FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getGraphEdges(dictionaryId: Long): List<GraphEdgeProjection>
+
+    @Query(
+        "SELECT COUNT(*) FROM word_edges WHERE dictionary_id = :dictionaryId AND confidence > 0 " +
+            "AND (evidence_source IS NULL OR evidence_source NOT IN (:excludedSources))"
+    )
+    suspend fun countEdgesExcludingSources(dictionaryId: Long, excludedSources: List<String>): Int
 
     @Query(
         "SELECT id, word_id_a, word_id_b, edge_type, relation_strength, confidence " +

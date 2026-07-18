@@ -49,6 +49,7 @@ import com.xty.englishhelper.data.local.entity.QuestionItemEntity
 import com.xty.englishhelper.data.local.entity.QuestionSourceArticleEntity
 import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
+import com.xty.englishhelper.data.local.entity.WordPoolStrategyStateEntity
 import com.xty.englishhelper.data.local.entity.WordEdgeEntity
 import com.xty.englishhelper.data.preferences.SettingsDataStore
 import com.xty.englishhelper.data.remote.GitHubApiService
@@ -69,6 +70,7 @@ import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.domain.model.DictionaryPoolBackup
 import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.MorphemeRole
@@ -84,6 +86,11 @@ import com.xty.englishhelper.domain.model.PlanDayRecordBackup
 import com.xty.englishhelper.domain.model.PlanEventLogBackup
 import com.xty.englishhelper.domain.model.PlanItemBackup
 import com.xty.englishhelper.domain.model.PlanTemplateBackup
+import com.xty.englishhelper.domain.model.PoolStrategy
+import com.xty.englishhelper.domain.background.PoolEdgeWriteCoordinator
+import com.xty.englishhelper.domain.pool.QualityFirstPoolPlanner
+import com.xty.englishhelper.domain.pool.QualityPoolEdge
+import com.xty.englishhelper.domain.pool.WordPoolEngine
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.WordExample
 import com.xty.englishhelper.domain.repository.CloudSyncRepository
@@ -134,6 +141,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private val dictionaryWordUpdatePlanner: DictionaryWordUpdatePlanner,
     private val dictionaryWordPoolMergePlanner: DictionaryWordPoolMergePlanner,
     private val dictionaryWordUidNormalizer: DictionaryWordUidNormalizer,
+    private val poolEdgeWriteCoordinator: PoolEdgeWriteCoordinator,
     private val ensureDictionaryWordUids: EnsureDictionaryWordUidsUseCase,
     private val wordPhraseRepository: WordPhraseRepository
 ) : CloudSyncRepository {
@@ -248,6 +256,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
         val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
         val cloudPlan = downloadJson("plan.json", planAdapter)
+        cloudDicts.forEach { dictionary ->
+            val imported = importExporter.importFromJson(dictAdapter.toJson(dictionary))
+            validateCloudPoolBackup(imported.poolBackup)
+        }
 
         // 2. Read local data
         onProgress(SyncProgress("Reading", "Reading local data...", 1, totalSteps))
@@ -489,6 +501,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val cloudSettingsSnapshot = configTarget?.let { target ->
             onProgress(SyncProgress("Config", "Downloading settings snapshot...", 4, totalSteps))
             downloadRequiredSettingsSnapshot(target)
+        }
+
+        // Validate every dictionary, including pool/edge snapshots, before deleting any local data.
+        cloudDicts.forEach { dictionary ->
+            val imported = importExporter.importFromJson(dictAdapter.toJson(dictionary))
+            validateCloudPoolBackup(imported.poolBackup)
         }
 
         // Phase 4/5: Replace local snapshot with cloud snapshot
@@ -811,34 +829,35 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             .filter { it.wordUid.isNotBlank() }
             .associate { it.wordUid to it.id }
 
-        val wordPoolPlan = dictionaryWordPoolMergePlanner.plan(
-            localPools = localJson.wordPools,
-            cloudPools = cloudJson.wordPools
-        )
-        if (wordPoolPlan.cloudSnapshotsToApply.isNotEmpty()) {
-            transactionRunner.runInTransaction {
-                wordPoolPlan.cloudSnapshotsToApply.forEach { snapshot ->
-                    replaceWordPoolStrategy(
-                        dictionaryId = resolvedLocalDict.id,
-                        strategy = snapshot.strategy,
-                        pools = snapshot.pools,
-                        wordUidToId = wordUidToId
-                    )
-                }
-            }
-        }
-
+        val wordPoolPlan = dictionaryWordPoolMergePlanner.plan(localJson, cloudJson)
         val wordEdgePlan = dictionaryWordEdgeMergePlanner.plan(
             localEdges = localJson.wordEdges,
             cloudEdges = cloudJson.wordEdges
         )
-        if (wordEdgePlan.cloudEdgesToApply.isNotEmpty()) {
-            transactionRunner.runInTransaction {
-                applySyncedWordEdges(
-                    dictionaryId = resolvedLocalDict.id,
-                    edges = wordEdgePlan.cloudEdgesToApply,
-                    wordUidToId = wordUidToId
-                )
+        if (wordPoolPlan.cloudSnapshotsToApply.isNotEmpty() || wordEdgePlan.cloudEdgesToApply.isNotEmpty()) {
+            poolEdgeWriteCoordinator.withLock(resolvedLocalDict.id) {
+                transactionRunner.runInTransaction {
+                    wordPoolPlan.cloudSnapshotsToApply.forEach { snapshot ->
+                        replaceWordPoolStrategy(
+                            dictionaryId = resolvedLocalDict.id,
+                            strategy = snapshot.strategy,
+                            pools = snapshot.pools,
+                            wordUidToId = wordUidToId,
+                            snapshotUpdatedAt = snapshot.updatedAt
+                        )
+                    }
+                    if (wordEdgePlan.cloudEdgesToApply.isNotEmpty()) {
+                        applySyncedWordEdges(
+                            dictionaryId = resolvedLocalDict.id,
+                            edges = wordEdgePlan.cloudEdgesToApply,
+                            wordUidToId = wordUidToId
+                        )
+                    }
+                    validateSyncedPoolSnapshots(
+                        dictionaryId = resolvedLocalDict.id,
+                        strategies = wordPoolPlan.cloudSnapshotsToApply.map { it.strategy }
+                    )
+                }
             }
             wordPoolRepository.invalidateRelationGraph(resolvedLocalDict.id)
         }
@@ -876,6 +895,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         if (didMutateWords) {
             wordRepository.recomputeAllAssociationsForDictionary(resolvedLocalDict.id)
+            wordPoolRepository.invalidateRelationGraph(resolvedLocalDict.id)
         }
 
         // Return merged JSON (will be re-exported from local DB later)
@@ -1207,59 +1227,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private suspend fun exportLocalDictionary(dict: Dictionary): DictionaryJsonModel {
         val json = exportDictionary(dict)
         val model = dictAdapter.fromJson(json) ?: throw IllegalStateException("Failed to parse exported dict")
-        val normalizedModel = dictionaryWordUidNormalizer.normalize(model)
-
-        // Enrich with word pools
-        val words = ensureDictionaryWordUids(dict.id, dict.name)
-        val wordIdToUid = words.associate { it.id to it.wordUid }
-
-        val poolToMembers = wordPoolRepository.getPoolToMembersMap(dict.id)
-        val poolEntities = wordPoolDao.getPoolsByDictionary(dict.id).associateBy { it.id }
-
-        val wordPools = mutableListOf<WordPoolJsonModel>()
-        for ((poolId, memberIds) in poolToMembers) {
-            val memberUids = memberIds.mapNotNull { wordIdToUid[it] }
-            val poolEntity = poolEntities[poolId]
-            val strategy = poolEntity?.strategy ?: "BALANCED"
-            val algorithmVersion = poolEntity?.algorithmVersion ?: "${strategy}_v1"
-            val focusUid = poolEntity?.focusWordId?.let { wordIdToUid[it] }
-            wordPools.add(
-                WordPoolJsonModel(
-                    focusWordUid = focusUid,
-                    memberWordUids = memberUids,
-                    strategy = strategy,
-                    algorithmVersion = algorithmVersion,
-                    updatedAt = poolEntity?.updatedAt ?: 0L,
-                    qualityScore = poolEntity?.qualityScore
-                )
-            )
-        }
-
-        val wordEdges = wordEdgeDao.getAllEdgesFull(dict.id).mapNotNull { edge ->
-            val uidA = wordIdToUid[edge.wordIdA] ?: return@mapNotNull null
-            val uidB = wordIdToUid[edge.wordIdB] ?: return@mapNotNull null
-            WordEdgeJsonModel(
-                wordUidA = minOf(uidA, uidB),
-                wordUidB = maxOf(uidA, uidB),
-                edgeType = edge.edgeType,
-                status = edge.status,
-                learningValue = edge.learningValue,
-                relationStrength = edge.relationStrength,
-                confidence = edge.confidence,
-                reason = edge.reason,
-                warningNote = edge.warningNote,
-                evidenceSource = edge.evidenceSource,
-                register = edge.register,
-                exampleSentence = edge.exampleSentence,
-                difficultyCefr = edge.difficultyCefr,
-                createdAt = edge.createdAt,
-                updatedAt = edge.updatedAt
-            )
-        }
-
-        return dictionaryWordUidNormalizer.normalize(
-            normalizedModel.copy(wordPools = wordPools, wordEdges = wordEdges)
-        )
+        return dictionaryWordUidNormalizer.normalize(model)
     }
 
     private suspend fun exportArticleCategories(): ArticleCategoriesExportModel {
@@ -1540,39 +1508,6 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         isSystem = isSystem
     )
 
-    private suspend fun importWordPools(
-        dictionaryId: Long,
-        pools: List<WordPoolJsonModel>,
-        wordUidToId: Map<String, Long>
-    ) {
-        wordPoolDao.deleteByDictionary(dictionaryId)
-        if (pools.isEmpty()) return
-
-        pools.groupBy { it.strategy.ifBlank { "BALANCED" } }
-            .forEach { (strategy, strategyPools) ->
-                replaceWordPoolStrategy(
-                    dictionaryId = dictionaryId,
-                    strategy = strategy,
-                    pools = strategyPools,
-                    wordUidToId = wordUidToId
-                )
-            }
-    }
-
-    private suspend fun importWordEdges(
-        dictionaryId: Long,
-        edges: List<WordEdgeJsonModel>,
-        wordUidToId: Map<String, Long>
-    ) {
-        dictionaryWordEdgeMergePlanner.validateSnapshot(edges)
-        wordEdgeDao.deleteByDictionary(dictionaryId)
-        if (edges.isEmpty()) return
-        val entities = edges.map { edge ->
-            edge.toEntity(dictionaryId, wordUidToId)
-        }
-        entities.chunked(500).forEach { wordEdgeDao.insertEdges(it) }
-    }
-
     private suspend fun applySyncedWordEdges(
         dictionaryId: Long,
         edges: List<WordEdgeJsonModel>,
@@ -1587,7 +1522,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             ).firstOrNull { it.edgeType == candidate.edgeType }
             if (existing == null) {
                 wordEdgeDao.insertEdgeIfAbsent(candidate)
-            } else if (candidate.updatedAt > existing.updatedAt) {
+            } else if (existing.evidenceSource == "user_note" && candidate.evidenceSource != "user_note") {
+                Unit
+            } else if (
+                (candidate.evidenceSource == "user_note" && existing.evidenceSource != "user_note") ||
+                candidate.updatedAt > existing.updatedAt
+            ) {
                 wordEdgeDao.updateSyncedEdge(
                     id = existing.id,
                     dictionaryId = dictionaryId,
@@ -1639,35 +1579,117 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         )
     }
 
+    private fun validateCloudPoolBackup(backup: DictionaryPoolBackup) {
+        val seenStrategies = mutableSetOf<String>()
+        backup.strategies.forEach { snapshot ->
+            require(snapshot.strategy in setOf(PoolStrategy.BALANCED.dbValue, PoolStrategy.QUALITY_FIRST.dbValue)) {
+                "Unknown pool strategy '${snapshot.strategy}'."
+            }
+            require(seenStrategies.add(snapshot.strategy)) { "Duplicate pool strategy '${snapshot.strategy}'." }
+            val seenPools = mutableSetOf<String>()
+            snapshot.pools.forEach { pool ->
+                val members = pool.memberWordUids.distinct()
+                require(members.size in 2..WordPoolEngine.MAX_POOL_SIZE) {
+                    "Pool strategy '${snapshot.strategy}' must contain 2..${WordPoolEngine.MAX_POOL_SIZE} members."
+                }
+                require(pool.focusWordUid == null || pool.focusWordUid in members) {
+                    "Pool strategy '${snapshot.strategy}' focus word must be a member."
+                }
+                require(seenPools.add(members.sorted().joinToString("|"))) {
+                    "Pool strategy '${snapshot.strategy}' contains duplicate pools."
+                }
+            }
+        }
+        val seenEdges = mutableSetOf<String>()
+        backup.edges.forEach { edge ->
+            require(edge.wordUidA != edge.wordUidB) { "Pool edge cannot connect a word to itself." }
+            require(EdgeType.fromDbValue(edge.edgeType) != null) { "Unknown pool edge type '${edge.edgeType}'." }
+            require(edge.status in EdgeParser.VALID_STATUSES) { "Unknown pool edge status '${edge.status}'." }
+            require(edge.learningValue in 1..5 && edge.relationStrength in 1..5) {
+                "Pool edge scores must be in 1..5."
+            }
+            require(edge.confidence.isFinite() && edge.confidence in 0.0..1.0) {
+                "Pool edge confidence must be in 0..1."
+            }
+            val key = "${minOf(edge.wordUidA, edge.wordUidB)}|${maxOf(edge.wordUidA, edge.wordUidB)}|${edge.edgeType}"
+            require(seenEdges.add(key)) { "Duplicate pool edge '$key'." }
+        }
+        backup.strategies.forEach { snapshot ->
+            val relevantEdges = backup.edges.filter { edge ->
+                edge.confidence >= 0.3 && edge.status != "optional" &&
+                    if (snapshot.strategy == PoolStrategy.BALANCED.dbValue) {
+                        edge.evidenceSource in setOf("balanced_local", "balanced_ai", "user_note")
+                    } else {
+                        edge.evidenceSource !in setOf("balanced_local", "balanced_ai")
+                    }
+            }
+            val adjacency = mutableMapOf<String, MutableSet<String>>()
+            relevantEdges.forEach { edge ->
+                adjacency.getOrPut(edge.wordUidA) { linkedSetOf() }.add(edge.wordUidB)
+                adjacency.getOrPut(edge.wordUidB) { linkedSetOf() }.add(edge.wordUidA)
+            }
+            snapshot.pools.forEach { pool ->
+                val members = pool.memberWordUids.toSet()
+                val visited = mutableSetOf<String>()
+                val queue = ArrayDeque<String>()
+                members.firstOrNull()?.let { queue.addLast(it) }
+                while (queue.isNotEmpty()) {
+                    val current = queue.removeFirst()
+                    if (!visited.add(current)) continue
+                    adjacency[current].orEmpty().forEach { neighbor ->
+                        if (neighbor in members && neighbor !in visited) queue.addLast(neighbor)
+                    }
+                }
+                require(visited == members) {
+                    "Pool strategy '${snapshot.strategy}' contains a pool disconnected from its persisted edges."
+                }
+            }
+        }
+    }
+
     private suspend fun replaceWordPoolStrategy(
         dictionaryId: Long,
         strategy: String,
         pools: List<WordPoolJsonModel>,
-        wordUidToId: Map<String, Long>
+        wordUidToId: Map<String, Long>,
+        snapshotUpdatedAt: Long = pools.maxOfOrNull { it.updatedAt } ?: 0L
     ) {
-        wordPoolDao.deleteByDictionaryAndStrategy(dictionaryId, strategy)
-        if (pools.isEmpty()) return
-
-        pools.forEach { pool ->
+        require(strategy in setOf(PoolStrategy.BALANCED.dbValue, PoolStrategy.QUALITY_FIRST.dbValue)) {
+            "Unknown pool strategy '$strategy'."
+        }
+        val seenPools = mutableSetOf<String>()
+        val resolvedPools = pools.map { pool ->
             val memberUids = pool.memberWordUids.filter { it.isNotBlank() }.distinct()
-            val memberIds = memberUids.mapNotNull { wordUidToId[it] }.distinct()
-            if (memberIds.size != memberUids.size) {
-                throw IllegalStateException(
-                    "Pool strategy '$strategy' references non-existent words, cannot sync safely."
-                )
+            val memberIds = memberUids.map { uid ->
+                wordUidToId[uid]
+                    ?: throw IllegalStateException("Pool strategy '$strategy' references non-existent word: $uid")
+            }.distinct()
+            if (memberIds.size !in 2..WordPoolEngine.MAX_POOL_SIZE) {
+                throw IllegalStateException("Pool strategy '$strategy' must contain 2..${WordPoolEngine.MAX_POOL_SIZE} members.")
             }
-            if (memberIds.size < 2) {
-                throw IllegalStateException(
-                    "Pool strategy '$strategy' contains invalid pools with fewer than 2 members, cannot sync safely."
-                )
-            }
-
             val focusId = pool.focusWordUid?.let { focusUid ->
                 wordUidToId[focusUid]
-                    ?: throw IllegalStateException("Pool strategy '$strategy' focus word not found, cannot sync safely.")
+                    ?: throw IllegalStateException("Pool strategy '$strategy' focus word not found.")
             }
+            if (focusId != null && focusId !in memberIds) {
+                throw IllegalStateException("Pool strategy '$strategy' focus word must be a member.")
+            }
+            val canonical = memberIds.sorted().joinToString(",")
+            if (!seenPools.add(canonical)) {
+                throw IllegalStateException("Pool strategy '$strategy' contains duplicate pools.")
+            }
+            Triple(pool, memberIds, focusId)
+        }
+
+        wordPoolDao.deleteByDictionaryAndStrategy(dictionaryId, strategy)
+        wordPoolDao.upsertStrategyState(
+            WordPoolStrategyStateEntity(dictionaryId, strategy, snapshotUpdatedAt)
+        )
+        resolvedPools.forEach { (pool, memberIds, focusId) ->
             val algorithmVersion = pool.algorithmVersion.ifBlank { "${strategy}_v1" }
-            val updatedAt = pool.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()
+            val updatedAt = pool.updatedAt.takeIf { it > 0 }
+                ?: snapshotUpdatedAt.takeIf { it > 0 }
+                ?: System.currentTimeMillis()
 
             val poolId = wordPoolDao.insertPool(
                 WordPoolEntity(
@@ -1685,12 +1707,41 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
     }
 
+    private suspend fun validateSyncedPoolSnapshots(
+        dictionaryId: Long,
+        strategies: Collection<String>
+    ) {
+        if (strategies.isEmpty()) return
+        val poolEntities = wordPoolDao.getPoolsByDictionary(dictionaryId)
+        val memberships = wordPoolDao.getAllMemberships(dictionaryId).groupBy({ it.poolId }, { it.wordId })
+        val allEdges = wordEdgeDao.getAllEdgesFull(dictionaryId)
+        strategies.distinct().forEach { strategy ->
+            val effectiveEdges = allEdges.filter { edge ->
+                edge.confidence >= 0.3 && edge.status != "optional" &&
+                    if (strategy == PoolStrategy.BALANCED.dbValue) {
+                        edge.evidenceSource in setOf("balanced_local", "balanced_ai", "user_note")
+                    } else {
+                        edge.evidenceSource !in setOf("balanced_local", "balanced_ai")
+                    }
+            }.map { QualityPoolEdge(it.wordIdA, it.wordIdB) }
+            poolEntities.filter { it.strategy == strategy }.forEach { pool ->
+                val members = memberships[pool.id].orEmpty().distinct()
+                if (!QualityFirstPoolPlanner.isConnectedPool(members, effectiveEdges)) {
+                    throw IllegalStateException(
+                        "Pool strategy '$strategy' contains a pool disconnected from its persisted edges."
+                    )
+                }
+            }
+        }
+    }
+
     // Import Helper
 
     private suspend fun importCloudDictionary(cloudDict: DictionaryJsonModel) {
         val json = dictAdapter.toJson(cloudDict)
         try {
             importExporter.importFromJson(json).let { result ->
+                validateCloudPoolBackup(result.poolBackup)
                 transactionRunner.runInTransaction {
                     val dictId = dictionaryRepository.insertDictionary(result.dictionary)
                     val wordUidToId = mutableMapOf<String, Long>()
@@ -1741,8 +1792,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         )
                     }
 
-                    importWordPools(dictId, cloudDict.wordPools, wordUidToId)
-                    importWordEdges(dictId, cloudDict.wordEdges, wordUidToId)
+                    wordPoolRepository.restoreBackup(dictId, result.poolBackup, wordUidToId)
+                    validateSyncedPoolSnapshots(
+                        dictionaryId = dictId,
+                        strategies = result.poolBackup.strategies.map { it.strategy }
+                    )
                     wordPhraseRepository.replaceSnapshot(
                         dictionaryId = dictId,
                         snapshot = result.wordPhraseSnapshot,
@@ -1808,8 +1862,6 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     private suspend fun clearAllLocalDictionaries() {
         val localDicts = dictionaryRepository.getAllDictionaries().first()
         localDicts.forEach { dictionary ->
-            wordEdgeDao.deleteByDictionary(dictionary.id)
-            wordEdgeDao.deleteExcludedByDictionary(dictionary.id)
             dictionaryRepository.deleteDictionary(dictionary.id)
         }
     }

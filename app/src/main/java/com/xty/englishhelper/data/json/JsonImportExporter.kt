@@ -5,6 +5,7 @@ import com.xty.englishhelper.data.sync.DictionaryWordUidNormalizer
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Dictionary
+import com.xty.englishhelper.domain.model.DictionaryPoolBackup
 import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.Meaning
 import com.xty.englishhelper.domain.model.MorphemeRole
@@ -13,6 +14,9 @@ import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.SynonymInfo
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordEdgeBackup
+import com.xty.englishhelper.domain.model.WordPoolBackup
+import com.xty.englishhelper.domain.model.WordPoolStrategyBackup
 import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
 import com.xty.englishhelper.domain.model.WordStudyState
 import com.xty.englishhelper.domain.repository.DictionaryImportExporter
@@ -35,7 +39,8 @@ class JsonImportExporter @Inject constructor(
         unitWordMap: Map<Long, List<String>>,
         studyStates: List<WordStudyState>,
         wordIdToUid: Map<Long, String>,
-        wordPhraseSnapshot: WordPhraseSyncSnapshot
+        wordPhraseSnapshot: WordPhraseSyncSnapshot,
+        poolBackup: DictionaryPoolBackup
     ): String {
         words.forEach { word ->
             require(word.wordUid.isNotBlank()) {
@@ -58,7 +63,7 @@ class JsonImportExporter @Inject constructor(
             name = dictionary.name,
             description = dictionary.description,
             color = dictionary.color,
-            schemaVersion = 11,
+            schemaVersion = 12,
             createdAt = dictionary.createdAt,
             updatedAt = dictionary.updatedAt,
             words = words.map { word ->
@@ -110,6 +115,17 @@ class JsonImportExporter @Inject constructor(
                     lapses = state.lapses
                 )
             },
+            wordPools = poolBackup.strategies.flatMap { snapshot ->
+                snapshot.pools.map { pool -> pool.toJsonModel(snapshot.strategy) }
+            },
+            wordPoolStrategies = poolBackup.strategies.map { snapshot ->
+                WordPoolStrategyJsonModel(
+                    strategy = snapshot.strategy,
+                    updatedAt = snapshot.updatedAt,
+                    pools = snapshot.pools.map { pool -> pool.toJsonModel(snapshot.strategy) }
+                )
+            },
+            wordEdges = poolBackup.edges.map(WordEdgeBackup::toJsonModel),
             phraseTags = wordPhraseSnapshot.toPhraseTagJsonModels(),
             wordPhrases = wordPhraseSnapshot.toWordPhraseJsonModels()
         )
@@ -120,8 +136,8 @@ class JsonImportExporter @Inject constructor(
         val parsedModel = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
 
         // Validate schema version
-        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7, 8, 9, 10, 11)) {
-            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4、5、6、7、8、9、10 或 11）")
+        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7, 8, 9, 10, 11, 12)) {
+            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4 至 12）")
         }
 
         // Validate no empty spellings
@@ -169,6 +185,7 @@ class JsonImportExporter @Inject constructor(
         }
 
         WordPhraseJsonValidator.validate(model)
+        val poolBackup = model.toPoolBackup()
 
         val now = System.currentTimeMillis()
         val dictionaryCreatedAt = model.createdAt.takeIf { it > 0 } ?: now
@@ -244,10 +261,92 @@ class JsonImportExporter @Inject constructor(
             wordPhraseSnapshot = wordPhraseSyncSnapshotFromJson(
                 phraseTags = model.phraseTags,
                 wordPhrases = model.wordPhrases
-            )
+            ),
+            poolBackup = poolBackup
         )
     }
 
     private fun parseStudyMode(raw: String): StudyMode? =
         StudyMode.entries.firstOrNull { it.name.equals(raw.trim(), ignoreCase = true) }
+
+    private fun WordPoolBackup.toJsonModel(strategy: String) = WordPoolJsonModel(
+        focusWordUid = focusWordUid,
+        memberWordUids = memberWordUids,
+        strategy = strategy,
+        algorithmVersion = algorithmVersion,
+        updatedAt = updatedAt,
+        qualityScore = qualityScore
+    )
+
+    private fun WordEdgeBackup.toJsonModel() = WordEdgeJsonModel(
+        wordUidA = wordUidA,
+        wordUidB = wordUidB,
+        edgeType = edgeType,
+        status = status,
+        learningValue = learningValue,
+        relationStrength = relationStrength,
+        confidence = confidence,
+        reason = reason,
+        warningNote = warningNote,
+        evidenceSource = evidenceSource,
+        register = register,
+        exampleSentence = exampleSentence,
+        difficultyCefr = difficultyCefr,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+
+    private fun DictionaryJsonModel.toPoolBackup(): DictionaryPoolBackup {
+        val snapshots = if (wordPoolStrategies.isNotEmpty()) {
+            wordPoolStrategies
+        } else {
+            wordPools.groupBy { it.strategy.ifBlank { "BALANCED" } }.map { (strategy, pools) ->
+                WordPoolStrategyJsonModel(
+                    strategy = strategy,
+                    updatedAt = pools.maxOfOrNull { it.updatedAt } ?: 0L,
+                    pools = pools
+                )
+            }
+        }
+        val seenStrategies = mutableSetOf<String>()
+        val strategyBackups = snapshots.map { snapshot ->
+            val strategy = snapshot.strategy.ifBlank { "BALANCED" }
+            require(seenStrategies.add(strategy)) { "词池策略快照重复：$strategy" }
+            val pools = snapshot.pools.map { pool ->
+                val members = pool.memberWordUids.filter { it.isNotBlank() }.distinct()
+                WordPoolBackup(
+                    focusWordUid = pool.focusWordUid,
+                    memberWordUids = members,
+                    algorithmVersion = pool.algorithmVersion.ifBlank { "${strategy}_v1" },
+                    updatedAt = pool.updatedAt.takeIf { it > 0 } ?: snapshot.updatedAt,
+                    qualityScore = pool.qualityScore
+                )
+            }
+            WordPoolStrategyBackup(strategy, snapshot.updatedAt, pools)
+        }
+        val seenEdges = mutableSetOf<String>()
+        val edgeBackups = wordEdges.map { edge ->
+            val a = minOf(edge.wordUidA, edge.wordUidB)
+            val b = maxOf(edge.wordUidA, edge.wordUidB)
+            require(seenEdges.add("$a|$b|${edge.edgeType}")) { "词池边快照包含重复关系" }
+            WordEdgeBackup(
+                wordUidA = a,
+                wordUidB = b,
+                edgeType = edge.edgeType,
+                status = edge.status,
+                learningValue = edge.learningValue,
+                relationStrength = edge.relationStrength,
+                confidence = edge.confidence,
+                reason = edge.reason,
+                warningNote = edge.warningNote,
+                evidenceSource = edge.evidenceSource,
+                register = edge.register,
+                exampleSentence = edge.exampleSentence,
+                difficultyCefr = edge.difficultyCefr,
+                createdAt = edge.createdAt,
+                updatedAt = edge.updatedAt
+            )
+        }
+        return DictionaryPoolBackup(strategyBackups, edgeBackups)
+    }
 }

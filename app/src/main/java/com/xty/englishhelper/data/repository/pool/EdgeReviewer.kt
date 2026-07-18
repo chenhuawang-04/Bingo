@@ -44,15 +44,21 @@ internal fun parseReviewUpdates(
     if (arrayText == "[]") return emptyList()
 
     val updatesByEdgeId = linkedMapOf<Long, ReviewUpdate>()
-    var parsedVerdicts = 0
+    val reviewedIndices = linkedSetOf<Int>()
     val objPattern = Regex("""\{[^{}]+\}""")
-    objPattern.findAll(arrayText).forEach { match ->
+    val objects = objPattern.findAll(arrayText).toList()
+    if (objects.size != batch.size) {
+        throw RetryableEdgeException("提纯返回必须逐条覆盖本批次 ${batch.size} 条边，实际为 ${objects.size} 条")
+    }
+    objects.forEach { match ->
         val obj = match.value
-        val idx = EdgeParser.extractJsonInt(obj, "i") ?: return@forEach
-        if (idx !in batch.indices) return@forEach
+        val idx = EdgeParser.extractJsonInt(obj, "i")
+            ?: throw RetryableEdgeException("提纯裁决缺少索引 i")
+        if (idx !in batch.indices) throw RetryableEdgeException("提纯裁决索引越界：$idx")
+        if (!reviewedIndices.add(idx)) throw RetryableEdgeException("提纯裁决包含重复索引：$idx")
         val edge = batch[idx]
-        val verdict = EdgeParser.extractJsonString(obj, "verdict") ?: return@forEach
-        parsedVerdicts++
+        val verdict = EdgeParser.extractJsonString(obj, "verdict")
+            ?: throw RetryableEdgeException("提纯裁决缺少 verdict")
         when (verdict) {
             "keep" -> Unit
             "remove" -> {
@@ -64,25 +70,25 @@ internal fun parseReviewUpdates(
             }
 
             "adjust" -> {
-                val newStatus = EdgeParser.extractJsonString(obj, "new_status")?.let { status ->
-                    EdgeParser.VALID_STATUSES.firstOrNull { it == status }
-                } ?: edge.status
+                val newStatus = EdgeParser.extractJsonString(obj, "new_status")
+                    ?.takeIf { it in EdgeParser.VALID_STATUSES }
+                    ?: throw RetryableEdgeException("adjust 裁决缺少有效 new_status")
                 val newConfidence = EdgeParser.extractJsonDouble(obj, "new_confidence")
-                    ?.coerceIn(0.0, 1.0)
-                    ?: edge.confidence
+                    ?.takeIf { it in 0.0..1.0 }
+                    ?: throw RetryableEdgeException("adjust 裁决缺少有效 new_confidence")
                 updatesByEdgeId[edge.id] = ReviewUpdate(
                     edgeId = edge.id,
                     newStatus = newStatus,
-                    newConfidence = newConfidence
+                    newConfidence = minOf(newConfidence, edge.confidence)
                 )
             }
 
-            else -> Unit
+            else -> throw RetryableEdgeException("未知提纯裁决：$verdict")
         }
     }
 
-    if (parsedVerdicts == 0) {
-        throw RetryableEdgeException("提纯返回无法解析出任何有效裁决")
+    if (reviewedIndices != batch.indices.toSet()) {
+        throw RetryableEdgeException("提纯返回未覆盖本批次全部边")
     }
     return updatesByEdgeId.values.toList()
 }
@@ -110,6 +116,7 @@ class EdgeReviewer @javax.inject.Inject constructor(
         private const val MAX_RETRIES = 4
         private const val LENIENT_RETRY_UNIT_MS = 10_000L
         private const val LENIENT_RETRY_MAX_MS = 120_000L
+        private val EXCLUDED_REVIEW_SOURCES = listOf("user_note", "balanced_local", "balanced_ai")
     }
 
     suspend fun reviewEdgesWithAi(
@@ -151,7 +158,7 @@ class EdgeReviewer @javax.inject.Inject constructor(
         ) -> Unit = { _, _, _, _, _ -> },
         onProgress: (current: Int, total: Int, message: String?) -> Unit = { _, _, _ -> }
     ): Boolean {
-        val totalEdges = wordEdgeDao.countEdges(dictionaryId)
+        val totalEdges = wordEdgeDao.countEdgesExcludingSources(dictionaryId, EXCLUDED_REVIEW_SOURCES)
         if (totalEdges <= 0) {
             onReviewStart(0, 0)
             onProgress(0, 0, encodeReviewProgress(0, 0, 0))
@@ -200,7 +207,12 @@ class EdgeReviewer @javax.inject.Inject constructor(
             rateLimiter.updateRate(currentRpm)
 
             val waveEdgeLimit = (batchSize * currentMaxConcurrent).coerceAtLeast(batchSize)
-            val edgeWave = wordEdgeDao.getEdgesPageFull(dictionaryId, lastEdgeId, waveEdgeLimit)
+            val edgeWave = wordEdgeDao.getEdgesPageExcludingSources(
+                dictionaryId,
+                lastEdgeId,
+                EXCLUDED_REVIEW_SOURCES,
+                waveEdgeLimit
+            )
             if (edgeWave.isEmpty()) break
 
             val results = processReviewWave(

@@ -16,6 +16,7 @@ import com.xty.englishhelper.data.json.WordEdgeJsonModel
 import com.xty.englishhelper.data.json.WordPhraseJsonModel
 import com.xty.englishhelper.data.json.WordPhraseTagJsonModel
 import com.xty.englishhelper.data.json.WordPoolJsonModel
+import com.xty.englishhelper.data.json.WordPoolStrategyJsonModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -47,6 +48,7 @@ class DictionaryShardAssemblerTest {
         assertEquals(model.updatedAt, assembled.updatedAt)
         assertEquals(model.units, assembled.units)
         assertEquals(model.wordPools, assembled.wordPools)
+        assertEquals(model.wordPoolStrategies, assembled.wordPoolStrategies)
         assertEquals(model.wordEdges.sortedBy { it.wordUidB }, assembled.wordEdges.sortedBy { it.wordUidB })
         assertEquals(model.phraseTags, assembled.phraseTags)
         assertEquals(
@@ -166,7 +168,7 @@ class DictionaryShardAssemblerTest {
             name = "Large Dictionary",
             description = "Dictionary for shard testing",
             color = 0xFF123456.toInt(),
-            schemaVersion = 11,
+            schemaVersion = 12,
             createdAt = 111L,
             updatedAt = 222L,
             words = words,
@@ -187,6 +189,26 @@ class DictionaryShardAssemblerTest {
                     memberWordUids = words.take(5).map { it.wordUid },
                     strategy = "BALANCED",
                     algorithmVersion = "BALANCED_v1"
+                )
+            ),
+            wordPoolStrategies = listOf(
+                WordPoolStrategyJsonModel(
+                    strategy = "BALANCED",
+                    updatedAt = 7000L,
+                    pools = listOf(
+                        WordPoolJsonModel(
+                            focusWordUid = words.first().wordUid,
+                            memberWordUids = words.take(5).map { it.wordUid },
+                            strategy = "BALANCED",
+                            algorithmVersion = "BALANCED_v1",
+                            updatedAt = 7000L
+                        )
+                    )
+                ),
+                WordPoolStrategyJsonModel(
+                    strategy = "QUALITY_FIRST",
+                    updatedAt = 7100L,
+                    pools = emptyList()
                 )
             ),
             wordEdges = (2..wordCount).map { index ->

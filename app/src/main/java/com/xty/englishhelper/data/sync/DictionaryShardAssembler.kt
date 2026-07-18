@@ -181,6 +181,7 @@ class DictionaryShardAssembler @Inject constructor(
             totalWordEdges = dictionary.wordEdges.size,
             units = dictionary.units,
             wordPools = dictionary.wordPools,
+            wordPoolStrategies = dictionary.wordPoolStrategies,
             wordEdges = emptyList(),
             phraseTags = dictionary.phraseTags,
             chunks = chunkFiles.map { it.ref }
@@ -231,6 +232,7 @@ class DictionaryShardAssembler @Inject constructor(
             units = index.units,
             studyStates = studyStates,
             wordPools = index.wordPools,
+            wordPoolStrategies = index.wordPoolStrategies,
             wordEdges = index.wordEdges + wordEdges,
             phraseTags = index.phraseTags,
             wordPhrases = wordPhrases
@@ -310,7 +312,7 @@ class DictionaryShardAssembler @Inject constructor(
     companion object {
         private const val BUCKET_COUNT = 16
         private const val TARGET_CHUNK_BYTES = 350 * 1024
-        private const val INDEX_SCHEMA_VERSION = 3
+        private const val INDEX_SCHEMA_VERSION = 4
         private const val CHUNK_SCHEMA_VERSION = 3
     }
 }

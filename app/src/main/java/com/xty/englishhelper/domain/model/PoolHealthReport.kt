@@ -17,28 +17,29 @@ data class PoolHealthReport(
     val orphanEdgeCount: Int,
     val selfLoopEdgeCount: Int,
     val unknownTypeEdgeCount: Int,
-    val layoutMismatch: Boolean
+    val layoutMismatch: Boolean,
+    val invalidFocusPoolCount: Int = 0,
+    val missingSupportingEdgePoolCount: Int = 0,
+    val storedEdgeCount: Int = validEdgeCount,
+    val duplicatePoolCount: Int = 0
 ) {
     val arePersistedPoolsHealthy: Boolean
         get() = invalidSizePoolCount == 0 &&
             disconnectedPoolCount == 0 &&
             uncoveredWordCount == 0 &&
             extraneousMemberCount == 0 &&
-            !layoutMismatch
+            invalidFocusPoolCount == 0 &&
+            missingSupportingEdgePoolCount == 0 &&
+            duplicatePoolCount == 0
 
     val isHealthy: Boolean
         get() = arePersistedPoolsHealthy &&
             orphanEdgeCount == 0 &&
             selfLoopEdgeCount == 0 &&
-            unknownTypeEdgeCount == 0 &&
-            !layoutMismatch
+            unknownTypeEdgeCount == 0
 
     val canRepairFromExistingEdges: Boolean
-        get() = validEdgeCount > 0 ||
-            existingPoolCount > 0 ||
-            orphanEdgeCount > 0 ||
-            selfLoopEdgeCount > 0 ||
-            unknownTypeEdgeCount > 0
+        get() = storedEdgeCount > 0 && missingSupportingEdgePoolCount == 0
 }
 
 data class PoolRepairResult(

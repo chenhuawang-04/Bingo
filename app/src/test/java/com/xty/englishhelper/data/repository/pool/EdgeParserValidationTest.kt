@@ -2,6 +2,7 @@ package com.xty.englishhelper.data.repository.pool
 
 import com.xty.englishhelper.domain.model.WordDetails
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EdgeParserValidationTest {
@@ -40,5 +41,20 @@ class EdgeParserValidationTest {
 
         assertEquals(1, accepted.size)
         assertEquals("SEMANTIC_SYNONYM", accepted.single().edgeType.dbValue)
+    }
+
+    @Test(expected = RetryableEdgeException::class)
+    fun `balanced ai grouping rejects arbitrary non json response`() {
+        EdgeParser.parseJsonIntArrayOfArrays("no related groups", maxValue = 4)
+    }
+
+    @Test(expected = RetryableEdgeException::class)
+    fun `balanced ai grouping rejects partially out of range group`() {
+        EdgeParser.parseJsonIntArrayOfArrays("[[0,9]]", maxValue = 4)
+    }
+
+    @Test
+    fun `balanced ai grouping accepts explicit empty array`() {
+        assertTrue(EdgeParser.parseJsonIntArrayOfArrays("[]", maxValue = 4).isEmpty())
     }
 }

@@ -60,21 +60,43 @@ class DictionaryWordUidNormalizer @Inject constructor() {
                     }
                 )
             },
+            wordPoolStrategies = model.wordPoolStrategies.map { snapshot ->
+                snapshot.copy(
+                    pools = snapshot.pools.map { pool ->
+                        pool.copy(
+                            focusWordUid = pool.focusWordUid?.takeIf { it.isNotBlank() }?.let { focusUid ->
+                                resolveRequiredReference(
+                                    dictionaryName = model.name,
+                                    referenceType = "词池焦点词",
+                                    referenceValue = focusUid,
+                                    validWordUids = validWordUids,
+                                    blankWordUidReplacement = blankWordUidReplacement
+                                )
+                            },
+                            memberWordUids = pool.memberWordUids.map { uid ->
+                                resolveRequiredReference(
+                                    dictionaryName = model.name,
+                                    referenceType = "词池成员",
+                                    referenceValue = uid,
+                                    validWordUids = validWordUids,
+                                    blankWordUidReplacement = blankWordUidReplacement
+                                )
+                            }
+                        )
+                    }
+                )
+            },
             wordEdges = model.wordEdges.map { edge ->
                 edge.copy(
-                    wordUidA = resolveRequiredReference(
+                    wordUidA = resolveStrictEdgeReference(
                         dictionaryName = model.name,
-                        referenceType = "词池边端点",
                         referenceValue = edge.wordUidA,
-                        validWordUids = validWordUids,
-                        blankWordUidReplacement = blankWordUidReplacement
+                        validWordUids = validWordUids
                     ),
-                    wordUidB = resolveRequiredReference(
+                    wordUidB = resolveStrictEdgeReference(
                         dictionaryName = model.name,
-                        referenceType = "词池边端点",
                         referenceValue = edge.wordUidB,
-                        validWordUids = validWordUids,
-                        blankWordUidReplacement = blankWordUidReplacement
+                        validWordUids = validWordUids
                     )
                 )
             },
@@ -183,6 +205,20 @@ class DictionaryWordUidNormalizer @Inject constructor() {
             throw IllegalArgumentException(
                 "辞书 $dictionaryName 的 $referenceType 引用了不存在的 wordUid：$referenceValue"
             )
+        }
+        return referenceValue
+    }
+
+    private fun resolveStrictEdgeReference(
+        dictionaryName: String,
+        referenceValue: String,
+        validWordUids: Set<String>
+    ): String {
+        if (referenceValue.isBlank()) {
+            throw IllegalArgumentException("辞书 $dictionaryName 的词池边端点 wordUid 不能为空。")
+        }
+        if (referenceValue !in validWordUids) {
+            throw IllegalArgumentException("辞书 $dictionaryName 的词池边端点引用了不存在的 wordUid：$referenceValue")
         }
         return referenceValue
     }

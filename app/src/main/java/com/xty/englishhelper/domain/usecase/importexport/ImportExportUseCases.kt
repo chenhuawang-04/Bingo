@@ -21,6 +21,7 @@ import com.xty.englishhelper.domain.repository.StudyRepository
 import com.xty.englishhelper.domain.repository.TransactionRunner
 import com.xty.englishhelper.domain.repository.UnitRepository
 import com.xty.englishhelper.domain.repository.WordPhraseRepository
+import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordRepository
 import com.xty.englishhelper.domain.usecase.word.EnsureDictionaryWordUidsUseCase
 import javax.inject.Inject
@@ -32,7 +33,8 @@ class ImportDictionaryUseCase @Inject constructor(
     private val studyRepository: StudyRepository,
     private val importExporter: DictionaryImportExporter,
     private val transactionRunner: TransactionRunner,
-    private val wordPhraseRepository: WordPhraseRepository
+    private val wordPhraseRepository: WordPhraseRepository,
+    private val wordPoolRepository: WordPoolRepository
 ) {
     suspend operator fun invoke(json: String): String {
         val result = importExporter.importFromJson(json)
@@ -93,6 +95,8 @@ class ImportDictionaryUseCase @Inject constructor(
                 wordUidToId = wordUidToId
             )
 
+            wordPoolRepository.restoreBackup(dictId, result.poolBackup, wordUidToId)
+
             wordRepository.recomputeAllAssociationsForDictionary(dictId)
 
             "导入成功：${result.dictionary.name}（${result.words.size} 个单词）"
@@ -106,7 +110,8 @@ class ExportDictionaryUseCase @Inject constructor(
     private val studyRepository: StudyRepository,
     private val importExporter: DictionaryImportExporter,
     private val ensureDictionaryWordUids: EnsureDictionaryWordUidsUseCase,
-    private val wordPhraseRepository: WordPhraseRepository
+    private val wordPhraseRepository: WordPhraseRepository,
+    private val wordPoolRepository: WordPoolRepository
 ) {
     suspend operator fun invoke(dictionary: Dictionary): String {
         val words = ensureDictionaryWordUids(dictionary.id, dictionary.name)
@@ -115,6 +120,7 @@ class ExportDictionaryUseCase @Inject constructor(
 
         val wordIdToUid = words.associate { it.id to it.wordUid }
         val wordPhraseSnapshot = wordPhraseRepository.exportSnapshot(dictionary.id, wordIdToUid)
+        val poolBackup = wordPoolRepository.exportBackup(dictionary.id, wordIdToUid)
 
         val unitWordMap = mutableMapOf<Long, List<String>>()
         for (unit in units) {
@@ -129,7 +135,8 @@ class ExportDictionaryUseCase @Inject constructor(
             unitWordMap = unitWordMap,
             studyStates = studyStates,
             wordIdToUid = wordIdToUid,
-            wordPhraseSnapshot = wordPhraseSnapshot
+            wordPhraseSnapshot = wordPhraseSnapshot,
+            poolBackup = poolBackup
         )
     }
 }
