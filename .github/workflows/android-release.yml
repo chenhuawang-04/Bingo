@@ -112,6 +112,7 @@ jobs:
           tag_name: ${{ github.event.inputs.release_tag }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
+          prerelease: true
           files: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
