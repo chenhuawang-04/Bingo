@@ -125,7 +125,7 @@ class JsonImportExporter @Inject constructor(
                     pools = snapshot.pools.map { pool -> pool.toJsonModel(snapshot.strategy) }
                 )
             },
-            wordEdges = poolBackup.edges.map(WordEdgeBackup::toJsonModel),
+            wordEdges = poolBackup.edges.map { edge -> edge.toJsonModel() },
             phraseTags = wordPhraseSnapshot.toPhraseTagJsonModels(),
             wordPhrases = wordPhraseSnapshot.toWordPhraseJsonModels()
         )
