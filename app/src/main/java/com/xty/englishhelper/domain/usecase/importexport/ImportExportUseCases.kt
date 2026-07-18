@@ -34,7 +34,6 @@ class ImportDictionaryUseCase @Inject constructor(
     private val unitRepository: UnitRepository,
     private val studyRepository: StudyRepository,
     private val importExporter: DictionaryImportExporter,
-    private val jsonImportExporter: JsonImportExporter,
     private val transactionRunner: TransactionRunner,
     private val wordPhraseRepository: WordPhraseRepository,
     private val wordPoolRepository: WordPoolRepository
@@ -112,6 +111,7 @@ class ExportDictionaryUseCase @Inject constructor(
     private val unitRepository: UnitRepository,
     private val studyRepository: StudyRepository,
     private val importExporter: DictionaryImportExporter,
+    private val jsonImportExporter: JsonImportExporter,
     private val ensureDictionaryWordUids: EnsureDictionaryWordUidsUseCase,
     private val wordPhraseRepository: WordPhraseRepository,
     private val wordPoolRepository: WordPoolRepository
