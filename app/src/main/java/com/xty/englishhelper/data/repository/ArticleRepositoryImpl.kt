@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.xty.englishhelper.util.BoundedLruCache
 
 @Singleton
 class ArticleRepositoryImpl @Inject constructor(
@@ -45,8 +46,8 @@ class ArticleRepositoryImpl @Inject constructor(
     private val wordDao: WordDao
 ) : ArticleRepository {
 
-    private val memoryParagraphCache = java.util.concurrent.ConcurrentHashMap<String, ParagraphAnalysisCacheData>()
-    private val memoryQuickWordCache = java.util.concurrent.ConcurrentHashMap<String, QuickWordAnalysis>()
+    private val memoryParagraphCache = BoundedLruCache<String, ParagraphAnalysisCacheData>(48)
+    private val memoryQuickWordCache = BoundedLruCache<String, QuickWordAnalysis>(128)
 
     override fun getAllArticles(): Flow<List<Article>> {
         return articleDao.getAllArticles().map { list -> list.map { it.toDomain() } }
@@ -558,5 +559,4 @@ class ArticleRepositoryImpl @Inject constructor(
         createdAt = createdAt
     )
 }
-
 

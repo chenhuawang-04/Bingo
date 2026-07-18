@@ -13,6 +13,8 @@ import com.xty.englishhelper.data.json.WordPhraseJsonModel
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.ensureActive
 
 @Singleton
 class DictionaryShardAssembler @Inject constructor(
@@ -292,7 +294,8 @@ class DictionaryShardAssembler @Inject constructor(
                 partIndex++
             }
 
-            for (word in bucketWords) {
+            for ((wordIndex, word) in bucketWords.withIndex()) {
+                if (wordIndex % CANCELLATION_CHECK_INTERVAL == 0) coroutineContext.ensureActive()
                 val linkedStates = stateBuckets[word.wordUid].orEmpty()
                 val linkedPhrases = phraseBuckets[word.wordUid].orEmpty()
                 val estimatedAddedBytes = estimateWordBytes(word) +
@@ -335,7 +338,8 @@ class DictionaryShardAssembler @Inject constructor(
         val edgeComparator = compareBy<WordEdgeJsonModel> { minOf(it.wordUidA, it.wordUidB) }
             .thenBy { maxOf(it.wordUidA, it.wordUidB) }
             .thenBy { it.edgeType }
-        for (edge in dictionary.wordEdges.sortedWith(edgeComparator)) {
+        for ((edgeIndex, edge) in dictionary.wordEdges.sortedWith(edgeComparator).withIndex()) {
+            if (edgeIndex % CANCELLATION_CHECK_INTERVAL == 0) coroutineContext.ensureActive()
             val estimatedAddedBytes = estimateWordEdgeBytes(edge)
             if (currentEdges.isNotEmpty() && currentEdgeBytes + estimatedAddedBytes > TARGET_CHUNK_BYTES) {
                 flushEdges()
@@ -470,5 +474,6 @@ class DictionaryShardAssembler @Inject constructor(
         private const val TARGET_CHUNK_BYTES = 350 * 1024
         private const val INDEX_SCHEMA_VERSION = 4
         private const val CHUNK_SCHEMA_VERSION = 3
+        private const val CANCELLATION_CHECK_INTERVAL = 256
     }
 }
