@@ -104,6 +104,22 @@ class DictionaryShardAssemblerTest {
     }
 
     @Test
+    fun `streaming accumulator preserves each edge exactly once`() {
+        val model = buildDictionary(wordCount = 120)
+        val sharded = assembler.shard(model)
+        val accumulator = assembler.newAccumulator(sharded.index)
+
+        sharded.chunks.forEach { chunk -> accumulator.accept(chunk.ref, chunk.payload) }
+        val assembled = accumulator.build()
+
+        assertEquals(model.wordEdges.size, assembled.wordEdges.size)
+        assertEquals(
+            model.wordEdges.sortedBy { it.wordUidB },
+            assembled.wordEdges.sortedBy { it.wordUidB }
+        )
+    }
+
+    @Test
     fun `buildFolderPath stays stable for same dictionary uid`() {
         val first = assembler.buildFolderPath("dict-uid-1", "First Name")
         val second = assembler.buildFolderPath("dict-uid-1", "Second Name")

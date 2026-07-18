@@ -207,7 +207,7 @@ class WordPoolRepositoryImplGraphTest {
             WordLabelProjection(id = 10L, spelling = "adapt"),
             WordLabelProjection(id = 20L, spelling = "adopt")
         )
-        coEvery { wordEdgeDao.countEdges(1L) } returns 1
+        coEvery { wordEdgeDao.countEffectiveGraphEdges(1L, any(), any()) } returns 1
         coEvery { wordEdgeDao.getEffectiveGraphEdgesPage(1L, 0L, any(), any(), any()) } returns listOf(
             GraphEdgeProjection(
                 id = 7L,
@@ -228,7 +228,7 @@ class WordPoolRepositoryImplGraphTest {
         assertEquals(7L, first.edges.single().edgeId)
         assertEquals(EdgeType.FORM_SPELLING, first.edges.single().type)
         coVerify(exactly = 1) { wordDao.getWordLabels(1L) }
-        coVerify(exactly = 1) { wordEdgeDao.countEdges(1L) }
+        coVerify(exactly = 1) { wordEdgeDao.countEffectiveGraphEdges(1L, any(), any()) }
         coVerify(exactly = 1) { wordEdgeDao.getEffectiveGraphEdgesPage(1L, 0L, any(), any(), any()) }
         coVerify(exactly = 1) { wordEdgeDao.getEffectiveGraphEdgesPage(1L, 7L, any(), any(), any()) }
         coVerify(exactly = 0) { wordEdgeDao.getGraphEdges(any()) }

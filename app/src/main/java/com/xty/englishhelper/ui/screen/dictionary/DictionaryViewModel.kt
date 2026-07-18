@@ -74,8 +74,6 @@ class DictionaryViewModel @Inject constructor(
         loadDictionary()
         observeWords()
         observeUnits()
-        loadPoolInfo()
-        loadPhraseInfo()
         observeOrganizeTasks()
         observePoolRebuildTasks()
         observePoolReviewTasks()

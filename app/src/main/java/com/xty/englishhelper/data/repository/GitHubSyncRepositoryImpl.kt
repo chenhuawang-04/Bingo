@@ -36,6 +36,7 @@ import com.xty.englishhelper.data.json.WordEdgeJsonModel
 import com.xty.englishhelper.data.json.WordExamplesExportModel
 import com.xty.englishhelper.data.json.WordPhraseJsonValidator
 import com.xty.englishhelper.data.json.WordPoolJsonModel
+import com.xty.englishhelper.data.json.WordPoolStrategyJsonModel
 import com.xty.englishhelper.data.json.wordPhraseSyncSnapshotFromJson
 import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.QuestionBankDao
@@ -242,24 +243,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         // 1. Download cloud data
         onProgress(SyncProgress("Downloading", "Downloading cloud data...", 0, totalSteps))
         val cloudManifest = downloadJson("manifest.json", manifestAdapter)
-        val cloudDicts = downloadCloudDictionaries(cloudManifest) { current, total, entry ->
-            onProgress(
-                SyncProgress(
-                    "Downloading",
-                    "Downloading ${entry.name.ifBlank { entry.path }}",
-                    current,
-                    total.coerceAtLeast(1)
-                )
-            )
-        }.toMutableList()
         val cloudArticles = downloadJson("articles.json", articlesAdapter)
         val cloudCategories = downloadJson("article_categories.json", articleCategoriesAdapter)
         val cloudWordExamples = downloadJson("word_examples.json", wordExamplesAdapter)
         val cloudPlan = downloadJson("plan.json", planAdapter)
-        cloudDicts.forEach { dictionary ->
-            val imported = importExporter.importFromJson(dictAdapter.toJson(dictionary))
-            validateCloudPoolBackup(imported.poolBackup)
-        }
 
         // 2. Read local data
         onProgress(SyncProgress("Reading", "Reading local data...", 1, totalSteps))
@@ -270,27 +257,50 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         // 3. Smart merge
         onProgress(SyncProgress("Merging", "Merging dictionaries...", 2, totalSteps))
-        val mergedDictJsons = mutableListOf<DictionaryJsonModel>()
-
-        for (localDict in localDicts) {
-            val localJson = exportLocalDictionary(localDict)
-            val cloudJson = takeMatchingCloudDictionary(localDict, cloudDicts)
-
-            if (cloudJson == null) {
-                // Only local -> upload as-is
-                mergedDictJsons.add(localJson)
-            } else {
-                // Both exist -> merge
-                val merged = mergeDictionaries(localDict, localJson, cloudJson)
-                mergedDictJsons.add(merged)
+        val cloudEntries = resolveDictionaryEntries(cloudManifest)
+        val matchedLocalIds = mutableSetOf<Long>()
+        val seenCloudNames = mutableSetOf<String>()
+        val seenCloudUids = mutableSetOf<String>()
+        cloudEntries.forEachIndexed { index, entry ->
+            onProgress(
+                SyncProgress(
+                    "Downloading",
+                    "Downloading ${entry.name.ifBlank { entry.path }}",
+                    index + 1,
+                    cloudEntries.size.coerceAtLeast(1)
+                )
+            )
+            val cloudDictionary = downloadDictionaryEntry(entry)
+            check(seenCloudNames.add(cloudDictionary.name)) {
+                "Duplicate dictionary name in cloud sync manifest: ${cloudDictionary.name}"
             }
-        }
+            if (cloudDictionary.dictionaryUid.isNotBlank()) {
+                check(seenCloudUids.add(cloudDictionary.dictionaryUid)) {
+                    "Duplicate dictionary uid in cloud sync manifest: ${cloudDictionary.dictionaryUid}"
+                }
+            }
+            validateCloudDictionaryPools(cloudDictionary)
 
-        // Cloud-only dicts -> import to local
-        for (cloudDict in cloudDicts) {
-            onProgress(SyncProgress("Importing", "Importing cloud dictionary ${cloudDict.name}...", 2, totalSteps))
-            importCloudDictionary(cloudDict)
-            mergedDictJsons.add(cloudDict)
+            val localDictionary = findMatchingLocalDictionary(
+                cloudDictionary = cloudDictionary,
+                localDictionaries = localDicts,
+                excludedIds = matchedLocalIds
+            )
+            if (localDictionary == null) {
+                onProgress(
+                    SyncProgress(
+                        "Importing",
+                        "Importing cloud dictionary ${cloudDictionary.name}...",
+                        index + 1,
+                        cloudEntries.size.coerceAtLeast(1)
+                    )
+                )
+                importCloudDictionary(cloudDictionary)
+            } else {
+                matchedLocalIds += localDictionary.id
+                val localJson = exportLocalDictionary(localDictionary)
+                mergeDictionaries(localDictionary, localJson, cloudDictionary)
+            }
         }
 
         // Merge articles
@@ -305,18 +315,19 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val mergedPlanBackup = mergePlanBackup(localPlanBackup, cloudPlan?.toDomainBackup())
 
         // Re-export local dicts that were merged (to pick up cloud-only words)
-        val finalDictJsons = mutableListOf<DictionaryJsonModel>()
+        onProgress(SyncProgress("Uploading", "Uploading merged snapshot...", 3, totalSteps))
         val allLocalDicts = dictionaryRepository.getAllDictionaries().first()
+        val dictionaryEntries = mutableListOf<DictionaryCloudEntryJsonModel>()
         for (dict in allLocalDicts) {
-            finalDictJsons.add(exportLocalDictionary(dict))
+            val dictionary = exportLocalDictionary(dict)
+            dictionaryEntries += uploadDictionarySnapshot(
+                dictionaries = listOf(dictionary),
+                previousManifest = cloudManifest
+            ).entries
         }
 
-        // 4. Upload merged snapshot
-        onProgress(SyncProgress("Uploading", "Uploading merged snapshot...", 3, totalSteps))
-        val dictionaryUpload = uploadDictionarySnapshot(
-            dictionaries = finalDictJsons,
-            previousManifest = cloudManifest
-        )
+        // 4. Complete the merged dictionary snapshot.
+        val dictionaryUpload = DictionaryUploadResult(entries = dictionaryEntries)
 
         // Upload articles
         val allArticles = articleRepository.getAllArticles().first()
@@ -385,13 +396,15 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         // Phase 1: Upload dictionaries (incremental via content hash)
         onProgress(SyncProgress("Uploading", "Syncing dictionaries...", 1, totalSteps))
         val localDicts = dictionaryRepository.getAllDictionaries().first()
-        val finalDictJsons = localDicts.map { dict ->
-            exportLocalDictionary(dict)
+        val dictionaryEntries = mutableListOf<DictionaryCloudEntryJsonModel>()
+        localDicts.forEach { dict ->
+            val dictionary = exportLocalDictionary(dict)
+            dictionaryEntries += uploadDictionarySnapshot(
+                dictionaries = listOf(dictionary),
+                previousManifest = previousManifest
+            ).entries
         }
-        val dictionaryUpload = uploadDictionarySnapshot(
-            dictionaries = finalDictJsons,
-            previousManifest = previousManifest
-        )
+        val dictionaryUpload = DictionaryUploadResult(entries = dictionaryEntries)
 
         // Phase 2: Upload articles (incremental via timestamp comparison)
         onProgress(SyncProgress("Uploading", "Syncing articles...", 2, totalSteps))
@@ -505,8 +518,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
         // Validate every dictionary, including pool/edge snapshots, before deleting any local data.
         cloudDicts.forEach { dictionary ->
-            val imported = importExporter.importFromJson(dictAdapter.toJson(dictionary))
-            validateCloudPoolBackup(imported.poolBackup)
+            validateCloudDictionaryPools(dictionary)
         }
 
         // Phase 4/5: Replace local snapshot with cloud snapshot
@@ -630,13 +642,13 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         "Dictionary chunk count mismatch for ${entry.name}: expected=${entry.chunkCount} actual=${index.chunks.size}"
                     )
                 }
-                val chunksByPath = linkedMapOf<String, DictionaryShardChunkJsonModel>()
+                val accumulator = dictionaryShardAssembler.newAccumulator(index)
                 index.chunks.forEach { ref ->
                     val chunk = downloadJson(ref.file, dictionaryShardChunkAdapter)
                         ?: throw IllegalStateException("Missing dictionary chunk: ${ref.file}")
-                    chunksByPath[ref.file] = chunk
+                    accumulator.accept(ref, chunk)
                 }
-                dictionaryShardAssembler.assemble(index, chunksByPath).also { assembled ->
+                accumulator.build().also { assembled ->
                     if (index.totalWords > 0 && assembled.words.size != index.totalWords) {
                         throw IllegalStateException(
                             "Dictionary word total mismatch for ${entry.name}: expected=${index.totalWords} actual=${assembled.words.size}"
@@ -1045,6 +1057,22 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         return null
     }
 
+    private fun findMatchingLocalDictionary(
+        cloudDictionary: DictionaryJsonModel,
+        localDictionaries: List<Dictionary>,
+        excludedIds: Set<Long>
+    ): Dictionary? {
+        val available = localDictionaries.asSequence().filter { it.id !in excludedIds }
+        val cloudUid = cloudDictionary.dictionaryUid.takeIf { it.isNotBlank() }
+        if (cloudUid != null) {
+            available.firstOrNull { it.dictionaryUid.isNotBlank() && it.dictionaryUid == cloudUid }
+                ?.let { return it }
+        }
+        return localDictionaries.firstOrNull {
+            it.id !in excludedIds && it.name == cloudDictionary.name
+        }
+    }
+
     private fun takeMatchingCloudUnit(
         localUnit: StudyUnit,
         remainingCloudUnits: MutableList<UnitJsonModel>
@@ -1225,9 +1253,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
     // Export Helpers
 
     private suspend fun exportLocalDictionary(dict: Dictionary): DictionaryJsonModel {
-        val json = exportDictionary(dict)
-        val model = dictAdapter.fromJson(json) ?: throw IllegalStateException("Failed to parse exported dict")
-        return dictionaryWordUidNormalizer.normalize(model)
+        return dictionaryWordUidNormalizer.normalize(exportDictionary.exportModel(dict))
     }
 
     private suspend fun exportArticleCategories(): ArticleCategoriesExportModel {
@@ -1642,6 +1668,86 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 }
                 require(visited == members) {
                     "Pool strategy '${snapshot.strategy}' contains a pool disconnected from its persisted edges."
+                }
+            }
+        }
+    }
+
+    private fun validateCloudDictionaryPools(dictionary: DictionaryJsonModel) {
+        val snapshots = if (dictionary.wordPoolStrategies.isNotEmpty()) {
+            dictionary.wordPoolStrategies
+        } else {
+            dictionary.wordPools.groupBy { it.strategy.ifBlank { PoolStrategy.BALANCED.dbValue } }
+                .map { (strategy, pools) ->
+                    WordPoolStrategyJsonModel(
+                        strategy = strategy,
+                        updatedAt = pools.maxOfOrNull { it.updatedAt } ?: 0L,
+                        pools = pools
+                    )
+                }
+        }
+        val seenStrategies = mutableSetOf<String>()
+        val seenEdges = mutableSetOf<String>()
+        dictionary.wordEdges.forEach { edge ->
+            require(edge.wordUidA.isNotBlank() && edge.wordUidB.isNotBlank()) {
+                "Pool edge endpoints must not be blank."
+            }
+            require(edge.wordUidA != edge.wordUidB) { "Pool edge cannot connect a word to itself." }
+            require(EdgeType.fromDbValue(edge.edgeType) != null) { "Unknown pool edge type '${edge.edgeType}'." }
+            require(edge.status in EdgeParser.VALID_STATUSES) { "Unknown pool edge status '${edge.status}'." }
+            require(edge.learningValue in 1..5 && edge.relationStrength in 1..5) {
+                "Pool edge scores must be in 1..5."
+            }
+            require(edge.confidence.isFinite() && edge.confidence in 0.0..1.0) {
+                "Pool edge confidence must be in 0..1."
+            }
+            val key = "${minOf(edge.wordUidA, edge.wordUidB)}|${maxOf(edge.wordUidA, edge.wordUidB)}|${edge.edgeType}"
+            require(seenEdges.add(key)) { "Duplicate pool edge '$key'." }
+        }
+        snapshots.forEach { snapshot ->
+            val strategy = snapshot.strategy.ifBlank { PoolStrategy.BALANCED.dbValue }
+            require(strategy in setOf(PoolStrategy.BALANCED.dbValue, PoolStrategy.QUALITY_FIRST.dbValue)) {
+                "Unknown pool strategy '$strategy'."
+            }
+            require(seenStrategies.add(strategy)) { "Duplicate pool strategy '$strategy'." }
+            val relevantEdges = dictionary.wordEdges.filter { edge ->
+                edge.confidence >= 0.3 && edge.status != "optional" &&
+                    if (strategy == PoolStrategy.BALANCED.dbValue) {
+                        edge.evidenceSource in setOf("balanced_local", "balanced_ai", "user_note")
+                    } else {
+                        edge.evidenceSource !in setOf("balanced_local", "balanced_ai")
+                    }
+            }
+            val adjacency = mutableMapOf<String, MutableSet<String>>()
+            relevantEdges.forEach { edge ->
+                adjacency.getOrPut(edge.wordUidA) { linkedSetOf() }.add(edge.wordUidB)
+                adjacency.getOrPut(edge.wordUidB) { linkedSetOf() }.add(edge.wordUidA)
+            }
+            val seenPools = mutableSetOf<String>()
+            snapshot.pools.forEach { pool ->
+                val members = pool.memberWordUids.filter { it.isNotBlank() }.distinct()
+                require(members.size in 2..WordPoolEngine.MAX_POOL_SIZE) {
+                    "Pool strategy '$strategy' must contain 2..${WordPoolEngine.MAX_POOL_SIZE} members."
+                }
+                require(pool.focusWordUid == null || pool.focusWordUid in members) {
+                    "Pool strategy '$strategy' focus word must be a member."
+                }
+                require(seenPools.add(members.sorted().joinToString("|"))) {
+                    "Pool strategy '$strategy' contains duplicate pools."
+                }
+                val memberSet = members.toSet()
+                val visited = mutableSetOf<String>()
+                val queue = ArrayDeque<String>()
+                queue.addLast(members.first())
+                while (queue.isNotEmpty()) {
+                    val current = queue.removeFirst()
+                    if (!visited.add(current)) continue
+                    adjacency[current].orEmpty().forEach { neighbor ->
+                        if (neighbor in memberSet && neighbor !in visited) queue.addLast(neighbor)
+                    }
+                }
+                require(visited == memberSet) {
+                    "Pool strategy '$strategy' contains a pool disconnected from its persisted edges."
                 }
             }
         }

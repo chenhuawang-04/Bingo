@@ -210,6 +210,17 @@ interface WordEdgeDao {
     @Query("SELECT COUNT(*) FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun countEdges(dictionaryId: Long): Int
 
+    @Query(
+        "SELECT COUNT(*) FROM word_edges " +
+            "WHERE dictionary_id = :dictionaryId AND word_id_a != word_id_b " +
+            "AND confidence >= :minConfidence AND status != :excludedStatus"
+    )
+    suspend fun countEffectiveGraphEdges(
+        dictionaryId: Long,
+        minConfidence: Double,
+        excludedStatus: String
+    ): Int
+
     @Query("SELECT id, word_id_a, word_id_b, edge_type, relation_strength, confidence FROM word_edges WHERE dictionary_id = :dictionaryId")
     suspend fun getGraphEdges(dictionaryId: Long): List<GraphEdgeProjection>
 

@@ -118,7 +118,8 @@ internal fun poolTaskMutexKey(task: BackgroundTask): PoolTaskMutexKey? {
 internal fun selectLaunchablePendingTasks(
     pendingTasks: List<BackgroundTask>,
     runningTasks: Collection<BackgroundTask>,
-    slots: Int
+    slots: Int,
+    resourceBudget: TaskResourceBudget = TaskResourceBudget()
 ): List<BackgroundTask> {
     if (slots <= 0) return emptyList()
     val occupiedKeys = runningTasks.mapNotNull(::poolTaskMutexKey).toMutableSet()
@@ -127,6 +128,7 @@ internal fun selectLaunchablePendingTasks(
         if (selected.size >= slots) return@forEach
         val mutexKey = poolTaskMutexKey(task)
         if (mutexKey != null && mutexKey in occupiedKeys) return@forEach
+        if (!fitsResourceBudget(runningTasks, selected, task, resourceBudget)) return@forEach
         selected += task
         if (mutexKey != null) occupiedKeys += mutexKey
     }
@@ -1787,13 +1789,16 @@ class BackgroundTaskManager @Inject constructor(
             else -> com.xty.englishhelper.data.sync.SyncMode.SMART
         }
 
-        syncEngine.sync(mode) { progress ->
+        val result = syncEngine.sync(mode) { progress ->
             repository.updateProgress(
                 task.id,
                 progress.current,
                 progress.total,
                 "${progress.phase}: ${progress.detail}"
             )
+        }
+        if (!result.success) {
+            throw IllegalStateException(result.error ?: "云同步失败")
         }
     }
 

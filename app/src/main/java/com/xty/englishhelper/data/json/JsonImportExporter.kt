@@ -41,7 +41,29 @@ class JsonImportExporter @Inject constructor(
         wordIdToUid: Map<Long, String>,
         wordPhraseSnapshot: WordPhraseSyncSnapshot,
         poolBackup: DictionaryPoolBackup
-    ): String {
+    ): String = adapter.toJson(
+        exportToModel(
+            dictionary,
+            words,
+            units,
+            unitWordMap,
+            studyStates,
+            wordIdToUid,
+            wordPhraseSnapshot,
+            poolBackup
+        )
+    )
+
+    fun exportToModel(
+        dictionary: Dictionary,
+        words: List<WordDetails>,
+        units: List<StudyUnit>,
+        unitWordMap: Map<Long, List<String>>,
+        studyStates: List<WordStudyState>,
+        wordIdToUid: Map<Long, String>,
+        wordPhraseSnapshot: WordPhraseSyncSnapshot,
+        poolBackup: DictionaryPoolBackup
+    ): DictionaryJsonModel {
         words.forEach { word ->
             require(word.wordUid.isNotBlank()) {
                 "导出失败：单词 ${word.spelling} 缺少 wordUid"
@@ -58,7 +80,7 @@ class JsonImportExporter @Inject constructor(
             }
         }
 
-        val model = DictionaryJsonModel(
+        return DictionaryJsonModel(
             dictionaryUid = dictionary.dictionaryUid,
             name = dictionary.name,
             description = dictionary.description,
@@ -129,7 +151,6 @@ class JsonImportExporter @Inject constructor(
             phraseTags = wordPhraseSnapshot.toPhraseTagJsonModels(),
             wordPhrases = wordPhraseSnapshot.toWordPhraseJsonModels()
         )
-        return adapter.toJson(model)
     }
 
     override fun importFromJson(json: String): DictionaryImportExporter.ImportResult {

@@ -107,7 +107,7 @@ import java.util.UUID
         WordPhraseTagCrossRef::class,
         WordPhraseOrganizeMarkEntity::class
     ],
-    version = 35,
+    version = 36,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1282,6 +1282,19 @@ abstract class AppDatabase : RoomDatabase() {
                     FROM word_pools
                     GROUP BY dictionary_id, strategy
                     """.trimIndent()
+                )
+            }
+        }
+
+        val MIGRATION_35_36 = object : Migration(35, 36) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_word_edges_dictionary_id_id` " +
+                        "ON `word_edges` (`dictionary_id`, `id`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_word_edges_dictionary_id_confidence` " +
+                        "ON `word_edges` (`dictionary_id`, `confidence`)"
                 )
             }
         }

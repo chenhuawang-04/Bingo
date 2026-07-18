@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
+import com.xty.englishhelper.domain.background.AppResourceCoordinator
 
 @Singleton
 class SyncEngine @Inject constructor(
@@ -29,15 +31,19 @@ class SyncEngine @Inject constructor(
         _result.value = null
 
         return try {
-            when (mode) {
-                SyncMode.SMART -> syncRepository.sync(onProgress)
-                SyncMode.FORCE_UPLOAD -> syncRepository.forceUpload(onProgress)
-                SyncMode.FORCE_DOWNLOAD -> syncRepository.forceDownload(onProgress)
+            AppResourceCoordinator.withMemoryHeavyOperation("cloud_sync") {
+                when (mode) {
+                    SyncMode.SMART -> syncRepository.sync(onProgress)
+                    SyncMode.FORCE_UPLOAD -> syncRepository.forceUpload(onProgress)
+                    SyncMode.FORCE_DOWNLOAD -> syncRepository.forceDownload(onProgress)
+                }
             }
 
             val syncResult = SyncResult(success = true)
             _result.value = syncResult
             syncResult
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
             val syncResult = SyncResult(

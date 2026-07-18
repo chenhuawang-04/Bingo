@@ -31,6 +31,48 @@ class DictionaryShardAssembler @Inject constructor(
         val chunks: List<ChunkFile>
     )
 
+    inner class Accumulator internal constructor(
+        private val index: DictionaryShardIndexJsonModel
+    ) {
+        private val words = mutableListOf<WordJsonModel>()
+        private val studyStates = mutableListOf<StudyStateJsonModel>()
+        private val wordPhrases = mutableListOf<WordPhraseJsonModel>()
+        private val wordEdges = mutableListOf<WordEdgeJsonModel>()
+        private var acceptedChunks = 0
+
+        fun accept(ref: DictionaryChunkRefJsonModel, chunk: DictionaryShardChunkJsonModel) {
+            validateChunk(ref, chunk)
+            words += chunk.words
+            studyStates += chunk.studyStates
+            wordPhrases += chunk.wordPhrases
+            wordEdges += chunk.wordEdges
+            acceptedChunks++
+        }
+
+        fun build(): DictionaryJsonModel {
+            check(acceptedChunks == index.chunks.size) {
+                "Dictionary chunk count mismatch: expected=${index.chunks.size} actual=$acceptedChunks"
+            }
+            return DictionaryJsonModel(
+                dictionaryUid = index.dictionaryUid,
+                name = index.name,
+                description = index.description,
+                color = index.color,
+                schemaVersion = index.dictionarySchemaVersion,
+                createdAt = index.createdAt,
+                updatedAt = index.updatedAt,
+                words = words,
+                units = index.units,
+                studyStates = studyStates,
+                wordPools = index.wordPools,
+                wordPoolStrategies = index.wordPoolStrategies,
+                wordEdges = index.wordEdges + wordEdges,
+                phraseTags = index.phraseTags,
+                wordPhrases = wordPhrases
+            )
+        }
+    }
+
     private val wordAdapter = moshi.adapter(WordJsonModel::class.java)
     private val wordEdgeAdapter = moshi.adapter(WordEdgeJsonModel::class.java)
     private val studyStateAdapter = moshi.adapter(StudyStateJsonModel::class.java)
@@ -205,39 +247,16 @@ class DictionaryShardAssembler @Inject constructor(
         index: DictionaryShardIndexJsonModel,
         chunksByPath: Map<String, DictionaryShardChunkJsonModel>
     ): DictionaryJsonModel {
-        val words = mutableListOf<WordJsonModel>()
-        val studyStates = mutableListOf<StudyStateJsonModel>()
-        val wordPhrases = mutableListOf<WordPhraseJsonModel>()
-        val wordEdges = mutableListOf<WordEdgeJsonModel>()
-
+        val accumulator = newAccumulator(index)
         index.chunks.forEach { ref ->
             val chunk = chunksByPath[ref.file]
                 ?: throw IllegalStateException("Missing dictionary chunk: ${ref.file}")
-            validateChunk(ref, chunk)
-            words += chunk.words
-            studyStates += chunk.studyStates
-            wordPhrases += chunk.wordPhrases
-            wordEdges += chunk.wordEdges
+            accumulator.accept(ref, chunk)
         }
-
-        return DictionaryJsonModel(
-            dictionaryUid = index.dictionaryUid,
-            name = index.name,
-            description = index.description,
-            color = index.color,
-            schemaVersion = index.dictionarySchemaVersion,
-            createdAt = index.createdAt,
-            updatedAt = index.updatedAt,
-            words = words,
-            units = index.units,
-            studyStates = studyStates,
-            wordPools = index.wordPools,
-            wordPoolStrategies = index.wordPoolStrategies,
-            wordEdges = index.wordEdges + wordEdges,
-            phraseTags = index.phraseTags,
-            wordPhrases = wordPhrases
-        )
+        return accumulator.build()
     }
+
+    fun newAccumulator(index: DictionaryShardIndexJsonModel): Accumulator = Accumulator(index)
 
     fun validateChunk(
         ref: DictionaryChunkRefJsonModel,

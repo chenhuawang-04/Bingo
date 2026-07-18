@@ -12,7 +12,9 @@ import androidx.room.PrimaryKey
         Index(value = ["dictionary_id"]),
         Index(value = ["word_id_a"]),
         Index(value = ["word_id_b"]),
-        Index(value = ["dictionary_id", "status"])
+        Index(value = ["dictionary_id", "status"]),
+        Index(value = ["dictionary_id", "id"]),
+        Index(value = ["dictionary_id", "confidence"])
     ]
 )
 data class WordEdgeEntity(

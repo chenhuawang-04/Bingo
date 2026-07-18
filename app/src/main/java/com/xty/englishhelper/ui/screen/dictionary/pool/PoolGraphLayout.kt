@@ -137,15 +137,27 @@ class PoolGraphLayout private constructor(
             val nodeY = FloatArray(n)
 
             // ── 全局邻接 + 每节点边下标 ──
-            val neighbors = Array(n) { ArrayList<Int>() }
-            val edgesOf = Array(n) { ArrayList<Int>() }
-            graph.edges.forEachIndexed { idx, e ->
-                neighbors[e.aIndex].add(e.bIndex)
-                neighbors[e.bIndex].add(e.aIndex)
-                edgesOf[e.aIndex].add(idx)
-                edgesOf[e.bIndex].add(idx)
+            val adjacencySize = graph.edges.size * 2
+            val adjacencyOffsets = IntArray(n + 1)
+            graph.edges.forEach { edge ->
+                adjacencyOffsets[edge.aIndex + 1]++
+                adjacencyOffsets[edge.bIndex + 1]++
             }
-            val nodeEdges = Array(n) { edgesOf[it].toIntArray() }
+            for (i in 1..n) adjacencyOffsets[i] += adjacencyOffsets[i - 1]
+            val adjacencyCursor = adjacencyOffsets.copyOf()
+            val neighbors = IntArray(adjacencySize)
+            val edgeIndices = IntArray(adjacencySize)
+            graph.edges.forEachIndexed { edgeIndex, edge ->
+                var position = adjacencyCursor[edge.aIndex]++
+                neighbors[position] = edge.bIndex
+                edgeIndices[position] = edgeIndex
+                position = adjacencyCursor[edge.bIndex]++
+                neighbors[position] = edge.aIndex
+                edgeIndices[position] = edgeIndex
+            }
+            val nodeEdges = Array(n) { nodeIndex ->
+                edgeIndices.copyOfRange(adjacencyOffsets[nodeIndex], adjacencyOffsets[nodeIndex + 1])
+            }
 
             val clusterCount = graph.clusters.size
             val clusterCenterX = FloatArray(clusterCount)
@@ -180,7 +192,8 @@ class PoolGraphLayout private constructor(
                 while (queue.isNotEmpty()) {
                     val cur = queue.removeFirst()
                     bfsOrder.add(cur)
-                    for (nb in neighbors[cur]) {
+                    for (adjacencyIndex in adjacencyOffsets[cur] until adjacencyOffsets[cur + 1]) {
+                        val nb = neighbors[adjacencyIndex]
                         if (!visited[nb]) {
                             visited[nb] = true
                             depth[nb] = depth[cur] + 1

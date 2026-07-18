@@ -6,6 +6,8 @@ import com.xty.englishhelper.data.json.PlanEventLogJsonModel
 import com.xty.englishhelper.data.json.PlanExportJsonModel
 import com.xty.englishhelper.data.json.PlanItemJsonModel
 import com.xty.englishhelper.data.json.PlanTemplateJsonModel
+import com.xty.englishhelper.data.json.DictionaryJsonModel
+import com.xty.englishhelper.data.json.JsonImportExporter
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.model.PlanBackup
 import com.xty.englishhelper.domain.model.PlanDayRecordBackup
@@ -32,6 +34,7 @@ class ImportDictionaryUseCase @Inject constructor(
     private val unitRepository: UnitRepository,
     private val studyRepository: StudyRepository,
     private val importExporter: DictionaryImportExporter,
+    private val jsonImportExporter: JsonImportExporter,
     private val transactionRunner: TransactionRunner,
     private val wordPhraseRepository: WordPhraseRepository,
     private val wordPoolRepository: WordPoolRepository
@@ -114,6 +117,34 @@ class ExportDictionaryUseCase @Inject constructor(
     private val wordPoolRepository: WordPoolRepository
 ) {
     suspend operator fun invoke(dictionary: Dictionary): String {
+        val snapshot = buildSnapshot(dictionary)
+        return importExporter.exportToJson(
+            dictionary = dictionary,
+            words = snapshot.words,
+            units = snapshot.units,
+            unitWordMap = snapshot.unitWordMap,
+            studyStates = snapshot.studyStates,
+            wordIdToUid = snapshot.wordIdToUid,
+            wordPhraseSnapshot = snapshot.wordPhraseSnapshot,
+            poolBackup = snapshot.poolBackup
+        )
+    }
+
+    suspend fun exportModel(dictionary: Dictionary): DictionaryJsonModel {
+        val snapshot = buildSnapshot(dictionary)
+        return jsonImportExporter.exportToModel(
+            dictionary = dictionary,
+            words = snapshot.words,
+            units = snapshot.units,
+            unitWordMap = snapshot.unitWordMap,
+            studyStates = snapshot.studyStates,
+            wordIdToUid = snapshot.wordIdToUid,
+            wordPhraseSnapshot = snapshot.wordPhraseSnapshot,
+            poolBackup = snapshot.poolBackup
+        )
+    }
+
+    private suspend fun buildSnapshot(dictionary: Dictionary): ExportSnapshot {
         val words = ensureDictionaryWordUids(dictionary.id, dictionary.name)
         val units = unitRepository.getUnitsByDictionary(dictionary.id)
         val studyStates = studyRepository.getStudyStatesForDictionary(dictionary.id)
@@ -128,8 +159,7 @@ class ExportDictionaryUseCase @Inject constructor(
             unitWordMap[unit.id] = wordIds.mapNotNull { wordIdToUid[it] }
         }
 
-        return importExporter.exportToJson(
-            dictionary = dictionary,
+        return ExportSnapshot(
             words = words,
             units = units,
             unitWordMap = unitWordMap,
@@ -139,6 +169,16 @@ class ExportDictionaryUseCase @Inject constructor(
             poolBackup = poolBackup
         )
     }
+
+    private data class ExportSnapshot(
+        val words: List<com.xty.englishhelper.domain.model.WordDetails>,
+        val units: List<StudyUnit>,
+        val unitWordMap: Map<Long, List<String>>,
+        val studyStates: List<WordStudyState>,
+        val wordIdToUid: Map<Long, String>,
+        val wordPhraseSnapshot: com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot,
+        val poolBackup: com.xty.englishhelper.domain.model.DictionaryPoolBackup
+    )
 }
 
 class ExportPlanUseCase @Inject constructor(

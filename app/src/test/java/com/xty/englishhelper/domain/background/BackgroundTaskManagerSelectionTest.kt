@@ -6,6 +6,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
+import com.xty.englishhelper.domain.model.SyncTaskPayload
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -131,7 +132,7 @@ class BackgroundTaskManagerSelectionTest {
             slots = 3
         )
 
-        assertEquals(listOf(11L, 13L), selected.map { it.id })
+        assertEquals(listOf(11L), selected.map { it.id })
     }
 
     @Test
@@ -152,6 +153,29 @@ class BackgroundTaskManagerSelectionTest {
         val selected = selectLaunchablePendingTasks(pending, emptyList(), slots = 2)
 
         assertEquals(listOf(21L), selected.map { it.id })
+    }
+
+    @Test
+    fun `cloud sync runs exclusively against memory heavy tasks`() {
+        val cloudSync = poolTaskTask(
+            id = 31L,
+            type = BackgroundTaskType.CLOUD_SYNC,
+            payload = SyncTaskPayload(startedAt = 1L, syncMode = "SMART", triggeredBy = "test")
+        )
+        val rebuild = poolTaskTask(
+            id = 32L,
+            type = BackgroundTaskType.WORD_POOL_REBUILD,
+            payload = WordPoolRebuildPayload(dictionaryId = 1L, strategy = "QUALITY_FIRST")
+        )
+
+        assertEquals(
+            listOf(31L),
+            selectLaunchablePendingTasks(listOf(cloudSync, rebuild), emptyList(), slots = 2).map { it.id }
+        )
+        assertEquals(
+            emptyList<Long>(),
+            selectLaunchablePendingTasks(listOf(cloudSync), listOf(rebuild), slots = 1).map { it.id }
+        )
     }
 
     private fun poolTaskTask(
