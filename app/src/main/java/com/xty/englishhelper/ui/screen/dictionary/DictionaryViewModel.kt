@@ -30,6 +30,8 @@ import com.xty.englishhelper.domain.usecase.word.GetWordsByDictionaryUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,6 +72,8 @@ class DictionaryViewModel @Inject constructor(
     private var phraseTaskId: Long? = null
     private var jumpToLastUnitPage = false
     private var filterGeneration = 0L
+    private var poolInfoRefreshJob: Job? = null
+    private var phraseInfoRefreshJob: Job? = null
 
     init {
         loadDictionary()
@@ -381,7 +385,9 @@ class DictionaryViewModel @Inject constructor(
     // ── Pool management ──
 
     private fun loadPoolInfo() {
-        viewModelScope.launch {
+        poolInfoRefreshJob?.cancel()
+        poolInfoRefreshJob = viewModelScope.launch {
+            delay(DERIVED_STATS_DEBOUNCE_MS)
             try {
                 val count = getPoolCount(dictionaryId)
                 val edges = getPoolEdgeCount(dictionaryId)
@@ -487,7 +493,9 @@ class DictionaryViewModel @Inject constructor(
     }
 
     private fun loadPhraseInfo() {
-        viewModelScope.launch {
+        phraseInfoRefreshJob?.cancel()
+        phraseInfoRefreshJob = viewModelScope.launch {
+            delay(DERIVED_STATS_DEBOUNCE_MS)
             runCatching {
                 wordPhraseRepository.getStats(dictionaryId, _uiState.value.words.size)
             }.onSuccess { stats ->
@@ -929,5 +937,9 @@ class DictionaryViewModel @Inject constructor(
             EntryPresenceFilter.PRESENT -> hasValue
             EntryPresenceFilter.MISSING -> !hasValue
         }
+    }
+
+    private companion object {
+        const val DERIVED_STATS_DEBOUNCE_MS = 300L
     }
 }

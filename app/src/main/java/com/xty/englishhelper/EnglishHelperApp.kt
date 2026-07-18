@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import javax.inject.Inject
@@ -61,11 +62,14 @@ class EnglishHelperApp : Application() {
             backgroundTaskManager.enqueueOnlineArticleScanScore()
         }
         appScope.launch {
+            delay(AUTO_SYNC_STARTUP_DELAY_MS)
             autoSyncScheduler.checkAndSync()
         }
     }
 
     companion object {
+        private const val AUTO_SYNC_STARTUP_DELAY_MS = 20_000L
+
         fun applyLocale(locale: String) {
             val localeList = if (locale == "system") {
                 LocaleListCompat.getEmptyLocaleList()
@@ -76,6 +80,5 @@ class EnglishHelperApp : Application() {
         }
     }
 }
-
 
 
