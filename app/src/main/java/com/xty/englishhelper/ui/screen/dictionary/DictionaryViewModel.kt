@@ -69,6 +69,7 @@ class DictionaryViewModel @Inject constructor(
     private var reviewTaskId: Long? = null
     private var phraseTaskId: Long? = null
     private var jumpToLastUnitPage = false
+    private var filterGeneration = 0L
 
     init {
         loadDictionary()
@@ -94,15 +95,38 @@ class DictionaryViewModel @Inject constructor(
                     _uiState.update { it.copy(error = e.message, isLoading = false) }
                 }
                 .collect { words ->
-                    _uiState.update {
-                        val cleanedSelection = it.selectedWordIds.filter { id -> words.any { w -> w.id == id } }.toSet()
+                    val validWordIds = words.mapTo(hashSetOf()) { it.id }
+                    val snapshot = _uiState.value
+                    val nextState = withContext(Dispatchers.Default) {
                         recomputeFiltered(
+                            snapshot.copy(
+                                words = words,
+                                isLoading = false,
+                                selectedWordIds = snapshot.selectedWordIds.filterTo(mutableSetOf()) { it in validWordIds }
+                            )
+                        )
+                    }
+                    _uiState.update {
+                        if (it.searchQuery == snapshot.searchQuery && it.wordFilter == snapshot.wordFilter) {
+                            it.copy(
+                                words = words,
+                                filteredWords = nextState.filteredWords,
+                                isLoading = false,
+                                selectedWordIds = nextState.selectedWordIds,
+                                currentPage = nextState.currentPage
+                            )
+                        } else {
                             it.copy(
                                 words = words,
                                 isLoading = false,
-                                selectedWordIds = cleanedSelection
+                                selectedWordIds = it.selectedWordIds.filterTo(mutableSetOf()) { id -> id in validWordIds }
                             )
-                        )
+                        }
+                    }
+                    if (_uiState.value.searchQuery != snapshot.searchQuery ||
+                        _uiState.value.wordFilter != snapshot.wordFilter
+                    ) {
+                        scheduleFilterRecompute()
                     }
                     loadPhraseInfo()
                     loadPoolInfo()
@@ -134,7 +158,8 @@ class DictionaryViewModel @Inject constructor(
     }
 
     fun onSearchQueryChange(query: String) {
-        _uiState.update { recomputeFiltered(it.copy(searchQuery = query, currentPage = 0)) }
+        _uiState.update { it.copy(searchQuery = query, currentPage = 0) }
+        scheduleFilterRecompute()
     }
 
     fun showDeleteConfirm(word: WordDetails) {
@@ -167,11 +192,13 @@ class DictionaryViewModel @Inject constructor(
     }
 
     fun updateWordFilter(filter: DictionaryWordFilter) {
-        _uiState.update { recomputeFiltered(it.copy(wordFilter = filter, currentPage = 0)) }
+        _uiState.update { it.copy(wordFilter = filter, currentPage = 0) }
+        scheduleFilterRecompute()
     }
 
     fun resetWordFilter() {
-        _uiState.update { recomputeFiltered(it.copy(wordFilter = DictionaryWordFilter(), currentPage = 0)) }
+        _uiState.update { it.copy(wordFilter = DictionaryWordFilter(), currentPage = 0) }
+        scheduleFilterRecompute()
     }
 
     fun toggleBatchMode() {
@@ -872,6 +899,28 @@ class DictionaryViewModel @Inject constructor(
             filteredWords = filtered,
             currentPage = state.currentPage.coerceAtMost(maxPage.coerceAtLeast(0))
         )
+    }
+
+    private fun scheduleFilterRecompute() {
+        val generation = ++filterGeneration
+        val snapshot = _uiState.value
+        viewModelScope.launch(Dispatchers.Default) {
+            val filtered = recomputeFiltered(snapshot)
+            _uiState.update { current ->
+                if (generation == filterGeneration &&
+                    current.searchQuery == snapshot.searchQuery &&
+                    current.wordFilter == snapshot.wordFilter &&
+                    current.words === snapshot.words
+                ) {
+                    filtered.copy(
+                        selectedWordIds = current.selectedWordIds,
+                        isBatchMode = current.isBatchMode
+                    )
+                } else {
+                    current
+                }
+            }
+        }
     }
 
     private fun matchesPresence(filter: EntryPresenceFilter, hasValue: Boolean): Boolean {

@@ -21,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import kotlinx.coroutines.test.runTest
 
 class DictionaryShardAssemblerTest {
 
@@ -117,6 +118,23 @@ class DictionaryShardAssemblerTest {
             model.wordEdges.sortedBy { it.wordUidB },
             assembled.wordEdges.sortedBy { it.wordUidB }
         )
+    }
+
+    @Test
+    fun `streaming sharder emits equivalent chunks without retaining payloads`() = runTest {
+        val model = buildDictionary(wordCount = 120)
+        val emitted = mutableListOf<DictionaryShardAssembler.ChunkFile>()
+
+        val sharded = assembler.shardStreaming(model) { emitted += it }
+        val assembled = assembler.assemble(
+            index = sharded.index,
+            chunksByPath = emitted.associate { it.path to it.payload }
+        )
+
+        assertTrue(sharded.chunks.isEmpty())
+        assertEquals(emitted.size, sharded.index.chunks.size)
+        assertEquals(model.words.size, assembled.words.size)
+        assertEquals(model.wordEdges.size, assembled.wordEdges.size)
     }
 
     @Test

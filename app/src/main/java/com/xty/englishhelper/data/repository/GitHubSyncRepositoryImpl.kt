@@ -696,37 +696,25 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             .associateBy { it.name }
 
         val entries = dictionaries.map { dictionary ->
-            val sharded = dictionaryShardAssembler.shard(dictionary)
             val previousEntry = dictionary.dictionaryUid
                 .takeIf { it.isNotBlank() }
                 ?.let(previousShardedByUid::get)
                 ?: previousShardedByName[dictionary.name]
             val previousIndex = previousEntry?.let { downloadJson(it.path, dictionaryShardIndexAdapter) }
-            uploadShardedDictionary(sharded, previousIndex)
+            val previousRefsByFile = previousIndex?.chunks?.associateBy { it.file }.orEmpty()
+            val sharded = dictionaryShardAssembler.shardStreaming(dictionary) { chunk ->
+                val previousRef = previousRefsByFile[chunk.path]
+                if (previousRef?.contentHash != chunk.ref.contentHash) {
+                    uploadJson(chunk.path, chunk.payload, dictionaryShardChunkAdapter)
+                }
+            }
+            uploadJson(sharded.entry.path, sharded.index, dictionaryShardIndexAdapter)
             sharded.entry
         }
 
         return DictionaryUploadResult(
             entries = entries
         )
-    }
-
-    private suspend fun uploadShardedDictionary(
-        sharded: DictionaryShardAssembler.ShardedDictionary,
-        previousIndex: DictionaryShardIndexJsonModel?
-    ) {
-        val previousRefsByFile = previousIndex
-            ?.chunks
-            ?.associateBy { it.file }
-            .orEmpty()
-
-        sharded.chunks.forEach { chunk ->
-            val previousRef = previousRefsByFile[chunk.path]
-            if (previousRef?.contentHash == chunk.ref.contentHash) return@forEach
-            uploadJson(chunk.path, chunk.payload, dictionaryShardChunkAdapter)
-        }
-
-        uploadJson(sharded.entry.path, sharded.index, dictionaryShardIndexAdapter)
     }
 
     // Merge Logic

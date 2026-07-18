@@ -243,6 +243,143 @@ class DictionaryShardAssembler @Inject constructor(
         )
     }
 
+    suspend fun shardStreaming(
+        dictionary: DictionaryJsonModel,
+        emitChunk: suspend (ChunkFile) -> Unit
+    ): ShardedDictionary {
+        val folderPath = buildFolderPath(dictionary.dictionaryUid, dictionary.name)
+        val stateBuckets = dictionary.studyStates
+            .filter { it.wordUid.isNotBlank() }
+            .groupBy { it.wordUid }
+        val phraseBuckets = dictionary.wordPhrases
+            .filter { it.wordUid.isNotBlank() }
+            .groupBy { it.wordUid }
+        val wordsByBucket = Array(BUCKET_COUNT) { mutableListOf<WordJsonModel>() }
+        dictionary.words.sortedBy(::stableWordKey).forEach { word ->
+            wordsByBucket[bucketIndexFor(stableWordKey(word))].add(word)
+        }
+
+        val chunkRefs = mutableListOf<DictionaryChunkRefJsonModel>()
+        wordsByBucket.forEachIndexed { bucketId, bucketWords ->
+            var partIndex = 0
+            val currentWords = mutableListOf<WordJsonModel>()
+            val currentStates = mutableListOf<StudyStateJsonModel>()
+            val currentPhrases = mutableListOf<WordPhraseJsonModel>()
+            var currentEstimatedBytes = emptyChunkEstimatedBytes()
+
+            suspend fun flushCurrent() {
+                if (currentWords.isEmpty()) return
+                val payload = DictionaryShardChunkJsonModel(
+                    schemaVersion = CHUNK_SCHEMA_VERSION,
+                    words = currentWords.toList(),
+                    studyStates = currentStates.toList(),
+                    wordPhrases = currentPhrases.toList()
+                )
+                val path = "$folderPath/chunks/b${bucketId.toString().padStart(2, '0')}_part_${partIndex.toString().padStart(3, '0')}.json"
+                val ref = DictionaryChunkRefJsonModel(
+                    file = path,
+                    wordCount = currentWords.size,
+                    stateCount = currentStates.size,
+                    phraseCount = currentPhrases.size,
+                    contentHash = shortHash(chunkAdapter.toJson(payload))
+                )
+                emitChunk(ChunkFile(path, payload, ref))
+                chunkRefs += ref
+                currentWords.clear()
+                currentStates.clear()
+                currentPhrases.clear()
+                currentEstimatedBytes = emptyChunkEstimatedBytes()
+                partIndex++
+            }
+
+            for (word in bucketWords) {
+                val linkedStates = stateBuckets[word.wordUid].orEmpty()
+                val linkedPhrases = phraseBuckets[word.wordUid].orEmpty()
+                val estimatedAddedBytes = estimateWordBytes(word) +
+                    linkedStates.sumOf(::estimateStudyStateBytes) +
+                    linkedPhrases.sumOf(::estimateWordPhraseBytes)
+                if (currentWords.isNotEmpty() && currentEstimatedBytes + estimatedAddedBytes > TARGET_CHUNK_BYTES) {
+                    flushCurrent()
+                }
+                currentWords += word
+                currentStates += linkedStates
+                currentPhrases += linkedPhrases
+                currentEstimatedBytes += estimatedAddedBytes
+            }
+            flushCurrent()
+        }
+
+        var edgePartIndex = 0
+        val currentEdges = mutableListOf<WordEdgeJsonModel>()
+        var currentEdgeBytes = emptyChunkEstimatedBytes()
+
+        suspend fun flushEdges() {
+            if (currentEdges.isEmpty()) return
+            val payload = DictionaryShardChunkJsonModel(
+                schemaVersion = CHUNK_SCHEMA_VERSION,
+                wordEdges = currentEdges.toList()
+            )
+            val path = "$folderPath/chunks/edges_part_${edgePartIndex.toString().padStart(3, '0')}.json"
+            val ref = DictionaryChunkRefJsonModel(
+                file = path,
+                edgeCount = currentEdges.size,
+                contentHash = shortHash(chunkAdapter.toJson(payload))
+            )
+            emitChunk(ChunkFile(path, payload, ref))
+            chunkRefs += ref
+            currentEdges.clear()
+            currentEdgeBytes = emptyChunkEstimatedBytes()
+            edgePartIndex++
+        }
+
+        val edgeComparator = compareBy<WordEdgeJsonModel> { minOf(it.wordUidA, it.wordUidB) }
+            .thenBy { maxOf(it.wordUidA, it.wordUidB) }
+            .thenBy { it.edgeType }
+        for (edge in dictionary.wordEdges.sortedWith(edgeComparator)) {
+            val estimatedAddedBytes = estimateWordEdgeBytes(edge)
+            if (currentEdges.isNotEmpty() && currentEdgeBytes + estimatedAddedBytes > TARGET_CHUNK_BYTES) {
+                flushEdges()
+            }
+            currentEdges += edge
+            currentEdgeBytes += estimatedAddedBytes
+        }
+        flushEdges()
+
+        val indexPath = "$folderPath/index.json"
+        val index = DictionaryShardIndexJsonModel(
+            dictionaryUid = dictionary.dictionaryUid,
+            name = dictionary.name,
+            description = dictionary.description,
+            color = dictionary.color,
+            schemaVersion = INDEX_SCHEMA_VERSION,
+            dictionarySchemaVersion = dictionary.schemaVersion,
+            createdAt = dictionary.createdAt,
+            updatedAt = dictionary.updatedAt,
+            totalWords = dictionary.words.size,
+            totalStudyStates = dictionary.studyStates.size,
+            totalWordPhrases = dictionary.wordPhrases.size,
+            totalWordEdges = dictionary.wordEdges.size,
+            units = dictionary.units,
+            wordPools = dictionary.wordPools,
+            wordPoolStrategies = dictionary.wordPoolStrategies,
+            wordEdges = emptyList(),
+            phraseTags = dictionary.phraseTags,
+            chunks = chunkRefs
+        )
+        return ShardedDictionary(
+            entry = DictionaryCloudEntryJsonModel(
+                dictionaryUid = dictionary.dictionaryUid,
+                name = dictionary.name,
+                format = DictionaryCloudEntryJsonModel.FORMAT_SHARDED,
+                path = indexPath,
+                totalWords = dictionary.words.size,
+                chunkCount = chunkRefs.size
+            ),
+            index = index,
+            chunks = emptyList()
+        )
+    }
+
     fun assemble(
         index: DictionaryShardIndexJsonModel,
         chunksByPath: Map<String, DictionaryShardChunkJsonModel>

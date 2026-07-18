@@ -48,7 +48,7 @@ class BackgroundTaskManagerSelectionTest {
     }
 
     @Test
-    fun `selectLaunchablePendingTasks skips edge-write conflicts but keeps unrelated tasks`() {
+    fun `selectLaunchablePendingTasks keeps one global memory-heavy pool task at a time`() {
         val running = listOf(
             poolTaskTask(
                 id = 100L,
@@ -92,7 +92,7 @@ class BackgroundTaskManagerSelectionTest {
             slots = 3
         )
 
-        assertEquals(listOf(2L), selected.map { it.id })
+        assertEquals(emptyList<Long>(), selected.map { it.id })
     }
 
     @Test
