@@ -25,6 +25,33 @@ class MigrationTest {
     )
 
     @Test
+    fun migrate38To39_addsAdvancedScoringNotificationsAndAutoPaperState() {
+        val db = helper.createDatabase(testDbName, 38)
+        db.execSQL(
+            "INSERT INTO exam_papers (id, uid, title, description, total_questions, created_at, updated_at, paper_type, status, profile, blueprint_version) " +
+                "VALUES (1, 'paper-38', 'Legacy paper', NULL, 0, 10, 20, 'COMPOSED', 'COLLECTING', 'ENGLISH_ONE', 1)"
+        )
+        db.close()
+
+        val migrated = helper.runMigrationsAndValidate(testDbName, 39, true, AppDatabase.MIGRATION_38_39)
+        migrated.query(
+            "SELECT composition_mode, selection_status, selection_error FROM exam_papers WHERE id = 1"
+        ).use {
+            assertTrue(it.moveToFirst())
+            assertEquals("MANUAL", it.getString(0))
+            assertEquals("NOT_STARTED", it.getString(1))
+            assertTrue(it.isNull(2))
+        }
+        listOf("article_advanced_scores", "app_notifications", "exam_paper_slot_selections").forEach { table ->
+            migrated.query("SELECT COUNT(*) FROM $table").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0, it.getInt(0))
+            }
+        }
+        migrated.close()
+    }
+
+    @Test
     fun migrate37To38_addsRecoverableExamPaperCompositionState() {
         val db = helper.createDatabase(testDbName, 37)
         db.execSQL(

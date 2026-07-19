@@ -15,6 +15,8 @@ import com.xty.englishhelper.domain.repository.ArticleSuitabilityResult
 import com.xty.englishhelper.domain.repository.AtlanticRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
+import com.xty.englishhelper.domain.repository.QuestionBankRepository
+import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import com.xty.englishhelper.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -49,6 +51,8 @@ class GuardianBrowseViewModelTest {
     private lateinit var settingsDataStore: SettingsDataStore
     private lateinit var articleRepository: ArticleRepository
     private lateinit var articleAiRepository: ArticleAiRepository
+    private lateinit var questionBankRepository: QuestionBankRepository
+    private lateinit var backgroundTaskManager: BackgroundTaskManager
 
     @Before
     fun setUp() {
@@ -62,9 +66,13 @@ class GuardianBrowseViewModelTest {
         settingsDataStore = mockk(relaxed = true)
         articleRepository = mockk(relaxed = true)
         articleAiRepository = mockk(relaxed = true)
+        questionBankRepository = mockk(relaxed = true)
+        backgroundTaskManager = mockk(relaxed = true)
 
         every { settingsDataStore.onlineReadingSource } returns emptyFlow()
         every { settingsDataStore.guardianDetailConcurrency } returns flowOf(2)
+        every { articleRepository.getAllArticles() } returns flowOf(emptyList())
+        every { articleRepository.observeAllAdvancedScores() } returns flowOf(emptyList())
         coEvery { settingsDataStore.getFastAiConfig() } returns SettingsDataStore.AiConfig(
             providerName = "fast",
             provider = AiProvider.OPENAI_COMPATIBLE,
@@ -261,7 +269,9 @@ class GuardianBrowseViewModelTest {
             atlanticRepository = atlanticRepository,
             settingsDataStore = settingsDataStore,
             articleRepository = articleRepository,
-            articleAiRepository = articleAiRepository
+            articleAiRepository = articleAiRepository,
+            questionBankRepository = questionBankRepository,
+            backgroundTaskManager = backgroundTaskManager
         )
     }
 
