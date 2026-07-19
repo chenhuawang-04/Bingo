@@ -66,4 +66,18 @@ class ExamPaperBlueprintTest {
         assertEquals("2026-07-19-第1套", ExamPaperBlueprint.dailyPaperTitle("2026-07-19", 1))
         assertEquals("2026-07-19-第3套", ExamPaperBlueprint.dailyPaperTitle("2026-07-19", 3))
     }
+
+    @Test
+    fun explicitSpecialType_overridesAnnualDefaultForOnePaper() {
+        val blueprint = ExamPaperBlueprint.forYear(
+            year = 2026,
+            specialQuestionType = QuestionType.INFORMATION_MATCH
+        )
+
+        assertEquals(QuestionType.INFORMATION_MATCH, blueprint.specialQuestionType)
+        assertEquals(
+            listOf(QuestionType.INFORMATION_MATCH),
+            blueprint.slots.filter { it.key == "special" }.map { it.questionType }
+        )
+    }
 }

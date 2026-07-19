@@ -125,6 +125,13 @@ fun ArticleReaderScreen(
     var showGenerateDialog by rememberSaveable { mutableStateOf(false) }
     var selectedGenerateId by rememberSaveable { mutableStateOf("read") }
     var selectedPaperProfile by rememberSaveable { mutableStateOf(ExamPaperProfile.ENGLISH_ONE.name) }
+    var selectedSpecialQuestionType by rememberSaveable {
+        mutableStateOf(
+            ExamPaperBlueprint.rotatingSpecialType(
+                java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+            ).name
+        )
+    }
 
     data class GenerateOption(
         val id: String,
@@ -136,10 +143,13 @@ fun ArticleReaderScreen(
 
     val paperProfile = runCatching { ExamPaperProfile.valueOf(selectedPaperProfile) }
         .getOrDefault(ExamPaperProfile.ENGLISH_ONE)
-    val blueprint = remember(paperProfile) {
+    val specialQuestionType = runCatching { QuestionType.valueOf(selectedSpecialQuestionType) }
+        .getOrDefault(QuestionType.NEW_TYPE)
+    val blueprint = remember(paperProfile, specialQuestionType) {
         ExamPaperBlueprint.forYear(
             java.util.Calendar.getInstance().get(java.util.Calendar.YEAR),
-            paperProfile
+            paperProfile,
+            specialQuestionType
         )
     }
     val generateOptions = remember(blueprint, paperProfile) {
@@ -410,6 +420,27 @@ fun ArticleReaderScreen(
                             }
                         )
                     }
+                    Text("本套轮换新题型", style = MaterialTheme.typography.labelLarge)
+                    listOf(
+                        QuestionType.PARAGRAPH_ORDER,
+                        QuestionType.SENTENCE_INSERTION,
+                        QuestionType.COMMENT_OPINION_MATCH,
+                        QuestionType.SUBHEADING_MATCH,
+                        QuestionType.INFORMATION_MATCH
+                    ).forEach { type ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                selectedSpecialQuestionType = type.name
+                            },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = specialQuestionType == type,
+                                onClick = { selectedSpecialQuestionType = type.name }
+                            )
+                            Text(type.displayName)
+                        }
+                    }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         generateOptions.forEach { option ->
                             Row(
@@ -443,6 +474,7 @@ fun ArticleReaderScreen(
                         showGenerateDialog = false
                         viewModel.addToExamPaper(
                             profile = paperProfile,
+                            specialQuestionType = blueprint.specialQuestionType,
                             questionType = selectedGenerate.questionType,
                             variant = selectedGenerate.variant
                         )

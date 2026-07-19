@@ -73,6 +73,9 @@ interface QuestionBankDao {
         updatedAt: Long
     )
 
+    @Query("UPDATE exam_papers SET special_question_type = :questionType, updated_at = :updatedAt WHERE id = :paperId AND status = 'COLLECTING'")
+    suspend fun updateExamPaperSpecialQuestionType(paperId: Long, questionType: String, updatedAt: Long)
+
     @Query("""
         SELECT MAX(ts) FROM (
             SELECT updated_at AS ts FROM exam_papers WHERE id = :paperId

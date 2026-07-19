@@ -24,6 +24,7 @@ interface QuestionBankRepository {
         articleId: Long,
         dayKey: String,
         profile: ExamPaperProfile,
+        specialQuestionType: QuestionType?,
         questionType: QuestionType,
         variant: String?
     ): ExamPaperCollectionResult

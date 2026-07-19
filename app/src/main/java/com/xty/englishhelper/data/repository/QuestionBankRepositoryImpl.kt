@@ -76,6 +76,7 @@ class QuestionBankRepositoryImpl @Inject constructor(
         articleId: Long,
         dayKey: String,
         profile: ExamPaperProfile,
+        specialQuestionType: QuestionType?,
         questionType: QuestionType,
         variant: String?
     ): ExamPaperCollectionResult {
@@ -83,12 +84,16 @@ class QuestionBankRepositoryImpl @Inject constructor(
             ?: throw IllegalStateException("文章不存在")
         val year = dayKey.take(4).toIntOrNull()
             ?: throw IllegalArgumentException("组卷日期无效")
-        val blueprint = ExamPaperBlueprint.forYear(year, profile)
 
         return database.withTransaction {
             val now = System.currentTimeMillis()
             var paperEntity = dao.getCollectingPaperByDay(dayKey, profile.name)
             if (paperEntity == null) {
+                val blueprint = ExamPaperBlueprint.forYear(
+                    year = year,
+                    profile = profile,
+                    specialQuestionType = specialQuestionType ?: ExamPaperBlueprint.rotatingSpecialType(year)
+                )
                 val sequence = dao.getComposedPaperCountByDay(dayKey) + 1
                 val paper = ExamPaper(
                     uid = UUID.randomUUID().toString(),
@@ -109,7 +114,17 @@ class QuestionBankRepositoryImpl @Inject constructor(
                     ?: throw IllegalStateException("试卷创建失败")
             }
 
+            if (
+                specialQuestionType != null &&
+                paperEntity.specialQuestionType != specialQuestionType.name &&
+                dao.getExamPaperSourcesOnce(paperEntity.id).none { it.slotKey == "special" }
+            ) {
+                dao.updateExamPaperSpecialQuestionType(paperEntity.id, specialQuestionType.name, now)
+                paperEntity = dao.getExamPaperById(paperEntity.id)
+                    ?: throw IllegalStateException("试卷配置更新失败")
+            }
             val paper = paperEntity.toDomain()
+            val blueprint = ExamPaperBlueprint.forPaper(paper)
             val duplicate = dao.findExamPaperSource(
                 paperId = paper.id,
                 articleId = articleId,

@@ -844,6 +844,7 @@ class ArticleReaderViewModel @Inject constructor(
 
     fun addToExamPaper(
         profile: ExamPaperProfile,
+        specialQuestionType: QuestionType,
         questionType: QuestionType,
         variant: String?
     ) {
@@ -871,6 +872,7 @@ class ArticleReaderViewModel @Inject constructor(
                     articleId = article.id,
                     dayKey = dayKey,
                     profile = profile,
+                    specialQuestionType = specialQuestionType,
                     questionType = questionType,
                     variant = variant
                 )) {
