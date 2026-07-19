@@ -689,7 +689,8 @@ class BackgroundTaskManager @Inject constructor(
                         val resumeIncrementalPool = type == BackgroundTaskType.WORD_POOL_REBUILD &&
                             (payload as? WordPoolRebuildPayload)?.rebuildMode == RebuildMode.INCREMENTAL.name
                         val resumePhraseOrganize = type == BackgroundTaskType.WORD_PHRASE_ORGANIZE
-                        if (!resumeIncrementalPool && !resumePhraseOrganize) {
+                        val resumeExamPaper = type == BackgroundTaskType.EXAM_PAPER_GENERATE
+                        if (!resumeIncrementalPool && !resumePhraseOrganize && !resumeExamPaper) {
                             repository.updateProgress(existing.id, 0, 0)
                         }
                         return@withLock BackgroundTaskEnqueueResult.RESTARTED

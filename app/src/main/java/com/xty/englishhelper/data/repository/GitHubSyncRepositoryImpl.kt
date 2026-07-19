@@ -73,6 +73,7 @@ import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
+import com.xty.englishhelper.domain.model.ExamPaperBlueprint
 import com.xty.englishhelper.domain.model.CognateInfo
 import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Dictionary
@@ -2249,10 +2250,25 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
         transactionRunner.runInTransaction {
             for (paperJson in model.papers) {
+            val targetUid = paperJson.uid.ifBlank { UUID.randomUUID().toString() }
+            var importedSequence = paperJson.dailySequence
+            var importedTitle = paperJson.title
+            val dayKey = paperJson.dayKey
+            if (
+                paperJson.paperType == "COMPOSED" &&
+                !dayKey.isNullOrBlank() &&
+                importedSequence > 0
+            ) {
+                val conflict = questionBankDao.getExamPaperByDayAndSequence(dayKey, importedSequence)
+                if (conflict != null && conflict.uid != targetUid) {
+                    importedSequence = questionBankDao.getMaxComposedPaperSequenceByDay(dayKey) + 1
+                    importedTitle = ExamPaperBlueprint.dailyPaperTitle(dayKey, importedSequence)
+                }
+            }
             val paperId = questionBankDao.insertExamPaper(
                 ExamPaperEntity(
-                    uid = paperJson.uid.ifBlank { UUID.randomUUID().toString() },
-                    title = paperJson.title,
+                    uid = targetUid,
+                    title = importedTitle,
                     description = paperJson.description,
                     totalQuestions = paperJson.totalQuestions,
                     createdAt = paperJson.createdAt,
@@ -2260,7 +2276,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     paperType = paperJson.paperType,
                     status = paperJson.status,
                     dayKey = paperJson.dayKey,
-                    dailySequence = paperJson.dailySequence,
+                    dailySequence = importedSequence,
                     profile = paperJson.profile,
                     blueprintVersion = paperJson.blueprintVersion,
                     specialQuestionType = paperJson.specialQuestionType,

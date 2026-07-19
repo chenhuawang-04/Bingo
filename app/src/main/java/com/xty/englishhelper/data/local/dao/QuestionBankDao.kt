@@ -40,6 +40,9 @@ interface QuestionBankDao {
     @Query("SELECT COALESCE(MAX(daily_sequence), 0) FROM exam_papers WHERE day_key = :dayKey AND paper_type = 'COMPOSED'")
     suspend fun getMaxComposedPaperSequenceByDay(dayKey: String): Int
 
+    @Query("SELECT * FROM exam_papers WHERE day_key = :dayKey AND daily_sequence = :sequence LIMIT 1")
+    suspend fun getExamPaperByDayAndSequence(dayKey: String, sequence: Int): ExamPaperEntity?
+
     @Query("""
         SELECT ep.*,
             (SELECT COUNT(*) FROM exam_paper_sources eps WHERE eps.exam_paper_id = ep.id) AS collected_source_count,
