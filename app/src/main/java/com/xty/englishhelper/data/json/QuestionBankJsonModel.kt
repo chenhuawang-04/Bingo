@@ -23,13 +23,34 @@ data class ExamPaperJson(
     val profile: String = "ENGLISH_ONE",
     val blueprintVersion: Int = 1,
     val specialQuestionType: String? = null,
+    val compositionMode: String = "MANUAL",
+    val selectionStatus: String = "NOT_STARTED",
+    val selectionError: String? = null,
+    val selectionStartedAt: Long? = null,
+    val selectionCompletedAt: Long? = null,
     val generationError: String? = null,
     val generationStartedAt: Long? = null,
     val generationCompletedAt: Long? = null,
     val sources: List<ExamPaperSourceJson> = emptyList(),
+    val slotSelections: List<ExamPaperSlotSelectionJson> = emptyList(),
     val answerDrafts: List<ExamPaperAnswerDraftJson> = emptyList(),
     val completedGroupUids: List<String> = emptyList(),
     val groups: List<QuestionGroupJson> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class ExamPaperSlotSelectionJson(
+    val slotKey: String = "",
+    val questionType: String = "",
+    val variant: String = "",
+    val status: String = "PENDING",
+    val articleUid: String? = null,
+    val articleTitle: String? = null,
+    val selectedScore: Int? = null,
+    val candidateCount: Int = 0,
+    val reason: String? = null,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0
 )
 
 @JsonClass(generateAdapter = true)

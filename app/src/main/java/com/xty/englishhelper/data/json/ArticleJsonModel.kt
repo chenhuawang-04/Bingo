@@ -33,8 +33,23 @@ data class ArticleJsonModel(
     val suitabilityReason: String = "",
     val suitabilityUpdatedAt: Long? = null,
     val suitabilityModel: String = "",
+    val advancedScores: List<ArticleAdvancedScoreJsonModel> = emptyList(),
     val paragraphs: List<ArticleParagraphJsonModel> = emptyList(),
     val images: List<ArticleImageJsonModel> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class ArticleAdvancedScoreJsonModel(
+    val questionType: String = "",
+    val variant: String = "",
+    val score: Int = 0,
+    val reason: String = "",
+    val basicScore: Int = 0,
+    val wordCount: Int = 0,
+    val modelKey: String = "",
+    val promptVersion: Int = 1,
+    val scoredAt: Long = 0,
+    val updatedAt: Long = 0
 )
 
 @JsonClass(generateAdapter = true)

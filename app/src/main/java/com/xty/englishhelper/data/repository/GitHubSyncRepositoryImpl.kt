@@ -8,6 +8,7 @@ import com.xty.englishhelper.data.json.ArticleCategoriesExportModel
 import com.xty.englishhelper.data.json.ArticleCategoryJsonModel
 import com.xty.englishhelper.data.json.ArticleImageJsonModel
 import com.xty.englishhelper.data.json.ArticleJsonModel
+import com.xty.englishhelper.data.json.ArticleAdvancedScoreJsonModel
 import com.xty.englishhelper.data.json.ArticleParagraphJsonModel
 import com.xty.englishhelper.data.json.ArticlesExportModel
 import com.xty.englishhelper.data.json.DictionaryCloudEntryJsonModel
@@ -16,6 +17,7 @@ import com.xty.englishhelper.data.json.DictionaryShardChunkJsonModel
 import com.xty.englishhelper.data.json.DictionaryShardIndexJsonModel
 import com.xty.englishhelper.data.json.ExamPaperJson
 import com.xty.englishhelper.data.json.ExamPaperSourceJson
+import com.xty.englishhelper.data.json.ExamPaperSlotSelectionJson
 import com.xty.englishhelper.data.json.ExamPaperAnswerDraftJson
 import com.xty.englishhelper.data.json.InflectionJsonModel
 import com.xty.englishhelper.data.json.ParagraphJson
@@ -46,6 +48,7 @@ import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperSourceEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperSlotSelectionEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperAnswerDraftEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperPracticeProgressEntity
 import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
@@ -342,7 +345,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             articleJsons.add(exportArticleJson(article))
         }
         val articlesExport = ArticlesExportModel(
-            schemaVersion = 3,
+            schemaVersion = 4,
             articles = articleJsons
         )
         uploadJson("articles.json", articlesExport, articlesAdapter)
@@ -428,7 +431,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 articleJsons.add(cloudArticle)
             }
         }
-        val articlesExport = ArticlesExportModel(schemaVersion = 3, articles = articleJsons)
+        val articlesExport = ArticlesExportModel(schemaVersion = 4, articles = articleJsons)
         uploadJson("articles.json", articlesExport, articlesAdapter)
 
         // Phase 3: Upload categories, question bank, word examples, plan (always full)
@@ -1279,7 +1282,21 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 imageUrl = guessImageUrl(uri)
             )
         }
-        return article.toArticleJson(paragraphJsons, imageJsons)
+        val advancedScores = articleRepository.getAdvancedScoresForArticle(article.id).map { score ->
+            ArticleAdvancedScoreJsonModel(
+                questionType = score.questionType.name,
+                variant = score.variant.orEmpty(),
+                score = score.score,
+                reason = score.reason,
+                basicScore = score.basicScore,
+                wordCount = score.wordCount,
+                modelKey = score.modelKey,
+                promptVersion = score.promptVersion,
+                scoredAt = score.scoredAt,
+                updatedAt = score.updatedAt
+            )
+        }
+        return article.toArticleJson(paragraphJsons, imageJsons, advancedScores)
     }
 
     private suspend fun importArticleFromJson(
@@ -1356,6 +1373,30 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             suitabilityModel = suitabilityModel
         )
         val articleId = articleRepository.upsertArticle(article)
+
+        if (articleJson.advancedScores.isNotEmpty()) {
+            articleRepository.deleteAdvancedScoresForArticle(articleId)
+            articleJson.advancedScores.forEach { score ->
+                val questionType = runCatching { com.xty.englishhelper.domain.model.QuestionType.valueOf(score.questionType) }
+                    .getOrNull() ?: return@forEach
+                articleRepository.upsertAdvancedScore(
+                    com.xty.englishhelper.domain.model.ArticleAdvancedScore(
+                        articleId = articleId,
+                        articleUid = article.articleUid,
+                        questionType = questionType,
+                        variant = score.variant.ifBlank { null },
+                        score = score.score.coerceIn(0, 100),
+                        reason = score.reason,
+                        basicScore = score.basicScore,
+                        wordCount = score.wordCount,
+                        modelKey = score.modelKey,
+                        promptVersion = score.promptVersion,
+                        scoredAt = score.scoredAt,
+                        updatedAt = score.updatedAt
+                    )
+                )
+            }
+        }
 
         if (supportsStructuredContent || articleJson.paragraphs.isNotEmpty()) {
             articleRepository.deleteParagraphsByArticle(articleId)
@@ -1481,7 +1522,8 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
     private fun Article.toArticleJson(
         paragraphs: List<ArticleParagraphJsonModel>,
-        images: List<ArticleImageJsonModel>
+        images: List<ArticleImageJsonModel>,
+        advancedScores: List<ArticleAdvancedScoreJsonModel>
     ) = ArticleJsonModel(
         articleUid = articleUid.ifBlank { UUID.randomUUID().toString() },
         title = title,
@@ -1506,6 +1548,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         suitabilityReason = suitabilityReason,
         suitabilityUpdatedAt = suitabilityUpdatedAt,
         suitabilityModel = suitabilityModel,
+        advancedScores = advancedScores,
         paragraphs = paragraphs,
         images = images
     )
@@ -2113,6 +2156,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             val groups = questionBankDao.getGroupsByPaperOnce(paper.id)
             val groupUidById = groups.associate { it.id to it.uid }
             val sources = questionBankDao.getExamPaperSourcesOnce(paper.id)
+            val slotSelections = questionBankDao.getExamPaperSlotSelectionsOnce(paper.id)
             val answerDrafts = questionBankDao.getExamPaperAnswerDraftExportRows(paper.id)
             val completedGroupUids = questionBankDao.getCompletedExamPaperGroupUids(paper.id)
             val groupJsons = groups.map { group ->
@@ -2206,6 +2250,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 profile = paper.profile,
                 blueprintVersion = paper.blueprintVersion,
                 specialQuestionType = paper.specialQuestionType,
+                compositionMode = paper.compositionMode,
+                selectionStatus = paper.selectionStatus,
+                selectionError = paper.selectionError,
+                selectionStartedAt = paper.selectionStartedAt,
+                selectionCompletedAt = paper.selectionCompletedAt,
                 generationError = paper.generationError,
                 generationStartedAt = paper.generationStartedAt,
                 generationCompletedAt = paper.generationCompletedAt,
@@ -2225,6 +2274,21 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         updatedAt = source.updatedAt
                     )
                 },
+                slotSelections = slotSelections.map { selection ->
+                    ExamPaperSlotSelectionJson(
+                        slotKey = selection.slotKey,
+                        questionType = selection.questionType,
+                        variant = selection.variant,
+                        status = selection.status,
+                        articleUid = selection.articleUid,
+                        articleTitle = selection.articleTitle,
+                        selectedScore = selection.selectedScore,
+                        candidateCount = selection.candidateCount,
+                        reason = selection.reason,
+                        createdAt = selection.createdAt,
+                        updatedAt = selection.updatedAt
+                    )
+                },
                 answerDrafts = answerDrafts.map { draft ->
                     ExamPaperAnswerDraftJson(
                         groupUid = draft.group_uid,
@@ -2238,14 +2302,14 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             )
         }
 
-        return QuestionBankExportModel(schemaVersion = 2, papers = paperJsons)
+        return QuestionBankExportModel(schemaVersion = 3, papers = paperJsons)
     }
 
     private suspend fun importQuestionBank(
         model: QuestionBankExportModel,
         articleUidToId: Map<String, Long>
     ) {
-        if (model.schemaVersion > 2) {
+        if (model.schemaVersion > 3) {
             throw IllegalStateException("Unsupported question bank schema version: ${model.schemaVersion}, please upgrade the app")
         }
         transactionRunner.runInTransaction {
@@ -2280,6 +2344,11 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     profile = paperJson.profile,
                     blueprintVersion = paperJson.blueprintVersion,
                     specialQuestionType = paperJson.specialQuestionType,
+                    compositionMode = paperJson.compositionMode,
+                    selectionStatus = paperJson.selectionStatus,
+                    selectionError = paperJson.selectionError,
+                    selectionStartedAt = paperJson.selectionStartedAt,
+                    selectionCompletedAt = paperJson.selectionCompletedAt,
                     generationError = paperJson.generationError,
                     generationStartedAt = paperJson.generationStartedAt,
                     generationCompletedAt = paperJson.generationCompletedAt
@@ -2432,6 +2501,28 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         )
                     )
                 }
+                if (model.schemaVersion >= 3) {
+                    paperJson.slotSelections.forEach { selection ->
+                        val articleId = selection.articleUid?.let(articleUidToId::get)
+                        questionBankDao.upsertExamPaperSlotSelection(
+                            ExamPaperSlotSelectionEntity(
+                                examPaperId = paperId,
+                                slotKey = selection.slotKey,
+                                questionType = selection.questionType,
+                                variant = selection.variant,
+                                status = selection.status,
+                                articleId = articleId,
+                                articleUid = selection.articleUid,
+                                articleTitle = selection.articleTitle,
+                                selectedScore = selection.selectedScore,
+                                candidateCount = selection.candidateCount,
+                                reason = selection.reason,
+                                createdAt = selection.createdAt,
+                                updatedAt = selection.updatedAt
+                            )
+                        )
+                    }
+                }
             }
 
             // Update total questions count
@@ -2462,7 +2553,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
             if (local == null && cloud != null) {
                 // Cloud-only -> import
                 importQuestionBank(
-                    QuestionBankExportModel(papers = listOf(cloud)),
+                    QuestionBankExportModel(schemaVersion = cloudModel.schemaVersion, papers = listOf(cloud)),
                     articleUidToId
                 )
             } else if (local != null && cloud != null) {
@@ -2473,7 +2564,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     // Delete local (CASCADE clears child tables), then import cloud
                     questionBankDao.deleteExamPaper(local.id)
                     importQuestionBank(
-                        QuestionBankExportModel(papers = listOf(cloud)),
+                        QuestionBankExportModel(schemaVersion = cloudModel.schemaVersion, papers = listOf(cloud)),
                         articleUidToId
                     )
                 }
@@ -2489,6 +2580,9 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         }
         for (draft in paper.answerDrafts) {
             if (draft.updatedAt > max) max = draft.updatedAt
+        }
+        for (selection in paper.slotSelections) {
+            if (selection.updatedAt > max) max = selection.updatedAt
         }
         for (group in paper.groups) {
             if (group.updatedAt > max) max = group.updatedAt

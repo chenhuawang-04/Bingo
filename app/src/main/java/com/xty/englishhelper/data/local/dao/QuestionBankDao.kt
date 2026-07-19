@@ -119,6 +119,8 @@ interface QuestionBankDao {
             SELECT MAX(updated_at) FROM exam_paper_answer_drafts WHERE exam_paper_id = :paperId
             UNION ALL
             SELECT MAX(updated_at) FROM exam_paper_practice_progress WHERE exam_paper_id = :paperId
+            UNION ALL
+            SELECT MAX(updated_at) FROM exam_paper_slot_selections WHERE exam_paper_id = :paperId
         )
     """)
     suspend fun getEffectiveUpdatedAt(paperId: Long): Long?
