@@ -18,8 +18,8 @@ android {
         applicationId = "com.xty.englishhelper"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "8.4.0-word-clusters-pre.1"
+        versionCode = 16
+        versionName = "9.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

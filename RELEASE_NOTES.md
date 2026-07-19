@@ -1,67 +1,72 @@
-﻿# Release Notes
+# Bingo v9.0.0
 
-## v2.3.2 (2026-04-02)
+Bingo 9.0 是一次面向学习体验、任务治理、数据可靠性和长期稳定性的正式大版本。本版本完整收录 v8.3 之后各个预发布版本中的功能与修复，并加入全新的词簇学习能力。
 
-### Fixes
-- Fixed plan sync conflict resolution in `sync()`.
-- Version comparison now uses real data update time (`latestUpdatedAt`) as the primary signal.
-- `exportedAt` is now only used as fallback when update timestamps are unavailable.
-- This prevents false wins by freshly-exported local snapshots and allows newer cloud plan data to sync back correctly.
+## 全新词簇学习
 
-### Technical
-- Updated: `app/src/main/java/com/xty/englishhelper/data/repository/GitHubSyncRepositoryImpl.kt`
-- Commit: `7e8ebe7`
+- 在背词答案页创建、自主命名和编辑词簇；同一个词可以加入多个词簇，一个词簇也可容纳多个词。
+- 答案页默认只显示轻量入口和词簇数量，主动展开后才显示词簇列表，避免干扰释义与正常评分。
+- 可选择当前词所在的任意词簇进行关联词浏览，并在每个关联词上选择临时熟练度。
+- 关联词浏览不会写入 FSRS，不增加复习次数、遗忘次数、计划进度或主会话统计。
+- 支持系统返回键、自动朗读和完成后返回原卡片再次选择其他词簇。
+- 词簇已纳入字典 JSON 导入导出和云同步，换机、备份与恢复不会丢失关系。
 
----
+## 统一任务与资源中心
 
-## v2.3.1 (2026-04-02)
+- 建立统一的持久化任务调度中心，集中管理程序前后台任务、优先级、并发和资源预算。
+- 新增隐藏任务类型；后台任务页默认折叠隐藏任务，同时允许用户手动展开查看。
+- 后台任务页实时展示内存、CPU、网络、数据库写入和音频资源占用。
+- 增加原子启动、崩溃恢复、稳定排序、取消安全和任务启动竞态保护。
+- 内存密集、CPU 密集、数据库写入和排他任务使用统一准入门，降低资源争抢和峰值压力。
+- 所有 OkHttp 客户端共享进程级 Dispatcher，统一限制全局及单主机并发请求数。
 
-### New
-- Added full **Plan** support in cloud sync and local import/export.
+## 自动更新检查
 
-### Sync
-- Added `plan.json` to GitHub sync pipeline:
-  - download in `sync` / `forceDownload`
-  - upload in `sync` / `forceUpload`
-  - merge support for plan snapshots
-- Added `hasPlan` to `manifest.json` metadata.
+- 应用启动时通过 GitHub Releases 自动检查新版本，并以隐藏后台任务执行。
+- 设置中可以完全关闭自动检查。
+- 可以选择是否接收测试版；关闭测试版检查时严格排除 draft、prerelease 等非正式版本。
+- 更新检查支持语义版本比较、有限重试、结果持久化和发布页面跳转。
 
-### Import / Export
-- Added Plan JSON import/export use cases.
-- Added Plan import/export actions in Import/Export screen.
+## 词池与关系数据可靠性
 
-### Data Model
-- Added plan backup domain model:
-  - `PlanBackup`
-  - `PlanTemplateBackup`
-  - `PlanItemBackup`
-  - `PlanDayRecordBackup`
-  - `PlanEventLogBackup`
-- Added plan JSON models:
-  - `PlanExportJsonModel`
-  - `PlanTemplateJsonModel`
-  - `PlanItemJsonModel`
-  - `PlanDayRecordJsonModel`
-  - `PlanEventLogJsonModel`
+- 增加词池健康审计、异常检测和可修复的持久化结构。
+- 强化语义边校验、关系方向、置信度和数据一致性处理。
+- 词池、关系边和策略状态已纳入字典备份与同步，避免导入、恢复或跨设备同步后丢失。
+- 大型字典同步改为流式快照与上传，减少一次性内存占用。
 
-### Repository / DAO
-- Extended `PlanRepository` with backup export/replace APIs.
-- Implemented backup read/write in `PlanRepositoryImpl`.
-- Added DAO support methods for one-shot read and full replace.
+## 背词笔记与关联整理
 
-### Validation
-- `assembleDebug` passed.
-- `testDebugUnitTest` passed.
+- 优化背词页添加关联词和笔记的交互、搜索建议、关系类型选择与后台整理状态反馈。
+- 多个关联词后台任务可以独立完成并正确刷新当前单词关系。
+- 生命周期取消不再被误判为业务失败。
 
-### Technical
-- Main commit: `678d44f`
+## 性能、稳定性与资源保护
 
----
+- TTS 长文本预热改为固定 worker 池，只保留一个活动预热会话，并增加引擎和播放超时。
+- MediaPlayer 使用异步准备；TTS 缓存限制为 200 MiB，并按最旧文件自动淘汰。
+- TTS 和 Android AudioFocus 接入统一音频资源租约。
+- PDF 渲染限制页数、DPI、最长边和单页像素；图片处理限制批次数、源文件大小和总输出大小。
+- 图片压缩、PDF、WebView WAF、导入导出和分析缓存全部纳入统一资源协调。
+- 文件 I/O 移至 IO 调度器，导入采用有界流式读取。
+- 延迟非关键启动工作，合并派生查询，限制分析缓存，并改善协程取消传播。
+- 修复后台整理映射的跨线程竞争和多个主线程阻塞风险。
 
-## v2.0.0 (2026-03-13)
+## 题库与阅读器修复
 
-### Major
-- Introduced Question Bank module with scan, parse, practice, answer generation, source verification, and reader integration.
-- Added new question-bank schema and navigation integration.
+- 修复练习提交、答案显示、阅读定位和写作题复习流程中的稳定性问题。
+- 防止写作提交冻结，并加强重复提交及状态恢复保护。
 
-> Historical details before v2.3.x are summarized here to keep this file readable. If needed, split older notes into `docs/release/` files.
+## 数据库与升级兼容
+
+- Room 数据库升级到版本 37，新增词簇及成员关系表。
+- 36 → 37 使用增量迁移，不重建数据库，不清除现有单词、学习记录、词池、词组或任务。
+- 删除词典、词簇或单词时，相关词簇关系通过外键安全级联清理。
+- 字典 JSON schema 升级到 13，同时继续支持导入 schema 4–12 的历史备份。
+
+## 安装与校验
+
+- `app-release.apk`：适合直接安装或覆盖升级。
+- `app-release.aab`：适合应用商店分发。
+- 建议升级前保留一次字典和配置备份。
+
+完整变更范围：[v8.3...v9.0.0](https://github.com/chenhuawang-04/Bingo/compare/v8.3...v9.0.0)
