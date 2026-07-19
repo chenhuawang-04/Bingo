@@ -39,6 +39,8 @@ class MigrationTest {
             assertTrue(it.moveToFirst())
             assertEquals(1, it.getInt(0))
         }
+        // MigrationTestHelper exposes a raw connection; enable the same FK enforcement Room uses.
+        migrated.execSQL("PRAGMA foreign_keys = ON")
         migrated.execSQL("DELETE FROM words WHERE id = 1")
         migrated.query("SELECT COUNT(*) FROM word_cluster_members").use {
             assertTrue(it.moveToFirst())
