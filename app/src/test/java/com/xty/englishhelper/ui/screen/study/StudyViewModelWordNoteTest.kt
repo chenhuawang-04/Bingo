@@ -12,6 +12,8 @@ import com.xty.englishhelper.domain.model.StudyMode
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordSuggestion
+import com.xty.englishhelper.domain.model.WordCluster
+import com.xty.englishhelper.domain.model.WordClusterReview
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.WordClusterRepository
@@ -30,6 +32,7 @@ import com.xty.englishhelper.domain.usecase.study.SearchStudyWordNoteSuggestions
 import com.xty.englishhelper.domain.usecase.study.SubmitStudyWordNoteResult
 import com.xty.englishhelper.domain.usecase.study.SubmitStudyWordNoteUseCase
 import com.xty.englishhelper.domain.usecase.study.StudyWordNoteOutcome
+import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -85,6 +88,10 @@ class StudyViewModelWordNoteTest {
         coEvery { getNewWords.invoke(emptyList(), StudyMode.NORMAL) } returns emptyList()
         coEvery { getStudyWordEdgePreviews.invoke(1L, 1L, 1.0) } returns emptyList()
         coEvery { wordClusterRepository.getClustersForWord(1L) } returns emptyList()
+        coEvery { wordClusterRepository.getClusterReview(7L, 1L) } returns WordClusterReview(
+            cluster = WordCluster(7L, 1L, "易混词", 2),
+            words = listOf(WordDetails(id = 2L, dictionaryId = 1L, spelling = "adopt"))
+        )
         coEvery { searchStudyWordNoteSuggestions.invoke(any(), any(), any()) } returns emptyList()
         coEvery {
             submitStudyWordNote.invoke(currentWord, "alpha", emptyList(), EdgeType.FAMILY_SAME_ROOT)
@@ -190,6 +197,15 @@ class StudyViewModelWordNoteTest {
 
         assertEquals("beta 已加入「同词根」强关联", viewModel.uiState.value.wordNoteMessage)
         coVerify(exactly = 3) { getStudyWordEdgePreviews.invoke(1L, 1L, 1.0) }
+
+        viewModel.startRelatedClusterReview(7L)
+        advanceUntilIdle()
+        viewModel.revealRelatedWord()
+        viewModel.rateRelatedWord(Rating.Good)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.uiState.value.isRelatedClusterReview)
+        coVerify(exactly = 0) { reviewWord.invoke(any(), any(), any()) }
     }
 
     private fun wordNoteTask(
