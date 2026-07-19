@@ -211,6 +211,16 @@ internal fun StudyingContent(
                         state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                         wordDetailItems(
                             word = word,
+                            linkedWordIds = state.detailLinkedWordIds,
+                            associatedWords = state.detailAssociatedWords,
+                            pools = state.detailPools,
+                            clusters = emptyList(),
+                            edgePreviews = state.currentWordEdges.map {
+                                com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview(it.wordId, it.spelling, setOf(it.edgeType))
+                            },
+                            phrases = state.detailPhrases,
+                            examples = state.detailExamples,
+                            onWordClick = onOpenRelatedWord,
                             cloudExampleSource = state.cloudExampleSource,
                             cloudExamples = state.cloudExamples,
                             cloudExamplesLoading = state.cloudExamplesLoading,
@@ -289,6 +299,16 @@ internal fun StudyingContent(
                     state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                     wordDetailItems(
                         word = word,
+                        linkedWordIds = state.detailLinkedWordIds,
+                        associatedWords = state.detailAssociatedWords,
+                        pools = state.detailPools,
+                        clusters = emptyList(),
+                        edgePreviews = state.currentWordEdges.map {
+                            com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview(it.wordId, it.spelling, setOf(it.edgeType))
+                        },
+                        phrases = state.detailPhrases,
+                        examples = state.detailExamples,
+                        onWordClick = onOpenRelatedWord,
                         cloudExampleSource = state.cloudExampleSource,
                         cloudExamples = state.cloudExamples,
                         cloudExamplesLoading = state.cloudExamplesLoading,

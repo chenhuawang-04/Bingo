@@ -8,6 +8,9 @@ import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordPhraseWithTags
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.repository.WordExample
+import com.xty.englishhelper.domain.model.WordCluster
+import com.xty.englishhelper.domain.model.WordClusterReview
+import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
 
 data class WordDetailUiState(
     val word: WordDetails? = null,
@@ -19,6 +22,9 @@ data class WordDetailUiState(
     val associatedWords: List<AssociatedWordInfo> = emptyList(),
     val examples: List<WordExample> = emptyList(),
     val pools: List<WordPool> = emptyList(),
+    val clusters: List<WordCluster> = emptyList(),
+    val clusterReviews: List<WordClusterReview> = emptyList(),
+    val edgePreviews: List<WordEdgeNeighborPreview> = emptyList(),
     val phrases: List<WordPhraseWithTags> = emptyList(),
     val cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
     val cloudExamples: List<CloudWordExample> = emptyList(),

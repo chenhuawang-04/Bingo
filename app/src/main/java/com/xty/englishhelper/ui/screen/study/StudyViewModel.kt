@@ -20,6 +20,7 @@ import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
 import com.xty.englishhelper.domain.repository.WordClusterRepository
+import com.xty.englishhelper.domain.repository.WordPhraseRepository
 import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.domain.usecase.brainstorm.BuildBrainstormSessionUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.CollectRelatedGroupUseCase
@@ -34,6 +35,10 @@ import com.xty.englishhelper.domain.usecase.study.PreviewIntervalsUseCase
 import com.xty.englishhelper.domain.usecase.study.ReviewWordUseCase
 import com.xty.englishhelper.domain.usecase.study.SearchStudyWordNoteSuggestionsUseCase
 import com.xty.englishhelper.domain.usecase.study.SubmitStudyWordNoteUseCase
+import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
+import com.xty.englishhelper.domain.usecase.pool.GetWordPoolsUseCase
+import com.xty.englishhelper.domain.usecase.word.GetAssociatedWordsUseCase
+import com.xty.englishhelper.domain.usecase.word.ResolveLinkedWordsUseCase
 import com.xty.englishhelper.domain.usecase.study.StudyWordNoteOutcome
 import com.xty.englishhelper.R
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -77,7 +82,12 @@ class StudyViewModel @Inject constructor(
     private val getStudyWordEdgePreviews: GetStudyWordEdgePreviewsUseCase,
     private val searchStudyWordNoteSuggestions: SearchStudyWordNoteSuggestionsUseCase,
     private val submitStudyWordNote: SubmitStudyWordNoteUseCase,
-    private val wordClusterRepository: WordClusterRepository
+    private val wordClusterRepository: WordClusterRepository,
+    private val getWordExamples: GetWordExamplesUseCase,
+    private val getWordPools: GetWordPoolsUseCase,
+    private val getAssociatedWords: GetAssociatedWordsUseCase,
+    private val resolveLinkedWords: ResolveLinkedWordsUseCase,
+    private val wordPhraseRepository: WordPhraseRepository
 ) : ViewModel() {
     private companion object {
         const val WORD_NOTE_SUGGESTION_MIN_QUERY_LENGTH = 2
@@ -431,7 +441,13 @@ class StudyViewModel @Inject constructor(
                     relatedWords = emptyList(),
                     relatedWordIndex = 0,
                     relatedWordShowAnswer = false,
-                    relatedWordRatings = emptyMap()
+                    relatedWordRatings = emptyMap(),
+                    detailAssociatedWords = emptyList(),
+                    detailLinkedWordIds = emptyMap(),
+                    detailExamples = emptyList(),
+                    detailPools = emptyList(),
+                    detailPhrases = emptyList(),
+                    detailLoading = false
                 )
             }
             pendingWordNoteTargetWordIds.clear()
@@ -485,6 +501,36 @@ class StudyViewModel @Inject constructor(
             }
             if (_uiState.value.cloudExamples.isEmpty() && !_uiState.value.cloudExamplesLoading) {
                 loadCloudExamples(word.spelling, _uiState.value.cloudExampleSource)
+            }
+            loadSupplementaryWordDetails(word)
+        }
+    }
+
+    private suspend fun loadSupplementaryWordDetails(word: WordDetails) {
+        _uiState.update { it.copy(detailLoading = true) }
+        try {
+            val spellings = word.synonyms.map { it.word } + word.similarWords.map { it.word } + word.cognates.map { it.word }
+            val linked = if (spellings.isEmpty()) emptyMap() else resolveLinkedWords(word.dictionaryId, spellings)
+            val associated = getAssociatedWords(word.id)
+            val examples = getWordExamples(word.id)
+            val pools = getWordPools(word.id)
+            val phrases = wordPhraseRepository.getPhrasesForWord(word.id)
+            if (_uiState.value.currentWord?.id != word.id) return
+            _uiState.update {
+                it.copy(
+                    detailLinkedWordIds = linked,
+                    detailAssociatedWords = associated,
+                    detailExamples = examples,
+                    detailPools = pools,
+                    detailPhrases = phrases,
+                    detailLoading = false
+                )
+            }
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            if (_uiState.value.currentWord?.id == word.id) {
+                _uiState.update { it.copy(detailLoading = false) }
             }
         }
     }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
@@ -36,7 +37,10 @@ import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordPhraseWithTags
 import com.xty.englishhelper.domain.model.WordPool
+import com.xty.englishhelper.domain.model.WordCluster
+import com.xty.englishhelper.domain.model.WordClusterReview
 import com.xty.englishhelper.domain.repository.WordExample
+import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
 import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
 
@@ -49,14 +53,18 @@ fun WordDetailContent(
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
     modifier: Modifier = Modifier,
     examples: List<WordExample> = emptyList(),
-    onArticleClick: (articleId: Long, sentenceId: Long) -> Unit = { _, _ -> },
+    onArticleClick: ((articleId: Long, sentenceId: Long) -> Unit)? = null,
     pools: List<WordPool> = emptyList(),
+    clusters: List<WordCluster> = emptyList(),
+    clusterReviews: List<WordClusterReview> = emptyList(),
+    edgePreviews: List<WordEdgeNeighborPreview> = emptyList(),
     phrases: List<WordPhraseWithTags> = emptyList(),
     cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
     cloudExamples: List<CloudWordExample> = emptyList(),
     cloudExamplesLoading: Boolean = false,
     cloudExamplesError: String? = null,
-    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit = {}
+    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit = {},
+    showSpellingHeader: Boolean = false
 ) {
     val windowWidthClass = currentWindowWidthClass()
     val isWide = windowWidthClass.isExpandedOrMedium()
@@ -68,6 +76,9 @@ fun WordDetailContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (showSpellingHeader) {
+                    item { Text(word.spelling, style = MaterialTheme.typography.headlineMedium) }
+                }
                 basicWordItems(word)
             }
 
@@ -81,6 +92,9 @@ fun WordDetailContent(
                     linkedWordIds = linkedWordIds,
                     associatedWords = associatedWords,
                     pools = pools,
+                    clusters = clusters,
+                    clusterReviews = clusterReviews,
+                    edgePreviews = edgePreviews,
                     phrases = phrases,
                     examples = examples,
                     onWordClick = onWordClick,
@@ -99,12 +113,15 @@ fun WordDetailContent(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            basicWordItems(word)
-            relatedWordItems(
+            unifiedWordDetailItems(
                 word = word,
+                showSpellingHeader = showSpellingHeader,
                 linkedWordIds = linkedWordIds,
                 associatedWords = associatedWords,
                 pools = pools,
+                clusters = clusters,
+                clusterReviews = clusterReviews,
+                edgePreviews = edgePreviews,
                 phrases = phrases,
                 examples = examples,
                 onWordClick = onWordClick,
@@ -117,6 +134,51 @@ fun WordDetailContent(
             )
         }
     }
+}
+
+fun LazyListScope.unifiedWordDetailItems(
+    word: WordDetails,
+    linkedWordIds: Map<String, Long> = emptyMap(),
+    associatedWords: List<AssociatedWordInfo> = emptyList(),
+    pools: List<WordPool> = emptyList(),
+    clusters: List<WordCluster> = emptyList(),
+    clusterReviews: List<WordClusterReview> = emptyList(),
+    edgePreviews: List<WordEdgeNeighborPreview> = emptyList(),
+    phrases: List<WordPhraseWithTags> = emptyList(),
+    examples: List<WordExample> = emptyList(),
+    onWordClick: (Long, Long) -> Unit = { _, _ -> },
+    onArticleClick: ((Long, Long) -> Unit)? = null,
+    cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
+    cloudExamples: List<CloudWordExample> = emptyList(),
+    cloudExamplesLoading: Boolean = false,
+    cloudExamplesError: String? = null,
+    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit = {},
+    showSpellingHeader: Boolean = true
+) {
+    if (showSpellingHeader) {
+        item {
+            Text(word.spelling, style = MaterialTheme.typography.headlineMedium)
+        }
+    }
+    basicWordItems(word)
+    relatedWordItems(
+        word = word,
+        linkedWordIds = linkedWordIds,
+        associatedWords = associatedWords,
+        pools = pools,
+        clusters = clusters,
+        clusterReviews = clusterReviews,
+        edgePreviews = edgePreviews,
+        phrases = phrases,
+        examples = examples,
+        onWordClick = onWordClick,
+        onArticleClick = onArticleClick,
+        cloudExampleSource = cloudExampleSource,
+        cloudExamples = cloudExamples,
+        cloudExamplesLoading = cloudExamplesLoading,
+        cloudExamplesError = cloudExamplesError,
+        onCloudExampleSourceSelected = onCloudExampleSourceSelected
+    )
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.basicWordItems(word: WordDetails) {
@@ -181,16 +243,88 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
     linkedWordIds: Map<String, Long>,
     associatedWords: List<AssociatedWordInfo>,
     pools: List<WordPool>,
+    clusters: List<WordCluster>,
+    clusterReviews: List<WordClusterReview>,
+    edgePreviews: List<WordEdgeNeighborPreview>,
     phrases: List<WordPhraseWithTags>,
     examples: List<WordExample>,
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
-    onArticleClick: (articleId: Long, sentenceId: Long) -> Unit,
+    onArticleClick: ((articleId: Long, sentenceId: Long) -> Unit)?,
     cloudExampleSource: CloudExampleSource,
     cloudExamples: List<CloudWordExample>,
     cloudExamplesLoading: Boolean,
     cloudExamplesError: String?,
     onCloudExampleSourceSelected: (CloudExampleSource) -> Unit
 ) {
+    if (clusters.isNotEmpty()) {
+        item {
+            WordDetailSection(title = "词簇") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    clusters.forEach { cluster ->
+                        val review = clusterReviews.firstOrNull { it.cluster.id == cluster.id }
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "${cluster.name} · ${cluster.memberCount} 词",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            if (review != null && review.words.isNotEmpty()) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    review.words.forEach { member ->
+                                        AssistChip(
+                                            onClick = { onWordClick(member.id, member.dictionaryId) },
+                                            label = { Text(member.spelling) }
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    "暂无其他成员",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (edgePreviews.isNotEmpty()) {
+        item {
+            WordDetailSection(title = "关系网络") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    edgePreviews.forEach { edge ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onWordClick(edge.neighborId, word.dictionaryId) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                edge.spelling,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                edge.edgeTypes.joinToString(" · ") { it.label },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (word.synonyms.isNotEmpty()) {
         item {
             WordDetailSection(title = stringResource(R.string.word_synonyms)) {
@@ -394,16 +528,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
             WordDetailSection(title = stringResource(R.string.word_article_examples)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     examples.forEach { example ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onArticleClick(
-                                        example.sourceArticleId ?: 0L,
-                                        example.sourceSentenceId ?: 0L
-                                    )
-                                }
-                        ) {
+                        val articleId = example.sourceArticleId
+                        val sentenceId = example.sourceSentenceId
+                        val cardModifier = if (onArticleClick != null && articleId != null && sentenceId != null) {
+                            Modifier.fillMaxWidth().clickable { onArticleClick(articleId, sentenceId) }
+                        } else {
+                            Modifier.fillMaxWidth()
+                        }
+                        Card(modifier = cardModifier) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 if (!example.sourceLabel.isNullOrBlank()) {
                                     Text(

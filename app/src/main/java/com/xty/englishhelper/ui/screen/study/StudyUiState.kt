@@ -8,6 +8,10 @@ import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.CloudWordExample
 import com.xty.englishhelper.domain.model.WordCluster
+import com.xty.englishhelper.domain.model.AssociatedWordInfo
+import com.xty.englishhelper.domain.model.WordPhraseWithTags
+import com.xty.englishhelper.domain.model.WordPool
+import com.xty.englishhelper.domain.repository.WordExample
 import com.xty.englishhelper.domain.study.Rating
 
 data class StudyUiState(
@@ -62,7 +66,13 @@ data class StudyUiState(
     val relatedWords: List<WordDetails> = emptyList(),
     val relatedWordIndex: Int = 0,
     val relatedWordShowAnswer: Boolean = false,
-    val relatedWordRatings: Map<Long, Rating> = emptyMap()
+    val relatedWordRatings: Map<Long, Rating> = emptyMap(),
+    val detailAssociatedWords: List<AssociatedWordInfo> = emptyList(),
+    val detailLinkedWordIds: Map<String, Long> = emptyMap(),
+    val detailExamples: List<WordExample> = emptyList(),
+    val detailPools: List<WordPool> = emptyList(),
+    val detailPhrases: List<WordPhraseWithTags> = emptyList(),
+    val detailLoading: Boolean = false
 )
 
 val StudyUiState.isRelatedClusterReview: Boolean get() = relatedClusterName != null

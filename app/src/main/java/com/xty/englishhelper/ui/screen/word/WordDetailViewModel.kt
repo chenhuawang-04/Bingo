@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.repository.WordPhraseRepository
+import com.xty.englishhelper.domain.repository.WordClusterRepository
 import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.dictionary.GetCloudWordExamplesUseCase
 import com.xty.englishhelper.domain.usecase.pool.GetWordPoolsUseCase
@@ -14,6 +15,7 @@ import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
 import com.xty.englishhelper.domain.usecase.word.GetAssociatedWordsUseCase
 import com.xty.englishhelper.domain.usecase.word.GetWordByIdUseCase
 import com.xty.englishhelper.domain.usecase.word.ResolveLinkedWordsUseCase
+import com.xty.englishhelper.domain.usecase.study.GetStudyWordEdgePreviewsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,12 +36,15 @@ class WordDetailViewModel @Inject constructor(
     private val getCloudWordExamples: GetCloudWordExamplesUseCase,
     private val getWordPools: GetWordPoolsUseCase,
     private val wordPhraseRepository: WordPhraseRepository,
+    private val wordClusterRepository: WordClusterRepository,
+    private val getWordEdgePreviews: GetStudyWordEdgePreviewsUseCase,
     private val ttsManager: TtsManager
 ) : ViewModel() {
 
     private var wordId: Long = savedStateHandle["wordId"] ?: 0L
     private var dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
     private var cloudExamplesJob: Job? = null
+    private var wordLoadJob: Job? = null
     private var cloudExamplesRequestVersion: Long = 0L
 
     private val _uiState = MutableStateFlow(WordDetailUiState())
@@ -71,8 +76,26 @@ class WordDetailViewModel @Inject constructor(
     }
 
     fun loadWord() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+        wordLoadJob?.cancel()
+        cloudExamplesJob?.cancel()
+        wordLoadJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    error = null,
+                    linkedWordIds = emptyMap(),
+                    associatedWords = emptyList(),
+                    examples = emptyList(),
+                    pools = emptyList(),
+                    clusters = emptyList(),
+                    clusterReviews = emptyList(),
+                    edgePreviews = emptyList(),
+                    phrases = emptyList(),
+                    cloudExamples = emptyList(),
+                    cloudExamplesLoading = false,
+                    cloudExamplesError = null
+                )
+            }
             try {
                 val word = getWordById(wordId)
                 _uiState.update { it.copy(word = word, isLoading = false) }
@@ -109,6 +132,24 @@ class WordDetailViewModel @Inject constructor(
                 throw cancellation
             } catch (e: Exception) {
                         Log.w("WordDetailVM", "Pools loading failed for wordId=$wordId", e)
+                    }
+
+                    try {
+                        val reviews = wordClusterRepository.getClusterReviewsForWord(wordId)
+                        _uiState.update { it.copy(clusters = reviews.map { review -> review.cluster }, clusterReviews = reviews) }
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                        throw cancellation
+                    } catch (e: Exception) {
+                        Log.w("WordDetailVM", "Clusters loading failed for wordId=$wordId", e)
+                    }
+
+                    try {
+                        val edges = getWordEdgePreviews(word.dictionaryId, wordId, 0.0)
+                        _uiState.update { it.copy(edgePreviews = edges) }
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                        throw cancellation
+                    } catch (e: Exception) {
+                        Log.w("WordDetailVM", "Edges loading failed for wordId=$wordId", e)
                     }
 
                     try {

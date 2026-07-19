@@ -24,6 +24,13 @@ class WordClusterRepositoryImpl @Inject constructor(
     override suspend fun getClustersForWord(wordId: Long): List<WordCluster> =
         clusterDao.getClustersForWord(wordId).map { it.toModel() }
 
+    override suspend fun getClusterReviewsForWord(wordId: Long): List<WordClusterReview> =
+        clusterDao.getClustersForWord(wordId).map { cluster ->
+            val ids = clusterDao.getMemberIds(cluster.id).filterNot { it == wordId }
+            val wordsById = if (ids.isEmpty()) emptyMap() else wordDao.getWordsByIds(ids).associateBy { it.word.id }
+            WordClusterReview(cluster.toModel(), ids.mapNotNull { wordsById[it]?.toDomain() })
+        }
+
     override suspend fun getClusterReview(clusterId: Long, excludeWordId: Long): WordClusterReview? {
         val entity = clusterDao.getClusterForMember(clusterId, excludeWordId) ?: return null
         val ids = clusterDao.getMemberIds(clusterId).filterNot { it == excludeWordId }

@@ -1493,7 +1493,17 @@ private fun DetailPane(
                     linkedWordIds = detailState.linkedWordIds,
                     onWordClick = onWordClick,
                     pools = detailState.pools,
-                    phrases = detailState.phrases
+                    clusters = detailState.clusters,
+                    clusterReviews = detailState.clusterReviews,
+                    edgePreviews = detailState.edgePreviews,
+                    phrases = detailState.phrases,
+                    examples = detailState.examples,
+                    cloudExamples = detailState.cloudExamples,
+                    cloudExamplesLoading = detailState.cloudExamplesLoading,
+                    cloudExamplesError = detailState.cloudExamplesError,
+                    cloudExampleSource = detailState.cloudExampleSource,
+                    onCloudExampleSourceSelected = detailViewModel::selectCloudExampleSource,
+                    showSpellingHeader = true
                 )
             }
         }

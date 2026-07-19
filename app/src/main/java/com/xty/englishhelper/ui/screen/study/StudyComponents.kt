@@ -18,6 +18,13 @@ import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.ui.components.CloudExamplesSection
 import com.xty.englishhelper.ui.components.DetailRow
 import com.xty.englishhelper.ui.components.WordDetailSection
+import com.xty.englishhelper.domain.model.AssociatedWordInfo
+import com.xty.englishhelper.domain.model.WordPhraseWithTags
+import com.xty.englishhelper.domain.model.WordPool
+import com.xty.englishhelper.domain.model.WordCluster
+import com.xty.englishhelper.domain.repository.WordExample
+import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
+import com.xty.englishhelper.ui.components.unifiedWordDetailItems
 
 @Composable
 internal fun StatRow(
@@ -42,108 +49,35 @@ internal fun StatRow(
 
 internal fun LazyListScope.wordDetailItems(
     word: WordDetails,
+    linkedWordIds: Map<String, Long>,
+    associatedWords: List<AssociatedWordInfo>,
+    pools: List<WordPool>,
+    clusters: List<WordCluster>,
+    edgePreviews: List<WordEdgeNeighborPreview>,
+    phrases: List<WordPhraseWithTags>,
+    examples: List<WordExample>,
+    onWordClick: (Long, Long) -> Unit,
     cloudExampleSource: CloudExampleSource,
     cloudExamples: List<CloudWordExample>,
     cloudExamplesLoading: Boolean,
     cloudExamplesError: String?,
     onCloudExampleSourceSelected: (CloudExampleSource) -> Unit
 ) {
-    item {
-        Text(
-            text = word.spelling,
-            style = MaterialTheme.typography.headlineMedium
-        )
-    }
-    if (word.phonetic.isNotBlank()) {
-        item {
-            Text(
-                text = word.phonetic,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-    if (word.meanings.isNotEmpty()) {
-        item {
-            WordDetailSection(title = "词性与词义") {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    word.meanings.forEach { meaning ->
-                        DetailRow(label = meaning.pos, value = meaning.definition)
-                    }
-                }
-            }
-        }
-    }
-    if (word.rootExplanation.isNotBlank()) {
-        item {
-            WordDetailSection(title = "词根解释") {
-                Text(
-                    text = word.rootExplanation,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
-    }
-    if (word.synonyms.isNotEmpty()) {
-        item {
-            WordDetailSection(title = "近义词") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    word.synonyms.forEach { syn ->
-                        DetailRow(label = syn.word, value = syn.explanation)
-                    }
-                }
-            }
-        }
-    }
-    if (word.similarWords.isNotEmpty()) {
-        item {
-            WordDetailSection(title = "形近词") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    word.similarWords.forEach { sim ->
-                        Column {
-                            DetailRow(label = sim.word, value = sim.meaning)
-                            if (sim.explanation.isNotBlank()) {
-                                Text(
-                                    text = "区分：${sim.explanation}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 8.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if (word.cognates.isNotEmpty()) {
-        item {
-            WordDetailSection(title = "同根词") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    word.cognates.forEach { cog ->
-                        Column {
-                            DetailRow(label = cog.word, value = cog.meaning)
-                            if (cog.sharedRoot.isNotBlank()) {
-                                Text(
-                                    text = "词根：${cog.sharedRoot}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 8.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    item {
-        CloudExamplesSection(
-            selectedSource = cloudExampleSource,
-            examples = cloudExamples,
-            isLoading = cloudExamplesLoading,
-            error = cloudExamplesError,
-            onSourceSelected = onCloudExampleSourceSelected
-        )
-    }
+    unifiedWordDetailItems(
+        word = word,
+        linkedWordIds = linkedWordIds,
+        associatedWords = associatedWords,
+        pools = pools,
+        clusters = clusters,
+        edgePreviews = edgePreviews,
+        phrases = phrases,
+        examples = examples,
+        onWordClick = onWordClick,
+        cloudExampleSource = cloudExampleSource,
+        cloudExamples = cloudExamples,
+        cloudExamplesLoading = cloudExamplesLoading,
+        cloudExamplesError = cloudExamplesError,
+        onCloudExampleSourceSelected = onCloudExampleSourceSelected,
+        showSpellingHeader = true
+    )
 }
