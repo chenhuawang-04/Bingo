@@ -84,6 +84,12 @@ jobs:
             -Pandroid.injected.signing.key.password="$KEY_PASSWORD" \
             --stacktrace
 
+      - name: Generate release checksums
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        run: |
+          cd app/build/outputs
+          sha256sum apk/release/*.apk bundle/release/*.aab > SHA256SUMS.txt
+
       - name: Upload release artifacts
         if: ${{ github.event.inputs.build_type == 'release' }}
         uses: actions/upload-artifact@v4
@@ -92,6 +98,7 @@ jobs:
           path: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
+            app/build/outputs/SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Create GitHub Release (debug)
@@ -117,3 +124,4 @@ jobs:
           files: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
+            app/build/outputs/SHA256SUMS.txt
