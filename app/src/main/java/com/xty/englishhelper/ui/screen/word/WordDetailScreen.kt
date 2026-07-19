@@ -127,7 +127,10 @@ fun WordDetailScreen(
                     cloudExamplesLoading = state.cloudExamplesLoading,
                     cloudExamplesError = state.cloudExamplesError,
                     cloudExampleSource = state.cloudExampleSource,
-                    onCloudExampleSourceSelected = viewModel::selectCloudExampleSource
+                    onCloudExampleSourceSelected = viewModel::selectCloudExampleSource,
+                    detailsLoading = state.detailsLoading,
+                    detailsError = state.detailsError,
+                    onRetryDetails = viewModel::retryDetails
                 )
             }
         }

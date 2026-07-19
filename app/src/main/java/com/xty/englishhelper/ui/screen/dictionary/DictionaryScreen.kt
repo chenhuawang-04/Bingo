@@ -1503,6 +1503,9 @@ private fun DetailPane(
                     cloudExamplesError = detailState.cloudExamplesError,
                     cloudExampleSource = detailState.cloudExampleSource,
                     onCloudExampleSourceSelected = detailViewModel::selectCloudExampleSource,
+                    detailsLoading = detailState.detailsLoading,
+                    detailsError = detailState.detailsError,
+                    onRetryDetails = detailViewModel::retryDetails,
                     showSpellingHeader = true
                 )
             }

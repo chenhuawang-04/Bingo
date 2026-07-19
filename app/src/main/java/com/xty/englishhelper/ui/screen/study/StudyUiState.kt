@@ -8,10 +8,12 @@ import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.CloudWordExample
 import com.xty.englishhelper.domain.model.WordCluster
+import com.xty.englishhelper.domain.model.WordClusterReview
 import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.WordPhraseWithTags
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.repository.WordExample
+import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
 import com.xty.englishhelper.domain.study.Rating
 
 data class StudyUiState(
@@ -71,8 +73,20 @@ data class StudyUiState(
     val detailLinkedWordIds: Map<String, Long> = emptyMap(),
     val detailExamples: List<WordExample> = emptyList(),
     val detailPools: List<WordPool> = emptyList(),
+    val detailClusterReviews: List<WordClusterReview> = emptyList(),
+    val detailEdgePreviews: List<WordEdgeNeighborPreview> = emptyList(),
     val detailPhrases: List<WordPhraseWithTags> = emptyList(),
-    val detailLoading: Boolean = false
+    val detailLoading: Boolean = false,
+    val detailError: String? = null,
+    val relatedDetailLinkedWordIds: Map<String, Long> = emptyMap(),
+    val relatedDetailAssociatedWords: List<AssociatedWordInfo> = emptyList(),
+    val relatedDetailExamples: List<WordExample> = emptyList(),
+    val relatedDetailPools: List<WordPool> = emptyList(),
+    val relatedDetailClusterReviews: List<WordClusterReview> = emptyList(),
+    val relatedDetailEdgePreviews: List<WordEdgeNeighborPreview> = emptyList(),
+    val relatedDetailPhrases: List<WordPhraseWithTags> = emptyList(),
+    val relatedDetailLoading: Boolean = false,
+    val relatedDetailError: String? = null
 )
 
 val StudyUiState.isRelatedClusterReview: Boolean get() = relatedClusterName != null

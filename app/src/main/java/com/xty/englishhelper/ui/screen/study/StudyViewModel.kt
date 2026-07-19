@@ -20,7 +20,6 @@ import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
 import com.xty.englishhelper.domain.repository.WordClusterRepository
-import com.xty.englishhelper.domain.repository.WordPhraseRepository
 import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.domain.usecase.brainstorm.BuildBrainstormSessionUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.CollectRelatedGroupUseCase
@@ -35,10 +34,7 @@ import com.xty.englishhelper.domain.usecase.study.PreviewIntervalsUseCase
 import com.xty.englishhelper.domain.usecase.study.ReviewWordUseCase
 import com.xty.englishhelper.domain.usecase.study.SearchStudyWordNoteSuggestionsUseCase
 import com.xty.englishhelper.domain.usecase.study.SubmitStudyWordNoteUseCase
-import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
-import com.xty.englishhelper.domain.usecase.pool.GetWordPoolsUseCase
-import com.xty.englishhelper.domain.usecase.word.GetAssociatedWordsUseCase
-import com.xty.englishhelper.domain.usecase.word.ResolveLinkedWordsUseCase
+import com.xty.englishhelper.domain.usecase.word.GetWordPresentationUseCase
 import com.xty.englishhelper.domain.usecase.study.StudyWordNoteOutcome
 import com.xty.englishhelper.R
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -83,11 +79,7 @@ class StudyViewModel @Inject constructor(
     private val searchStudyWordNoteSuggestions: SearchStudyWordNoteSuggestionsUseCase,
     private val submitStudyWordNote: SubmitStudyWordNoteUseCase,
     private val wordClusterRepository: WordClusterRepository,
-    private val getWordExamples: GetWordExamplesUseCase,
-    private val getWordPools: GetWordPoolsUseCase,
-    private val getAssociatedWords: GetAssociatedWordsUseCase,
-    private val resolveLinkedWords: ResolveLinkedWordsUseCase,
-    private val wordPhraseRepository: WordPhraseRepository
+    private val getWordPresentation: GetWordPresentationUseCase
 ) : ViewModel() {
     private companion object {
         const val WORD_NOTE_SUGGESTION_MIN_QUERY_LENGTH = 2
@@ -446,8 +438,20 @@ class StudyViewModel @Inject constructor(
                     detailLinkedWordIds = emptyMap(),
                     detailExamples = emptyList(),
                     detailPools = emptyList(),
+                    detailClusterReviews = emptyList(),
+                    detailEdgePreviews = emptyList(),
                     detailPhrases = emptyList(),
-                    detailLoading = false
+                    detailLoading = false,
+                    detailError = null,
+                    relatedDetailLinkedWordIds = emptyMap(),
+                    relatedDetailAssociatedWords = emptyList(),
+                    relatedDetailExamples = emptyList(),
+                    relatedDetailPools = emptyList(),
+                    relatedDetailClusterReviews = emptyList(),
+                    relatedDetailEdgePreviews = emptyList(),
+                    relatedDetailPhrases = emptyList(),
+                    relatedDetailLoading = false,
+                    relatedDetailError = null
                 )
             }
             pendingWordNoteTargetWordIds.clear()
@@ -507,32 +511,28 @@ class StudyViewModel @Inject constructor(
     }
 
     private suspend fun loadSupplementaryWordDetails(word: WordDetails) {
-        _uiState.update { it.copy(detailLoading = true) }
-        try {
-            val spellings = word.synonyms.map { it.word } + word.similarWords.map { it.word } + word.cognates.map { it.word }
-            val linked = if (spellings.isEmpty()) emptyMap() else resolveLinkedWords(word.dictionaryId, spellings)
-            val associated = getAssociatedWords(word.id)
-            val examples = getWordExamples(word.id)
-            val pools = getWordPools(word.id)
-            val phrases = wordPhraseRepository.getPhrasesForWord(word.id)
-            if (_uiState.value.currentWord?.id != word.id) return
-            _uiState.update {
-                it.copy(
-                    detailLinkedWordIds = linked,
-                    detailAssociatedWords = associated,
-                    detailExamples = examples,
-                    detailPools = pools,
-                    detailPhrases = phrases,
-                    detailLoading = false
-                )
-            }
-        } catch (cancellation: kotlinx.coroutines.CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-            if (_uiState.value.currentWord?.id == word.id) {
-                _uiState.update { it.copy(detailLoading = false) }
-            }
+        _uiState.update { it.copy(detailLoading = true, detailError = null) }
+        val details = getWordPresentation(word)
+        if (_uiState.value.currentWord?.id != word.id) return
+        _uiState.update {
+            it.copy(
+                detailLinkedWordIds = details.linkedWordIds,
+                detailAssociatedWords = details.associatedWords,
+                detailExamples = details.examples,
+                detailPools = details.pools,
+                detailClusterReviews = details.clusterReviews,
+                detailEdgePreviews = details.edgePreviews,
+                detailPhrases = details.phrases,
+                detailLoading = false,
+                detailError = details.failedSections.takeIf { failed -> failed.isNotEmpty() }
+                    ?.let { failed -> "${failed.size} 项本地信息暂时无法加载" }
+            )
         }
+    }
+
+    fun retryCurrentWordDetails() {
+        val word = _uiState.value.currentWord ?: return
+        viewModelScope.launch { loadSupplementaryWordDetails(word) }
     }
 
     fun onRate(rating: Rating) {
@@ -668,6 +668,9 @@ class StudyViewModel @Inject constructor(
         val selected = wordClusterRepository.getClustersForWord(word.id)
         val all = wordClusterRepository.getClusters(word.dictionaryId)
         _uiState.update { it.copy(wordClusters = selected, allWordClusters = all) }
+        if (_uiState.value.currentWord?.id == word.id && _uiState.value.showAnswer) {
+            loadSupplementaryWordDetails(word)
+        }
     }
 
     fun startRelatedClusterReview(clusterId: Long) {
@@ -686,10 +689,20 @@ class StudyViewModel @Inject constructor(
                         relatedWordIndex = 0,
                         relatedWordShowAnswer = false,
                         relatedWordRatings = emptyMap(),
+                        relatedDetailLinkedWordIds = emptyMap(),
+                        relatedDetailAssociatedWords = emptyList(),
+                        relatedDetailExamples = emptyList(),
+                        relatedDetailPools = emptyList(),
+                        relatedDetailClusterReviews = emptyList(),
+                        relatedDetailEdgePreviews = emptyList(),
+                        relatedDetailPhrases = emptyList(),
+                        relatedDetailLoading = true,
+                        relatedDetailError = null,
                         wordClusterError = null
                     )
                 }
                 speakRelatedWordIfEnabled(review.words.first())
+                loadRelatedWordDetails(review.words.first())
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -707,18 +720,90 @@ class StudyViewModel @Inject constructor(
         val nextIndex = state.relatedWordIndex + 1
         _uiState.update {
             if (nextIndex >= state.relatedWords.size) {
-                it.copy(relatedWordRatings = ratings, relatedClusterName = null, relatedWords = emptyList(), relatedWordIndex = 0, relatedWordShowAnswer = false)
+                it.copy(
+                    relatedWordRatings = ratings,
+                    relatedClusterName = null,
+                    relatedWords = emptyList(),
+                    relatedWordIndex = 0,
+                    relatedWordShowAnswer = false,
+                    relatedDetailLinkedWordIds = emptyMap(),
+                    relatedDetailAssociatedWords = emptyList(),
+                    relatedDetailExamples = emptyList(),
+                    relatedDetailPools = emptyList(),
+                    relatedDetailClusterReviews = emptyList(),
+                    relatedDetailEdgePreviews = emptyList(),
+                    relatedDetailPhrases = emptyList(),
+                    relatedDetailLoading = false,
+                    relatedDetailError = null
+                )
             } else {
-                it.copy(relatedWordRatings = ratings, relatedWordIndex = nextIndex, relatedWordShowAnswer = false)
+                it.copy(
+                    relatedWordRatings = ratings,
+                    relatedWordIndex = nextIndex,
+                    relatedWordShowAnswer = false,
+                    relatedDetailLinkedWordIds = emptyMap(),
+                    relatedDetailAssociatedWords = emptyList(),
+                    relatedDetailExamples = emptyList(),
+                    relatedDetailPools = emptyList(),
+                    relatedDetailClusterReviews = emptyList(),
+                    relatedDetailEdgePreviews = emptyList(),
+                    relatedDetailPhrases = emptyList(),
+                    relatedDetailLoading = true,
+                    relatedDetailError = null
+                )
             }
         }
         if (nextIndex < state.relatedWords.size) {
-            viewModelScope.launch { speakRelatedWordIfEnabled(state.relatedWords[nextIndex]) }
+            viewModelScope.launch {
+                speakRelatedWordIfEnabled(state.relatedWords[nextIndex])
+                loadRelatedWordDetails(state.relatedWords[nextIndex])
+            }
         }
     }
 
     fun exitRelatedClusterReview() {
-        _uiState.update { it.copy(relatedClusterName = null, relatedWords = emptyList(), relatedWordIndex = 0, relatedWordShowAnswer = false) }
+        _uiState.update {
+            it.copy(
+                relatedClusterName = null,
+                relatedWords = emptyList(),
+                relatedWordIndex = 0,
+                relatedWordShowAnswer = false,
+                relatedDetailLinkedWordIds = emptyMap(),
+                relatedDetailAssociatedWords = emptyList(),
+                relatedDetailExamples = emptyList(),
+                relatedDetailPools = emptyList(),
+                relatedDetailClusterReviews = emptyList(),
+                relatedDetailEdgePreviews = emptyList(),
+                relatedDetailPhrases = emptyList(),
+                relatedDetailLoading = false,
+                relatedDetailError = null
+            )
+        }
+    }
+
+    fun retryRelatedWordDetails() {
+        val word = _uiState.value.relatedCurrentWord ?: return
+        viewModelScope.launch { loadRelatedWordDetails(word) }
+    }
+
+    private suspend fun loadRelatedWordDetails(word: WordDetails) {
+        _uiState.update { it.copy(relatedDetailLoading = true, relatedDetailError = null) }
+        val details = getWordPresentation(word)
+        if (_uiState.value.relatedCurrentWord?.id != word.id) return
+        _uiState.update {
+            it.copy(
+                relatedDetailLinkedWordIds = details.linkedWordIds,
+                relatedDetailAssociatedWords = details.associatedWords,
+                relatedDetailExamples = details.examples,
+                relatedDetailPools = details.pools,
+                relatedDetailClusterReviews = details.clusterReviews,
+                relatedDetailEdgePreviews = details.edgePreviews,
+                relatedDetailPhrases = details.phrases,
+                relatedDetailLoading = false,
+                relatedDetailError = details.failedSections.takeIf { failed -> failed.isNotEmpty() }
+                    ?.let { failed -> "${failed.size} 项本地信息暂时无法加载" }
+            )
+        }
     }
 
     private suspend fun speakRelatedWordIfEnabled(word: WordDetails) {

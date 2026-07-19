@@ -1,7 +1,6 @@
 ﻿package com.xty.englishhelper.ui.screen.study
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,13 +14,11 @@ import androidx.compose.ui.unit.dp
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.CloudWordExample
 import com.xty.englishhelper.domain.model.WordDetails
-import com.xty.englishhelper.ui.components.CloudExamplesSection
-import com.xty.englishhelper.ui.components.DetailRow
-import com.xty.englishhelper.ui.components.WordDetailSection
 import com.xty.englishhelper.domain.model.AssociatedWordInfo
 import com.xty.englishhelper.domain.model.WordPhraseWithTags
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.model.WordCluster
+import com.xty.englishhelper.domain.model.WordClusterReview
 import com.xty.englishhelper.domain.repository.WordExample
 import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
 import com.xty.englishhelper.ui.components.unifiedWordDetailItems
@@ -53,15 +50,21 @@ internal fun LazyListScope.wordDetailItems(
     associatedWords: List<AssociatedWordInfo>,
     pools: List<WordPool>,
     clusters: List<WordCluster>,
+    clusterReviews: List<WordClusterReview>,
     edgePreviews: List<WordEdgeNeighborPreview>,
     phrases: List<WordPhraseWithTags>,
     examples: List<WordExample>,
     onWordClick: (Long, Long) -> Unit,
+    onArticleClick: ((Long, Long) -> Unit)?,
     cloudExampleSource: CloudExampleSource,
     cloudExamples: List<CloudWordExample>,
     cloudExamplesLoading: Boolean,
     cloudExamplesError: String?,
-    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit
+    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit,
+    detailsLoading: Boolean,
+    detailsError: String?,
+    onRetryDetails: () -> Unit,
+    onClusterReview: ((Long) -> Unit)?
 ) {
     unifiedWordDetailItems(
         word = word,
@@ -69,15 +72,21 @@ internal fun LazyListScope.wordDetailItems(
         associatedWords = associatedWords,
         pools = pools,
         clusters = clusters,
+        clusterReviews = clusterReviews,
         edgePreviews = edgePreviews,
         phrases = phrases,
         examples = examples,
         onWordClick = onWordClick,
+        onArticleClick = onArticleClick,
         cloudExampleSource = cloudExampleSource,
         cloudExamples = cloudExamples,
         cloudExamplesLoading = cloudExamplesLoading,
         cloudExamplesError = cloudExamplesError,
         onCloudExampleSourceSelected = onCloudExampleSourceSelected,
+        detailsLoading = detailsLoading,
+        detailsError = detailsError,
+        onRetryDetails = onRetryDetails,
+        onClusterReview = onClusterReview,
         showSpellingHeader = true
     )
 }

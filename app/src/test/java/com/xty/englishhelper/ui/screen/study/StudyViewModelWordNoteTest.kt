@@ -17,11 +17,8 @@ import com.xty.englishhelper.domain.model.WordClusterReview
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.WordClusterRepository
-import com.xty.englishhelper.domain.repository.WordPhraseRepository
-import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
-import com.xty.englishhelper.domain.usecase.pool.GetWordPoolsUseCase
-import com.xty.englishhelper.domain.usecase.word.GetAssociatedWordsUseCase
-import com.xty.englishhelper.domain.usecase.word.ResolveLinkedWordsUseCase
+import com.xty.englishhelper.domain.usecase.word.GetWordPresentationUseCase
+import com.xty.englishhelper.domain.usecase.word.WordPresentationDetails
 import com.xty.englishhelper.domain.usecase.brainstorm.BuildBrainstormSessionUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.CollectRelatedGroupUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.GetBrainstormDailyGoalUseCase
@@ -85,11 +82,7 @@ class StudyViewModelWordNoteTest {
         val searchStudyWordNoteSuggestions = mockk<SearchStudyWordNoteSuggestionsUseCase>()
         val submitStudyWordNote = mockk<SubmitStudyWordNoteUseCase>()
         val wordClusterRepository = mockk<WordClusterRepository>()
-        val getWordExamples = mockk<GetWordExamplesUseCase>(relaxed = true)
-        val getWordPools = mockk<GetWordPoolsUseCase>(relaxed = true)
-        val getAssociatedWords = mockk<GetAssociatedWordsUseCase>(relaxed = true)
-        val resolveLinkedWords = mockk<ResolveLinkedWordsUseCase>(relaxed = true)
-        val wordPhraseRepository = mockk<WordPhraseRepository>(relaxed = true)
+        val getWordPresentation = mockk<GetWordPresentationUseCase>()
 
         every { settingsDataStore.studyWordNoteEnabled } returns MutableStateFlow(true)
         every { settingsDataStore.ttsAutoStudy } returns flowOf(false)
@@ -102,6 +95,7 @@ class StudyViewModelWordNoteTest {
             cluster = WordCluster(7L, 1L, "易混词", 2),
             words = listOf(WordDetails(id = 2L, dictionaryId = 1L, spelling = "adopt"))
         )
+        coEvery { getWordPresentation.invoke(any()) } returns WordPresentationDetails()
         coEvery { searchStudyWordNoteSuggestions.invoke(any(), any(), any()) } returns emptyList()
         coEvery {
             submitStudyWordNote.invoke(currentWord, "alpha", emptyList(), EdgeType.FAMILY_SAME_ROOT)
@@ -142,11 +136,7 @@ class StudyViewModelWordNoteTest {
             searchStudyWordNoteSuggestions = searchStudyWordNoteSuggestions,
             submitStudyWordNote = submitStudyWordNote,
             wordClusterRepository = wordClusterRepository,
-            getWordExamples = getWordExamples,
-            getWordPools = getWordPools,
-            getAssociatedWords = getAssociatedWords,
-            resolveLinkedWords = resolveLinkedWords,
-            wordPhraseRepository = wordPhraseRepository
+            getWordPresentation = getWordPresentation
         )
 
         advanceUntilIdle()

@@ -1,21 +1,15 @@
 package com.xty.englishhelper.ui.screen.word
 
-import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.data.tts.TtsManager
 import com.xty.englishhelper.domain.model.CloudExampleSource
-import com.xty.englishhelper.domain.repository.WordPhraseRepository
-import com.xty.englishhelper.domain.repository.WordClusterRepository
-import com.xty.englishhelper.domain.usecase.article.GetWordExamplesUseCase
+import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.usecase.dictionary.GetCloudWordExamplesUseCase
-import com.xty.englishhelper.domain.usecase.pool.GetWordPoolsUseCase
 import com.xty.englishhelper.domain.usecase.word.DeleteWordUseCase
-import com.xty.englishhelper.domain.usecase.word.GetAssociatedWordsUseCase
 import com.xty.englishhelper.domain.usecase.word.GetWordByIdUseCase
-import com.xty.englishhelper.domain.usecase.word.ResolveLinkedWordsUseCase
-import com.xty.englishhelper.domain.usecase.study.GetStudyWordEdgePreviewsUseCase
+import com.xty.englishhelper.domain.usecase.word.GetWordPresentationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,14 +24,8 @@ class WordDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val getWordById: GetWordByIdUseCase,
     private val deleteWord: DeleteWordUseCase,
-    private val resolveLinkedWords: ResolveLinkedWordsUseCase,
-    private val getAssociatedWords: GetAssociatedWordsUseCase,
-    private val getWordExamples: GetWordExamplesUseCase,
     private val getCloudWordExamples: GetCloudWordExamplesUseCase,
-    private val getWordPools: GetWordPoolsUseCase,
-    private val wordPhraseRepository: WordPhraseRepository,
-    private val wordClusterRepository: WordClusterRepository,
-    private val getWordEdgePreviews: GetStudyWordEdgePreviewsUseCase,
+    private val getWordPresentation: GetWordPresentationUseCase,
     private val ttsManager: TtsManager
 ) : ViewModel() {
 
@@ -45,6 +33,7 @@ class WordDetailViewModel @Inject constructor(
     private var dictionaryId: Long = savedStateHandle["dictionaryId"] ?: 0L
     private var cloudExamplesJob: Job? = null
     private var wordLoadJob: Job? = null
+    private var detailsJob: Job? = null
     private var cloudExamplesRequestVersion: Long = 0L
 
     private val _uiState = MutableStateFlow(WordDetailUiState())
@@ -76,7 +65,9 @@ class WordDetailViewModel @Inject constructor(
     }
 
     fun loadWord() {
+        val requestedWordId = wordId
         wordLoadJob?.cancel()
+        detailsJob?.cancel()
         cloudExamplesJob?.cancel()
         wordLoadJob = viewModelScope.launch {
             _uiState.update {
@@ -91,76 +82,20 @@ class WordDetailViewModel @Inject constructor(
                     clusterReviews = emptyList(),
                     edgePreviews = emptyList(),
                     phrases = emptyList(),
+                    detailsLoading = false,
+                    detailsError = null,
                     cloudExamples = emptyList(),
                     cloudExamplesLoading = false,
                     cloudExamplesError = null
                 )
             }
             try {
-                val word = getWordById(wordId)
+                val word = getWordById(requestedWordId)
+                if (requestedWordId != wordId) return@launch
                 _uiState.update { it.copy(word = word, isLoading = false) }
 
                 if (word != null) {
-                    // Resolve linked words (synonyms, similar words, cognates)
-                    val allSpellings = word.synonyms.map { it.word } +
-                            word.similarWords.map { it.word } +
-                            word.cognates.map { it.word }
-                    if (allSpellings.isNotEmpty()) {
-                        val linkedIds = resolveLinkedWords(dictionaryId, allSpellings)
-                        _uiState.update { it.copy(linkedWordIds = linkedIds) }
-                    }
-
-                    // Load associated words
-                    val associated = getAssociatedWords(wordId)
-                    _uiState.update { it.copy(associatedWords = associated) }
-
-                    // Load word examples from articles
-                    try {
-                        val examples = getWordExamples(wordId)
-                        _uiState.update { it.copy(examples = examples) }
-                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                throw cancellation
-            } catch (e: Exception) {
-                        Log.w("WordDetailVM", "Examples loading failed for wordId=$wordId", e)
-                    }
-
-                    // Load word pools
-                    try {
-                        val pools = getWordPools(wordId)
-                        _uiState.update { it.copy(pools = pools) }
-                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                throw cancellation
-            } catch (e: Exception) {
-                        Log.w("WordDetailVM", "Pools loading failed for wordId=$wordId", e)
-                    }
-
-                    try {
-                        val reviews = wordClusterRepository.getClusterReviewsForWord(wordId)
-                        _uiState.update { it.copy(clusters = reviews.map { review -> review.cluster }, clusterReviews = reviews) }
-                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                        throw cancellation
-                    } catch (e: Exception) {
-                        Log.w("WordDetailVM", "Clusters loading failed for wordId=$wordId", e)
-                    }
-
-                    try {
-                        val edges = getWordEdgePreviews(word.dictionaryId, wordId, 0.0)
-                        _uiState.update { it.copy(edgePreviews = edges) }
-                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                        throw cancellation
-                    } catch (e: Exception) {
-                        Log.w("WordDetailVM", "Edges loading failed for wordId=$wordId", e)
-                    }
-
-                    try {
-                        val phrases = wordPhraseRepository.getPhrasesForWord(wordId)
-                        _uiState.update { it.copy(phrases = phrases) }
-                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                throw cancellation
-            } catch (e: Exception) {
-                        Log.w("WordDetailVM", "Phrases loading failed for wordId=$wordId", e)
-                    }
-
+                    loadPresentation(word)
                     loadCloudExamples(word.spelling, _uiState.value.cloudExampleSource)
                 } else {
                     cloudExamplesJob?.cancel()
@@ -169,6 +104,8 @@ class WordDetailViewModel @Inject constructor(
                             cloudExamplesLoading = false,
                             cloudExamples = emptyList(),
                             phrases = emptyList(),
+                            detailsLoading = false,
+                            detailsError = null,
                             cloudExamplesError = null
                         )
                     }
@@ -177,6 +114,34 @@ class WordDetailViewModel @Inject constructor(
                 throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, isLoading = false) }
+            }
+        }
+    }
+
+    fun retryDetails() {
+        _uiState.value.word?.let(::loadPresentation)
+    }
+
+    private fun loadPresentation(word: WordDetails) {
+        detailsJob?.cancel()
+        detailsJob = viewModelScope.launch {
+            _uiState.update { it.copy(detailsLoading = true, detailsError = null) }
+            val details = getWordPresentation(word)
+            if (_uiState.value.word?.id != word.id) return@launch
+            _uiState.update {
+                it.copy(
+                    linkedWordIds = details.linkedWordIds,
+                    associatedWords = details.associatedWords,
+                    examples = details.examples,
+                    pools = details.pools,
+                    clusters = details.clusterReviews.map { review -> review.cluster },
+                    clusterReviews = details.clusterReviews,
+                    edgePreviews = details.edgePreviews,
+                    phrases = details.phrases,
+                    detailsLoading = false,
+                    detailsError = details.failedSections.takeIf { failed -> failed.isNotEmpty() }
+                        ?.let { failed -> "${failed.size} 项本地信息暂时无法加载" }
+                )
             }
         }
     }

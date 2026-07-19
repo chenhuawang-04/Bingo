@@ -11,15 +11,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +38,7 @@ import com.xty.englishhelper.domain.model.DecompositionPart
 import com.xty.englishhelper.domain.model.Inflection
 import com.xty.englishhelper.domain.model.MorphemeRole
 import com.xty.englishhelper.domain.model.WordDetails
+import com.xty.englishhelper.domain.model.WordExampleSourceType
 import com.xty.englishhelper.domain.model.WordPhraseWithTags
 import com.xty.englishhelper.domain.model.WordPool
 import com.xty.englishhelper.domain.model.WordCluster
@@ -64,6 +68,11 @@ fun WordDetailContent(
     cloudExamplesLoading: Boolean = false,
     cloudExamplesError: String? = null,
     onCloudExampleSourceSelected: (CloudExampleSource) -> Unit = {},
+    detailsLoading: Boolean = false,
+    detailsError: String? = null,
+    onRetryDetails: () -> Unit = {},
+    onClusterReview: ((Long) -> Unit)? = null,
+    showCloudExamples: Boolean = true,
     showSpellingHeader: Boolean = false
 ) {
     val windowWidthClass = currentWindowWidthClass()
@@ -87,6 +96,7 @@ fun WordDetailContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                presentationStatusItems(detailsLoading, detailsError, onRetryDetails)
                 relatedWordItems(
                     word = word,
                     linkedWordIds = linkedWordIds,
@@ -103,7 +113,9 @@ fun WordDetailContent(
                     cloudExamples = cloudExamples,
                     cloudExamplesLoading = cloudExamplesLoading,
                     cloudExamplesError = cloudExamplesError,
-                    onCloudExampleSourceSelected = onCloudExampleSourceSelected
+                    onCloudExampleSourceSelected = onCloudExampleSourceSelected,
+                    onClusterReview = onClusterReview,
+                    showCloudExamples = showCloudExamples
                 )
             }
         }
@@ -130,7 +142,12 @@ fun WordDetailContent(
                 cloudExamples = cloudExamples,
                 cloudExamplesLoading = cloudExamplesLoading,
                 cloudExamplesError = cloudExamplesError,
-                onCloudExampleSourceSelected = onCloudExampleSourceSelected
+                onCloudExampleSourceSelected = onCloudExampleSourceSelected,
+                detailsLoading = detailsLoading,
+                detailsError = detailsError,
+                onRetryDetails = onRetryDetails,
+                onClusterReview = onClusterReview,
+                showCloudExamples = showCloudExamples
             )
         }
     }
@@ -153,6 +170,11 @@ fun LazyListScope.unifiedWordDetailItems(
     cloudExamplesLoading: Boolean = false,
     cloudExamplesError: String? = null,
     onCloudExampleSourceSelected: (CloudExampleSource) -> Unit = {},
+    detailsLoading: Boolean = false,
+    detailsError: String? = null,
+    onRetryDetails: () -> Unit = {},
+    onClusterReview: ((Long) -> Unit)? = null,
+    showCloudExamples: Boolean = true,
     showSpellingHeader: Boolean = true
 ) {
     if (showSpellingHeader) {
@@ -161,6 +183,7 @@ fun LazyListScope.unifiedWordDetailItems(
         }
     }
     basicWordItems(word)
+    presentationStatusItems(detailsLoading, detailsError, onRetryDetails)
     relatedWordItems(
         word = word,
         linkedWordIds = linkedWordIds,
@@ -177,8 +200,53 @@ fun LazyListScope.unifiedWordDetailItems(
         cloudExamples = cloudExamples,
         cloudExamplesLoading = cloudExamplesLoading,
         cloudExamplesError = cloudExamplesError,
-        onCloudExampleSourceSelected = onCloudExampleSourceSelected
+        onCloudExampleSourceSelected = onCloudExampleSourceSelected,
+        onClusterReview = onClusterReview,
+        showCloudExamples = showCloudExamples
     )
+}
+
+private fun LazyListScope.presentationStatusItems(
+    isLoading: Boolean,
+    error: String?,
+    onRetry: () -> Unit
+) {
+    if (isLoading) {
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(
+                    text = "正在加载词簇、词池和本地例句…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+    if (error != null) {
+        item {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onRetry) { Text("重试") }
+                }
+            }
+        }
+    }
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.basicWordItems(word: WordDetails) {
@@ -254,7 +322,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
     cloudExamples: List<CloudWordExample>,
     cloudExamplesLoading: Boolean,
     cloudExamplesError: String?,
-    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit
+    onCloudExampleSourceSelected: (CloudExampleSource) -> Unit,
+    onClusterReview: ((Long) -> Unit)?,
+    showCloudExamples: Boolean
 ) {
     if (clusters.isNotEmpty()) {
         item {
@@ -263,11 +333,22 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
                     clusters.forEach { cluster ->
                         val review = clusterReviews.firstOrNull { it.cluster.id == cluster.id }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                "${cluster.name} · ${cluster.memberCount} 词",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.secondary
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "${cluster.name} · ${cluster.memberCount} 词",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (onClusterReview != null && cluster.memberCount > 1) {
+                                    TextButton(onClick = { onClusterReview(cluster.id) }) {
+                                        Text("关联背诵")
+                                    }
+                                }
+                            }
                             if (review != null && review.words.isNotEmpty()) {
                                 FlowRow(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -507,9 +588,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    pool.members.forEach { member ->
+                    pool.members.filterNot { it.id == word.id }.forEach { member ->
                         AssistChip(
-                            onClick = { onWordClick(member.id, word.dictionaryId) },
+                            onClick = { onWordClick(member.id, member.dictionaryId) },
                             label = {
                                 Text(
                                     member.spelling,
@@ -537,12 +618,24 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
                         }
                         Card(modifier = cardModifier) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                if (!example.sourceLabel.isNullOrBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Text(
-                                        example.sourceLabel,
+                                        example.sourceLabel?.takeIf { it.isNotBlank() }
+                                            ?: if (example.sourceType == WordExampleSourceType.ARTICLE) "文章提取" else "手动例句",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.weight(1f)
                                     )
+                                    if (onArticleClick != null && articleId != null && sentenceId != null) {
+                                        Text(
+                                            "查看原文",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                                 Text(
                                     example.sentence,
@@ -556,14 +649,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.relatedWordItems(
         }
     }
 
-    item {
-        CloudExamplesSection(
-            selectedSource = cloudExampleSource,
-            examples = cloudExamples,
-            isLoading = cloudExamplesLoading,
-            error = cloudExamplesError,
-            onSourceSelected = onCloudExampleSourceSelected
-        )
+    if (showCloudExamples) {
+        item {
+            CloudExamplesSection(
+                selectedSource = cloudExampleSource,
+                examples = cloudExamples,
+                isLoading = cloudExamplesLoading,
+                error = cloudExamplesError,
+                onSourceSelected = onCloudExampleSourceSelected
+            )
+        }
     }
 }
 

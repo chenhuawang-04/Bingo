@@ -45,7 +45,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -70,6 +69,7 @@ import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.domain.study.formatInterval
 import com.xty.englishhelper.ui.adaptive.currentWindowWidthClass
 import com.xty.englishhelper.ui.adaptive.isExpandedOrMedium
+import com.xty.englishhelper.ui.components.unifiedWordDetailItems
 import com.xty.englishhelper.ui.components.pool.edgeTypeColor
 import com.xty.englishhelper.ui.designsystem.components.EhCard
 import com.xty.englishhelper.ui.designsystem.components.EhStatTile
@@ -83,6 +83,7 @@ internal fun StudyingContent(
     onRevealAnswer: () -> Unit,
     onRate: (Rating) -> Unit,
     onOpenRelatedWord: (Long, Long) -> Unit,
+    onOpenArticle: (Long, Long) -> Unit,
     onWordNoteInputChange: (String) -> Unit,
     onWordNoteSuggestionSelected: (WordSuggestion) -> Unit,
     onWordNoteSuggestionsExpandedChange: (Boolean) -> Unit,
@@ -101,6 +102,8 @@ internal fun StudyingContent(
     onRevealRelatedWord: () -> Unit,
     onRateRelatedWord: (Rating) -> Unit,
     onExitRelatedClusterReview: () -> Unit,
+    onRetryCurrentWordDetails: () -> Unit,
+    onRetryRelatedWordDetails: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val word = state.currentWord ?: return
@@ -111,6 +114,9 @@ internal fun StudyingContent(
             onReveal = onRevealRelatedWord,
             onRate = onRateRelatedWord,
             onExit = onExitRelatedClusterReview,
+            onOpenWord = onOpenRelatedWord,
+            onOpenArticle = onOpenArticle,
+            onRetryDetails = onRetryRelatedWordDetails,
             modifier = modifier
         )
         return
@@ -214,18 +220,22 @@ internal fun StudyingContent(
                             linkedWordIds = state.detailLinkedWordIds,
                             associatedWords = state.detailAssociatedWords,
                             pools = state.detailPools,
-                            clusters = emptyList(),
-                            edgePreviews = state.currentWordEdges.map {
-                                com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview(it.wordId, it.spelling, setOf(it.edgeType))
-                            },
+                            clusters = state.detailClusterReviews.map { it.cluster },
+                            clusterReviews = state.detailClusterReviews,
+                            edgePreviews = state.detailEdgePreviews,
                             phrases = state.detailPhrases,
                             examples = state.detailExamples,
                             onWordClick = onOpenRelatedWord,
+                            onArticleClick = onOpenArticle,
                             cloudExampleSource = state.cloudExampleSource,
                             cloudExamples = state.cloudExamples,
                             cloudExamplesLoading = state.cloudExamplesLoading,
                             cloudExamplesError = state.cloudExamplesError,
-                            onCloudExampleSourceSelected = onCloudExampleSourceSelected
+                            onCloudExampleSourceSelected = onCloudExampleSourceSelected,
+                            detailsLoading = state.detailLoading,
+                            detailsError = state.detailError,
+                            onRetryDetails = onRetryCurrentWordDetails,
+                            onClusterReview = onStartRelatedClusterReview
                         )
                     }
 
@@ -302,18 +312,22 @@ internal fun StudyingContent(
                         linkedWordIds = state.detailLinkedWordIds,
                         associatedWords = state.detailAssociatedWords,
                         pools = state.detailPools,
-                        clusters = emptyList(),
-                        edgePreviews = state.currentWordEdges.map {
-                            com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview(it.wordId, it.spelling, setOf(it.edgeType))
-                        },
+                        clusters = state.detailClusterReviews.map { it.cluster },
+                        clusterReviews = state.detailClusterReviews,
+                        edgePreviews = state.detailEdgePreviews,
                         phrases = state.detailPhrases,
                         examples = state.detailExamples,
                         onWordClick = onOpenRelatedWord,
+                        onArticleClick = onOpenArticle,
                         cloudExampleSource = state.cloudExampleSource,
                         cloudExamples = state.cloudExamples,
                         cloudExamplesLoading = state.cloudExamplesLoading,
                         cloudExamplesError = state.cloudExamplesError,
-                        onCloudExampleSourceSelected = onCloudExampleSourceSelected
+                        onCloudExampleSourceSelected = onCloudExampleSourceSelected,
+                        detailsLoading = state.detailLoading,
+                        detailsError = state.detailError,
+                        onRetryDetails = onRetryCurrentWordDetails,
+                        onClusterReview = onStartRelatedClusterReview
                     )
                 }
 
@@ -419,43 +433,83 @@ private fun RelatedClusterReviewContent(
     onReveal: () -> Unit,
     onRate: (Rating) -> Unit,
     onExit: () -> Unit,
+    onOpenWord: (Long, Long) -> Unit,
+    onOpenArticle: (Long, Long) -> Unit,
+    onRetryDetails: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val word = state.relatedCurrentWord ?: return
     val semantic = EhTheme.semanticColors
-    Column(
-        modifier = modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             TextButton(onClick = onExit) { Text("返回主卡片") }
             Spacer(Modifier.weight(1f))
             Text("${state.relatedWordIndex + 1}/${state.relatedWords.size}", style = MaterialTheme.typography.labelMedium)
         }
-        Text(state.relatedClusterName.orEmpty(), style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary)
-        Text("关联词浏览 · 不计入复习记录", style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.weight(1f))
-        Text(word.spelling, style = MaterialTheme.typography.displaySmall, textAlign = TextAlign.Center)
-        if (word.phonetic.isNotBlank()) Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        AnimatedVisibility(state.relatedWordShowAnswer) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                word.meanings.forEach { meaning ->
-                    Text(listOf(meaning.pos, meaning.definition).filter { it.isNotBlank() }.joinToString("  "),
-                        style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                }
-                if (word.rootExplanation.isNotBlank()) {
-                    Text(word.rootExplanation, style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+
+        if (!state.relatedWordShowAnswer) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    state.relatedClusterName.orEmpty(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    "关联词浏览 · 不计入复习记录",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(24.dp))
+                Text(word.spelling, style = MaterialTheme.typography.displaySmall, textAlign = TextAlign.Center)
+                if (word.phonetic.isNotBlank()) {
+                    Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-        }
-        Spacer(Modifier.weight(1f))
-        if (!state.relatedWordShowAnswer) {
-            Button(onClick = onReveal, modifier = Modifier.fillMaxWidth()) { Text("显示答案") }
+            Button(
+                onClick = onReveal,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) { Text("显示答案") }
         } else {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                unifiedWordDetailItems(
+                    word = word,
+                    linkedWordIds = state.relatedDetailLinkedWordIds,
+                    associatedWords = state.relatedDetailAssociatedWords,
+                    pools = state.relatedDetailPools,
+                    clusters = state.relatedDetailClusterReviews.map { it.cluster },
+                    clusterReviews = state.relatedDetailClusterReviews,
+                    edgePreviews = state.relatedDetailEdgePreviews,
+                    phrases = state.relatedDetailPhrases,
+                    examples = state.relatedDetailExamples,
+                    onWordClick = onOpenWord,
+                    onArticleClick = onOpenArticle,
+                    detailsLoading = state.relatedDetailLoading,
+                    detailsError = state.relatedDetailError,
+                    onRetryDetails = onRetryDetails,
+                    showCloudExamples = false,
+                    showSpellingHeader = true
+                )
+            }
             EhStudyRatingBar(
                 options = listOf(
                     RatingOption("重来", null, semantic.studyAgain),
@@ -464,7 +518,9 @@ private fun RelatedClusterReviewContent(
                     RatingOption("简单", null, semantic.studyEasy)
                 ),
                 onRate = { onRate(listOf(Rating.Again, Rating.Hard, Rating.Good, Rating.Easy)[it]) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
             )
         }
     }

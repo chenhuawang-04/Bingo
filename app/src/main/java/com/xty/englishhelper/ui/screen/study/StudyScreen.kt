@@ -27,6 +27,7 @@ import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 fun StudyScreen(
     onBack: () -> Unit,
     onWordClick: (Long, Long) -> Unit,
+    onArticleClick: (Long, Long) -> Unit,
     viewModel: StudyViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -68,7 +69,11 @@ fun StudyScreen(
                 Text(stringResource(R.string.study_complete))
             }
         },
-        navigationIcon = { AppTopBarCloseButton(onBack) }
+        navigationIcon = {
+            AppTopBarCloseButton(
+                if (state.isRelatedClusterReview) viewModel::exitRelatedClusterReview else onBack
+            )
+        }
     )
 
     Scaffold { padding ->
@@ -83,6 +88,7 @@ fun StudyScreen(
                     onRevealAnswer = viewModel::onRevealAnswer,
                     onRate = viewModel::onRate,
                     onOpenRelatedWord = onWordClick,
+                    onOpenArticle = onArticleClick,
                     onWordNoteInputChange = viewModel::onWordNoteInputChange,
                     onWordNoteSuggestionSelected = viewModel::onWordNoteSuggestionSelected,
                     onWordNoteSuggestionsExpandedChange = viewModel::setWordNoteSuggestionsExpanded,
@@ -101,6 +107,8 @@ fun StudyScreen(
                     onRevealRelatedWord = viewModel::revealRelatedWord,
                     onRateRelatedWord = viewModel::rateRelatedWord,
                     onExitRelatedClusterReview = viewModel::exitRelatedClusterReview,
+                    onRetryCurrentWordDetails = viewModel::retryCurrentWordDetails,
+                    onRetryRelatedWordDetails = viewModel::retryRelatedWordDetails,
                     modifier = Modifier.padding(padding)
                 )
             }

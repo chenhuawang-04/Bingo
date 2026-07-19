@@ -207,6 +207,9 @@ fun NavGraph(navController: NavHostController) {
                     },
                     onWordClick = { wordId, dictionaryId ->
                         navController.navigate(WordDetailRoute(wordId, dictionaryId))
+                    },
+                    onArticleClick = { articleId, sentenceId ->
+                        navController.navigate(ArticleReaderRoute(articleId, sentenceId))
                     }
                 )
             }

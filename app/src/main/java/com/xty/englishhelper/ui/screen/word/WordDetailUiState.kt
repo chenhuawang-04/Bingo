@@ -26,6 +26,8 @@ data class WordDetailUiState(
     val clusterReviews: List<WordClusterReview> = emptyList(),
     val edgePreviews: List<WordEdgeNeighborPreview> = emptyList(),
     val phrases: List<WordPhraseWithTags> = emptyList(),
+    val detailsLoading: Boolean = false,
+    val detailsError: String? = null,
     val cloudExampleSource: CloudExampleSource = CloudExampleSource.CAMBRIDGE,
     val cloudExamples: List<CloudWordExample> = emptyList(),
     val cloudExamplesLoading: Boolean = false,
