@@ -334,6 +334,7 @@ class StudyViewModel @Inject constructor(
                         stats = StudyStats(totalWords = 0)
                     )
                 }
+                speakRelatedWordIfEnabled(review.words.first())
             } else {
                 showNextWord()
             }
@@ -665,10 +666,19 @@ class StudyViewModel @Inject constructor(
                 it.copy(relatedWordRatings = ratings, relatedWordIndex = nextIndex, relatedWordShowAnswer = false)
             }
         }
+        if (nextIndex < state.relatedWords.size) {
+            viewModelScope.launch { speakRelatedWordIfEnabled(state.relatedWords[nextIndex]) }
+        }
     }
 
     fun exitRelatedClusterReview() {
         _uiState.update { it.copy(relatedClusterName = null, relatedWords = emptyList(), relatedWordIndex = 0, relatedWordShowAnswer = false) }
+    }
+
+    private suspend fun speakRelatedWordIfEnabled(word: WordDetails) {
+        if (settingsDataStore.ttsAutoStudy.first()) {
+            ttsManager.speakWord(word.id, word.spelling)
+        }
     }
 
     private fun showGoalReachedDialog() {

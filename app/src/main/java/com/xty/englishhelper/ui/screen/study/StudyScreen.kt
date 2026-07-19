@@ -31,7 +31,7 @@ fun StudyScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    BackHandler(onBack = onBack)
+    BackHandler(onBack = if (state.isRelatedClusterReview) viewModel::exitRelatedClusterReview else onBack)
 
     // Brainstorm daily goal dialog
     if (state.showBrainstormGoalDialog) {
@@ -55,7 +55,9 @@ fun StudyScreen(
 
     AppTopBarEffect(
         title = {
-            if (state.phase == StudyPhase.Studying || state.phase == StudyPhase.WaitingForNext) {
+            if (state.isRelatedClusterReview) {
+                Text(state.relatedClusterName.orEmpty())
+            } else if (state.phase == StudyPhase.Studying || state.phase == StudyPhase.WaitingForNext) {
                 if (state.studyMode == StudyMode.BRAINSTORM && state.brainstormTargetCount > 0) {
                     Text(stringResource(R.string.study_storm_progress, state.brainstormLearnedCount, state.brainstormTargetCount))
                 } else {
