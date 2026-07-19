@@ -78,7 +78,8 @@ data class QuestionGeneratePayload(
 @Serializable
 data class ExamPaperGeneratePayload(
     val paperId: Long,
-    val paperTitle: String = ""
+    val paperTitle: String = "",
+    val allowIncomplete: Boolean = false
 ) : BackgroundTaskPayload
 
 @Serializable
@@ -107,6 +108,28 @@ data class OnlineArticleScanScorePayload(
     val startedAt: Long,
     val rescoreAfterHours: Int = 24,
     val forceRefresh: Boolean = false
+) : BackgroundTaskPayload
+
+@Serializable
+data class ArticleAdvancedScorePayload(
+    val startedAt: Long,
+    val minimumBasicScore: Int,
+    val minimumWordCount: Int,
+    val maximumWordCount: Int,
+    val promptVersion: Int = 1,
+    val forceRefresh: Boolean = false
+) : BackgroundTaskPayload
+
+@Serializable
+data class AutoPaperSelectPayload(
+    val paperId: Long,
+    val paperTitle: String,
+    val dayKey: String,
+    val profile: String,
+    val specialQuestionType: String,
+    val minimumBasicScore: Int,
+    val minimumWordCount: Int,
+    val maximumWordCount: Int
 ) : BackgroundTaskPayload
 
 @Serializable

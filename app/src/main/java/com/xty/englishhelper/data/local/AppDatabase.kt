@@ -19,7 +19,10 @@ import com.xty.englishhelper.data.local.dao.WordPhraseDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.dao.WordClusterDao
 import com.xty.englishhelper.data.local.dao.PlanDao
+import com.xty.englishhelper.data.local.dao.NotificationDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
+import com.xty.englishhelper.data.local.entity.ArticleAdvancedScoreEntity
+import com.xty.englishhelper.data.local.entity.AppNotificationEntity
 import com.xty.englishhelper.data.local.entity.ArticleCategoryEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
 import com.xty.englishhelper.data.local.entity.ArticleParagraphEntity
@@ -32,6 +35,7 @@ import com.xty.englishhelper.data.local.entity.CognateEntity
 import com.xty.englishhelper.data.local.entity.DictionaryEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperSourceEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperSlotSelectionEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperAnswerDraftEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperPracticeProgressEntity
 import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
@@ -80,6 +84,8 @@ import java.util.UUID
         WordStudyStateEntity::class,
         WordAssociationEntity::class,
         ArticleEntity::class,
+        ArticleAdvancedScoreEntity::class,
+        AppNotificationEntity::class,
         ArticleImageEntity::class,
         ArticleSentenceEntity::class,
         ArticleWordStatEntity::class,
@@ -92,6 +98,7 @@ import java.util.UUID
         ParagraphAnalysisCacheEntity::class,
         ExamPaperEntity::class,
         ExamPaperSourceEntity::class,
+        ExamPaperSlotSelectionEntity::class,
         ExamPaperAnswerDraftEntity::class,
         ExamPaperPracticeProgressEntity::class,
         QuestionGroupEntity::class,
@@ -118,7 +125,7 @@ import java.util.UUID
         WordClusterEntity::class,
         WordClusterMemberEntity::class
     ],
-    version = 38,
+    version = 39,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -136,6 +143,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun brainstormDao(): BrainstormDao
     abstract fun wordPhraseDao(): WordPhraseDao
     abstract fun wordClusterDao(): WordClusterDao
+    abstract fun notificationDao(): NotificationDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -1414,6 +1422,92 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_paper_practice_progress_question_group_id` ON `exam_paper_practice_progress` (`question_group_id`)")
+            }
+        }
+
+        val MIGRATION_38_39 = object : Migration(38, 39) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN composition_mode TEXT NOT NULL DEFAULT 'MANUAL'")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN selection_status TEXT NOT NULL DEFAULT 'NOT_STARTED'")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN selection_error TEXT")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN selection_started_at INTEGER")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN selection_completed_at INTEGER")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `article_advanced_scores` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `article_id` INTEGER NOT NULL,
+                        `article_uid` TEXT NOT NULL,
+                        `question_type` TEXT NOT NULL,
+                        `variant` TEXT NOT NULL,
+                        `score` INTEGER NOT NULL,
+                        `reason` TEXT NOT NULL,
+                        `basic_score` INTEGER NOT NULL,
+                        `word_count` INTEGER NOT NULL,
+                        `model_key` TEXT NOT NULL,
+                        `prompt_version` INTEGER NOT NULL,
+                        `scored_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`article_id`) REFERENCES `articles`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_advanced_scores_article_id` ON `article_advanced_scores` (`article_id`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_article_advanced_scores_article_id_question_type_variant` ON `article_advanced_scores` (`article_id`, `question_type`, `variant`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_advanced_scores_question_type_variant_score` ON `article_advanced_scores` (`question_type`, `variant`, `score`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_article_advanced_scores_updated_at` ON `article_advanced_scores` (`updated_at`)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `app_notifications` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `uid` TEXT NOT NULL,
+                        `event_key` TEXT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `message` TEXT NOT NULL,
+                        `target_type` TEXT NOT NULL,
+                        `target_id` INTEGER,
+                        `target_aux` TEXT,
+                        `source_task_id` INTEGER,
+                        `source_task_type` TEXT,
+                        `source_task_status` TEXT,
+                        `is_read` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `read_at` INTEGER
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_app_notifications_uid` ON `app_notifications` (`uid`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_app_notifications_event_key` ON `app_notifications` (`event_key`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_app_notifications_is_read_created_at` ON `app_notifications` (`is_read`, `created_at`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_app_notifications_source_task_id` ON `app_notifications` (`source_task_id`)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `exam_paper_slot_selections` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `exam_paper_id` INTEGER NOT NULL,
+                        `slot_key` TEXT NOT NULL,
+                        `question_type` TEXT NOT NULL,
+                        `variant` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `article_id` INTEGER,
+                        `article_uid` TEXT,
+                        `article_title` TEXT,
+                        `selected_score` INTEGER,
+                        `candidate_count` INTEGER NOT NULL,
+                        `reason` TEXT,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`exam_paper_id`) REFERENCES `exam_papers`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_exam_paper_slot_selections_exam_paper_id_slot_key` ON `exam_paper_slot_selections` (`exam_paper_id`, `slot_key`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_paper_slot_selections_article_id` ON `exam_paper_slot_selections` (`article_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_paper_slot_selections_status_updated_at` ON `exam_paper_slot_selections` (`status`, `updated_at`)")
             }
         }
     }

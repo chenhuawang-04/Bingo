@@ -43,6 +43,9 @@ data object TtsDiagnosticsRoute
 data object BackgroundTaskRoute
 
 @Serializable
+data object NotificationRoute
+
+@Serializable
 data class UnitDetailRoute(val unitId: Long, val dictionaryId: Long)
 
 @Serializable
@@ -53,6 +56,9 @@ data class StudyRoute(val unitIds: String, val mode: String = "NORMAL")
 
 @Serializable
 data object ArticleListRoute
+
+@Serializable
+data object AutoPaperRoute
 
 @Serializable
 data class ArticleEditorRoute(val articleId: Long = 0L)

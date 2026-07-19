@@ -231,6 +231,26 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.advancedScoringEnabled.collect { value ->
+                _uiState.update { it.copy(advancedScoringEnabled = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.advancedScoringMinimumBasicScore.collect { value ->
+                _uiState.update { it.copy(advancedScoringMinimumBasicScore = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.advancedScoringMinimumWordCount.collect { value ->
+                _uiState.update { it.copy(advancedScoringMinimumWordCount = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.advancedScoringMaximumWordCount.collect { value ->
+                _uiState.update { it.copy(advancedScoringMaximumWordCount = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.appLocale.collect { value ->
                 _uiState.update { it.copy(appLocale = value) }
             }
@@ -621,6 +641,29 @@ class SettingsViewModel @Inject constructor(
         val clamped = value.coerceIn(1, 720)
         _uiState.update { it.copy(scanRescoreAfterHours = clamped) }
         viewModelScope.launch { settingsDataStore.setScanRescoreAfterHours(clamped) }
+    }
+
+    fun onAdvancedScoringEnabledChange(enabled: Boolean) {
+        _uiState.update { it.copy(advancedScoringEnabled = enabled) }
+        viewModelScope.launch { settingsDataStore.setAdvancedScoringEnabled(enabled) }
+    }
+
+    fun onAdvancedScoringMinimumBasicScoreChange(value: Int) {
+        val clamped = value.coerceIn(0, 100)
+        _uiState.update { it.copy(advancedScoringMinimumBasicScore = clamped) }
+        viewModelScope.launch { settingsDataStore.setAdvancedScoringMinimumBasicScore(clamped) }
+    }
+
+    fun onAdvancedScoringWordCountRangeChange(minimum: Int, maximum: Int) {
+        val min = minimum.coerceIn(50, 3000)
+        val max = maximum.coerceIn(min, 3000)
+        _uiState.update {
+            it.copy(
+                advancedScoringMinimumWordCount = min,
+                advancedScoringMaximumWordCount = max
+            )
+        }
+        viewModelScope.launch { settingsDataStore.setAdvancedScoringWordCountRange(min, max) }
     }
 
     fun onLocaleChange(locale: String) {

@@ -86,4 +86,18 @@ interface ArticleAiRepository {
         baseUrl: String,
         provider: AiProvider
     ): ArticleSuitabilityResult
+
+    suspend fun evaluateArticleForQuestionType(
+        title: String,
+        articleText: String,
+        source: String?,
+        wordCount: Int,
+        questionType: String,
+        variant: String?,
+        targetLabel: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): ArticleSuitabilityResult
 }

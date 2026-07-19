@@ -13,6 +13,8 @@ import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
+import com.xty.englishhelper.domain.model.ArticleAdvancedScorePayload
+import com.xty.englishhelper.domain.model.AutoPaperSelectPayload
 import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordPhraseOrganizePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
@@ -135,6 +137,8 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.encodeToString(payload as QuestionSourceVerifyPayload)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.encodeToString(payload as QuestionWritingSamplePayload)
             BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> json.encodeToString(payload as OnlineArticleScanScorePayload)
+            BackgroundTaskType.ARTICLE_ADVANCED_SCORE -> json.encodeToString(payload as ArticleAdvancedScorePayload)
+            BackgroundTaskType.AUTO_PAPER_SELECT -> json.encodeToString(payload as AutoPaperSelectPayload)
             BackgroundTaskType.APP_UPDATE_CHECK -> json.encodeToString(payload as AppUpdateCheckPayload)
             BackgroundTaskType.CLOUD_SYNC -> json.encodeToString(payload as com.xty.englishhelper.domain.model.SyncTaskPayload)
             BackgroundTaskType.UNKNOWN -> "{}"
@@ -155,6 +159,8 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
                 BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.decodeFromString<QuestionSourceVerifyPayload>(raw)
                 BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.decodeFromString<QuestionWritingSamplePayload>(raw)
                 BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> json.decodeFromString<OnlineArticleScanScorePayload>(raw)
+                BackgroundTaskType.ARTICLE_ADVANCED_SCORE -> json.decodeFromString<ArticleAdvancedScorePayload>(raw)
+                BackgroundTaskType.AUTO_PAPER_SELECT -> json.decodeFromString<AutoPaperSelectPayload>(raw)
                 BackgroundTaskType.APP_UPDATE_CHECK -> json.decodeFromString<AppUpdateCheckPayload>(raw)
                 BackgroundTaskType.CLOUD_SYNC -> json.decodeFromString<com.xty.englishhelper.domain.model.SyncTaskPayload>(raw)
                 BackgroundTaskType.UNKNOWN -> null
@@ -181,6 +187,5 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
         )
     }
 }
-
 
 

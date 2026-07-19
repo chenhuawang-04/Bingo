@@ -6,6 +6,8 @@ import com.xty.englishhelper.domain.model.ExamPaperCollectionResult
 import com.xty.englishhelper.domain.model.ExamPaperProfile
 import com.xty.englishhelper.domain.model.ExamPaperSource
 import com.xty.englishhelper.domain.model.ExamPaperSummary
+import com.xty.englishhelper.domain.model.ExamPaperSlotSelection
+import com.xty.englishhelper.domain.model.AutoPaperSelectionStatus
 import com.xty.englishhelper.domain.model.PracticeRecord
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
@@ -20,6 +22,12 @@ interface QuestionBankRepository {
     suspend fun getExamPaperById(id: Long): ExamPaper?
     suspend fun insertExamPaper(paper: ExamPaper): Long
     suspend fun deleteExamPaper(id: Long)
+    suspend fun createAutoExamPaper(
+        dayKey: String,
+        profile: ExamPaperProfile,
+        specialQuestionType: QuestionType
+    ): ExamPaper
+    suspend fun getLatestAutoPaperByDay(dayKey: String): ExamPaper?
     suspend fun collectArticleForPaper(
         articleId: Long,
         dayKey: String,
@@ -42,6 +50,16 @@ interface QuestionBankRepository {
         status: com.xty.englishhelper.domain.model.ExamPaperSourceStatus,
         groupId: Long? = null,
         error: String? = null
+    )
+    fun getExamPaperSlotSelections(paperId: Long): Flow<List<ExamPaperSlotSelection>>
+    suspend fun getExamPaperSlotSelectionsOnce(paperId: Long): List<ExamPaperSlotSelection>
+    suspend fun upsertExamPaperSlotSelection(selection: ExamPaperSlotSelection): Long
+    suspend fun updateAutoPaperSelectionStatus(
+        paperId: Long,
+        status: AutoPaperSelectionStatus,
+        error: String? = null,
+        startedAt: Long? = null,
+        completedAt: Long? = null
     )
 
     // ── QuestionGroup ──

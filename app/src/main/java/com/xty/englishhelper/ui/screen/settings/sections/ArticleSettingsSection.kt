@@ -156,7 +156,97 @@ internal fun ArticleSettingsSection(
             }
         }
 
-        // 3. 图片压缩
+        // 3. 进阶评分
+        Card(
+            shape = ArticleShapes.Section,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm)
+            ) {
+                SettingsSwitchRow(
+                    title = "进阶评分模式",
+                    description = "全量基础评分完成后，按题型再次评估满足阈值的文章。",
+                    checked = state.advancedScoringEnabled,
+                    onCheckedChange = viewModel::onAdvancedScoringEnabledChange
+                )
+
+                if (state.advancedScoringEnabled) {
+                    Text(
+                        text = "阈值设定",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    var scoreInput by remember {
+                        mutableStateOf(state.advancedScoringMinimumBasicScore.toString())
+                    }
+                    var minimumWordsInput by remember {
+                        mutableStateOf(state.advancedScoringMinimumWordCount.toString())
+                    }
+                    var maximumWordsInput by remember {
+                        mutableStateOf(state.advancedScoringMaximumWordCount.toString())
+                    }
+                    LaunchedEffect(
+                        state.advancedScoringMinimumBasicScore,
+                        state.advancedScoringMinimumWordCount,
+                        state.advancedScoringMaximumWordCount
+                    ) {
+                        scoreInput = state.advancedScoringMinimumBasicScore.toString()
+                        minimumWordsInput = state.advancedScoringMinimumWordCount.toString()
+                        maximumWordsInput = state.advancedScoringMaximumWordCount.toString()
+                    }
+
+                    SettingsTextFieldRow(
+                        title = "评分下限",
+                        value = scoreInput,
+                        onValueChange = { value ->
+                            scoreInput = value.filter { it.isDigit() }
+                            scoreInput.toIntOrNull()?.let(viewModel::onAdvancedScoringMinimumBasicScoreChange)
+                        },
+                        placeholder = "75",
+                        keyboardType = KeyboardType.Number,
+                        supportingText = "仅基础评分达到该分数的文章进入进阶评分。"
+                    )
+                    SettingsTextFieldRow(
+                        title = "最少字数",
+                        value = minimumWordsInput,
+                        onValueChange = { value ->
+                            minimumWordsInput = value.filter { it.isDigit() }
+                            minimumWordsInput.toIntOrNull()?.let { minimum ->
+                                viewModel.onAdvancedScoringWordCountRangeChange(
+                                    minimum,
+                                    state.advancedScoringMaximumWordCount.coerceAtLeast(minimum)
+                                )
+                            }
+                        },
+                        placeholder = "300",
+                        keyboardType = KeyboardType.Number
+                    )
+                    SettingsTextFieldRow(
+                        title = "最多字数",
+                        value = maximumWordsInput,
+                        onValueChange = { value ->
+                            maximumWordsInput = value.filter { it.isDigit() }
+                            maximumWordsInput.toIntOrNull()?.let { maximum ->
+                                viewModel.onAdvancedScoringWordCountRangeChange(
+                                    state.advancedScoringMinimumWordCount,
+                                    maximum
+                                )
+                            }
+                        },
+                        placeholder = "600",
+                        keyboardType = KeyboardType.Number,
+                        supportingText = "字数区间包含上下限。"
+                    )
+                }
+            }
+        }
+
+        // 4. 图片压缩
         Card(
             shape = ArticleShapes.Section,
             colors = CardDefaults.cardColors(

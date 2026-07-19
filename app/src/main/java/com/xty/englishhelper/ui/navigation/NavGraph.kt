@@ -11,6 +11,7 @@ import com.xty.englishhelper.ui.screen.addword.AddWordScreen
 import com.xty.englishhelper.ui.screen.article.ArticleEditorScreen
 import com.xty.englishhelper.ui.screen.article.ArticleListScreen
 import com.xty.englishhelper.ui.screen.article.ArticleReaderScreen
+import com.xty.englishhelper.ui.screen.article.AutoPaperScreen
 import com.xty.englishhelper.ui.screen.article.ScanDetailScreen
 import com.xty.englishhelper.ui.screen.guardian.GuardianBrowseScreen
 import com.xty.englishhelper.ui.screen.questionbank.QuestionBankListScreen
@@ -28,6 +29,8 @@ import com.xty.englishhelper.ui.screen.home.HomeScreen
 import com.xty.englishhelper.ui.screen.importexport.ImportExportScreen
 import com.xty.englishhelper.ui.screen.main.MainScaffold
 import com.xty.englishhelper.ui.screen.backgroundtask.BackgroundTaskScreen
+import com.xty.englishhelper.ui.screen.notification.NotificationScreen
+import com.xty.englishhelper.domain.model.AppNotificationTargetType
 import com.xty.englishhelper.ui.screen.settings.SettingsScreen
 import com.xty.englishhelper.ui.screen.settings.TtsDiagnosticsScreen
 import com.xty.englishhelper.ui.screen.study.StudyScreen
@@ -176,6 +179,23 @@ fun NavGraph(navController: NavHostController) {
                 )
             }
 
+            composable<NotificationRoute> {
+                NotificationScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpen = { notification ->
+                        when (notification.targetType) {
+                            AppNotificationTargetType.BACKGROUND_TASKS -> navController.navigate(BackgroundTaskRoute)
+                            AppNotificationTargetType.ARTICLE -> notification.targetId?.let { navController.navigate(ArticleReaderRoute(it)) }
+                            AppNotificationTargetType.QUESTION_GROUP -> notification.targetId?.let { navController.navigate(QuestionBankReaderRoute(it)) }
+                            AppNotificationTargetType.EXAM_PAPER,
+                            AppNotificationTargetType.AUTO_PAPER -> notification.targetId?.let { navController.navigate(QuestionBankPaperRoute(it)) }
+                            AppNotificationTargetType.SETTINGS -> navController.navigate(SettingsRoute)
+                            AppNotificationTargetType.NONE -> Unit
+                        }
+                    }
+                )
+            }
+
             composable<UnitDetailRoute> { backStackEntry ->
                 val route = backStackEntry.toRoute<UnitDetailRoute>()
                 UnitDetailScreen(
@@ -224,7 +244,15 @@ fun NavGraph(navController: NavHostController) {
                     },
                     onSettings = { navController.navigate(SettingsRoute) },
                     onGuardianBrowse = { navController.navigate(GuardianBrowseRoute) },
-                    onScanDetail = { navController.navigate(ScanDetailRoute) }
+                    onScanDetail = { navController.navigate(ScanDetailRoute) },
+                    onAutoPaper = { navController.navigate(AutoPaperRoute) }
+                )
+            }
+
+            composable<AutoPaperRoute> {
+                AutoPaperScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenPaper = { navController.navigate(QuestionBankPaperRoute(it)) }
                 )
             }
 

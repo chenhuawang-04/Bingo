@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.xty.englishhelper.data.local.entity.ArticleEntity
+import com.xty.englishhelper.data.local.entity.ArticleAdvancedScoreEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
 import com.xty.englishhelper.data.local.entity.ArticleParagraphEntity
 import com.xty.englishhelper.data.local.entity.ArticleSentenceEntity
@@ -118,6 +119,54 @@ interface ArticleDao {
         modelKey: String?,
         now: Long = System.currentTimeMillis()
     )
+
+    @Query(
+        """
+        SELECT * FROM articles
+        WHERE suitability_score >= :minimumBasicScore
+          AND word_count BETWEEN :minimumWordCount AND :maximumWordCount
+        ORDER BY suitability_score DESC, word_count ASC, updated_at DESC
+        """
+    )
+    suspend fun getEligibleArticlesForAdvancedScoring(
+        minimumBasicScore: Int,
+        minimumWordCount: Int,
+        maximumWordCount: Int
+    ): List<ArticleEntity>
+
+    @Query("SELECT * FROM articles WHERE id IN (:articleIds)")
+    suspend fun getArticlesByIds(articleIds: List<Long>): List<ArticleEntity>
+
+    @Query("SELECT * FROM article_advanced_scores ORDER BY article_id, question_type, variant")
+    fun observeAllAdvancedScores(): Flow<List<ArticleAdvancedScoreEntity>>
+
+    @Query("SELECT * FROM article_advanced_scores WHERE article_id = :articleId ORDER BY question_type, variant")
+    suspend fun getAdvancedScoresForArticle(articleId: Long): List<ArticleAdvancedScoreEntity>
+
+    @Query(
+        """
+        SELECT s.* FROM article_advanced_scores s
+        INNER JOIN articles a ON a.id = s.article_id
+        WHERE s.question_type = :questionType
+          AND s.variant = :variant
+          AND a.suitability_score >= :minimumBasicScore
+          AND a.word_count BETWEEN :minimumWordCount AND :maximumWordCount
+        ORDER BY s.score DESC, a.suitability_score DESC, s.updated_at DESC
+        """
+    )
+    suspend fun getAdvancedScoresForTarget(
+        questionType: String,
+        variant: String,
+        minimumBasicScore: Int,
+        minimumWordCount: Int,
+        maximumWordCount: Int
+    ): List<ArticleAdvancedScoreEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAdvancedScore(entity: ArticleAdvancedScoreEntity): Long
+
+    @Query("DELETE FROM article_advanced_scores WHERE article_id = :articleId")
+    suspend fun deleteAdvancedScoresForArticle(articleId: Long)
 
     // Word stats
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -248,7 +297,6 @@ data class WordMatchProjection(
     @ColumnInfo(name = "normalized_spelling") val normalizedSpelling: String,
     @ColumnInfo(name = "inflections_json") val inflectionsJson: String
 )
-
 
 
 

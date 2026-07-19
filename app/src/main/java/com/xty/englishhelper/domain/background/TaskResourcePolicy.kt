@@ -36,7 +36,8 @@ internal fun BackgroundTask.resourceDemand(): TaskResourceDemand = when (type) {
     )
 
     BackgroundTaskType.WORD_PHRASE_ORGANIZE,
-    BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> TaskResourceDemand(
+    BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE,
+    BackgroundTaskType.ARTICLE_ADVANCED_SCORE -> TaskResourceDemand(
         memoryHeavy = 1,
         network = 1,
         databaseWriter = if (type == BackgroundTaskType.WORD_PHRASE_ORGANIZE) 1 else 0
@@ -50,6 +51,11 @@ internal fun BackgroundTask.resourceDemand(): TaskResourceDemand = when (type) {
     BackgroundTaskType.QUESTION_SOURCE_VERIFY,
     BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> TaskResourceDemand(
         network = 1
+    )
+
+    BackgroundTaskType.AUTO_PAPER_SELECT -> TaskResourceDemand(
+        network = 1,
+        databaseWriter = 1
     )
 
     BackgroundTaskType.APP_UPDATE_CHECK -> TaskResourceDemand(network = 1)

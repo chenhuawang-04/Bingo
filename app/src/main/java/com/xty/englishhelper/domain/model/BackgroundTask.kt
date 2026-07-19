@@ -28,6 +28,8 @@ enum class BackgroundTaskType {
     QUESTION_SOURCE_VERIFY,
     QUESTION_WRITING_SAMPLE_SEARCH,
     ONLINE_ARTICLE_SCAN_SCORE,
+    ARTICLE_ADVANCED_SCORE,
+    AUTO_PAPER_SELECT,
     APP_UPDATE_CHECK,
     CLOUD_SYNC
 }
@@ -61,7 +63,9 @@ val BackgroundTaskType.priority: BackgroundTaskPriority
         BackgroundTaskType.QUESTION_SOURCE_VERIFY,
         BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> BackgroundTaskPriority.USER_INITIATED
         BackgroundTaskType.APP_UPDATE_CHECK,
-        BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> BackgroundTaskPriority.MAINTENANCE
+        BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE,
+        BackgroundTaskType.ARTICLE_ADVANCED_SCORE -> BackgroundTaskPriority.MAINTENANCE
+        BackgroundTaskType.AUTO_PAPER_SELECT -> BackgroundTaskPriority.USER_INITIATED
         else -> BackgroundTaskPriority.NORMAL
     }
 
@@ -81,4 +85,3 @@ enum class RebuildMode {
     FULL,        // Delete all existing data, rebuild from scratch
     INCREMENTAL  // Resume from last progress, keep existing pools during rebuild
 }
-

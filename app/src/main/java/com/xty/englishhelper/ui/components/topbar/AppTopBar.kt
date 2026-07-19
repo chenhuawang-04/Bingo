@@ -5,6 +5,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -90,7 +93,9 @@ fun AppTopBarEffect(
 @Composable
 fun ManagedAppTopBar(
     controller: AppTopBarController,
-    onQuickSearchClick: () -> Unit
+    onQuickSearchClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
+    unreadNotificationCount: Int = 0
 ) {
     val state = controller.state
     if (!state.visible()) return
@@ -105,6 +110,26 @@ fun ManagedAppTopBar(
                     Icons.Default.Search,
                     contentDescription = stringResource(R.string.quick_search)
                 )
+            }
+            IconButton(onClick = onNotificationsClick) {
+                BadgedBox(
+                    badge = {
+                        if (unreadNotificationCount > 0) {
+                            Badge {
+                                if (unreadNotificationCount > 9) {
+                                    androidx.compose.material3.Text("9+")
+                                } else {
+                                    androidx.compose.material3.Text(unreadNotificationCount.toString())
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Icon(
+                        Icons.Outlined.Notifications,
+                        contentDescription = stringResource(R.string.notifications_title)
+                    )
+                }
             }
         }
     )

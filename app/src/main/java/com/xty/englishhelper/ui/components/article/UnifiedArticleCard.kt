@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AssistChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +39,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.ArticleCategory
+import com.xty.englishhelper.domain.model.ArticleAdvancedScore
+import com.xty.englishhelper.domain.model.ArticleAdvancedScoringTargets
 import com.xty.englishhelper.ui.designsystem.tokens.ArticleShapes
 import com.xty.englishhelper.ui.screen.article.EditorialThumbnail
 
@@ -66,12 +70,15 @@ fun UnifiedArticleCard(
     onMoveCategory: ((Long) -> Unit)? = null,
     categories: List<ArticleCategory>? = null,
     categoryId: Long? = null,
+    advancedScores: List<ArticleAdvancedScore> = emptyList(),
+    onAddAdvancedScoreToPaper: ((ArticleAdvancedScore) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showMoveDialog by remember { mutableStateOf(false) }
     var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
+    var showAdvancedScores by rememberSaveable { mutableStateOf(false) }
 
     Card(
         onClick = onRead,
@@ -162,6 +169,51 @@ fun UnifiedArticleCard(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+
+                if (advancedScores.isNotEmpty()) {
+                    AssistChip(
+                        onClick = { showAdvancedScores = !showAdvancedScores },
+                        label = {
+                            Text(
+                                if (showAdvancedScores) {
+                                    stringResource(R.string.article_advanced_scores_hide)
+                                } else {
+                                    stringResource(R.string.article_advanced_scores_show, advancedScores.size)
+                                }
+                            )
+                        }
+                    )
+                    if (showAdvancedScores) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            advancedScores.sortedByDescending { it.score }.forEach { score ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${ArticleAdvancedScoringTargets.targetFor(score.questionType, score.variant)?.displayName ?: score.questionType.displayName} · ${score.score}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (onAddAdvancedScoreToPaper != null) {
+                                        IconButton(onClick = { onAddAdvancedScoreToPaper(score) }) {
+                                            Icon(Icons.Default.Add, stringResource(R.string.article_add_to_today_paper))
+                                        }
+                                    }
+                                }
+                                if (score.reason.isNotBlank()) {
+                                    Text(
+                                        score.reason,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

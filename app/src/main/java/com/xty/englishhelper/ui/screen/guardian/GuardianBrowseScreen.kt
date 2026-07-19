@@ -173,10 +173,13 @@ fun GuardianBrowseScreen(
                             ArticleList(
                                 articles = displayArticles,
                                 isLoadingArticle = uiState.isLoadingArticle,
+                                articleIdsByUrl = uiState.articleIdsByUrl,
+                                advancedScoresByUrl = uiState.advancedScoresByUrl,
                                 onArticleClick = { article ->
                                     viewModel.openArticle(article, onArticleClick)
                                 },
-                                onReevaluate = viewModel::reEvaluate
+                                onReevaluate = viewModel::reEvaluate,
+                                onAddToPaper = viewModel::addAdvancedScoreToTodayPaper
                             )
                         }
                     }
@@ -545,8 +548,11 @@ private fun EmptyOnlineArticleState(
 private fun ArticleList(
     articles: List<GuardianBrowseItem>,
     isLoadingArticle: Boolean,
+    articleIdsByUrl: Map<String, Long>,
+    advancedScoresByUrl: Map<String, List<com.xty.englishhelper.domain.model.ArticleAdvancedScore>>,
     onArticleClick: (article: GuardianBrowseItem) -> Unit,
-    onReevaluate: (url: String) -> Unit
+    onReevaluate: (url: String) -> Unit,
+    onAddToPaper: (Long, com.xty.englishhelper.domain.model.ArticleAdvancedScore) -> Unit
 ) {
     LazyColumn(
         contentPadding = PaddingValues(bottom = 88.dp),
@@ -583,7 +589,11 @@ private fun ArticleList(
                 onDelete = null,
                 onMoveCategory = null,
                 categories = null,
-                categoryId = null
+                categoryId = null,
+                advancedScores = advancedScoresByUrl[article.url].orEmpty(),
+                onAddAdvancedScoreToPaper = articleIdsByUrl[article.url]?.let { articleId ->
+                    { score -> onAddToPaper(articleId, score) }
+                }
             )
         }
     }

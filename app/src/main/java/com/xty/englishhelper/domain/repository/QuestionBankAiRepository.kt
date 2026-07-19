@@ -39,6 +39,18 @@ interface QuestionBankAiRepository {
         variant: String?,
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): ScanResult
+
+    suspend fun selectArticleForPaperSlot(
+        paperTitle: String,
+        slotLabel: String,
+        questionType: String,
+        variant: String?,
+        candidates: List<AutoPaperArticleCandidate>,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): AutoPaperArticleSelection
     // ── Score translations ──
     suspend fun scoreTranslations(
         items: List<TranslationScoreInput>,
@@ -81,6 +93,20 @@ interface QuestionBankAiRepository {
         apiKey: String, model: String, baseUrl: String, provider: AiProvider
     ): List<WritingPracticePhraseSelection>
 }
+
+data class AutoPaperArticleCandidate(
+    val articleId: Long,
+    val title: String,
+    val advancedScore: Int,
+    val scoreReason: String,
+    val basicScore: Int,
+    val wordCount: Int
+)
+
+data class AutoPaperArticleSelection(
+    val selectedArticleId: Long? = null,
+    val reason: String = ""
+)
 
 data class TranslationScoreInput(
     val questionNumber: Int,

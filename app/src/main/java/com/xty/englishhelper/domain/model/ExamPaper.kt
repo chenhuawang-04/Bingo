@@ -15,6 +15,11 @@ data class ExamPaper(
     val profile: ExamPaperProfile = ExamPaperProfile.ENGLISH_ONE,
     val blueprintVersion: Int = ExamPaperBlueprint.CURRENT_VERSION,
     val specialQuestionType: QuestionType? = null,
+    val compositionMode: ExamPaperCompositionMode = ExamPaperCompositionMode.MANUAL,
+    val selectionStatus: AutoPaperSelectionStatus = AutoPaperSelectionStatus.NOT_STARTED,
+    val selectionError: String? = null,
+    val selectionStartedAt: Long? = null,
+    val selectionCompletedAt: Long? = null,
     val generationError: String? = null,
     val generationStartedAt: Long? = null,
     val generationCompletedAt: Long? = null

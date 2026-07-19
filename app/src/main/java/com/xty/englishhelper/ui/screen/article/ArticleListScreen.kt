@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -72,6 +73,7 @@ fun ArticleListScreen(
     onSettings: () -> Unit,
     onGuardianBrowse: () -> Unit = {},
     onScanDetail: () -> Unit = {},
+    onAutoPaper: () -> Unit = {},
     viewModel: ArticleListViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -95,6 +97,9 @@ fun ArticleListScreen(
     AppTopBarEffect(
         title = { Text(stringResource(R.string.article_reading)) },
         actions = {
+            IconButton(onClick = onAutoPaper) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = stringResource(R.string.auto_paper_title))
+            }
             IconButton(onClick = onGuardianBrowse) {
                 Icon(Icons.Default.Language, contentDescription = stringResource(R.string.article_online_reading))
             }
@@ -202,7 +207,11 @@ fun ArticleListScreen(
                                     viewModel.moveArticleToCategory(article.id, targetCategoryId)
                                 },
                                 categories = uiState.categories,
-                                categoryId = article.categoryId
+                                categoryId = article.categoryId,
+                                advancedScores = uiState.advancedScoresByArticle[article.id].orEmpty(),
+                                onAddAdvancedScoreToPaper = { score ->
+                                    viewModel.addAdvancedScoreToTodayPaper(article.id, score)
+                                }
                             )
                         }
                     }

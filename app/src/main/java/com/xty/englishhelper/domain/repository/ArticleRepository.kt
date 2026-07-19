@@ -6,6 +6,8 @@ import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ArticleSentence
 import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ArticleWordStat
+import com.xty.englishhelper.domain.model.ArticleAdvancedScore
+import com.xty.englishhelper.domain.model.ArticleAdvancedScoreCandidate
 import com.xty.englishhelper.domain.model.WordExampleSourceType
 import com.xty.englishhelper.domain.model.QuickWordAnalysis
 import kotlinx.coroutines.flow.Flow
@@ -125,6 +127,22 @@ interface ArticleRepository {
         evaluatedAt: Long?,
         modelKey: String?
     ): Int
-}
 
+    suspend fun getEligibleArticlesForAdvancedScoring(
+        minimumBasicScore: Int,
+        minimumWordCount: Int,
+        maximumWordCount: Int
+    ): List<Article>
+    fun observeAllAdvancedScores(): Flow<List<ArticleAdvancedScore>>
+    suspend fun getAdvancedScoresForArticle(articleId: Long): List<ArticleAdvancedScore>
+    suspend fun getAdvancedScoreCandidates(
+        questionType: com.xty.englishhelper.domain.model.QuestionType,
+        variant: String?,
+        minimumBasicScore: Int,
+        minimumWordCount: Int,
+        maximumWordCount: Int
+    ): List<ArticleAdvancedScoreCandidate>
+    suspend fun upsertAdvancedScore(score: ArticleAdvancedScore): Long
+    suspend fun deleteAdvancedScoresForArticle(articleId: Long)
+}
 

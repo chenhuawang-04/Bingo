@@ -6,6 +6,7 @@ import com.xty.englishhelper.domain.model.AppUpdateCheckPayload
 import com.xty.englishhelper.domain.model.AiModelSnapshot
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.ArticleParagraph
+import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleSourceType
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.BackgroundTask
@@ -16,12 +17,24 @@ import com.xty.englishhelper.domain.model.priority
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.ExamPaper
+import com.xty.englishhelper.domain.model.ExamPaperCollectionResult
 import com.xty.englishhelper.domain.model.ExamPaperBlueprint
 import com.xty.englishhelper.domain.model.ExamPaperGeneratePayload
 import com.xty.englishhelper.domain.model.ExamPaperSource
 import com.xty.englishhelper.domain.model.ExamPaperSourceStatus
 import com.xty.englishhelper.domain.model.ExamPaperStatus
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
+import com.xty.englishhelper.domain.model.ArticleAdvancedScorePayload
+import com.xty.englishhelper.domain.model.AutoPaperSelectPayload
+import com.xty.englishhelper.domain.model.ArticleAdvancedScore
+import com.xty.englishhelper.domain.model.ArticleAdvancedScoringTargets
+import com.xty.englishhelper.domain.model.AutoPaperSelectionStatus
+import com.xty.englishhelper.domain.model.ExamPaperCompositionMode
+import com.xty.englishhelper.domain.model.ExamPaperSlotSelection
+import com.xty.englishhelper.domain.model.ExamPaperSlotSelectionStatus
+import com.xty.englishhelper.domain.model.AppNotification
+import com.xty.englishhelper.domain.model.AppNotificationCategory
+import com.xty.englishhelper.domain.model.AppNotificationTargetType
 import com.xty.englishhelper.domain.model.SyncTaskPayload
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
@@ -50,6 +63,8 @@ import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
+import com.xty.englishhelper.domain.repository.NotificationRepository
+import com.xty.englishhelper.domain.repository.AutoPaperArticleCandidate
 import com.xty.englishhelper.domain.repository.ManualChunkContext
 import com.xty.englishhelper.domain.repository.ManualFillResult
 import com.xty.englishhelper.domain.repository.WordPoolRepository
@@ -108,6 +123,7 @@ private const val APP_UPDATE_CHECK_DEDUPE_KEY = "system:app-update-check"
 private const val APP_UPDATE_CHECK_MAX_ATTEMPTS = 3
 private val APP_UPDATE_RETRY_DELAYS_MS = longArrayOf(1_000L, 3_000L)
 private val EXAM_PAPER_RETRY_DELAYS_MS = longArrayOf(1_000L, 3_000L)
+private const val ARTICLE_ADVANCED_SCORE_PROMPT_VERSION = 1
 
 internal fun poolTaskMutexKey(task: BackgroundTask): PoolTaskMutexKey? {
     return when (task.type) {
@@ -177,7 +193,8 @@ class BackgroundTaskManager @Inject constructor(
     private val createArticle: CreateArticleUseCase,
     private val parseArticle: ParseArticleUseCase,
     private val settingsDataStore: SettingsDataStore,
-    private val syncEngine: com.xty.englishhelper.data.sync.SyncEngine
+    private val syncEngine: com.xty.englishhelper.data.sync.SyncEngine,
+    private val notificationRepository: NotificationRepository
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val runningJobs = ConcurrentHashMap<Long, kotlinx.coroutines.Job>()
@@ -429,11 +446,12 @@ class BackgroundTaskManager @Inject constructor(
     suspend fun enqueueExamPaperGeneration(
         paperId: Long,
         paperTitle: String,
+        allowIncomplete: Boolean = false,
         force: Boolean = false
     ): BackgroundTaskEnqueueResult {
         return enqueueTaskInternal(
             type = BackgroundTaskType.EXAM_PAPER_GENERATE,
-            payload = ExamPaperGeneratePayload(paperId, paperTitle),
+            payload = ExamPaperGeneratePayload(paperId, paperTitle, allowIncomplete),
             dedupeKey = "paper_generate:$paperId",
             force = force
         )
@@ -446,7 +464,7 @@ class BackgroundTaskManager @Inject constructor(
             .toSet()
         questionBankRepository.getAllExamPapers().first()
             .filter {
-                it.status == ExamPaperStatus.READY ||
+                (it.status == ExamPaperStatus.READY && it.compositionMode != ExamPaperCompositionMode.AUTOMATIC) ||
                     (it.status == ExamPaperStatus.GENERATING && it.id !in activePaperIds)
             }
             .forEach { paper ->
@@ -499,6 +517,56 @@ class BackgroundTaskManager @Inject constructor(
             type = BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE,
             payload = payload,
             dedupeKey = "online:scan_score",
+            force = force
+        )
+    }
+
+    fun enqueueArticleAdvancedScoring(
+        minimumBasicScore: Int,
+        minimumWordCount: Int,
+        maximumWordCount: Int,
+        forceRefresh: Boolean = false,
+        force: Boolean = true
+    ) {
+        val normalizedMinimumWordCount = minimumWordCount.coerceAtLeast(50)
+        enqueueTaskAsync(
+            type = BackgroundTaskType.ARTICLE_ADVANCED_SCORE,
+            payload = ArticleAdvancedScorePayload(
+                startedAt = System.currentTimeMillis(),
+                minimumBasicScore = minimumBasicScore.coerceIn(0, 100),
+                minimumWordCount = normalizedMinimumWordCount,
+                maximumWordCount = maximumWordCount.coerceAtLeast(normalizedMinimumWordCount),
+                forceRefresh = forceRefresh
+            ),
+            dedupeKey = "article:advanced_score",
+            force = force
+        )
+    }
+
+    suspend fun enqueueAutoPaperSelection(
+        paper: ExamPaper,
+        minimumBasicScore: Int,
+        minimumWordCount: Int,
+        maximumWordCount: Int,
+        force: Boolean = true
+    ): BackgroundTaskEnqueueResult {
+        val normalizedMinimumWordCount = minimumWordCount.coerceAtLeast(50)
+        val dayKey = paper.dayKey ?: throw IllegalArgumentException("自动组卷日期缺失")
+        val specialType = paper.specialQuestionType
+            ?: throw IllegalArgumentException("自动组卷新题型缺失")
+        return enqueueTaskInternal(
+            type = BackgroundTaskType.AUTO_PAPER_SELECT,
+            payload = AutoPaperSelectPayload(
+                paperId = paper.id,
+                paperTitle = paper.title,
+                dayKey = dayKey,
+                profile = paper.profile.name,
+                specialQuestionType = specialType.name,
+                minimumBasicScore = minimumBasicScore.coerceIn(0, 100),
+                minimumWordCount = normalizedMinimumWordCount,
+                maximumWordCount = maximumWordCount.coerceAtLeast(normalizedMinimumWordCount)
+            ),
+            dedupeKey = "paper_select:${paper.id}",
             force = force
         )
     }
@@ -772,6 +840,9 @@ class BackgroundTaskManager @Inject constructor(
                 if (current?.status == BackgroundTaskStatus.RUNNING) {
                     repository.updateStatus(task.id, BackgroundTaskStatus.SUCCESS, null)
                     cancelManagedResume(task.id)
+                    repository.getTaskById(task.id)?.let { completed ->
+                        runCatching { createTaskNotification(completed, BackgroundTaskStatus.SUCCESS, null) }
+                    }
                 }
             } catch (e: CancellationException) {
                 val current = repository.getTaskById(task.id)
@@ -781,6 +852,9 @@ class BackgroundTaskManager @Inject constructor(
                 repository.updateStatus(task.id, BackgroundTaskStatus.CANCELED, "已停止")
             } catch (e: Exception) {
                 repository.updateStatus(task.id, BackgroundTaskStatus.FAILED, e.message ?: "任务失败")
+                repository.getTaskById(task.id)?.let { failed ->
+                    runCatching { createTaskNotification(failed, BackgroundTaskStatus.FAILED, e.message) }
+                }
                 // 托管模式：词池构建中止后定时自动续传（仅有续传进度时；缺配置类错误不反复重试）。
                 maybeScheduleManagedResume(task.id)
             } finally {
@@ -806,10 +880,77 @@ class BackgroundTaskManager @Inject constructor(
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> executeSourceVerify(task)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> executeWritingSampleSearch(task)
             BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> executeOnlineArticleScanScore(task)
+            BackgroundTaskType.ARTICLE_ADVANCED_SCORE -> executeArticleAdvancedScore(task)
+            BackgroundTaskType.AUTO_PAPER_SELECT -> executeAutoPaperSelect(task)
             BackgroundTaskType.APP_UPDATE_CHECK -> executeAppUpdateCheck(task)
             BackgroundTaskType.CLOUD_SYNC -> executeCloudSync(task)
             BackgroundTaskType.UNKNOWN -> throw IllegalStateException("未知任务类型")
         }
+    }
+
+    private suspend fun createTaskNotification(
+        task: BackgroundTask,
+        status: BackgroundTaskStatus,
+        error: String?
+    ) {
+        if (status != BackgroundTaskStatus.SUCCESS && status != BackgroundTaskStatus.FAILED) return
+        val success = status == BackgroundTaskStatus.SUCCESS
+        val (targetType, targetId, targetAux) = when (val payload = task.payload) {
+            is ExamPaperGeneratePayload -> Triple(AppNotificationTargetType.EXAM_PAPER, payload.paperId, null)
+            is AutoPaperSelectPayload -> Triple(AppNotificationTargetType.AUTO_PAPER, payload.paperId, null)
+            is QuestionAnswerGeneratePayload -> Triple(AppNotificationTargetType.QUESTION_GROUP, payload.groupId, null)
+            is QuestionSourceVerifyPayload -> Triple(AppNotificationTargetType.QUESTION_GROUP, payload.groupId, null)
+            is QuestionWritingSamplePayload -> Triple(AppNotificationTargetType.QUESTION_GROUP, payload.groupId, null)
+            is QuestionGeneratePayload -> Triple(AppNotificationTargetType.ARTICLE, payload.articleId, null)
+            is AppUpdateCheckPayload -> Triple(AppNotificationTargetType.SETTINGS, null, "updates")
+            is ArticleAdvancedScorePayload,
+            is OnlineArticleScanScorePayload -> Triple(AppNotificationTargetType.ARTICLE, null, null)
+            is SyncTaskPayload -> Triple(AppNotificationTargetType.SETTINGS, null, "cloud_sync")
+            else -> Triple(AppNotificationTargetType.BACKGROUND_TASKS, task.id, null)
+        }
+        val taskLabel = when (task.type) {
+            BackgroundTaskType.WORD_ORGANIZE -> "单词整理"
+            BackgroundTaskType.WORD_NOTE_ORGANIZE -> "关联词整理"
+            BackgroundTaskType.WORD_POOL_REBUILD -> "词池整理"
+            BackgroundTaskType.WORD_POOL_REVIEW -> "词池提纯"
+            BackgroundTaskType.WORD_PHRASE_ORGANIZE -> "短语整理"
+            BackgroundTaskType.QUESTION_GENERATE -> "文章出题"
+            BackgroundTaskType.EXAM_PAPER_GENERATE -> "整卷出题"
+            BackgroundTaskType.QUESTION_ANSWER_GENERATE -> "答案生成"
+            BackgroundTaskType.QUESTION_SOURCE_VERIFY -> "来源核验"
+            BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> "写作范文搜索"
+            BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> "全量文章评分"
+            BackgroundTaskType.ARTICLE_ADVANCED_SCORE -> "文章进阶评分"
+            BackgroundTaskType.AUTO_PAPER_SELECT -> "自动组卷"
+            BackgroundTaskType.APP_UPDATE_CHECK -> "更新检查"
+            BackgroundTaskType.CLOUD_SYNC -> "云同步"
+            BackgroundTaskType.UNKNOWN -> "后台任务"
+        }
+        val message = if (success) {
+            task.progressMessage?.takeIf { it.isNotBlank() } ?: "$taskLabel 已完成"
+        } else {
+            error?.takeIf { it.isNotBlank() } ?: task.errorMessage ?: "$taskLabel 执行失败"
+        }
+        notificationRepository.insert(
+            AppNotification(
+                uid = UUID.randomUUID().toString(),
+                eventKey = "task:${task.id}:${task.attempt}:${status.name}",
+                category = when {
+                    task.type == BackgroundTaskType.AUTO_PAPER_SELECT -> AppNotificationCategory.AUTO_PAPER
+                    success -> AppNotificationCategory.TASK_SUCCESS
+                    else -> AppNotificationCategory.TASK_FAILURE
+                },
+                title = if (success) "$taskLabel 已完成" else "$taskLabel 失败",
+                message = message,
+                targetType = targetType,
+                targetId = targetId,
+                targetAux = targetAux,
+                sourceTaskId = task.id,
+                sourceTaskType = task.type,
+                sourceTaskStatus = status,
+                createdAt = System.currentTimeMillis()
+            )
+        )
     }
 
     private suspend fun executeAppUpdateCheck(task: BackgroundTask) {
@@ -1269,7 +1410,10 @@ class BackgroundTaskManager @Inject constructor(
             ?: throw IllegalStateException("试卷不存在")
         val blueprint = ExamPaperBlueprint.forPaper(paper)
         val sources = questionBankRepository.getExamPaperSourcesOnce(paper.id)
-        if (!blueprint.isReady(sources.mapTo(mutableSetOf()) { it.slotKey })) {
+        if (sources.isEmpty()) {
+            throw IllegalStateException("试卷没有可用于出题的文章来源")
+        }
+        if (!payload.allowIncomplete && !blueprint.isReady(sources.mapTo(mutableSetOf()) { it.slotKey })) {
             throw IllegalStateException("试卷来源尚未凑齐")
         }
 
@@ -2079,6 +2223,266 @@ class BackgroundTaskManager @Inject constructor(
                 Log.w("BackgroundTaskManager", "Scan article failed: ${candidate.url}", e)
             }
         }
+
+        val advancedSettings = settingsDataStore.getAdvancedScoringSettings()
+        if (advancedSettings.enabled) {
+            enqueueArticleAdvancedScoring(
+                minimumBasicScore = advancedSettings.minimumBasicScore,
+                minimumWordCount = advancedSettings.minimumWordCount,
+                maximumWordCount = advancedSettings.maximumWordCount,
+                forceRefresh = payload.forceRefresh,
+                force = true
+            )
+        }
+    }
+
+    private suspend fun executeArticleAdvancedScore(task: BackgroundTask) {
+        val payload = task.payload as? ArticleAdvancedScorePayload
+            ?: throw IllegalStateException("任务参数缺失")
+        val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
+        if (config.apiKey.isBlank() || config.model.isBlank()) {
+            throw IllegalStateException("主模型未配置，无法执行文章进阶评分")
+        }
+        val articles = articleRepository.getEligibleArticlesForAdvancedScoring(
+            payload.minimumBasicScore,
+            payload.minimumWordCount,
+            payload.maximumWordCount
+        )
+        val total = (articles.size * ArticleAdvancedScoringTargets.all.size).coerceAtLeast(1)
+        val modelKey = "${config.providerName}|${config.baseUrl.trimEnd('/')}|${config.model}"
+        var processed = 0
+        var failed = 0
+        repository.updateProgress(task.id, 0, total, "待评分文章 ${articles.size} 篇")
+
+        for (article in articles) {
+            val existingByTarget = articleRepository.getAdvancedScoresForArticle(article.id)
+                .associateBy { it.targetKey }
+            val paragraphs = loadArticleParagraphs(article)
+            val articleText = buildArticleText(article, paragraphs)
+            for (target in ArticleAdvancedScoringTargets.all) {
+                val existing = existingByTarget[target.key]
+                val unchanged = existing != null &&
+                    existing.modelKey == modelKey &&
+                    existing.promptVersion == payload.promptVersion &&
+                    existing.basicScore == article.suitabilityScore &&
+                    existing.wordCount == article.wordCount
+                if (!payload.forceRefresh && unchanged) {
+                    processed += 1
+                    repository.updateProgress(task.id, processed, total, "${article.title} · ${target.displayName}（已评分）")
+                    continue
+                }
+                try {
+                    if (articleText.isBlank()) throw IllegalStateException("文章正文为空")
+                    val result = articleAiRepository.evaluateArticleForQuestionType(
+                        title = article.title,
+                        articleText = articleText,
+                        source = article.source,
+                        wordCount = article.wordCount,
+                        questionType = target.questionType.name,
+                        variant = target.variant,
+                        targetLabel = target.displayName,
+                        apiKey = config.apiKey,
+                        model = config.model,
+                        baseUrl = config.baseUrl,
+                        provider = config.provider
+                    )
+                    val now = System.currentTimeMillis()
+                    articleRepository.upsertAdvancedScore(
+                        ArticleAdvancedScore(
+                            id = existing?.id ?: 0L,
+                            articleId = article.id,
+                            articleUid = article.articleUid,
+                            questionType = target.questionType,
+                            variant = target.variant,
+                            score = result.score.coerceIn(0, 100),
+                            reason = result.reason,
+                            basicScore = article.suitabilityScore ?: 0,
+                            wordCount = article.wordCount,
+                            modelKey = modelKey,
+                            promptVersion = payload.promptVersion,
+                            scoredAt = now,
+                            updatedAt = now
+                        )
+                    )
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    failed += 1
+                    Log.w("BackgroundTaskManager", "Advanced score failed article=${article.id} target=${target.key}", error)
+                } finally {
+                    processed += 1
+                    repository.updateProgress(task.id, processed, total, "${article.title} · ${target.displayName}")
+                }
+            }
+        }
+        if (failed > 0) throw IllegalStateException("进阶评分完成，但有 $failed 项失败；重试将从已保存进度继续")
+        repository.updateProgress(task.id, total, total, "进阶评分完成：${articles.size} 篇文章")
+    }
+
+    private suspend fun executeAutoPaperSelect(task: BackgroundTask) {
+        val payload = task.payload as? AutoPaperSelectPayload
+            ?: throw IllegalStateException("任务参数缺失")
+        val paper = questionBankRepository.getExamPaperById(payload.paperId)
+            ?: throw IllegalStateException("试卷不存在")
+        val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
+        if (config.apiKey.isBlank() || config.model.isBlank()) {
+            throw IllegalStateException("主模型未配置，无法自动组卷")
+        }
+        val blueprint = ExamPaperBlueprint.forPaper(paper)
+        val startedAt = System.currentTimeMillis()
+        questionBankRepository.updateAutoPaperSelectionStatus(
+            paper.id, AutoPaperSelectionStatus.SELECTING, startedAt = startedAt
+        )
+        val usedArticleIds = questionBankRepository.getExamPaperSourcesOnce(paper.id)
+            .mapTo(mutableSetOf()) { it.articleId }
+        repository.updateProgress(task.id, 0, blueprint.slots.size, "开始自动组卷")
+        try {
+            blueprint.slots.forEachIndexed { index, slot ->
+                val previous = questionBankRepository.getExamPaperSlotSelectionsOnce(paper.id)
+                    .firstOrNull { it.slotKey == slot.key }
+                if (previous?.status == ExamPaperSlotSelectionStatus.SELECTED) {
+                    previous.articleId?.let(usedArticleIds::add)
+                    repository.updateProgress(task.id, index + 1, blueprint.slots.size, "${slot.sectionLabel}（已选择）")
+                    return@forEachIndexed
+                }
+                val now = System.currentTimeMillis()
+                questionBankRepository.upsertExamPaperSlotSelection(
+                    (previous ?: ExamPaperSlotSelection(
+                        examPaperId = paper.id,
+                        slotKey = slot.key,
+                        questionType = slot.questionType,
+                        variant = slot.variant,
+                        status = ExamPaperSlotSelectionStatus.PENDING,
+                        createdAt = now,
+                        updatedAt = now
+                    )).copy(status = ExamPaperSlotSelectionStatus.SELECTING, updatedAt = now, reason = null)
+                )
+                try {
+                    val candidates = articleRepository.getAdvancedScoreCandidates(
+                        slot.questionType, slot.variant, payload.minimumBasicScore,
+                        payload.minimumWordCount, payload.maximumWordCount
+                    ).filterNot { it.article.id in usedArticleIds }
+                    if (candidates.isEmpty()) {
+                        questionBankRepository.upsertExamPaperSlotSelection(
+                            (previous ?: ExamPaperSlotSelection(
+                                examPaperId = paper.id, slotKey = slot.key,
+                                questionType = slot.questionType, variant = slot.variant,
+                                status = ExamPaperSlotSelectionStatus.EMPTY,
+                                createdAt = now, updatedAt = now
+                            )).copy(
+                                status = ExamPaperSlotSelectionStatus.EMPTY,
+                                candidateCount = 0,
+                                reason = "没有满足阈值且已完成进阶评分的候选文章",
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        )
+                    } else {
+                        val selection = questionBankAiRepository.selectArticleForPaperSlot(
+                            paperTitle = paper.title,
+                            slotLabel = slot.sectionLabel,
+                            questionType = slot.questionType.name,
+                            variant = slot.variant,
+                            candidates = candidates.map {
+                                AutoPaperArticleCandidate(
+                                    articleId = it.article.id, title = it.article.title,
+                                    advancedScore = it.advancedScore.score,
+                                    scoreReason = it.advancedScore.reason,
+                                    basicScore = it.article.suitabilityScore ?: 0,
+                                    wordCount = it.article.wordCount
+                                )
+                            },
+                            apiKey = config.apiKey, model = config.model,
+                            baseUrl = config.baseUrl, provider = config.provider
+                        )
+                        val selected = selection.selectedArticleId?.let { id -> candidates.firstOrNull { it.article.id == id } }
+                        if (selected == null) {
+                            questionBankRepository.upsertExamPaperSlotSelection(
+                                (previous ?: ExamPaperSlotSelection(
+                                    examPaperId = paper.id, slotKey = slot.key,
+                                    questionType = slot.questionType, variant = slot.variant,
+                                    status = ExamPaperSlotSelectionStatus.EMPTY,
+                                    createdAt = now, updatedAt = now
+                                )).copy(
+                                    status = ExamPaperSlotSelectionStatus.EMPTY,
+                                    candidateCount = candidates.size,
+                                    reason = selection.reason.ifBlank { "出题 AI 认为当前候选均不合适" },
+                                    updatedAt = System.currentTimeMillis()
+                                )
+                            )
+                        } else {
+                            ensureArticleReadyForPaper(selected.article)
+                            val result = questionBankRepository.collectArticleForPaper(
+                                articleId = selected.article.id,
+                                dayKey = payload.dayKey,
+                                profile = paper.profile,
+                                specialQuestionType = paper.specialQuestionType,
+                                questionType = slot.questionType,
+                                variant = slot.variant
+                            )
+                            if (result is ExamPaperCollectionResult.TargetFull && selected.article.id !in usedArticleIds) {
+                                throw IllegalStateException("${slot.sectionLabel}槽位已被占用")
+                            }
+                            usedArticleIds += selected.article.id
+                            val saved = questionBankRepository.getExamPaperSlotSelectionsOnce(paper.id)
+                                .firstOrNull { it.slotKey == slot.key }
+                            if (saved != null) {
+                                questionBankRepository.upsertExamPaperSlotSelection(
+                                    saved.copy(
+                                        candidateCount = candidates.size,
+                                        reason = selection.reason,
+                                        selectedScore = selected.advancedScore.score,
+                                        updatedAt = System.currentTimeMillis()
+                                    )
+                                )
+                            }
+                        }
+                    }
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    questionBankRepository.upsertExamPaperSlotSelection(
+                        (previous ?: ExamPaperSlotSelection(
+                            examPaperId = paper.id, slotKey = slot.key,
+                            questionType = slot.questionType, variant = slot.variant,
+                            status = ExamPaperSlotSelectionStatus.FAILED,
+                            createdAt = now, updatedAt = now
+                        )).copy(
+                            status = ExamPaperSlotSelectionStatus.FAILED,
+                            reason = error.message ?: "自动选择失败",
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                    Log.w("BackgroundTaskManager", "Auto paper slot failed paper=${paper.id} slot=${slot.key}", error)
+                }
+                repository.updateProgress(task.id, index + 1, blueprint.slots.size, slot.sectionLabel)
+            }
+            questionBankRepository.updateAutoPaperSelectionStatus(
+                paper.id, AutoPaperSelectionStatus.COMPLETED, completedAt = System.currentTimeMillis()
+            )
+        } catch (error: Exception) {
+            questionBankRepository.updateAutoPaperSelectionStatus(
+                paper.id, AutoPaperSelectionStatus.FAILED,
+                error = error.message ?: "自动组卷失败", completedAt = System.currentTimeMillis()
+            )
+            throw error
+        }
+    }
+
+    private suspend fun loadArticleParagraphs(article: Article): List<ArticleParagraph> {
+        val stored = articleRepository.getParagraphs(article.id)
+        if (stored.isNotEmpty()) return stored
+        if (article.sourceTypeV2 != ArticleSourceTypeV2.ONLINE || article.domain.isBlank()) return emptyList()
+        val source = OnlineReadingCatalog.resolveSourceFromLabelOrUrl(article.source, article.domain)
+            ?: return emptyList()
+        return fetchOnlineArticleDetail(source, article.domain).paragraphs
+    }
+
+    private suspend fun ensureArticleReadyForPaper(article: Article) {
+        val stored = articleRepository.getParagraphs(article.id)
+        if (stored.isEmpty()) {
+            val fetched = loadArticleParagraphs(article)
+            if (fetched.isEmpty()) throw IllegalStateException("文章正文为空，无法加入试卷")
+            articleRepository.insertParagraphs(fetched.map { it.copy(id = 0, articleId = article.id) })
+        }
+        if (!article.isSaved) articleRepository.markArticleSaved(article.id)
     }
 
     private data class OnlineScanCandidate(

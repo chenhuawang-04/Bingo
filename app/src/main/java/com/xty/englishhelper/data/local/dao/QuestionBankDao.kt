@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperSourceEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperSlotSelectionEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperAnswerDraftEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperPracticeProgressEntity
 import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
@@ -42,6 +43,9 @@ interface QuestionBankDao {
 
     @Query("SELECT * FROM exam_papers WHERE day_key = :dayKey AND daily_sequence = :sequence LIMIT 1")
     suspend fun getExamPaperByDayAndSequence(dayKey: String, sequence: Int): ExamPaperEntity?
+
+    @Query("SELECT * FROM exam_papers WHERE day_key = :dayKey AND composition_mode = 'AUTOMATIC' ORDER BY daily_sequence DESC LIMIT 1")
+    suspend fun getLatestAutoPaperByDay(dayKey: String): ExamPaperEntity?
 
     @Query("""
         SELECT ep.*,
@@ -78,6 +82,26 @@ interface QuestionBankDao {
 
     @Query("UPDATE exam_papers SET special_question_type = :questionType, updated_at = :updatedAt WHERE id = :paperId AND status = 'COLLECTING'")
     suspend fun updateExamPaperSpecialQuestionType(paperId: Long, questionType: String, updatedAt: Long)
+
+    @Query(
+        """
+        UPDATE exam_papers
+        SET selection_status = :status,
+            selection_error = :error,
+            selection_started_at = COALESCE(:startedAt, selection_started_at),
+            selection_completed_at = COALESCE(:completedAt, selection_completed_at),
+            updated_at = :updatedAt
+        WHERE id = :paperId
+        """
+    )
+    suspend fun updateAutoPaperSelectionStatus(
+        paperId: Long,
+        status: String,
+        error: String?,
+        startedAt: Long?,
+        completedAt: Long?,
+        updatedAt: Long
+    )
 
     @Query("""
         SELECT MAX(ts) FROM (
@@ -200,6 +224,20 @@ interface QuestionBankDao {
         error: String?,
         updatedAt: Long
     )
+
+    // ── Automatic paper slot selection ──
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertExamPaperSlotSelection(selection: ExamPaperSlotSelectionEntity): Long
+
+    @Query("SELECT * FROM exam_paper_slot_selections WHERE exam_paper_id = :paperId ORDER BY id")
+    fun getExamPaperSlotSelections(paperId: Long): Flow<List<ExamPaperSlotSelectionEntity>>
+
+    @Query("SELECT * FROM exam_paper_slot_selections WHERE exam_paper_id = :paperId ORDER BY id")
+    suspend fun getExamPaperSlotSelectionsOnce(paperId: Long): List<ExamPaperSlotSelectionEntity>
+
+    @Query("SELECT * FROM exam_paper_slot_selections WHERE exam_paper_id = :paperId AND slot_key = :slotKey LIMIT 1")
+    suspend fun getExamPaperSlotSelection(paperId: Long, slotKey: String): ExamPaperSlotSelectionEntity?
 
     // ── QuestionGroupParagraph ──
 
@@ -399,6 +437,11 @@ data class ExamPaperWithProgress(
     val profile: String,
     val blueprint_version: Int,
     val special_question_type: String?,
+    val composition_mode: String,
+    val selection_status: String,
+    val selection_error: String?,
+    val selection_started_at: Long?,
+    val selection_completed_at: Long?,
     val generation_error: String?,
     val generation_started_at: Long?,
     val generation_completed_at: Long?,

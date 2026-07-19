@@ -8,6 +8,10 @@ import com.xty.englishhelper.domain.background.BackgroundTaskManager
 import com.xty.englishhelper.domain.model.Article
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
+import com.xty.englishhelper.domain.model.ArticleAdvancedScore
+import com.xty.englishhelper.domain.model.ExamPaperCollectionResult
+import com.xty.englishhelper.domain.model.ExamPaperProfile
+import com.xty.englishhelper.domain.model.ExamPaperBlueprint
 import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
@@ -15,6 +19,7 @@ import com.xty.englishhelper.domain.usecase.article.DeleteArticleUseCase
 import com.xty.englishhelper.domain.usecase.article.GetArticleListUseCase
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +47,8 @@ data class ArticleListUiState(
     val lengthFilter: ArticleLengthFilter = ArticleLengthFilter.ALL,
     val scoreFilter: ArticleScoreFilter = ArticleScoreFilter.ALL,
     val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT,
-    val scanTask: BackgroundTask? = null
+    val scanTask: BackgroundTask? = null,
+    val advancedScoresByArticle: Map<Long, List<ArticleAdvancedScore>> = emptyMap()
 )
 
 @HiltViewModel
@@ -54,7 +60,8 @@ class ArticleListViewModel @Inject constructor(
     private val articleAiRepository: ArticleAiRepository,
     private val settingsDataStore: SettingsDataStore,
     private val backgroundTaskRepository: BackgroundTaskRepository,
-    private val backgroundTaskManager: BackgroundTaskManager
+    private val backgroundTaskManager: BackgroundTaskManager,
+    private val questionBankRepository: QuestionBankRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ArticleListUiState())
@@ -64,6 +71,12 @@ class ArticleListViewModel @Inject constructor(
 
     init {
         // Cleanup old unsaved online articles on entry
+        viewModelScope.launch {
+            articleRepository.observeAllAdvancedScores().collect { scores ->
+                _uiState.update { it.copy(advancedScoresByArticle = scores.groupBy { score -> score.articleId }) }
+            }
+        }
+
         viewModelScope.launch {
             try {
                 val cutoff = System.currentTimeMillis() - java.util.concurrent.TimeUnit.DAYS.toMillis(7)
@@ -126,6 +139,25 @@ class ArticleListViewModel @Inject constructor(
                 listOf(BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE)
             ).collect { tasks ->
                 _uiState.update { it.copy(scanTask = tasks.maxByOrNull { t -> t.createdAt }) }
+            }
+        }
+    }
+
+    fun addAdvancedScoreToTodayPaper(articleId: Long, score: ArticleAdvancedScore) {
+        viewModelScope.launch {
+            val now = java.util.Calendar.getInstance()
+            val dayKey = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(now.time)
+            val profile = if (score.variant == "ENG2") ExamPaperProfile.ENGLISH_TWO else ExamPaperProfile.ENGLISH_ONE
+            val specialType = if (score.questionType in com.xty.englishhelper.domain.model.ArticleAdvancedScoringTargets.selectableSpecialTypes) {
+                score.questionType
+            } else {
+                ExamPaperBlueprint.rotatingSpecialType(now.get(java.util.Calendar.YEAR))
+            }
+            val result = questionBankRepository.collectArticleForPaper(
+                articleId, dayKey, profile, specialType, score.questionType, score.variant
+            )
+            if (result is ExamPaperCollectionResult.Added && result.becameReady) {
+                backgroundTaskManager.enqueueExamPaperGeneration(result.paper.id, result.paper.title)
             }
         }
     }

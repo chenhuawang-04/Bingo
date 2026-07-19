@@ -39,6 +39,16 @@ data class ExamPaperEntity(
     val blueprintVersion: Int = 1,
     @ColumnInfo(name = "special_question_type")
     val specialQuestionType: String? = null,
+    @ColumnInfo(name = "composition_mode", defaultValue = "MANUAL")
+    val compositionMode: String = "MANUAL",
+    @ColumnInfo(name = "selection_status", defaultValue = "NOT_STARTED")
+    val selectionStatus: String = "NOT_STARTED",
+    @ColumnInfo(name = "selection_error")
+    val selectionError: String? = null,
+    @ColumnInfo(name = "selection_started_at")
+    val selectionStartedAt: Long? = null,
+    @ColumnInfo(name = "selection_completed_at")
+    val selectionCompletedAt: Long? = null,
     @ColumnInfo(name = "generation_error")
     val generationError: String? = null,
     @ColumnInfo(name = "generation_started_at")

@@ -8,6 +8,8 @@ import com.xty.englishhelper.data.remote.ChatMessage
 import com.xty.englishhelper.domain.model.AiProvider
 import com.xty.englishhelper.domain.model.QuestionItem
 import com.xty.englishhelper.domain.repository.AnswerResult
+import com.xty.englishhelper.domain.repository.AutoPaperArticleCandidate
+import com.xty.englishhelper.domain.repository.AutoPaperArticleSelection
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.ScanResult
 import com.xty.englishhelper.domain.repository.ScannedQuestion
@@ -139,6 +141,68 @@ class QuestionBankAiRepositoryImpl @Inject constructor(
         val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
         val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
         return parseScanResult(responseText, unwrapEnabled, repairEnabled)
+    }
+
+    override suspend fun selectArticleForPaperSlot(
+        paperTitle: String,
+        slotLabel: String,
+        questionType: String,
+        variant: String?,
+        candidates: List<AutoPaperArticleCandidate>,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): AutoPaperArticleSelection {
+        if (candidates.isEmpty()) return AutoPaperArticleSelection(reason = "没有满足阈值的候选文章")
+        val prompt = buildString {
+            appendLine("你是考研英语出题模型的选材决策器。请为试卷槽位选择最值得实际出题的一篇文章。")
+            appendLine("可以拒绝全部候选。不要只机械选择最高分；结合标题、题型评分理由、基础评分和长度判断。")
+            appendLine("如果候选主题重复、明显不适合当前题型、信息不足或风险较高，请返回selectedArticleId=null。")
+            appendLine()
+            appendLine("试卷：$paperTitle")
+            appendLine("槽位：$slotLabel")
+            appendLine("题型：$questionType${variant?.let { "/$it" }.orEmpty()}")
+            appendLine("候选文章：")
+            candidates.forEach { candidate ->
+                appendLine(
+                    "- id=${candidate.articleId}; title=${candidate.title}; " +
+                        "advancedScore=${candidate.advancedScore}; basicScore=${candidate.basicScore}; " +
+                        "wordCount=${candidate.wordCount}; reason=${candidate.scoreReason.take(300)}"
+                )
+            }
+            appendLine()
+            appendLine("返回严格JSON，不要Markdown：")
+            appendLine("{\"selectedArticleId\":123,\"reason\":\"选择或拒绝的简短理由\"}")
+            appendLine("拒绝全部时selectedArticleId必须为null。只能返回列表中真实存在的id。")
+            append(Constants.JSON_STRICT_RULES)
+        }
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = prompt)),
+            maxTokens = 512
+        )
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        val cleaned = normalizeResponse(responseText, unwrapEnabled, repairEnabled)
+        val json = extractFirstJsonObject(cleaned) ?: cleaned.trim()
+        val parsed = runCatching {
+            moshi.adapter(AutoPaperArticleSelectionJson::class.java).lenient().fromJson(json)
+        }.getOrNull() ?: runCatching {
+            moshi.adapter(AutoPaperArticleSelectionJson::class.java).lenient()
+                .fromJson(removeTrailingCommas(json))
+        }.getOrNull()
+        val selectedId = parsed?.selectedArticleId?.takeIf { id -> candidates.any { it.articleId == id } }
+        return AutoPaperArticleSelection(
+            selectedArticleId = selectedId,
+            reason = parsed?.reason?.trim().orEmpty().ifBlank {
+                if (selectedId == null) "出题模型未选择候选文章" else "出题模型已选择文章"
+            }
+        )
     }
 
     override suspend fun verifySource(
@@ -1326,5 +1390,10 @@ private data class WritingPracticePhraseSelectionJson(
 
 private data class WritingPracticePhraseSelectionItemJson(
     val phraseId: Long? = null,
+    val reason: String? = null
+)
+
+private data class AutoPaperArticleSelectionJson(
+    val selectedArticleId: Long? = null,
     val reason: String? = null
 )

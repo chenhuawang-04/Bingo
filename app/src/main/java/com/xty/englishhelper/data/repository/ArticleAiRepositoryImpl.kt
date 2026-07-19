@@ -418,6 +418,72 @@ class ArticleAiRepositoryImpl @Inject constructor(
         return parseSuitability(responseText, unwrapEnabled, repairEnabled)
     }
 
+    override suspend fun evaluateArticleForQuestionType(
+        title: String,
+        articleText: String,
+        source: String?,
+        wordCount: Int,
+        questionType: String,
+        variant: String?,
+        targetLabel: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+        provider: AiProvider
+    ): ArticleSuitabilityResult {
+        val criteria = when (questionType) {
+            "READING_COMPREHENSION" -> "论证层次、细节密度、推理空间、作者态度和干扰项设计空间"
+            "CLOZE" -> "语篇连贯性、连接词、词汇搭配、语法线索和上下文可恢复性"
+            "TRANSLATION" -> if (variant == "ENG1") {
+                "适合抽取5个结构复杂但语义完整的长难句，句法层次和翻译价值"
+            } else {
+                "适合抽取一段约150词、逻辑完整且具有翻译价值的段落"
+            }
+            "PARAGRAPH_ORDER" -> "段落之间有清晰但非平凡的衔接线索，顺序可唯一恢复"
+            "SENTENCE_INSERTION" -> "段落中存在可移除的关键句，前后照应、代词和逻辑连接线索充分"
+            "COMMENT_OPINION_MATCH" -> "包含多个可区分主体或观点，观点边界清晰且具有匹配空间"
+            "SUBHEADING_MATCH" -> "段落主题相对独立、层次清楚，适合为多个段落匹配小标题"
+            "INFORMATION_MATCH" -> "包含多个信息块、人物或案例，细节可定位且不依赖外部背景"
+            "WRITING" -> if (variant == "SMALL") {
+                "能自然引出书信、通知、建议信等应用文情境，任务目的明确"
+            } else {
+                "能引出有争议但安全的社会现象、趋势或图表主题，便于展开论证"
+            }
+            else -> "结构完整、命题空间明确、答案可验证"
+        }
+        val prompt = buildString {
+            appendLine("你是考研英语命题专家。请只评估下列文章用于“$targetLabel”题型的适配度。")
+            appendLine("这不是通用文章质量评分；必须针对当前题型独立评分。同一文章会针对不同题型多次评分。")
+            appendLine()
+            appendLine("评分范围0-100，重点考察：$criteria。")
+            appendLine("同时检查：材料自足、主题安全、答案可唯一验证、长度可裁剪、不会严重依赖图片/网页交互/外部背景。")
+            appendLine("90-100：几乎可直接用于命题；75-89：适合，少量编辑即可；60-74：勉强可用；0-59：不建议。")
+            appendLine()
+            appendLine("文章标题：$title")
+            source?.takeIf { it.isNotBlank() }?.let { appendLine("来源：$it") }
+            appendLine("字数：$wordCount")
+            appendLine("题型：$targetLabel ($questionType${variant?.let { "/$it" }.orEmpty()})")
+            appendLine("文章内容：")
+            appendLine(articleText.trim().take(7000))
+            appendLine()
+            appendLine("返回严格JSON，不要Markdown：")
+            appendLine("{\"score\":85,\"reason\":\"用2-3句话说明适配优势、风险和必要编辑\"}")
+            append(Constants.JSON_STRICT_RULES)
+        }
+        val client = clientProvider.getClient(provider)
+        val responseText = client.sendMessage(
+            url = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            systemPrompt = null,
+            messages = listOf(ChatMessage(role = "user", content = prompt)),
+            maxTokens = 512
+        )
+        val unwrapEnabled = settingsDataStore.getAiResponseUnwrapEnabled()
+        val repairEnabled = settingsDataStore.getAiJsonRepairEnabled()
+        return parseSuitability(responseText, unwrapEnabled, repairEnabled)
+    }
+
     private fun <T> parseJsonPayload(
         responseText: String,
         clazz: Class<T>,

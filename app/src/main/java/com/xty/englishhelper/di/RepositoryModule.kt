@@ -18,6 +18,7 @@ import com.xty.englishhelper.data.repository.GuardianRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankAiRepositoryImpl
 import com.xty.englishhelper.data.repository.QuestionBankRepositoryImpl
 import com.xty.englishhelper.data.repository.PlanRepositoryImpl
+import com.xty.englishhelper.data.repository.NotificationRepositoryImpl
 import com.xty.englishhelper.data.repository.OedDictionaryRepositoryImpl
 import com.xty.englishhelper.data.repository.RoomTransactionRunner
 import com.xty.englishhelper.data.repository.StudyRepositoryImpl
@@ -44,6 +45,7 @@ import com.xty.englishhelper.domain.repository.GuardianRepository
 import com.xty.englishhelper.domain.repository.QuestionBankAiRepository
 import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.repository.PlanRepository
+import com.xty.englishhelper.domain.repository.NotificationRepository
 import com.xty.englishhelper.domain.repository.DictionaryImportExporter
 import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.StudyRepository
@@ -177,4 +179,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindPlanRepository(impl: PlanRepositoryImpl): PlanRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindNotificationRepository(impl: NotificationRepositoryImpl): NotificationRepository
 }

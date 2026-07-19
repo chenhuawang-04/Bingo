@@ -10,6 +10,12 @@ import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
+import com.xty.englishhelper.domain.repository.QuestionBankRepository
+import com.xty.englishhelper.domain.background.BackgroundTaskManager
+import com.xty.englishhelper.domain.model.ArticleAdvancedScore
+import com.xty.englishhelper.domain.model.ExamPaperBlueprint
+import com.xty.englishhelper.domain.model.ExamPaperCollectionResult
+import com.xty.englishhelper.domain.model.ExamPaperProfile
 import com.xty.englishhelper.domain.repository.AtlanticRepository
 import com.xty.englishhelper.domain.repository.CsMonitorRepository
 import com.xty.englishhelper.domain.repository.GuardianRepository
@@ -29,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -149,7 +156,9 @@ data class GuardianBrowseUiState(
     val filterEnabled: Boolean = false,
     val lengthFilter: ArticleLengthFilter = ArticleLengthFilter.ALL,
     val scoreFilter: ArticleScoreFilter = ArticleScoreFilter.ALL,
-    val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT
+    val sortOption: ArticleSortOption = ArticleSortOption.DEFAULT,
+    val articleIdsByUrl: Map<String, Long> = emptyMap(),
+    val advancedScoresByUrl: Map<String, List<ArticleAdvancedScore>> = emptyMap()
 )
 
 @HiltViewModel
@@ -159,7 +168,9 @@ class GuardianBrowseViewModel @Inject constructor(
     private val atlanticRepository: AtlanticRepository,
     private val settingsDataStore: SettingsDataStore,
     private val articleRepository: ArticleRepository,
-    private val articleAiRepository: ArticleAiRepository
+    private val articleAiRepository: ArticleAiRepository,
+    private val questionBankRepository: QuestionBankRepository,
+    private val backgroundTaskManager: BackgroundTaskManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GuardianBrowseUiState())
@@ -176,6 +187,22 @@ class GuardianBrowseViewModel @Inject constructor(
     )
 
     init {
+        viewModelScope.launch {
+            combine(
+                articleRepository.getAllArticles(),
+                articleRepository.observeAllAdvancedScores()
+            ) { articles, scores ->
+                val byId = articles.associateBy { it.id }
+                val idsByUrl = articles.filter { it.domain.isNotBlank() }.associate { it.domain to it.id }
+                val scoresByUrl = scores.groupBy { it.articleId }.mapNotNull { (articleId, values) ->
+                    byId[articleId]?.domain?.takeIf { it.isNotBlank() }?.let { it to values }
+                }.toMap()
+                idsByUrl to scoresByUrl
+            }.collect { (ids, scores) ->
+                _uiState.update { it.copy(articleIdsByUrl = ids, advancedScoresByUrl = scores) }
+            }
+        }
+
         viewModelScope.launch {
             articleRepository.getTopScoredOnlineArticles(5).collectLatest { articles ->
                 val topItems = articles.mapNotNull { article ->
@@ -217,6 +244,25 @@ class GuardianBrowseViewModel @Inject constructor(
                     sourceInitialized = true
                     applySource(source, forceReload = true)
                 }
+            }
+        }
+    }
+
+    fun addAdvancedScoreToTodayPaper(articleId: Long, score: ArticleAdvancedScore) {
+        viewModelScope.launch {
+            val now = java.util.Calendar.getInstance()
+            val dayKey = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(now.time)
+            val profile = if (score.variant == "ENG2") ExamPaperProfile.ENGLISH_TWO else ExamPaperProfile.ENGLISH_ONE
+            val specialType = if (score.questionType in com.xty.englishhelper.domain.model.ArticleAdvancedScoringTargets.selectableSpecialTypes) {
+                score.questionType
+            } else {
+                ExamPaperBlueprint.rotatingSpecialType(now.get(java.util.Calendar.YEAR))
+            }
+            val result = questionBankRepository.collectArticleForPaper(
+                articleId, dayKey, profile, specialType, score.questionType, score.variant
+            )
+            if (result is ExamPaperCollectionResult.Added && result.becameReady) {
+                backgroundTaskManager.enqueueExamPaperGeneration(result.paper.id, result.paper.title)
             }
         }
     }

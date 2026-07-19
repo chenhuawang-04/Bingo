@@ -95,6 +95,10 @@ class SettingsDataStore @Inject constructor(
         val BRAINSTORM_ACTIVE_RECALL = booleanPreferencesKey("brainstorm_active_recall")
         val STUDY_WORD_NOTE_ENABLED = booleanPreferencesKey("study_word_note_enabled")
         val SCAN_RESCORE_AFTER_HOURS = intPreferencesKey("scan_rescore_after_hours")
+        val ADVANCED_SCORING_ENABLED = booleanPreferencesKey("advanced_scoring_enabled")
+        val ADVANCED_SCORING_MIN_BASIC_SCORE = intPreferencesKey("advanced_scoring_min_basic_score")
+        val ADVANCED_SCORING_MIN_WORD_COUNT = intPreferencesKey("advanced_scoring_min_word_count")
+        val ADVANCED_SCORING_MAX_WORD_COUNT = intPreferencesKey("advanced_scoring_max_word_count")
         val APP_LOCALE = stringPreferencesKey("app_locale")
         private fun lastSelectedUnitIdsKey(dictionaryId: Long) =
             stringPreferencesKey("last_selected_unit_ids_$dictionaryId")
@@ -126,6 +130,13 @@ class SettingsDataStore @Inject constructor(
     data class ImageCompressionConfig(
         val enabled: Boolean,
         val targetBytes: Int
+    )
+
+    data class AdvancedScoringSettings(
+        val enabled: Boolean,
+        val minimumBasicScore: Int,
+        val minimumWordCount: Int,
+        val maximumWordCount: Int
     )
 
     private val defaultImageCompressionTargetBytes = 1_000_000
@@ -798,10 +809,50 @@ class SettingsDataStore @Inject constructor(
 
     val scanRescoreAfterHours: Flow<Int> = dataStore.data.map { (it[SCAN_RESCORE_AFTER_HOURS] ?: 24).coerceIn(1, 720) }
 
+    val advancedScoringEnabled: Flow<Boolean> = dataStore.data.map { it[ADVANCED_SCORING_ENABLED] ?: false }
+    val advancedScoringMinimumBasicScore: Flow<Int> = dataStore.data.map {
+        (it[ADVANCED_SCORING_MIN_BASIC_SCORE] ?: 75).coerceIn(0, 100)
+    }
+    val advancedScoringMinimumWordCount: Flow<Int> = dataStore.data.map {
+        (it[ADVANCED_SCORING_MIN_WORD_COUNT] ?: 300).coerceIn(50, 3000)
+    }
+    val advancedScoringMaximumWordCount: Flow<Int> = dataStore.data.map {
+        (it[ADVANCED_SCORING_MAX_WORD_COUNT] ?: 600).coerceIn(50, 3000)
+    }
+
     val appLocale: Flow<String> = dataStore.data.map { it[APP_LOCALE] ?: "system" }
 
     suspend fun setScanRescoreAfterHours(value: Int) {
         editSyncablePreferences { it[SCAN_RESCORE_AFTER_HOURS] = value.coerceIn(1, 720) }
+    }
+
+    suspend fun setAdvancedScoringEnabled(enabled: Boolean) {
+        editSyncablePreferences { it[ADVANCED_SCORING_ENABLED] = enabled }
+    }
+
+    suspend fun setAdvancedScoringMinimumBasicScore(value: Int) {
+        editSyncablePreferences { it[ADVANCED_SCORING_MIN_BASIC_SCORE] = value.coerceIn(0, 100) }
+    }
+
+    suspend fun setAdvancedScoringWordCountRange(minimum: Int, maximum: Int) {
+        val min = minimum.coerceIn(50, 3000)
+        val max = maximum.coerceIn(min, 3000)
+        editSyncablePreferences {
+            it[ADVANCED_SCORING_MIN_WORD_COUNT] = min
+            it[ADVANCED_SCORING_MAX_WORD_COUNT] = max
+        }
+    }
+
+    suspend fun getAdvancedScoringSettings(): AdvancedScoringSettings {
+        val prefs = dataStore.data.first()
+        val minimum = (prefs[ADVANCED_SCORING_MIN_WORD_COUNT] ?: 300).coerceIn(50, 3000)
+        val maximum = (prefs[ADVANCED_SCORING_MAX_WORD_COUNT] ?: 600).coerceIn(minimum, 3000)
+        return AdvancedScoringSettings(
+            enabled = prefs[ADVANCED_SCORING_ENABLED] ?: false,
+            minimumBasicScore = (prefs[ADVANCED_SCORING_MIN_BASIC_SCORE] ?: 75).coerceIn(0, 100),
+            minimumWordCount = minimum,
+            maximumWordCount = maximum
+        )
     }
 
     suspend fun setAppLocale(locale: String) {
@@ -1109,6 +1160,10 @@ class SettingsDataStore @Inject constructor(
         register(BRAINSTORM_ACTIVE_RECALL)
         register(STUDY_WORD_NOTE_ENABLED)
         register(SCAN_RESCORE_AFTER_HOURS)
+        register(ADVANCED_SCORING_ENABLED)
+        register(ADVANCED_SCORING_MIN_BASIC_SCORE)
+        register(ADVANCED_SCORING_MIN_WORD_COUNT)
+        register(ADVANCED_SCORING_MAX_WORD_COUNT)
         register(APP_LOCALE)
     }
 

@@ -4,6 +4,7 @@ import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.AppDatabase
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperSourceEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperSlotSelectionEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperAnswerDraftEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperPracticeProgressEntity
 import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
@@ -23,6 +24,11 @@ import com.xty.englishhelper.domain.model.ExamPaperSourceStatus
 import com.xty.englishhelper.domain.model.ExamPaperStatus
 import com.xty.englishhelper.domain.model.ExamPaperSummary
 import com.xty.englishhelper.domain.model.ExamPaperType
+import com.xty.englishhelper.domain.model.ExamPaperCompositionMode
+import com.xty.englishhelper.domain.model.AutoPaperSelectionStatus
+import com.xty.englishhelper.domain.model.ExamPaperSlotSelection
+import com.xty.englishhelper.domain.model.ExamPaperSlotSelectionStatus
+import com.xty.englishhelper.domain.model.ArticleAdvancedScoringTargets
 import com.xty.englishhelper.domain.model.ParagraphType
 import com.xty.englishhelper.domain.model.PracticeRecord
 import com.xty.englishhelper.domain.model.QuestionGroup
@@ -71,6 +77,57 @@ class QuestionBankRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteExamPaper(id: Long) = dao.deleteExamPaper(id)
+
+    override suspend fun createAutoExamPaper(
+        dayKey: String,
+        profile: ExamPaperProfile,
+        specialQuestionType: QuestionType
+    ): ExamPaper = database.withTransaction {
+        val year = dayKey.take(4).toIntOrNull()
+            ?: throw IllegalArgumentException("组卷日期无效")
+        require(specialQuestionType in ArticleAdvancedScoringTargets.selectableSpecialTypes) {
+            "不支持的新题型：${specialQuestionType.displayName}"
+        }
+        val now = System.currentTimeMillis()
+        val blueprint = ExamPaperBlueprint.forYear(year, profile, specialQuestionType)
+        val sequence = dao.getMaxComposedPaperSequenceByDay(dayKey) + 1
+        val paper = ExamPaper(
+            uid = UUID.randomUUID().toString(),
+            title = ExamPaperBlueprint.dailyPaperTitle(dayKey, sequence),
+            description = "考研${if (profile == ExamPaperProfile.ENGLISH_ONE) "英语一" else "英语二"}自动组卷",
+            createdAt = now,
+            updatedAt = now,
+            paperType = ExamPaperType.COMPOSED,
+            status = ExamPaperStatus.COLLECTING,
+            dayKey = dayKey,
+            dailySequence = sequence,
+            profile = profile,
+            blueprintVersion = blueprint.version,
+            specialQuestionType = specialQuestionType,
+            compositionMode = ExamPaperCompositionMode.AUTOMATIC,
+            selectionStatus = AutoPaperSelectionStatus.NOT_STARTED
+        )
+        val paperId = dao.insertExamPaper(paper.toEntity(now))
+        if (paperId <= 0L) throw IllegalStateException("自动组卷创建失败")
+        blueprint.slots.forEach { slot ->
+            dao.upsertExamPaperSlotSelection(
+                ExamPaperSlotSelectionEntity(
+                    examPaperId = paperId,
+                    slotKey = slot.key,
+                    questionType = slot.questionType.name,
+                    variant = slot.variant.orEmpty(),
+                    status = ExamPaperSlotSelectionStatus.PENDING.name,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+        }
+        dao.getExamPaperById(paperId)?.toDomain()
+            ?: throw IllegalStateException("自动组卷创建后无法读取")
+    }
+
+    override suspend fun getLatestAutoPaperByDay(dayKey: String): ExamPaper? =
+        dao.getLatestAutoPaperByDay(dayKey)?.toDomain()
 
     override suspend fun collectArticleForPaper(
         articleId: Long,
@@ -156,6 +213,31 @@ class QuestionBankRepositoryImpl @Inject constructor(
             if (sourceId <= 0L) {
                 throw IllegalStateException("文章槽位保存冲突，请重试")
             }
+            if (paper.compositionMode == ExamPaperCompositionMode.AUTOMATIC) {
+                val score = articleRepository.getAdvancedScoresForArticle(article.id)
+                    .firstOrNull {
+                        it.questionType == slot.questionType && it.variant.orEmpty() == slot.variant.orEmpty()
+                    }
+                val existingSelection = dao.getExamPaperSlotSelection(paper.id, slot.key)
+                dao.upsertExamPaperSlotSelection(
+                    ExamPaperSlotSelectionEntity(
+                        id = existingSelection?.id ?: 0L,
+                        examPaperId = paper.id,
+                        slotKey = slot.key,
+                        questionType = slot.questionType.name,
+                        variant = slot.variant.orEmpty(),
+                        status = ExamPaperSlotSelectionStatus.SELECTED.name,
+                        articleId = article.id,
+                        articleUid = article.articleUid,
+                        articleTitle = article.title,
+                        selectedScore = score?.score,
+                        candidateCount = existingSelection?.candidateCount ?: 0,
+                        reason = existingSelection?.reason,
+                        createdAt = existingSelection?.createdAt ?: now,
+                        updatedAt = now
+                    )
+                )
+            }
             val sources = dao.getExamPaperSourcesOnce(paper.id)
             val ready = blueprint.isReady(sources.mapTo(mutableSetOf()) { it.slotKey })
             if (ready) {
@@ -210,6 +292,30 @@ class QuestionBankRepositoryImpl @Inject constructor(
     ) {
         dao.updateExamPaperSourceStatus(sourceId, status.name, groupId, error, System.currentTimeMillis())
     }
+
+    override fun getExamPaperSlotSelections(paperId: Long): Flow<List<ExamPaperSlotSelection>> =
+        dao.getExamPaperSlotSelections(paperId).map { rows -> rows.map { it.toDomain() } }
+
+    override suspend fun getExamPaperSlotSelectionsOnce(paperId: Long): List<ExamPaperSlotSelection> =
+        dao.getExamPaperSlotSelectionsOnce(paperId).map { it.toDomain() }
+
+    override suspend fun upsertExamPaperSlotSelection(selection: ExamPaperSlotSelection): Long =
+        dao.upsertExamPaperSlotSelection(selection.toEntity())
+
+    override suspend fun updateAutoPaperSelectionStatus(
+        paperId: Long,
+        status: AutoPaperSelectionStatus,
+        error: String?,
+        startedAt: Long?,
+        completedAt: Long?
+    ) = dao.updateAutoPaperSelectionStatus(
+        paperId = paperId,
+        status = status.name,
+        error = error,
+        startedAt = startedAt,
+        completedAt = completedAt,
+        updatedAt = System.currentTimeMillis()
+    )
 
     // ── QuestionGroup ──
 
@@ -502,6 +608,13 @@ class QuestionBankRepositoryImpl @Inject constructor(
         profile = ExamPaperProfile.entries.find { it.name == profile } ?: ExamPaperProfile.ENGLISH_ONE,
         blueprintVersion = blueprintVersion,
         specialQuestionType = specialQuestionType?.let { name -> QuestionType.entries.find { it.name == name } },
+        compositionMode = ExamPaperCompositionMode.entries.find { it.name == compositionMode }
+            ?: ExamPaperCompositionMode.MANUAL,
+        selectionStatus = AutoPaperSelectionStatus.entries.find { it.name == selectionStatus }
+            ?: AutoPaperSelectionStatus.NOT_STARTED,
+        selectionError = selectionError,
+        selectionStartedAt = selectionStartedAt,
+        selectionCompletedAt = selectionCompletedAt,
         generationError = generationError,
         generationStartedAt = generationStartedAt,
         generationCompletedAt = generationCompletedAt
@@ -519,6 +632,11 @@ class QuestionBankRepositoryImpl @Inject constructor(
         profile = profile.name,
         blueprintVersion = blueprintVersion,
         specialQuestionType = specialQuestionType?.name,
+        compositionMode = compositionMode.name,
+        selectionStatus = selectionStatus.name,
+        selectionError = selectionError,
+        selectionStartedAt = selectionStartedAt,
+        selectionCompletedAt = selectionCompletedAt,
         generationError = generationError,
         generationStartedAt = generationStartedAt,
         generationCompletedAt = generationCompletedAt
@@ -539,6 +657,13 @@ class QuestionBankRepositoryImpl @Inject constructor(
         profile = ExamPaperProfile.entries.find { it.name == profile } ?: ExamPaperProfile.ENGLISH_ONE,
         blueprintVersion = blueprint_version,
         specialQuestionType = special_question_type?.let { name -> QuestionType.entries.find { it.name == name } },
+        compositionMode = ExamPaperCompositionMode.entries.find { it.name == composition_mode }
+            ?: ExamPaperCompositionMode.MANUAL,
+        selectionStatus = AutoPaperSelectionStatus.entries.find { it.name == selection_status }
+            ?: AutoPaperSelectionStatus.NOT_STARTED,
+        selectionError = selection_error,
+        selectionStartedAt = selection_started_at,
+        selectionCompletedAt = selection_completed_at,
         generationError = generation_error,
         generationStartedAt = generation_started_at,
         generationCompletedAt = generation_completed_at
@@ -558,6 +683,41 @@ class QuestionBankRepositoryImpl @Inject constructor(
         status = ExamPaperSourceStatus.entries.find { it.name == status } ?: ExamPaperSourceStatus.COLLECTED,
         questionGroupId = questionGroupId,
         errorMessage = errorMessage,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+
+    private fun ExamPaperSlotSelectionEntity.toDomain() = ExamPaperSlotSelection(
+        id = id,
+        examPaperId = examPaperId,
+        slotKey = slotKey,
+        questionType = QuestionType.entries.find { it.name == questionType } ?: QuestionType.NEW_TYPE,
+        variant = variant.takeIf { it.isNotBlank() },
+        status = ExamPaperSlotSelectionStatus.entries.find { it.name == status }
+            ?: ExamPaperSlotSelectionStatus.PENDING,
+        articleId = articleId,
+        articleUid = articleUid,
+        articleTitle = articleTitle,
+        selectedScore = selectedScore,
+        candidateCount = candidateCount,
+        reason = reason,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+
+    private fun ExamPaperSlotSelection.toEntity() = ExamPaperSlotSelectionEntity(
+        id = id,
+        examPaperId = examPaperId,
+        slotKey = slotKey,
+        questionType = questionType.name,
+        variant = variant.orEmpty(),
+        status = status.name,
+        articleId = articleId,
+        articleUid = articleUid,
+        articleTitle = articleTitle,
+        selectedScore = selectedScore,
+        candidateCount = candidateCount,
+        reason = reason,
         createdAt = createdAt,
         updatedAt = updatedAt
     )

@@ -51,6 +51,10 @@ data class SettingsUiState(
     val ttsPrewarmConcurrency: Int = 2,
     val ttsPrewarmRetry: Int = 2,
     val scanRescoreAfterHours: Int = 24,
+    val advancedScoringEnabled: Boolean = false,
+    val advancedScoringMinimumBasicScore: Int = 75,
+    val advancedScoringMinimumWordCount: Int = 300,
+    val advancedScoringMaximumWordCount: Int = 600,
     val cloudSync: CloudSyncState = CloudSyncState(),
     val appLocale: String = "system"
 )

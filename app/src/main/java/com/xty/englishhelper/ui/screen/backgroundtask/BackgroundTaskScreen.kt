@@ -416,6 +416,8 @@ private fun taskTitle(task: BackgroundTask): String {
         BackgroundTaskType.QUESTION_SOURCE_VERIFY -> stringResource(R.string.task_source_verify)
         BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> stringResource(R.string.task_writing_sample)
         BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> stringResource(R.string.task_online_scan)
+        BackgroundTaskType.ARTICLE_ADVANCED_SCORE -> stringResource(R.string.task_article_advanced_score)
+        BackgroundTaskType.AUTO_PAPER_SELECT -> stringResource(R.string.task_auto_paper_select)
         BackgroundTaskType.APP_UPDATE_CHECK -> stringResource(R.string.task_app_update_check)
         BackgroundTaskType.CLOUD_SYNC -> stringResource(R.string.task_cloud_sync)
         BackgroundTaskType.UNKNOWN -> stringResource(R.string.task_unknown)
@@ -457,6 +459,9 @@ private fun taskSubtitle(task: BackgroundTask): String {
                 append(payload.strategy)
             }
         }
+        is com.xty.englishhelper.domain.model.ArticleAdvancedScorePayload ->
+            "基础分≥${payload.minimumBasicScore} · ${payload.minimumWordCount}-${payload.maximumWordCount}词"
+        is com.xty.englishhelper.domain.model.AutoPaperSelectPayload -> payload.paperTitle
         is QuestionGeneratePayload -> buildString {
             if (payload.paperTitle.isNotBlank()) append(payload.paperTitle)
             if (payload.questionType.isNotBlank()) {

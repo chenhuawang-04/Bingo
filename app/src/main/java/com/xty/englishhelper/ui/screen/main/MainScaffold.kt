@@ -21,6 +21,7 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -42,6 +43,7 @@ import com.xty.englishhelper.ui.navigation.ArticleListRoute
 import com.xty.englishhelper.ui.navigation.ArticleReaderRoute
 import com.xty.englishhelper.ui.navigation.DictionaryRoute
 import com.xty.englishhelper.ui.navigation.HomeRoute
+import com.xty.englishhelper.ui.navigation.NotificationRoute
 import com.xty.englishhelper.ui.navigation.PlanRoute
 import com.xty.englishhelper.ui.navigation.QuestionBankListRoute
 import com.xty.englishhelper.ui.navigation.QuestionBankReaderRoute
@@ -51,6 +53,7 @@ import com.xty.englishhelper.ui.navigation.StudySetupRoute
 import com.xty.englishhelper.ui.navigation.UnitDetailRoute
 import com.xty.englishhelper.ui.navigation.WordDetailRoute
 import com.xty.englishhelper.ui.screen.dictionary.QuickDictionaryViewModel
+import com.xty.englishhelper.ui.screen.notification.NotificationViewModel
 
 private val DICTIONARY_TAB_ROUTES: Set<String> = setOf(
     HomeRoute::class,
@@ -88,6 +91,8 @@ fun MainScaffold(
 ) {
     var showQuickDictionary by rememberSaveable { mutableStateOf(false) }
     val quickDictionaryViewModel: QuickDictionaryViewModel = hiltViewModel()
+    val notificationViewModel: NotificationViewModel = hiltViewModel()
+    val notificationState by notificationViewModel.uiState.collectAsState()
     val topBarController = rememberAppTopBarController()
 
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
@@ -145,7 +150,9 @@ fun MainScaffold(
                 topBar = {
                     ManagedAppTopBar(
                         controller = topBarController,
-                        onQuickSearchClick = { showQuickDictionary = true }
+                        onQuickSearchClick = { showQuickDictionary = true },
+                        onNotificationsClick = { navController.navigate(NotificationRoute) },
+                        unreadNotificationCount = notificationState.unreadCount
                     )
                 },
                 bottomBar = {
@@ -193,7 +200,9 @@ fun MainScaffold(
                 topBar = {
                     ManagedAppTopBar(
                         controller = topBarController,
-                        onQuickSearchClick = { showQuickDictionary = true }
+                        onQuickSearchClick = { showQuickDictionary = true },
+                        onNotificationsClick = { navController.navigate(NotificationRoute) },
+                        unreadNotificationCount = notificationState.unreadCount
                     )
                 }
             ) { innerPadding ->

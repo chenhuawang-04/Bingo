@@ -4,6 +4,7 @@ import com.xty.englishhelper.data.local.dao.ArticleDao
 import com.xty.englishhelper.data.local.dao.ArticleCategoryDao
 import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
+import com.xty.englishhelper.data.local.entity.ArticleAdvancedScoreEntity
 import com.xty.englishhelper.data.local.entity.ArticleCategoryEntity
 import com.xty.englishhelper.data.local.entity.ArticleImageEntity
 import com.xty.englishhelper.data.local.entity.ArticleParagraphEntity
@@ -16,6 +17,8 @@ import com.xty.englishhelper.data.local.entity.WordExampleEntity
 import com.xty.englishhelper.data.mapper.parseInflections
 import com.xty.englishhelper.domain.article.OnlineArticleSourceUrl
 import com.xty.englishhelper.domain.model.Article
+import com.xty.englishhelper.domain.model.ArticleAdvancedScore
+import com.xty.englishhelper.domain.model.ArticleAdvancedScoreCandidate
 import com.xty.englishhelper.domain.model.ArticleCategory
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import com.xty.englishhelper.domain.model.ArticleParagraph
@@ -28,6 +31,7 @@ import com.xty.englishhelper.domain.model.ArticleWordStat
 import com.xty.englishhelper.domain.model.ParagraphType
 import com.xty.englishhelper.domain.model.WordExampleSourceType
 import com.xty.englishhelper.domain.model.QuickWordAnalysis
+import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.ParagraphAnalysisCacheData
 import com.xty.englishhelper.domain.repository.SentenceAnalysisCache
@@ -383,6 +387,52 @@ class ArticleRepositoryImpl @Inject constructor(
         return 1
     }
 
+    override suspend fun getEligibleArticlesForAdvancedScoring(
+        minimumBasicScore: Int,
+        minimumWordCount: Int,
+        maximumWordCount: Int
+    ): List<Article> = articleDao.getEligibleArticlesForAdvancedScoring(
+        minimumBasicScore,
+        minimumWordCount,
+        maximumWordCount
+    ).map { it.toDomain() }
+
+    override fun observeAllAdvancedScores(): Flow<List<ArticleAdvancedScore>> =
+        articleDao.observeAllAdvancedScores().map { rows -> rows.map { it.toDomain() } }
+
+    override suspend fun getAdvancedScoresForArticle(articleId: Long): List<ArticleAdvancedScore> =
+        articleDao.getAdvancedScoresForArticle(articleId).map { it.toDomain() }
+
+    override suspend fun getAdvancedScoreCandidates(
+        questionType: QuestionType,
+        variant: String?,
+        minimumBasicScore: Int,
+        minimumWordCount: Int,
+        maximumWordCount: Int
+    ): List<ArticleAdvancedScoreCandidate> {
+        val scores = articleDao.getAdvancedScoresForTarget(
+            questionType = questionType.name,
+            variant = variant.orEmpty(),
+            minimumBasicScore = minimumBasicScore,
+            minimumWordCount = minimumWordCount,
+            maximumWordCount = maximumWordCount
+        )
+        if (scores.isEmpty()) return emptyList()
+        val articles = articleDao.getArticlesByIds(scores.map { it.articleId }.distinct())
+            .associateBy { it.id }
+        return scores.mapNotNull { score ->
+            articles[score.articleId]?.let { article ->
+                ArticleAdvancedScoreCandidate(article.toDomain(), score.toDomain())
+            }
+        }
+    }
+
+    override suspend fun upsertAdvancedScore(score: ArticleAdvancedScore): Long =
+        articleDao.upsertAdvancedScore(score.toEntity())
+
+    override suspend fun deleteAdvancedScoresForArticle(articleId: Long) =
+        articleDao.deleteAdvancedScoresForArticle(articleId)
+
     private suspend fun findBestOnlineArticleBySourceUrl(sourceUrl: String): ArticleEntity? {
         val candidates = OnlineArticleSourceUrl.variants(sourceUrl)
         if (candidates.isEmpty()) return null
@@ -455,6 +505,39 @@ class ArticleRepositoryImpl @Inject constructor(
         suitabilityReason = suitabilityReason.ifBlank { null },
         suitabilityUpdatedAt = suitabilityUpdatedAt,
         suitabilityModel = suitabilityModel.ifBlank { null }
+    )
+
+    private fun ArticleAdvancedScoreEntity.toDomain() = ArticleAdvancedScore(
+        id = id,
+        articleId = articleId,
+        articleUid = articleUid,
+        questionType = runCatching { QuestionType.valueOf(questionType) }
+            .getOrDefault(QuestionType.READING_COMPREHENSION),
+        variant = variant.takeIf { it.isNotBlank() },
+        score = score,
+        reason = reason,
+        basicScore = basicScore,
+        wordCount = wordCount,
+        modelKey = modelKey,
+        promptVersion = promptVersion,
+        scoredAt = scoredAt,
+        updatedAt = updatedAt
+    )
+
+    private fun ArticleAdvancedScore.toEntity() = ArticleAdvancedScoreEntity(
+        id = id,
+        articleId = articleId,
+        articleUid = articleUid,
+        questionType = questionType.name,
+        variant = variant.orEmpty(),
+        score = score.coerceIn(0, 100),
+        reason = reason,
+        basicScore = basicScore.coerceIn(0, 100),
+        wordCount = wordCount.coerceAtLeast(0),
+        modelKey = modelKey,
+        promptVersion = promptVersion,
+        scoredAt = scoredAt,
+        updatedAt = updatedAt
     )
 
     private fun ArticleCategoryEntity.toDomain() = ArticleCategory(
@@ -559,4 +642,3 @@ class ArticleRepositoryImpl @Inject constructor(
         createdAt = createdAt
     )
 }
-
