@@ -107,6 +107,7 @@ private const val WORD_PHRASE_TAG_PROMPT_LIMIT = 80
 private const val APP_UPDATE_CHECK_DEDUPE_KEY = "system:app-update-check"
 private const val APP_UPDATE_CHECK_MAX_ATTEMPTS = 3
 private val APP_UPDATE_RETRY_DELAYS_MS = longArrayOf(1_000L, 3_000L)
+private val EXAM_PAPER_RETRY_DELAYS_MS = longArrayOf(1_000L, 3_000L)
 
 internal fun poolTaskMutexKey(task: BackgroundTask): PoolTaskMutexKey? {
     return when (task.type) {
@@ -1293,14 +1294,16 @@ class BackgroundTaskManager @Inject constructor(
                     val groupId = if (existingGroup != null) {
                         existingGroup.id
                     } else {
-                        val (_, group) = generateQuestionGroup(
-                            articleId = source.articleId,
-                            questionType = source.questionType,
-                            variant = source.variant,
-                            orderInPaper = source.orderInPaper,
-                            startQuestionNumber = source.startQuestionNumber,
-                            sectionLabelOverride = blueprint.slots.firstOrNull { it.key == source.slotKey }?.sectionLabel
-                        )
+                        val (_, group) = retryExamPaperStep {
+                            generateQuestionGroup(
+                                articleId = source.articleId,
+                                questionType = source.questionType,
+                                variant = source.variant,
+                                orderInPaper = source.orderInPaper,
+                                startQuestionNumber = source.startQuestionNumber,
+                                sectionLabelOverride = blueprint.slots.firstOrNull { it.key == source.slotKey }?.sectionLabel
+                            )
+                        }
                         questionBankRepository.saveGeneratedGroup(paper.id, source, group)
                     }
                     val savedGroup = questionBankRepository.getGroupById(groupId)
@@ -1312,7 +1315,7 @@ class BackgroundTaskManager @Inject constructor(
                             questionSnippet = savedGroup.items.firstOrNull()?.questionText?.take(300).orEmpty()
                         )
                     } else if (!savedGroup.hasAiAnswer) {
-                        generateAnswersForGroup(savedGroup.id)
+                        retryExamPaperStep { generateAnswersForGroup(savedGroup.id) }
                     }
                     questionBankRepository.updateExamPaperSourceStatus(
                         sourceId = source.id,
@@ -1447,6 +1450,23 @@ class BackgroundTaskManager @Inject constructor(
             }
         )
         return article to group
+    }
+
+    private suspend fun <T> retryExamPaperStep(block: suspend () -> T): T {
+        var lastError: Exception? = null
+        repeat(EXAM_PAPER_RETRY_DELAYS_MS.size + 1) { attempt ->
+            try {
+                return block()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                lastError = error
+                if (attempt < EXAM_PAPER_RETRY_DELAYS_MS.size) {
+                    delay(EXAM_PAPER_RETRY_DELAYS_MS[attempt])
+                }
+            }
+        }
+        throw lastError ?: IllegalStateException("整卷生成失败")
     }
 
     private fun renumberGeneratedPassage(
