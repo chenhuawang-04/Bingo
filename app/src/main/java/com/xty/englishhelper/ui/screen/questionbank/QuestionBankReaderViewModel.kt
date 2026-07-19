@@ -55,12 +55,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -121,6 +123,12 @@ data class ReaderUiState(
     val isScanningAnswers: Boolean = false,
     val isCompressingAnswers: Boolean = false,
     val isCompressingWriting: Boolean = false,
+    // Full-paper practice navigation
+    val paperId: Long = 0L,
+    val paperGroupIndex: Int = -1,
+    val paperGroupCount: Int = 0,
+    val previousGroupId: Long? = null,
+    val nextGroupId: Long? = null,
     // General
     val isLoading: Boolean = true,
     val error: String? = null
@@ -150,6 +158,7 @@ class QuestionBankReaderViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val groupId: Long = savedStateHandle["groupId"] ?: 0L
+    private val paperId: Long = savedStateHandle["paperId"] ?: 0L
     private val contentId: Long = questionBankContentId(groupId)
 
     private val _uiState = MutableStateFlow(ReaderUiState())
@@ -160,6 +169,7 @@ class QuestionBankReaderViewModel @Inject constructor(
 
     private var translationJob: Job? = null
     private var writingPracticeJob: Job? = null
+    private val draftSaveJobs = mutableMapOf<Long, Job>()
 
     init {
         observeTtsState()
@@ -187,6 +197,19 @@ class QuestionBankReaderViewModel @Inject constructor(
                 val linkedId = group.linkedArticleId
                 val paperTitle = group.examPaperTitle
                     ?: repository.getExamPaperById(group.examPaperId)?.title.orEmpty()
+                val paperGroups = if (paperId > 0L) {
+                    repository.getGroupsByPaper(paperId).first()
+                } else {
+                    emptyList()
+                }
+                val paperGroupIndex = paperGroups.indexOfFirst { it.id == groupId }
+                val paperDrafts = if (paperId > 0L) {
+                    repository.getExamPaperAnswerDrafts(paperId, groupId)
+                } else {
+                    emptyMap()
+                }
+                val paperGroupCompleted = paperId > 0L &&
+                    repository.isExamPaperGroupCompleted(paperId, groupId)
                 val sentenceOptions = if (
                     group.questionType == QuestionType.SENTENCE_INSERTION ||
                     group.questionType == QuestionType.COMMENT_OPINION_MATCH ||
@@ -207,6 +230,13 @@ class QuestionBankReaderViewModel @Inject constructor(
                         wrongItemIds = wrongIds,
                         sentenceInsertionOptions = sentenceOptions,
                         linkedArticleId = linkedId,
+                        selectedAnswers = paperDrafts,
+                        isSubmitted = paperGroupCompleted,
+                        paperId = paperId,
+                        paperGroupIndex = paperGroupIndex,
+                        paperGroupCount = paperGroups.size,
+                        previousGroupId = paperGroups.getOrNull(paperGroupIndex - 1)?.id,
+                        nextGroupId = paperGroups.getOrNull(paperGroupIndex + 1)?.id,
                         isLoading = false
                     )
                 }
@@ -606,6 +636,14 @@ class QuestionBankReaderViewModel @Inject constructor(
                 it.copy(selectedAnswers = it.selectedAnswers + (itemId to answer))
             }
         }
+        if (paperId > 0L) {
+            draftSaveJobs.remove(itemId)?.cancel()
+            draftSaveJobs[itemId] = viewModelScope.launch {
+                delay(250L)
+                repository.saveExamPaperAnswerDraft(paperId, itemId, answer)
+                draftSaveJobs.remove(itemId)
+            }
+        }
     }
 
     fun submitAnswers() {
@@ -655,6 +693,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                         )
                     )
                     repository.insertPracticeRecords(records)
+                    if (paperId > 0L) repository.markExamPaperGroupCompleted(paperId, groupId)
                     if (submitState.writingPracticeEnabled) {
                         wordPhraseRepository.incrementPracticeCounts(submitState.writingPracticePhrases.map { it.phraseId })
                     }
@@ -685,6 +724,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     if (records.isNotEmpty()) {
                         repository.insertPracticeRecords(records)
                     }
+                    if (paperId > 0L) repository.markExamPaperGroupCompleted(paperId, groupId)
                     _uiState.update {
                         it.copy(
                             isSubmitted = true,
@@ -732,6 +772,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                 if (records.isNotEmpty()) {
                     repository.insertPracticeRecords(records)
                 }
+                if (paperId > 0L) repository.markExamPaperGroupCompleted(paperId, groupId)
 
                 // Refresh wrong IDs and items
                 val wrongIds = repository.getWrongItemIds(groupId).toSet()
@@ -857,6 +898,11 @@ class QuestionBankReaderViewModel @Inject constructor(
     }
 
     fun retryPractice() {
+        if (paperId > 0L) {
+            viewModelScope.launch {
+                repository.resetExamPaperGroupProgress(paperId, groupId)
+            }
+        }
         _uiState.update {
             it.copy(
                 selectedAnswers = emptyMap(),

@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -49,6 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.QuestionGroup
+import com.xty.englishhelper.domain.model.ExamPaperStatus
+import com.xty.englishhelper.domain.model.ExamPaperSummary
+import com.xty.englishhelper.domain.model.ExamPaperType
 import com.xty.englishhelper.domain.model.QuestionType
 import com.xty.englishhelper.domain.model.SourceVerifyStatus
 import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
@@ -58,6 +63,7 @@ import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 fun QuestionBankListScreen(
     onScan: () -> Unit,
     onGroupClick: (groupId: Long) -> Unit,
+    onPaperClick: (paperId: Long) -> Unit,
     viewModel: QuestionBankListViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -89,7 +95,7 @@ fun QuestionBankListScreen(
             ) {
                 CircularProgressIndicator()
             }
-        } else if (state.groups.isEmpty()) {
+        } else if (state.papers.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
@@ -105,32 +111,19 @@ fun QuestionBankListScreen(
                 }
             }
         } else {
-            // Group by paper title
-            val grouped = state.groups.groupBy { it.examPaperTitle ?: stringResource(R.string.question_unnamed_paper) }
-
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                grouped.forEach { (paperTitle, groups) ->
-                    item(key = "header_$paperTitle") {
-                        Text(
-                            paperTitle,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                    }
-
-                    items(groups, key = { it.id }) { group ->
-                        QuestionGroupCard(
-                            group = group,
-                            isGeneratingAnswers = group.id in state.generatingGroupIds,
-                            onClick = { onGroupClick(group.id) },
-                            onLongClick = { viewModel.requestDelete(group.id) }
-                        )
-                    }
+                items(state.papers, key = { it.paper.id }) { summary ->
+                    ExamPaperCard(
+                        summary = summary,
+                        isGenerating = summary.paper.id in state.generatingPaperIds,
+                        onClick = { onPaperClick(summary.paper.id) },
+                        onLongClick = { viewModel.requestDeletePaper(summary.paper.id) },
+                        onRetry = { viewModel.retryPaper(summary.paper.id) }
+                    )
                 }
             }
         }
@@ -153,6 +146,96 @@ fun QuestionBankListScreen(
                 }
             }
         )
+    }
+
+    state.deleteConfirmPaperId?.let {
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelDeletePaper() },
+            title = { Text("删除整套试卷？") },
+            text = { Text("试卷中的全部题组、作答记录和组卷来源都会一并删除。") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmDeletePaper() }) {
+                    Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.cancelDeletePaper() }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ExamPaperCard(
+    summary: ExamPaperSummary,
+    isGenerating: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val paper = summary.paper
+    Card(
+        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(paper.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    paper.description?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Surface(
+                    color = if (paper.status == ExamPaperStatus.READY_TO_PRACTICE) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = when (paper.status) {
+                            ExamPaperStatus.COLLECTING -> "收集中"
+                            ExamPaperStatus.READY -> "待出题"
+                            ExamPaperStatus.GENERATING -> "出题中"
+                            ExamPaperStatus.READY_TO_PRACTICE -> "可练习"
+                            ExamPaperStatus.FAILED -> "出题失败"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (paper.paperType == ExamPaperType.COMPOSED) {
+                    Text("来源 ${summary.collectedSourceCount}/${summary.requiredSourceCount}", style = MaterialTheme.typography.bodySmall)
+                }
+                Text("题组 ${summary.generatedGroupCount}", style = MaterialTheme.typography.bodySmall)
+                Text("题目 ${paper.totalQuestions}", style = MaterialTheme.typography.bodySmall)
+                paper.specialQuestionType?.let {
+                    Text("新题型：${it.displayName}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (isGenerating || paper.status == ExamPaperStatus.GENERATING) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text("后台正在生成整卷，可继续使用应用", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            paper.generationError?.takeIf { paper.status == ExamPaperStatus.FAILED }?.let { error ->
+                Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = onRetry) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("继续未完成的出卷")
+                }
+            }
+            if (paper.status == ExamPaperStatus.READY_TO_PRACTICE) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text("点击查看并开始整卷练习", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
     }
 }
 

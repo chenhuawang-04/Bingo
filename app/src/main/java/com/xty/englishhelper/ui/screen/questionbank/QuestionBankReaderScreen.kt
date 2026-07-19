@@ -132,6 +132,7 @@ fun QuestionBankReaderScreen(
     onBack: () -> Unit,
     onWordClick: (wordId: Long, dictionaryId: Long) -> Unit,
     onViewArticle: ((articleId: Long) -> Unit)? = null,
+    onNavigatePaperGroup: ((groupId: Long, paperId: Long) -> Unit)? = null,
     viewModel: QuestionBankReaderViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -280,18 +281,57 @@ fun QuestionBankReaderScreen(
 
     Scaffold(
         bottomBar = {
-            if (ttsCurrent) {
-                TtsPlaybackBar(
-                    isSpeaking = state.ttsState.isSpeaking,
-                    currentIndex = state.ttsState.currentIndex,
-                    total = state.ttsState.total,
-                    followEnabled = followTts,
-                    onToggleFollow = { followTts = !followTts },
-                    onPlayPause = { viewModel.toggleSpeakArticle() },
-                    onPrev = { viewModel.previousParagraph() },
-                    onNext = { viewModel.nextParagraph() },
-                    onStop = { viewModel.stopSpeaking() }
-                )
+            if (ttsCurrent || state.paperId > 0L) {
+                Column {
+                    if (state.paperId > 0L) {
+                        Surface(tonalElevation = 3.dp) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    enabled = state.previousGroupId != null,
+                                    onClick = {
+                                        state.previousGroupId?.let { onNavigatePaperGroup?.invoke(it, state.paperId) }
+                                    }
+                                ) { Text("上一部分") }
+                                Text(
+                                    "${state.paperGroupIndex + 1}/${state.paperGroupCount}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.weight(1f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                Button(
+                                    enabled = state.isSubmitted,
+                                    onClick = {
+                                        val nextId = state.nextGroupId
+                                        if (nextId != null) {
+                                            onNavigatePaperGroup?.invoke(nextId, state.paperId)
+                                        } else {
+                                            onBack()
+                                        }
+                                    }
+                                ) {
+                                    Text(if (state.nextGroupId == null) "完成整卷" else "下一部分")
+                                }
+                            }
+                        }
+                    }
+                    if (ttsCurrent) {
+                        TtsPlaybackBar(
+                            isSpeaking = state.ttsState.isSpeaking,
+                            currentIndex = state.ttsState.currentIndex,
+                            total = state.ttsState.total,
+                            followEnabled = followTts,
+                            onToggleFollow = { followTts = !followTts },
+                            onPlayPause = { viewModel.toggleSpeakArticle() },
+                            onPrev = { viewModel.previousParagraph() },
+                            onNext = { viewModel.nextParagraph() },
+                            onStop = { viewModel.stopSpeaking() }
+                        )
+                    }
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }

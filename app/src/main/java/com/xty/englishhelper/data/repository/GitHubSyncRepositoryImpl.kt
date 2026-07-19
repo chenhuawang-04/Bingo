@@ -15,6 +15,8 @@ import com.xty.englishhelper.data.json.DictionaryJsonModel
 import com.xty.englishhelper.data.json.DictionaryShardChunkJsonModel
 import com.xty.englishhelper.data.json.DictionaryShardIndexJsonModel
 import com.xty.englishhelper.data.json.ExamPaperJson
+import com.xty.englishhelper.data.json.ExamPaperSourceJson
+import com.xty.englishhelper.data.json.ExamPaperAnswerDraftJson
 import com.xty.englishhelper.data.json.InflectionJsonModel
 import com.xty.englishhelper.data.json.ParagraphJson
 import com.xty.englishhelper.data.json.PlanDayRecordJsonModel
@@ -43,6 +45,9 @@ import com.xty.englishhelper.data.local.dao.QuestionBankDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperSourceEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperAnswerDraftEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperPracticeProgressEntity
 import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
 import com.xty.englishhelper.data.local.entity.QuestionGroupEntity
 import com.xty.englishhelper.data.local.entity.QuestionGroupParagraphEntity
@@ -2105,6 +2110,10 @@ class GitHubSyncRepositoryImpl @Inject constructor(
         val papers = questionBankDao.getAllExamPapers().first()
         val paperJsons = papers.map { paper ->
             val groups = questionBankDao.getGroupsByPaperOnce(paper.id)
+            val groupUidById = groups.associate { it.id to it.uid }
+            val sources = questionBankDao.getExamPaperSourcesOnce(paper.id)
+            val answerDrafts = questionBankDao.getExamPaperAnswerDraftExportRows(paper.id)
+            val completedGroupUids = questionBankDao.getCompletedExamPaperGroupUids(paper.id)
             val groupJsons = groups.map { group ->
                 val paragraphs = questionBankDao.getParagraphs(group.id)
                 val items = questionBankDao.getItemsByGroup(group.id)
@@ -2189,18 +2198,53 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                 totalQuestions = paper.totalQuestions,
                 createdAt = paper.createdAt,
                 updatedAt = paper.updatedAt,
+                paperType = paper.paperType,
+                status = paper.status,
+                dayKey = paper.dayKey,
+                dailySequence = paper.dailySequence,
+                profile = paper.profile,
+                blueprintVersion = paper.blueprintVersion,
+                specialQuestionType = paper.specialQuestionType,
+                generationError = paper.generationError,
+                generationStartedAt = paper.generationStartedAt,
+                generationCompletedAt = paper.generationCompletedAt,
+                sources = sources.map { source ->
+                    ExamPaperSourceJson(
+                        uid = source.uid,
+                        articleUid = source.articleUid.ifBlank { articleIdToUid[source.articleId].orEmpty() },
+                        slotKey = source.slotKey,
+                        questionType = source.questionType,
+                        variant = source.variant,
+                        orderInPaper = source.orderInPaper,
+                        startQuestionNumber = source.startQuestionNumber,
+                        status = source.status,
+                        questionGroupUid = source.questionGroupId?.let(groupUidById::get),
+                        errorMessage = source.errorMessage,
+                        createdAt = source.createdAt,
+                        updatedAt = source.updatedAt
+                    )
+                },
+                answerDrafts = answerDrafts.map { draft ->
+                    ExamPaperAnswerDraftJson(
+                        groupUid = draft.group_uid,
+                        questionNumber = draft.question_number,
+                        userAnswer = draft.user_answer,
+                        updatedAt = draft.updated_at
+                    )
+                },
+                completedGroupUids = completedGroupUids,
                 groups = groupJsons
             )
         }
 
-        return QuestionBankExportModel(schemaVersion = 1, papers = paperJsons)
+        return QuestionBankExportModel(schemaVersion = 2, papers = paperJsons)
     }
 
     private suspend fun importQuestionBank(
         model: QuestionBankExportModel,
         articleUidToId: Map<String, Long>
     ) {
-        if (model.schemaVersion > 1) {
+        if (model.schemaVersion > 2) {
             throw IllegalStateException("Unsupported question bank schema version: ${model.schemaVersion}, please upgrade the app")
         }
         transactionRunner.runInTransaction {
@@ -2212,14 +2256,27 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                     description = paperJson.description,
                     totalQuestions = paperJson.totalQuestions,
                     createdAt = paperJson.createdAt,
-                    updatedAt = paperJson.updatedAt
+                    updatedAt = paperJson.updatedAt,
+                    paperType = paperJson.paperType,
+                    status = paperJson.status,
+                    dayKey = paperJson.dayKey,
+                    dailySequence = paperJson.dailySequence,
+                    profile = paperJson.profile,
+                    blueprintVersion = paperJson.blueprintVersion,
+                    specialQuestionType = paperJson.specialQuestionType,
+                    generationError = paperJson.generationError,
+                    generationStartedAt = paperJson.generationStartedAt,
+                    generationCompletedAt = paperJson.generationCompletedAt
                 )
             )
 
+            val importedGroupIdsByUid = mutableMapOf<String, Long>()
+            val importedItemIdsByGroupAndNumber = mutableMapOf<Pair<String, Int>, Long>()
             for (groupJson in paperJson.groups) {
+                val importedGroupUid = groupJson.uid.ifBlank { UUID.randomUUID().toString() }
                 val groupId = questionBankDao.insertQuestionGroup(
                     QuestionGroupEntity(
-                        uid = groupJson.uid.ifBlank { UUID.randomUUID().toString() },
+                        uid = importedGroupUid,
                         examPaperId = paperId,
                         questionType = groupJson.questionType,
                         sectionLabel = groupJson.sectionLabel,
@@ -2240,6 +2297,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                         updatedAt = groupJson.updatedAt
                     )
                 )
+                importedGroupIdsByUid[importedGroupUid] = groupId
 
                 // Insert paragraphs
                 if (groupJson.paragraphs.isNotEmpty()) {
@@ -2281,6 +2339,7 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                             sampleSourceInfo = itemJson.sampleSourceInfo
                         )
                     )
+                    importedItemIdsByGroupAndNumber[importedGroupUid to itemJson.questionNumber] = itemId
 
                     // Insert practice records
                     if (itemJson.practiceRecords.isNotEmpty()) {
@@ -2306,6 +2365,54 @@ class GitHubSyncRepositoryImpl @Inject constructor(
                             linkedArticleId = linkedArticleId,
                             linkedArticleUid = groupJson.linkedArticleUid,
                             verifiedAt = groupJson.updatedAt
+                        )
+                    )
+                }
+            }
+
+            if (model.schemaVersion >= 2) {
+                paperJson.sources.forEach { source ->
+                    val articleId = articleUidToId[source.articleUid] ?: 0L
+                    questionBankDao.insertExamPaperSource(
+                        ExamPaperSourceEntity(
+                            uid = source.uid.ifBlank { UUID.randomUUID().toString() },
+                            examPaperId = paperId,
+                            articleId = articleId,
+                            articleUid = source.articleUid,
+                            slotKey = source.slotKey,
+                            questionType = source.questionType,
+                            variant = source.variant,
+                            orderInPaper = source.orderInPaper,
+                            startQuestionNumber = source.startQuestionNumber,
+                            status = source.status,
+                            questionGroupId = source.questionGroupUid?.let(importedGroupIdsByUid::get),
+                            errorMessage = source.errorMessage,
+                            createdAt = source.createdAt,
+                            updatedAt = source.updatedAt
+                        )
+                    )
+                }
+                paperJson.answerDrafts.forEach { draft ->
+                    val itemId = importedItemIdsByGroupAndNumber[draft.groupUid to draft.questionNumber]
+                        ?: return@forEach
+                    questionBankDao.upsertExamPaperAnswerDraft(
+                        ExamPaperAnswerDraftEntity(
+                            examPaperId = paperId,
+                            questionItemId = itemId,
+                            userAnswer = draft.userAnswer,
+                            updatedAt = draft.updatedAt
+                        )
+                    )
+                }
+                paperJson.completedGroupUids.forEach { groupUid ->
+                    val groupId = importedGroupIdsByUid[groupUid] ?: return@forEach
+                    val timestamp = paperJson.updatedAt
+                    questionBankDao.upsertExamPaperPracticeProgress(
+                        ExamPaperPracticeProgressEntity(
+                            examPaperId = paperId,
+                            questionGroupId = groupId,
+                            submittedAt = timestamp,
+                            updatedAt = timestamp
                         )
                     )
                 }
@@ -2361,6 +2468,12 @@ class GitHubSyncRepositoryImpl @Inject constructor(
 
     private fun cloudEffectiveUpdatedAt(paper: ExamPaperJson): Long {
         var max = paper.updatedAt
+        for (source in paper.sources) {
+            if (source.updatedAt > max) max = source.updatedAt
+        }
+        for (draft in paper.answerDrafts) {
+            if (draft.updatedAt > max) max = draft.updatedAt
+        }
         for (group in paper.groups) {
             if (group.updatedAt > max) max = group.updatedAt
             for (item in group.items) {

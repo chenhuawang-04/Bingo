@@ -24,6 +24,8 @@ import com.xty.englishhelper.domain.model.SentenceAnalysisResult
 import com.xty.englishhelper.domain.model.TtsState
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.QuestionType
+import com.xty.englishhelper.domain.model.ExamPaperCollectionResult
+import com.xty.englishhelper.domain.model.ExamPaperProfile
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
@@ -34,6 +36,7 @@ import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.DictionaryRepository
 import com.xty.englishhelper.domain.repository.UnitRepository
+import com.xty.englishhelper.domain.repository.QuestionBankRepository
 import com.xty.englishhelper.domain.usecase.article.AnalyzeParagraphUseCase
 import com.xty.englishhelper.domain.usecase.article.AnalyzeSentenceUseCase
 import com.xty.englishhelper.domain.usecase.article.GetArticleDetailUseCase
@@ -86,6 +89,7 @@ data class ArticleReaderUiState(
     val sentenceAnalysis: Map<Long, SentenceAnalysisResult> = emptyMap(),
     val isAnalyzing: Long = 0L,
     val isGeneratingQuestions: Boolean = false,
+    val isAddingToPaper: Boolean = false,
     val generateError: String? = null
 )
 
@@ -106,6 +110,7 @@ class ArticleReaderViewModel @Inject constructor(
     private val backgroundOrganizeManager: BackgroundOrganizeManager,
     private val settingsDataStore: SettingsDataStore,
     private val repository: ArticleRepository,
+    private val questionBankRepository: QuestionBankRepository,
     private val backgroundTaskRepository: BackgroundTaskRepository,
     private val ttsManager: TtsManager,
     private val backgroundTaskManager: BackgroundTaskManager,
@@ -837,6 +842,80 @@ class ArticleReaderViewModel @Inject constructor(
         }
     }
 
+    fun addToExamPaper(
+        profile: ExamPaperProfile,
+        questionType: QuestionType,
+        variant: String?
+    ) {
+        val state = _uiState.value
+        if (state.isAddingToPaper || state.isGeneratingQuestions) return
+        val article = state.article ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAddingToPaper = true, generateError = null) }
+            try {
+                val needsLocalSave = !article.isSaved
+                if (needsLocalSave) {
+                    repository.markArticleSaved(article.id)
+                }
+                val needsParse = needsLocalSave || repository.getParagraphs(article.id).isEmpty()
+                if (needsParse) {
+                    withContext(Dispatchers.IO) {
+                        parseArticle(article.id)
+                    }
+                }
+                val dayKey = java.text.SimpleDateFormat(
+                    "yyyy-MM-dd",
+                    java.util.Locale.getDefault()
+                ).format(java.util.Date())
+                when (val result = questionBankRepository.collectArticleForPaper(
+                    articleId = article.id,
+                    dayKey = dayKey,
+                    profile = profile,
+                    questionType = questionType,
+                    variant = variant
+                )) {
+                    is ExamPaperCollectionResult.Added -> {
+                        if (result.becameReady) {
+                            backgroundTaskManager.enqueueExamPaperGeneration(
+                                paperId = result.paper.id,
+                                paperTitle = result.paper.title,
+                                force = false
+                            )
+                            _generateMessage.emit(
+                                "已加入 ${result.paper.title}，来源已凑齐，正在后台自动出整卷"
+                            )
+                        } else {
+                            _generateMessage.emit(
+                                "已加入 ${result.paper.title}：${result.collectedCount}/${result.requiredCount} 篇"
+                            )
+                        }
+                    }
+                    is ExamPaperCollectionResult.Duplicate -> {
+                        _generateMessage.emit("这篇文章已加入 ${result.paper.title} 的同一题型")
+                    }
+                    is ExamPaperCollectionResult.TargetFull -> {
+                        _generateMessage.emit("${result.paper.title} 的该题型来源已满，请选择尚未凑齐的题型")
+                    }
+                }
+                _uiState.update {
+                    it.copy(
+                        isAddingToPaper = false,
+                        article = it.article?.copy(isSaved = true)
+                    )
+                }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isAddingToPaper = false,
+                        generateError = "组卷失败：${error.message ?: "未知错误"}"
+                    )
+                }
+            }
+        }
+    }
+
     private fun buildArticleText(article: Article, paragraphs: List<ArticleParagraph>): String {
         val text = if (paragraphs.isNotEmpty()) {
             paragraphs
@@ -865,4 +944,3 @@ class ArticleReaderViewModel @Inject constructor(
         _uiState.update { it.copy(analyzeError = null, generateError = null) }
     }
 }
-

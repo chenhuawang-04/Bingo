@@ -45,6 +45,7 @@ internal fun BackgroundTask.resourceDemand(): TaskResourceDemand = when (type) {
     BackgroundTaskType.WORD_ORGANIZE,
     BackgroundTaskType.WORD_NOTE_ORGANIZE,
     BackgroundTaskType.QUESTION_GENERATE,
+    BackgroundTaskType.EXAM_PAPER_GENERATE,
     BackgroundTaskType.QUESTION_ANSWER_GENERATE,
     BackgroundTaskType.QUESTION_SOURCE_VERIFY,
     BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> TaskResourceDemand(

@@ -76,6 +76,12 @@ data class QuestionGeneratePayload(
 ) : BackgroundTaskPayload
 
 @Serializable
+data class ExamPaperGeneratePayload(
+    val paperId: Long,
+    val paperTitle: String = ""
+) : BackgroundTaskPayload
+
+@Serializable
 data class QuestionAnswerGeneratePayload(
     val groupId: Long,
     val paperTitle: String = "",

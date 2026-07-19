@@ -23,6 +23,7 @@ enum class BackgroundTaskType {
     WORD_POOL_REVIEW,
     WORD_PHRASE_ORGANIZE,
     QUESTION_GENERATE,
+    EXAM_PAPER_GENERATE,
     QUESTION_ANSWER_GENERATE,
     QUESTION_SOURCE_VERIFY,
     QUESTION_WRITING_SAMPLE_SEARCH,
@@ -55,6 +56,7 @@ val BackgroundTaskType.priority: BackgroundTaskPriority
         BackgroundTaskType.WORD_ORGANIZE,
         BackgroundTaskType.WORD_NOTE_ORGANIZE,
         BackgroundTaskType.QUESTION_GENERATE,
+        BackgroundTaskType.EXAM_PAPER_GENERATE,
         BackgroundTaskType.QUESTION_ANSWER_GENERATE,
         BackgroundTaskType.QUESTION_SOURCE_VERIFY,
         BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> BackgroundTaskPriority.USER_INITIATED
@@ -79,5 +81,4 @@ enum class RebuildMode {
     FULL,        // Delete all existing data, rebuild from scratch
     INCREMENTAL  // Resume from last progress, keep existing pools during rebuild
 }
-
 

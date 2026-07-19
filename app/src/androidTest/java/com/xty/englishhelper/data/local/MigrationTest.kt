@@ -25,6 +25,32 @@ class MigrationTest {
     )
 
     @Test
+    fun migrate37To38_addsRecoverableExamPaperCompositionState() {
+        val db = helper.createDatabase(testDbName, 37)
+        db.execSQL(
+            "INSERT INTO exam_papers (id, uid, title, description, total_questions, created_at, updated_at) " +
+                "VALUES (1, 'legacy-paper', 'Legacy', NULL, 5, 10, 20)"
+        )
+        db.close()
+
+        val migrated = helper.runMigrationsAndValidate(testDbName, 38, true, AppDatabase.MIGRATION_37_38)
+        migrated.query(
+            "SELECT paper_type, status, profile, blueprint_version FROM exam_papers WHERE id = 1"
+        ).use {
+            assertTrue(it.moveToFirst())
+            assertEquals("IMPORTED", it.getString(0))
+            assertEquals("READY_TO_PRACTICE", it.getString(1))
+            assertEquals("ENGLISH_ONE", it.getString(2))
+            assertEquals(1, it.getInt(3))
+        }
+        migrated.query("SELECT COUNT(*) FROM exam_paper_sources").use {
+            assertTrue(it.moveToFirst())
+            assertEquals(0, it.getInt(0))
+        }
+        migrated.close()
+    }
+
+    @Test
     fun migrate36To37_createsWordClusterTablesAndCascadesMembership() {
         val db = helper.createDatabase(testDbName, 36)
         val now = System.currentTimeMillis()

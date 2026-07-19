@@ -7,6 +7,9 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperSourceEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperAnswerDraftEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperPracticeProgressEntity
 import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
 import com.xty.englishhelper.data.local.entity.QuestionGroupEntity
 import com.xty.englishhelper.data.local.entity.QuestionGroupParagraphEntity
@@ -31,11 +34,44 @@ interface QuestionBankDao {
     @Query("SELECT * FROM exam_papers WHERE id = :id")
     suspend fun getExamPaperById(id: Long): ExamPaperEntity?
 
+    @Query("SELECT * FROM exam_papers WHERE day_key = :dayKey AND profile = :profile AND status = 'COLLECTING' ORDER BY daily_sequence DESC LIMIT 1")
+    suspend fun getCollectingPaperByDay(dayKey: String, profile: String): ExamPaperEntity?
+
+    @Query("SELECT COUNT(*) FROM exam_papers WHERE day_key = :dayKey AND paper_type = 'COMPOSED'")
+    suspend fun getComposedPaperCountByDay(dayKey: String): Int
+
+    @Query("""
+        SELECT ep.*,
+            (SELECT COUNT(*) FROM exam_paper_sources eps WHERE eps.exam_paper_id = ep.id) AS collected_source_count,
+            (SELECT COUNT(*) FROM question_groups qg WHERE qg.exam_paper_id = ep.id) AS generated_group_count
+        FROM exam_papers ep
+        ORDER BY ep.updated_at DESC
+    """)
+    fun getAllExamPaperSummaries(): Flow<List<ExamPaperWithProgress>>
+
     @Query("DELETE FROM exam_papers WHERE id = :id")
     suspend fun deleteExamPaper(id: Long)
 
     @Query("UPDATE exam_papers SET total_questions = :count, updated_at = :updatedAt WHERE id = :paperId")
     suspend fun updateTotalQuestions(paperId: Long, count: Int, updatedAt: Long)
+
+    @Query("""
+        UPDATE exam_papers
+        SET status = :status,
+            generation_error = :error,
+            generation_started_at = COALESCE(:startedAt, generation_started_at),
+            generation_completed_at = COALESCE(:completedAt, generation_completed_at),
+            updated_at = :updatedAt
+        WHERE id = :paperId
+    """)
+    suspend fun updateExamPaperStatus(
+        paperId: Long,
+        status: String,
+        error: String?,
+        startedAt: Long?,
+        completedAt: Long?,
+        updatedAt: Long
+    )
 
     @Query("""
         SELECT MAX(ts) FROM (
@@ -47,6 +83,12 @@ interface QuestionBankDao {
             INNER JOIN question_items qi ON pr.question_item_id = qi.id
             INNER JOIN question_groups qg ON qi.question_group_id = qg.id
             WHERE qg.exam_paper_id = :paperId
+            UNION ALL
+            SELECT MAX(updated_at) FROM exam_paper_sources WHERE exam_paper_id = :paperId
+            UNION ALL
+            SELECT MAX(updated_at) FROM exam_paper_answer_drafts WHERE exam_paper_id = :paperId
+            UNION ALL
+            SELECT MAX(updated_at) FROM exam_paper_practice_progress WHERE exam_paper_id = :paperId
         )
     """)
     suspend fun getEffectiveUpdatedAt(paperId: Long): Long?
@@ -109,6 +151,46 @@ interface QuestionBankDao {
 
     @Query("UPDATE question_groups SET has_scanned_answer = 1, updated_at = :updatedAt WHERE id = :groupId")
     suspend fun markHasScannedAnswer(groupId: Long, updatedAt: Long)
+
+    // ── ExamPaperSource ──
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertExamPaperSource(source: ExamPaperSourceEntity): Long
+
+    @Query("SELECT * FROM exam_paper_sources WHERE exam_paper_id = :paperId ORDER BY order_in_paper, slot_key")
+    fun getExamPaperSources(paperId: Long): Flow<List<ExamPaperSourceEntity>>
+
+    @Query("SELECT * FROM exam_paper_sources WHERE exam_paper_id = :paperId ORDER BY order_in_paper, slot_key")
+    suspend fun getExamPaperSourcesOnce(paperId: Long): List<ExamPaperSourceEntity>
+
+    @Query("SELECT * FROM exam_paper_sources WHERE id = :sourceId")
+    suspend fun getExamPaperSourceById(sourceId: Long): ExamPaperSourceEntity?
+
+    @Query("""
+        SELECT * FROM exam_paper_sources
+        WHERE exam_paper_id = :paperId AND article_id = :articleId
+          AND question_type = :questionType AND COALESCE(variant, '') = COALESCE(:variant, '')
+        LIMIT 1
+    """)
+    suspend fun findExamPaperSource(
+        paperId: Long,
+        articleId: Long,
+        questionType: String,
+        variant: String?
+    ): ExamPaperSourceEntity?
+
+    @Query("""
+        UPDATE exam_paper_sources
+        SET status = :status, question_group_id = :groupId, error_message = :error, updated_at = :updatedAt
+        WHERE id = :sourceId
+    """)
+    suspend fun updateExamPaperSourceStatus(
+        sourceId: Long,
+        status: String,
+        groupId: Long?,
+        error: String?,
+        updatedAt: Long
+    )
 
     // ── QuestionGroupParagraph ──
 
@@ -179,6 +261,13 @@ interface QuestionBankDao {
     @Query("SELECT COUNT(*) FROM question_items WHERE question_group_id = :groupId")
     suspend fun getItemCount(groupId: Long): Int
 
+    @Query("""
+        SELECT COUNT(*) FROM question_items qi
+        INNER JOIN question_groups qg ON qi.question_group_id = qg.id
+        WHERE qg.exam_paper_id = :paperId
+    """)
+    suspend fun getItemCountByPaper(paperId: Long): Int
+
     // ── PracticeRecord ──
 
     @Insert
@@ -202,6 +291,50 @@ interface QuestionBankDao {
         WHERE question_item_id IN (SELECT id FROM question_items WHERE question_group_id = :groupId)
     """)
     suspend fun getTotalPracticeCountByGroup(groupId: Long): Int
+
+    // ── Full-paper practice recovery ──
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertExamPaperAnswerDraft(draft: ExamPaperAnswerDraftEntity)
+
+    @Query("""
+        SELECT d.* FROM exam_paper_answer_drafts d
+        INNER JOIN question_items qi ON d.question_item_id = qi.id
+        WHERE d.exam_paper_id = :paperId AND qi.question_group_id = :groupId
+    """)
+    suspend fun getExamPaperAnswerDrafts(paperId: Long, groupId: Long): List<ExamPaperAnswerDraftEntity>
+
+    @Query("DELETE FROM exam_paper_answer_drafts WHERE exam_paper_id = :paperId AND question_item_id IN (SELECT id FROM question_items WHERE question_group_id = :groupId)")
+    suspend fun clearExamPaperAnswerDrafts(paperId: Long, groupId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertExamPaperPracticeProgress(progress: ExamPaperPracticeProgressEntity)
+
+    @Query("DELETE FROM exam_paper_practice_progress WHERE exam_paper_id = :paperId AND question_group_id = :groupId")
+    suspend fun clearExamPaperPracticeProgress(paperId: Long, groupId: Long)
+
+    @Query("SELECT question_group_id FROM exam_paper_practice_progress WHERE exam_paper_id = :paperId ORDER BY submitted_at")
+    fun observeCompletedExamPaperGroupIds(paperId: Long): Flow<List<Long>>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM exam_paper_practice_progress WHERE exam_paper_id = :paperId AND question_group_id = :groupId)")
+    suspend fun isExamPaperGroupCompleted(paperId: Long, groupId: Long): Boolean
+
+    @Query("""
+        SELECT qg.uid AS group_uid, qi.question_number, d.user_answer, d.updated_at
+        FROM exam_paper_answer_drafts d
+        INNER JOIN question_items qi ON d.question_item_id = qi.id
+        INNER JOIN question_groups qg ON qi.question_group_id = qg.id
+        WHERE d.exam_paper_id = :paperId
+    """)
+    suspend fun getExamPaperAnswerDraftExportRows(paperId: Long): List<ExamPaperAnswerDraftExportRow>
+
+    @Query("""
+        SELECT qg.uid FROM exam_paper_practice_progress p
+        INNER JOIN question_groups qg ON p.question_group_id = qg.id
+        WHERE p.exam_paper_id = :paperId
+        ORDER BY p.submitted_at
+    """)
+    suspend fun getCompletedExamPaperGroupUids(paperId: Long): List<String>
 
     // ── QuestionSourceArticle ──
 
@@ -240,4 +373,33 @@ data class QuestionGroupWithPaperTitle(
     val created_at: Long,
     val updated_at: Long,
     val exam_paper_title: String?
+)
+
+data class ExamPaperWithProgress(
+    val id: Long,
+    val uid: String,
+    val title: String,
+    val description: String?,
+    val total_questions: Int,
+    val created_at: Long,
+    val updated_at: Long,
+    val paper_type: String,
+    val status: String,
+    val day_key: String?,
+    val daily_sequence: Int,
+    val profile: String,
+    val blueprint_version: Int,
+    val special_question_type: String?,
+    val generation_error: String?,
+    val generation_started_at: Long?,
+    val generation_completed_at: Long?,
+    val collected_source_count: Int,
+    val generated_group_count: Int
+)
+
+data class ExamPaperAnswerDraftExportRow(
+    val group_uid: String,
+    val question_number: Int,
+    val user_answer: String,
+    val updated_at: Long
 )

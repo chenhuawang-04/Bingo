@@ -53,6 +53,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
+import com.xty.englishhelper.domain.model.ExamPaperGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
@@ -410,6 +411,7 @@ private fun taskTitle(task: BackgroundTask): String {
         BackgroundTaskType.WORD_POOL_REBUILD -> stringResource(R.string.task_pool_rebuild)
         BackgroundTaskType.WORD_POOL_REVIEW -> stringResource(R.string.task_pool_review)
         BackgroundTaskType.QUESTION_GENERATE -> stringResource(R.string.task_question_generate)
+        BackgroundTaskType.EXAM_PAPER_GENERATE -> stringResource(R.string.task_exam_paper_generate)
         BackgroundTaskType.QUESTION_ANSWER_GENERATE -> stringResource(R.string.task_answer_generate)
         BackgroundTaskType.QUESTION_SOURCE_VERIFY -> stringResource(R.string.task_source_verify)
         BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> stringResource(R.string.task_writing_sample)
@@ -469,6 +471,9 @@ private fun taskSubtitle(task: BackgroundTask): String {
                 append(variant)
             }
             if (isEmpty()) append(stringResource(R.string.task_subtitle_article) + payload.articleId)
+        }
+        is ExamPaperGeneratePayload -> payload.paperTitle.ifBlank {
+            stringResource(R.string.task_subtitle_paper) + payload.paperId
         }
         is QuestionAnswerGeneratePayload -> buildString {
             if (payload.paperTitle.isNotBlank()) append(payload.paperTitle)

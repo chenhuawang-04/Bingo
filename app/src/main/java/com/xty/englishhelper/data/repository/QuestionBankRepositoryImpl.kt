@@ -1,7 +1,11 @@
 package com.xty.englishhelper.data.repository
 
 import com.xty.englishhelper.data.local.dao.QuestionBankDao
+import com.xty.englishhelper.data.local.AppDatabase
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperSourceEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperAnswerDraftEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperPracticeProgressEntity
 import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
 import com.xty.englishhelper.data.local.entity.QuestionGroupEntity
 import com.xty.englishhelper.data.local.entity.QuestionGroupParagraphEntity
@@ -11,6 +15,14 @@ import com.xty.englishhelper.domain.model.AnswerSource
 import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.DifficultyLevel
 import com.xty.englishhelper.domain.model.ExamPaper
+import com.xty.englishhelper.domain.model.ExamPaperBlueprint
+import com.xty.englishhelper.domain.model.ExamPaperCollectionResult
+import com.xty.englishhelper.domain.model.ExamPaperProfile
+import com.xty.englishhelper.domain.model.ExamPaperSource
+import com.xty.englishhelper.domain.model.ExamPaperSourceStatus
+import com.xty.englishhelper.domain.model.ExamPaperStatus
+import com.xty.englishhelper.domain.model.ExamPaperSummary
+import com.xty.englishhelper.domain.model.ExamPaperType
 import com.xty.englishhelper.domain.model.ParagraphType
 import com.xty.englishhelper.domain.model.PracticeRecord
 import com.xty.englishhelper.domain.model.QuestionGroup
@@ -22,12 +34,14 @@ import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.model.ArticleCategoryDefaults
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import androidx.room.withTransaction
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class QuestionBankRepositoryImpl @Inject constructor(
+    private val database: AppDatabase,
     private val dao: QuestionBankDao,
     private val articleRepository: ArticleRepository
 ) : QuestionBankRepository {
@@ -36,6 +50,17 @@ class QuestionBankRepositoryImpl @Inject constructor(
 
     override fun getAllExamPapers(): Flow<List<ExamPaper>> =
         dao.getAllExamPapers().map { list -> list.map { it.toDomain() } }
+
+    override fun getAllExamPaperSummaries(): Flow<List<ExamPaperSummary>> =
+        dao.getAllExamPaperSummaries().map { rows ->
+            rows.map { row ->
+                ExamPaperSummary(
+                    paper = row.toDomain(),
+                    collectedSourceCount = row.collected_source_count,
+                    generatedGroupCount = row.generated_group_count
+                )
+            }
+        }
 
     override suspend fun getExamPaperById(id: Long): ExamPaper? =
         dao.getExamPaperById(id)?.toDomain()
@@ -46,6 +71,130 @@ class QuestionBankRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteExamPaper(id: Long) = dao.deleteExamPaper(id)
+
+    override suspend fun collectArticleForPaper(
+        articleId: Long,
+        dayKey: String,
+        profile: ExamPaperProfile,
+        questionType: QuestionType,
+        variant: String?
+    ): ExamPaperCollectionResult {
+        val article = articleRepository.getArticleByIdOnce(articleId)
+            ?: throw IllegalStateException("文章不存在")
+        val year = dayKey.take(4).toIntOrNull()
+            ?: throw IllegalArgumentException("组卷日期无效")
+        val blueprint = ExamPaperBlueprint.forYear(year, profile)
+
+        return database.withTransaction {
+            val now = System.currentTimeMillis()
+            var paperEntity = dao.getCollectingPaperByDay(dayKey, profile.name)
+            if (paperEntity == null) {
+                val sequence = dao.getComposedPaperCountByDay(dayKey) + 1
+                val paper = ExamPaper(
+                    uid = UUID.randomUUID().toString(),
+                    title = ExamPaperBlueprint.dailyPaperTitle(dayKey, sequence),
+                    description = "考研${if (profile == ExamPaperProfile.ENGLISH_ONE) "英语一" else "英语二"}智能组卷",
+                    createdAt = now,
+                    updatedAt = now,
+                    paperType = ExamPaperType.COMPOSED,
+                    status = ExamPaperStatus.COLLECTING,
+                    dayKey = dayKey,
+                    dailySequence = sequence,
+                    profile = profile,
+                    blueprintVersion = blueprint.version,
+                    specialQuestionType = blueprint.specialQuestionType
+                )
+                val paperId = dao.insertExamPaper(paper.toEntity(now))
+                paperEntity = dao.getExamPaperById(paperId)
+                    ?: throw IllegalStateException("试卷创建失败")
+            }
+
+            val paper = paperEntity.toDomain()
+            val duplicate = dao.findExamPaperSource(
+                paperId = paper.id,
+                articleId = articleId,
+                questionType = questionType.name,
+                variant = variant
+            )
+            if (duplicate != null) {
+                return@withTransaction ExamPaperCollectionResult.Duplicate(paper, duplicate.toDomain())
+            }
+
+            val occupied = dao.getExamPaperSourcesOnce(paper.id).mapTo(mutableSetOf()) { it.slotKey }
+            val slot = blueprint.nextAvailableSlot(questionType, variant, occupied)
+                ?: return@withTransaction ExamPaperCollectionResult.TargetFull(paper, questionType, variant)
+            val sourceEntity = ExamPaperSourceEntity(
+                uid = UUID.randomUUID().toString(),
+                examPaperId = paper.id,
+                articleId = article.id,
+                articleUid = article.articleUid,
+                slotKey = slot.key,
+                questionType = slot.questionType.name,
+                variant = slot.variant,
+                orderInPaper = slot.orderInPaper,
+                startQuestionNumber = slot.startQuestionNumber,
+                status = ExamPaperSourceStatus.COLLECTED.name,
+                createdAt = now,
+                updatedAt = now
+            )
+            val sourceId = dao.insertExamPaperSource(sourceEntity)
+            if (sourceId <= 0L) {
+                throw IllegalStateException("文章槽位保存冲突，请重试")
+            }
+            val sources = dao.getExamPaperSourcesOnce(paper.id)
+            val ready = blueprint.isReady(sources.mapTo(mutableSetOf()) { it.slotKey })
+            if (ready) {
+                dao.updateExamPaperStatus(
+                    paperId = paper.id,
+                    status = ExamPaperStatus.READY.name,
+                    error = null,
+                    startedAt = null,
+                    completedAt = null,
+                    updatedAt = now
+                )
+            }
+            val updatedPaper = dao.getExamPaperById(paper.id)?.toDomain() ?: paper
+            ExamPaperCollectionResult.Added(
+                paper = updatedPaper,
+                source = sourceEntity.copy(id = sourceId).toDomain(),
+                collectedCount = sources.size,
+                requiredCount = blueprint.slots.size,
+                becameReady = ready
+            )
+        }
+    }
+
+    override fun getExamPaperSources(paperId: Long): Flow<List<ExamPaperSource>> =
+        dao.getExamPaperSources(paperId).map { rows -> rows.map { it.toDomain() } }
+
+    override suspend fun getExamPaperSourcesOnce(paperId: Long): List<ExamPaperSource> =
+        dao.getExamPaperSourcesOnce(paperId).map { it.toDomain() }
+
+    override suspend fun updateExamPaperStatus(
+        paperId: Long,
+        status: ExamPaperStatus,
+        error: String?,
+        startedAt: Long?,
+        completedAt: Long?
+    ) {
+        dao.updateExamPaperStatus(
+            paperId = paperId,
+            status = status.name,
+            error = error,
+            startedAt = startedAt,
+            completedAt = completedAt,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    override suspend fun updateExamPaperSourceStatus(
+        sourceId: Long,
+        status: ExamPaperSourceStatus,
+        groupId: Long?,
+        error: String?
+    ) {
+        dao.updateExamPaperSourceStatus(sourceId, status.name, groupId, error, System.currentTimeMillis())
+    }
 
     // ── QuestionGroup ──
 
@@ -164,6 +313,40 @@ class QuestionBankRepositoryImpl @Inject constructor(
     override suspend fun getTotalPracticeCountByGroup(groupId: Long): Int =
         dao.getTotalPracticeCountByGroup(groupId)
 
+    override suspend fun saveExamPaperAnswerDraft(paperId: Long, itemId: Long, answer: String) {
+        dao.upsertExamPaperAnswerDraft(
+            ExamPaperAnswerDraftEntity(
+                examPaperId = paperId,
+                questionItemId = itemId,
+                userAnswer = answer,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    override suspend fun getExamPaperAnswerDrafts(paperId: Long, groupId: Long): Map<Long, String> =
+        dao.getExamPaperAnswerDrafts(paperId, groupId).associate { it.questionItemId to it.userAnswer }
+
+    override suspend fun markExamPaperGroupCompleted(paperId: Long, groupId: Long) {
+        val now = System.currentTimeMillis()
+        dao.upsertExamPaperPracticeProgress(
+            ExamPaperPracticeProgressEntity(paperId, groupId, submittedAt = now, updatedAt = now)
+        )
+    }
+
+    override suspend fun resetExamPaperGroupProgress(paperId: Long, groupId: Long) {
+        database.withTransaction {
+            dao.clearExamPaperPracticeProgress(paperId, groupId)
+            dao.clearExamPaperAnswerDrafts(paperId, groupId)
+        }
+    }
+
+    override fun observeCompletedExamPaperGroupIds(paperId: Long): Flow<List<Long>> =
+        dao.observeCompletedExamPaperGroupIds(paperId)
+
+    override suspend fun isExamPaperGroupCompleted(paperId: Long, groupId: Long): Boolean =
+        dao.isExamPaperGroupCompleted(paperId, groupId)
+
     // ── SourceArticle ──
 
     override suspend fun linkSourceArticle(groupId: Long, articleId: Long) {
@@ -186,7 +369,7 @@ class QuestionBankRepositoryImpl @Inject constructor(
     override suspend fun saveScannedPaper(
         paper: ExamPaper,
         groups: List<QuestionGroup>
-    ): Long {
+    ): Long = database.withTransaction {
         val now = System.currentTimeMillis()
         val paperId = dao.insertExamPaper(paper.toEntity(now))
 
@@ -234,21 +417,134 @@ class QuestionBankRepositoryImpl @Inject constructor(
         }
 
         dao.updateTotalQuestions(paperId, totalQuestions, now)
-        return paperId
+        paperId
+    }
+
+    override suspend fun saveGeneratedGroup(
+        paperId: Long,
+        source: ExamPaperSource,
+        group: QuestionGroup
+    ): Long {
+        val groupId = database.withTransaction {
+            val currentSource = dao.getExamPaperSourceById(source.id)
+                ?: throw IllegalStateException("组卷来源不存在")
+            currentSource.questionGroupId?.let { existingId ->
+                if (dao.getGroupById(existingId) != null) return@withTransaction existingId
+            }
+
+            val now = System.currentTimeMillis()
+            val insertedGroupId = dao.insertQuestionGroup(
+                group.copy(examPaperId = paperId, orderInPaper = source.orderInPaper).toEntity(now)
+            )
+            if (group.paragraphs.isNotEmpty()) {
+                dao.insertParagraphs(group.paragraphs.mapIndexed { index, paragraph ->
+                    QuestionGroupParagraphEntity(
+                        questionGroupId = insertedGroupId,
+                        paragraphIndex = index,
+                        text = paragraph.text,
+                        paragraphType = paragraph.paragraphType.name,
+                        imageUri = paragraph.imageUri,
+                        imageUrl = paragraph.imageUrl
+                    )
+                })
+            }
+            if (group.items.isNotEmpty()) {
+                dao.insertQuestionItems(group.items.mapIndexed { index, item ->
+                    item.copy(questionGroupId = insertedGroupId).toEntity(index)
+                })
+            }
+            dao.insertSourceArticle(
+                QuestionSourceArticleEntity(
+                    questionGroupId = insertedGroupId,
+                    linkedArticleId = source.articleId,
+                    linkedArticleUid = source.articleUid,
+                    verifiedAt = now
+                )
+            )
+            dao.updateExamPaperSourceStatus(
+                sourceId = source.id,
+                status = ExamPaperSourceStatus.GENERATED.name,
+                groupId = insertedGroupId,
+                error = null,
+                updatedAt = now
+            )
+            dao.updateTotalQuestions(paperId, dao.getItemCountByPaper(paperId), now)
+            insertedGroupId
+        }
+        articleRepository.updateArticleCategory(source.articleId, ArticleCategoryDefaults.SOURCE_ID)
+        return groupId
     }
 
     // ── Mappers ──
 
     private fun ExamPaperEntity.toDomain() = ExamPaper(
         id = id, uid = uid, title = title, description = description,
-        totalQuestions = totalQuestions, createdAt = createdAt, updatedAt = updatedAt
+        totalQuestions = totalQuestions, createdAt = createdAt, updatedAt = updatedAt,
+        paperType = ExamPaperType.entries.find { it.name == paperType } ?: ExamPaperType.IMPORTED,
+        status = ExamPaperStatus.entries.find { it.name == status } ?: ExamPaperStatus.READY_TO_PRACTICE,
+        dayKey = dayKey,
+        dailySequence = dailySequence,
+        profile = ExamPaperProfile.entries.find { it.name == profile } ?: ExamPaperProfile.ENGLISH_ONE,
+        blueprintVersion = blueprintVersion,
+        specialQuestionType = specialQuestionType?.let { name -> QuestionType.entries.find { it.name == name } },
+        generationError = generationError,
+        generationStartedAt = generationStartedAt,
+        generationCompletedAt = generationCompletedAt
     )
 
     private fun ExamPaper.toEntity(now: Long) = ExamPaperEntity(
         id = id, uid = uid.ifBlank { UUID.randomUUID().toString() },
         title = title, description = description, totalQuestions = totalQuestions,
         createdAt = if (createdAt == 0L) now else createdAt,
-        updatedAt = now
+        updatedAt = now,
+        paperType = paperType.name,
+        status = status.name,
+        dayKey = dayKey,
+        dailySequence = dailySequence,
+        profile = profile.name,
+        blueprintVersion = blueprintVersion,
+        specialQuestionType = specialQuestionType?.name,
+        generationError = generationError,
+        generationStartedAt = generationStartedAt,
+        generationCompletedAt = generationCompletedAt
+    )
+
+    private fun com.xty.englishhelper.data.local.dao.ExamPaperWithProgress.toDomain() = ExamPaper(
+        id = id,
+        uid = uid,
+        title = title,
+        description = description,
+        totalQuestions = total_questions,
+        createdAt = created_at,
+        updatedAt = updated_at,
+        paperType = ExamPaperType.entries.find { it.name == paper_type } ?: ExamPaperType.IMPORTED,
+        status = ExamPaperStatus.entries.find { it.name == status } ?: ExamPaperStatus.READY_TO_PRACTICE,
+        dayKey = day_key,
+        dailySequence = daily_sequence,
+        profile = ExamPaperProfile.entries.find { it.name == profile } ?: ExamPaperProfile.ENGLISH_ONE,
+        blueprintVersion = blueprint_version,
+        specialQuestionType = special_question_type?.let { name -> QuestionType.entries.find { it.name == name } },
+        generationError = generation_error,
+        generationStartedAt = generation_started_at,
+        generationCompletedAt = generation_completed_at
+    )
+
+    private fun ExamPaperSourceEntity.toDomain() = ExamPaperSource(
+        id = id,
+        uid = uid,
+        examPaperId = examPaperId,
+        articleId = articleId,
+        articleUid = articleUid,
+        slotKey = slotKey,
+        questionType = QuestionType.entries.find { it.name == questionType } ?: QuestionType.NEW_TYPE,
+        variant = variant,
+        orderInPaper = orderInPaper,
+        startQuestionNumber = startQuestionNumber,
+        status = ExamPaperSourceStatus.entries.find { it.name == status } ?: ExamPaperSourceStatus.COLLECTED,
+        questionGroupId = questionGroupId,
+        errorMessage = errorMessage,
+        createdAt = createdAt,
+        updatedAt = updatedAt
     )
 
     private fun QuestionGroupEntity.toDomain() = QuestionGroup(

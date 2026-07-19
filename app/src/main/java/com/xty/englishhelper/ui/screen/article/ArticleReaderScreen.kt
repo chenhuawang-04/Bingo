@@ -54,7 +54,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,6 +94,8 @@ import com.xty.englishhelper.domain.model.ArticleWordLink
 import com.xty.englishhelper.domain.model.ParagraphAnalysisResult
 import com.xty.englishhelper.domain.model.ParagraphType
 import com.xty.englishhelper.domain.model.QuestionType
+import com.xty.englishhelper.domain.model.ExamPaperBlueprint
+import com.xty.englishhelper.domain.model.ExamPaperProfile
 import com.xty.englishhelper.ui.components.reading.HighlightedParagraphText
 import com.xty.englishhelper.ui.components.reading.ParagraphBlock
 import com.xty.englishhelper.ui.components.reading.TranslationBlock
@@ -122,8 +123,8 @@ fun ArticleReaderScreen(
     val notebookPulseTint = remember { Animatable(0f) }
     var followTts by rememberSaveable { mutableStateOf(true) }
     var showGenerateDialog by rememberSaveable { mutableStateOf(false) }
-    var draftPaperTitle by rememberSaveable { mutableStateOf("") }
     var selectedGenerateId by rememberSaveable { mutableStateOf("read") }
+    var selectedPaperProfile by rememberSaveable { mutableStateOf(ExamPaperProfile.ENGLISH_ONE.name) }
 
     data class GenerateOption(
         val id: String,
@@ -133,31 +134,37 @@ fun ArticleReaderScreen(
         val variant: String? = null
     )
 
-    val generateOptions = remember {
+    val paperProfile = runCatching { ExamPaperProfile.valueOf(selectedPaperProfile) }
+        .getOrDefault(ExamPaperProfile.ENGLISH_ONE)
+    val blueprint = remember(paperProfile) {
+        ExamPaperBlueprint.forYear(
+            java.util.Calendar.getInstance().get(java.util.Calendar.YEAR),
+            paperProfile
+        )
+    }
+    val generateOptions = remember(blueprint, paperProfile) {
         listOf(
-            GenerateOption("read", "阅读理解", "5 题 · 400-500 词", QuestionType.READING_COMPREHENSION),
-            GenerateOption("cloze", "完形填空", "20 空 · 280-360 词", QuestionType.CLOZE),
-            GenerateOption("trans_e1", "翻译（英语一）", "长文 5 处划线", QuestionType.TRANSLATION, "ENG1"),
-            GenerateOption("trans_e2", "翻译（英语二）", "整段短文", QuestionType.TRANSLATION, "ENG2"),
-            GenerateOption("write_small", "写作（小作文）", "应用文 · 100 词", QuestionType.WRITING, "SMALL"),
-            GenerateOption("write_large", "写作（大作文）", "图表/图片作文 · 160-200 词", QuestionType.WRITING, "LARGE"),
-            GenerateOption("para_order", "新题型：段落排序", "8 段 · 5 空", QuestionType.PARAGRAPH_ORDER),
-            GenerateOption("sentence_insert", "新题型：句子插入", "5 空 · 7 句", QuestionType.SENTENCE_INSERTION),
-            GenerateOption("comment_match", "新题型：评论观点匹配", "5 题 · 7 选项", QuestionType.COMMENT_OPINION_MATCH),
-            GenerateOption("subheading_match", "新题型：小标题匹配", "5 题 · 7 标题", QuestionType.SUBHEADING_MATCH),
-            GenerateOption("info_match", "新题型：信息匹配", "5 题 · 7 信息", QuestionType.INFORMATION_MATCH)
+            GenerateOption("read", "阅读理解", "需要 4 篇，每篇生成 5 题", QuestionType.READING_COMPREHENSION),
+            GenerateOption("cloze", "完形填空", "需要 1 篇，生成 20 空", QuestionType.CLOZE),
+            GenerateOption(
+                "translation",
+                if (paperProfile == ExamPaperProfile.ENGLISH_ONE) "翻译（英语一）" else "翻译（英语二）",
+                if (paperProfile == ExamPaperProfile.ENGLISH_ONE) "需要 1 篇，5 处划线" else "需要 1 篇，整段翻译",
+                QuestionType.TRANSLATION,
+                if (paperProfile == ExamPaperProfile.ENGLISH_ONE) "ENG1" else "ENG2"
+            ),
+            GenerateOption("write_small", "写作（小作文）", "需要 1 篇作为命题素材", QuestionType.WRITING, "SMALL"),
+            GenerateOption("write_large", "写作（大作文）", "需要 1 篇作为命题素材", QuestionType.WRITING, "LARGE"),
+            GenerateOption(
+                "special",
+                "轮换新题型：${blueprint.specialQuestionType.displayName}",
+                "本套卷只收集这一种新题型",
+                blueprint.specialQuestionType
+            )
         )
     }
 
     val selectedGenerate = generateOptions.firstOrNull { it.id == selectedGenerateId } ?: generateOptions.first()
-
-    val generatePrefix = stringResource(R.string.article_generate_questions)
-    val unnamedArticle = stringResource(R.string.article_unnamed)
-    val defaultPaperTitle = remember(article?.title) {
-        val safeTitle = article?.title?.takeIf { it.isNotBlank() } ?: unnamedArticle
-        val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-        "$generatePrefix - $safeTitle - $date"
-    }
 
     LaunchedEffect(Unit) {
         viewModel.navigateBack.collect {
@@ -210,12 +217,6 @@ fun ArticleReaderScreen(
         }
     }
 
-    LaunchedEffect(showGenerateDialog, defaultPaperTitle) {
-        if (showGenerateDialog) {
-            draftPaperTitle = defaultPaperTitle
-        }
-    }
-
     val ttsSessionId = article?.let { "article:${it.id}" }
     val isArticleSpeaking = uiState.ttsState.isSpeaking && uiState.ttsState.sessionId == ttsSessionId
     val canSpeak = article != null &&
@@ -263,10 +264,10 @@ fun ArticleReaderScreen(
                 )
                 ReaderTopActionButton(
                     icon = Icons.Default.AutoAwesome,
-                    contentDescription = if (uiState.isGeneratingQuestions) stringResource(R.string.article_generating_questions) else stringResource(R.string.article_generate_questions),
+                    contentDescription = if (uiState.isAddingToPaper) "正在加入试卷" else "组卷",
                     onClick = { showGenerateDialog = true },
-                    enabled = !uiState.isGeneratingQuestions,
-                    active = uiState.isGeneratingQuestions
+                    enabled = !uiState.isGeneratingQuestions && !uiState.isAddingToPaper,
+                    active = uiState.isAddingToPaper
                 )
                 if (article?.isSaved == false) {
                     ReaderTopActionButton(
@@ -374,19 +375,41 @@ fun ArticleReaderScreen(
     if (showGenerateDialog) {
         AlertDialog(
             onDismissRequest = { showGenerateDialog = false },
-            title = { Text(stringResource(R.string.article_generate_questions)) },
+            title = { Text("加入每日考研试卷") },
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.verticalScroll(rememberScrollState())
                 ) {
-                    OutlinedTextField(
-                        value = draftPaperTitle,
-                        onValueChange = { draftPaperTitle = it },
-                        label = { Text(stringResource(R.string.article_paper_title)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    Text(
+                        "文章会保存到本地并加入当天试卷；9 个来源槽位凑齐后自动后台出题。轮换新题型每套只需要当前显示的一种。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Text("考试类型", style = MaterialTheme.typography.labelLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = paperProfile == ExamPaperProfile.ENGLISH_ONE,
+                            onClick = { selectedPaperProfile = ExamPaperProfile.ENGLISH_ONE.name }
+                        )
+                        Text(
+                            "英语一",
+                            modifier = Modifier.clickable {
+                                selectedPaperProfile = ExamPaperProfile.ENGLISH_ONE.name
+                            }
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        RadioButton(
+                            selected = paperProfile == ExamPaperProfile.ENGLISH_TWO,
+                            onClick = { selectedPaperProfile = ExamPaperProfile.ENGLISH_TWO.name }
+                        )
+                        Text(
+                            "英语二",
+                            modifier = Modifier.clickable {
+                                selectedPaperProfile = ExamPaperProfile.ENGLISH_TWO.name
+                            }
+                        )
+                    }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         generateOptions.forEach { option ->
                             Row(
@@ -415,16 +438,16 @@ fun ArticleReaderScreen(
             },
             confirmButton = {
                 TextButton(
-                    enabled = !uiState.isGeneratingQuestions,
+                    enabled = !uiState.isGeneratingQuestions && !uiState.isAddingToPaper,
                     onClick = {
                         showGenerateDialog = false
-                        viewModel.generateQuestions(
-                            paperTitle = draftPaperTitle,
+                        viewModel.addToExamPaper(
+                            profile = paperProfile,
                             questionType = selectedGenerate.questionType,
                             variant = selectedGenerate.variant
                         )
                     }
-                ) { Text(stringResource(R.string.article_start_generate)) }
+                ) { Text("加入试卷") }
             },
             dismissButton = {
                 TextButton(onClick = { showGenerateDialog = false }) { Text(stringResource(R.string.common_cancel)) }

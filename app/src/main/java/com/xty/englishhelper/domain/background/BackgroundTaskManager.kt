@@ -16,6 +16,11 @@ import com.xty.englishhelper.domain.model.priority
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.ExamPaper
+import com.xty.englishhelper.domain.model.ExamPaperBlueprint
+import com.xty.englishhelper.domain.model.ExamPaperGeneratePayload
+import com.xty.englishhelper.domain.model.ExamPaperSource
+import com.xty.englishhelper.domain.model.ExamPaperSourceStatus
+import com.xty.englishhelper.domain.model.ExamPaperStatus
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
 import com.xty.englishhelper.domain.model.SyncTaskPayload
 import com.xty.englishhelper.domain.model.QuestionGroup
@@ -25,6 +30,7 @@ import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
 import com.xty.englishhelper.domain.model.QuestionType
+import com.xty.englishhelper.domain.model.SourceVerifyStatus
 import com.xty.englishhelper.domain.model.OnlineReadingSource
 import com.xty.englishhelper.domain.model.WordReferenceSource
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
@@ -210,6 +216,7 @@ class BackgroundTaskManager @Inject constructor(
             migrateLegacyWordOrganizeTasks()
             scheduleManagedResumesOnStart()
             enqueueAppUpdateCheckIfEnabled()
+            resumeInterruptedExamPaperGeneration()
             schedule()
         }
     }
@@ -418,6 +425,34 @@ class BackgroundTaskManager @Inject constructor(
         )
     }
 
+    suspend fun enqueueExamPaperGeneration(
+        paperId: Long,
+        paperTitle: String,
+        force: Boolean = false
+    ): BackgroundTaskEnqueueResult {
+        return enqueueTaskInternal(
+            type = BackgroundTaskType.EXAM_PAPER_GENERATE,
+            payload = ExamPaperGeneratePayload(paperId, paperTitle),
+            dedupeKey = "paper_generate:$paperId",
+            force = force
+        )
+    }
+
+    private suspend fun resumeInterruptedExamPaperGeneration() {
+        val activePaperIds = repository.observeAllTasks().first()
+            .filter { it.status in setOf(BackgroundTaskStatus.PENDING, BackgroundTaskStatus.RUNNING, BackgroundTaskStatus.PAUSED) }
+            .mapNotNull { (it.payload as? ExamPaperGeneratePayload)?.paperId }
+            .toSet()
+        questionBankRepository.getAllExamPapers().first()
+            .filter {
+                it.status == ExamPaperStatus.READY ||
+                    (it.status == ExamPaperStatus.GENERATING && it.id !in activePaperIds)
+            }
+            .forEach { paper ->
+                enqueueExamPaperGeneration(paper.id, paper.title, force = paper.status == ExamPaperStatus.GENERATING)
+            }
+    }
+
     fun enqueueQuestionAnswerGeneration(
         groupId: Long,
         paperTitle: String,
@@ -536,6 +571,7 @@ class BackgroundTaskManager @Inject constructor(
     fun cancelTask(taskId: Long) {
         scope.launch {
             cancelManagedResume(taskId)
+            markCanceledPaperGeneration(taskId)
             repository.updateStatus(taskId, BackgroundTaskStatus.CANCELED, "已停止")
             // Invoke cancel handler (sets flag) before cancelling job
             cancelHandlers.remove(taskId)?.invoke()
@@ -547,6 +583,7 @@ class BackgroundTaskManager @Inject constructor(
     fun deleteTask(taskId: Long) {
         scope.launch {
             cancelManagedResume(taskId)
+            markCanceledPaperGeneration(taskId)
             runningJobs.remove(taskId)?.cancel()
             repository.deleteTask(taskId)
         }
@@ -563,11 +600,31 @@ class BackgroundTaskManager @Inject constructor(
 
     fun cancelAll() {
         scope.launch {
+            repository.observeAllTasks().first()
+                .filter { it.status == BackgroundTaskStatus.PENDING || it.status == BackgroundTaskStatus.RUNNING }
+                .mapNotNull { (it.payload as? ExamPaperGeneratePayload)?.paperId }
+                .distinct()
+                .forEach { paperId ->
+                    questionBankRepository.updateExamPaperStatus(
+                        paperId,
+                        ExamPaperStatus.FAILED,
+                        error = "用户已停止整卷生成"
+                    )
+                }
             repository.updateStatusByStatus(BackgroundTaskStatus.PENDING, BackgroundTaskStatus.CANCELED)
             repository.updateStatusByStatus(BackgroundTaskStatus.RUNNING, BackgroundTaskStatus.CANCELED)
             runningJobs.values.forEach { it.cancel() }
             runningJobs.clear()
         }
+    }
+
+    private suspend fun markCanceledPaperGeneration(taskId: Long) {
+        val paperId = (repository.getTaskById(taskId)?.payload as? ExamPaperGeneratePayload)?.paperId ?: return
+        questionBankRepository.updateExamPaperStatus(
+            paperId = paperId,
+            status = ExamPaperStatus.FAILED,
+            error = "用户已停止整卷生成"
+        )
     }
 
     fun resumeAll() {
@@ -665,7 +722,8 @@ class BackgroundTaskManager @Inject constructor(
 
     private fun preservesProgressOnResume(type: BackgroundTaskType?): Boolean {
         return type == BackgroundTaskType.WORD_POOL_REBUILD ||
-            type == BackgroundTaskType.WORD_PHRASE_ORGANIZE
+            type == BackgroundTaskType.WORD_PHRASE_ORGANIZE ||
+            type == BackgroundTaskType.EXAM_PAPER_GENERATE
     }
 
     private suspend fun schedule() {
@@ -741,6 +799,7 @@ class BackgroundTaskManager @Inject constructor(
             BackgroundTaskType.WORD_POOL_REVIEW -> executeWordPoolReview(task)
             BackgroundTaskType.WORD_PHRASE_ORGANIZE -> executeWordPhraseOrganize(task)
             BackgroundTaskType.QUESTION_GENERATE -> executeQuestionGenerate(task)
+            BackgroundTaskType.EXAM_PAPER_GENERATE -> executeExamPaperGenerate(task)
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> executeAnswerGenerate(task)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> executeSourceVerify(task)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> executeWritingSampleSearch(task)
@@ -1165,43 +1224,15 @@ class BackgroundTaskManager @Inject constructor(
         val questionType = runCatching { QuestionType.valueOf(payload.questionType) }.getOrElse {
             throw IllegalStateException("题型无效")
         }
-        val article = articleRepository.getArticleByIdOnce(payload.articleId)
-            ?: throw IllegalStateException("文章不存在")
-        val paragraphs = articleRepository.getParagraphs(article.id)
-
-        val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
-        if (config.apiKey.isBlank()) {
-            throw IllegalStateException("主模型未配置")
-        }
-
-        val articleText = buildArticleText(article, paragraphs)
-        if (articleText.isBlank()) {
-            throw IllegalStateException("文章内容为空，无法出题")
-        }
-
         repository.updateProgress(task.id, 0, 1)
-        val scanResult = questionBankAiRepository.generateQuestionsFromArticle(
-            articleTitle = article.title,
-            articleText = articleText,
-            questionType = questionType.name,
-            variant = payload.variant,
-            apiKey = config.apiKey,
-            model = config.model,
-            baseUrl = config.baseUrl,
-            provider = config.provider
-        )
-
-        val rawGroup = scanResult.questionGroups.firstOrNull()
-            ?: throw IllegalStateException("出题失败：未返回题组")
-
-        val normalizedGroup = normalizeGeneratedGroup(
-            rawGroup = rawGroup,
+        val (article, group) = generateQuestionGroup(
+            articleId = payload.articleId,
             questionType = questionType,
             variant = payload.variant,
-            article = article
+            orderInPaper = 0,
+            startQuestionNumber = 1,
+            sectionLabelOverride = null
         )
-        validateGeneratedGroup(normalizedGroup, questionType, payload.variant)
-
         val now = System.currentTimeMillis()
         val finalTitle = payload.paperTitle.ifBlank { buildDefaultPaperTitle(article.title, now) }
         val paper = ExamPaper(
@@ -1210,70 +1241,9 @@ class BackgroundTaskManager @Inject constructor(
             createdAt = now,
             updatedAt = now
         )
-
-        val sentenceOptionsJson = if (
-            questionType == QuestionType.SENTENCE_INSERTION ||
-            questionType == QuestionType.COMMENT_OPINION_MATCH ||
-            questionType == QuestionType.SUBHEADING_MATCH ||
-            questionType == QuestionType.INFORMATION_MATCH
-        ) {
-            buildSentenceInsertionExtraData(normalizedGroup.sentenceOptions)
-        } else null
-
-        val passageParagraphs = if (
-            questionType == QuestionType.INFORMATION_MATCH &&
-            normalizedGroup.passageParagraphs.isEmpty() &&
-            normalizedGroup.sentenceOptions.isNotEmpty()
-        ) {
-            normalizedGroup.sentenceOptions
-        } else {
-            normalizedGroup.passageParagraphs
-        }
-
-        val group = QuestionGroup(
-            uid = UUID.randomUUID().toString(),
-            examPaperId = 0,
-            questionType = questionType,
-            sectionLabel = normalizedGroup.sectionLabel?.takeIf { it.isNotBlank() }
-                ?: defaultSectionLabel(questionType, payload.variant),
-            orderInPaper = 0,
-            directions = normalizedGroup.directions,
-            passageText = passageParagraphs.joinToString("\n"),
-            sourceInfo = normalizedGroup.sourceInfo,
-            sourceUrl = normalizedGroup.sourceUrl,
-            wordCount = normalizedGroup.wordCount,
-            difficultyLevel = normalizedGroup.difficultyLevel?.let { level ->
-                com.xty.englishhelper.domain.model.DifficultyLevel.entries.find { it.name == level }
-            },
-            difficultyScore = normalizedGroup.difficultyScore,
-            createdAt = now,
-            updatedAt = now,
-            paragraphs = passageParagraphs.mapIndexed { index, text ->
-                ArticleParagraph(paragraphIndex = index, text = text)
-            },
-            items = normalizedGroup.questions.mapIndexed { index, q ->
-                QuestionItem(
-                    questionGroupId = 0,
-                    questionNumber = if (q.questionNumber > 0) q.questionNumber else index + 1,
-                    questionText = q.questionText,
-                    optionA = q.optionA.ifBlank { null },
-                    optionB = q.optionB.ifBlank { null },
-                    optionC = q.optionC.ifBlank { null },
-                    optionD = q.optionD.ifBlank { null },
-                    orderInGroup = index,
-                    wordCount = q.wordCount,
-                    difficultyLevel = q.difficultyLevel?.let { level ->
-                        com.xty.englishhelper.domain.model.DifficultyLevel.entries.find { it.name == level }
-                    },
-                    difficultyScore = q.difficultyScore,
-                    extraData = sentenceOptionsJson
-                )
-            }
-        )
-
         val paperId = questionBankRepository.saveScannedPaper(paper, listOf(group))
         val groupList = questionBankRepository.getGroupsByPaper(paperId).first()
-        val firstGroup = groupList.firstOrNull()
+        val firstGroup = groupList.firstOrNull()?.let { questionBankRepository.getGroupById(it.id) }
         if (firstGroup != null) {
             if (!article.isSaved) {
                 articleRepository.markArticleSaved(article.id)
@@ -1285,23 +1255,225 @@ class BackgroundTaskManager @Inject constructor(
                 questionBankRepository.updateSourceUrl(firstGroup.id, sourceUrl)
             }
             questionBankRepository.updateSourceVerification(firstGroup.id, 1, null)
-
-            if (firstGroup.questionType == QuestionType.WRITING) {
-                val snippet = firstGroup.items.firstOrNull()?.questionText?.take(300).orEmpty()
-                enqueueQuestionWritingSampleSearch(
-                    groupId = firstGroup.id,
-                    paperTitle = finalTitle,
-                    questionSnippet = snippet
-                )
-            } else {
-                enqueueQuestionAnswerGeneration(
-                    groupId = firstGroup.id,
-                    paperTitle = finalTitle,
-                    sectionLabel = firstGroup.sectionLabel.orEmpty()
-                )
-            }
+            enqueueGeneratedSupportTasks(firstGroup, finalTitle)
         }
         repository.updateProgress(task.id, 1, 1)
+    }
+
+    private suspend fun executeExamPaperGenerate(task: BackgroundTask) {
+        val payload = task.payload as? ExamPaperGeneratePayload
+            ?: throw IllegalStateException("任务参数缺失")
+        val paper = questionBankRepository.getExamPaperById(payload.paperId)
+            ?: throw IllegalStateException("试卷不存在")
+        val blueprint = ExamPaperBlueprint.forPaper(paper)
+        val sources = questionBankRepository.getExamPaperSourcesOnce(paper.id)
+        if (!blueprint.isReady(sources.mapTo(mutableSetOf()) { it.slotKey })) {
+            throw IllegalStateException("试卷来源尚未凑齐")
+        }
+
+        val startedAt = System.currentTimeMillis()
+        questionBankRepository.updateExamPaperStatus(
+            paperId = paper.id,
+            status = ExamPaperStatus.GENERATING,
+            error = null,
+            startedAt = startedAt
+        )
+        repository.updateProgress(task.id, sources.count { it.status == ExamPaperSourceStatus.GENERATED }, sources.size, "正在生成整卷")
+
+        try {
+            sources.sortedBy { it.orderInPaper }.forEachIndexed { index, source ->
+                val existingGroup = source.questionGroupId?.let { questionBankRepository.getGroupById(it) }
+                if (source.status == ExamPaperSourceStatus.GENERATED && existingGroup != null) {
+                    repository.updateProgress(task.id, index + 1, sources.size, "已恢复 ${index + 1}/${sources.size}")
+                    return@forEachIndexed
+                }
+
+                questionBankRepository.updateExamPaperSourceStatus(
+                    sourceId = source.id,
+                    status = ExamPaperSourceStatus.GENERATING,
+                    error = null
+                )
+                try {
+                    val (_, group) = generateQuestionGroup(
+                        articleId = source.articleId,
+                        questionType = source.questionType,
+                        variant = source.variant,
+                        orderInPaper = source.orderInPaper,
+                        startQuestionNumber = source.startQuestionNumber,
+                        sectionLabelOverride = blueprint.slots.firstOrNull { it.key == source.slotKey }?.sectionLabel
+                    )
+                    val groupId = questionBankRepository.saveGeneratedGroup(paper.id, source, group)
+                    val savedGroup = questionBankRepository.getGroupById(groupId)
+                        ?: throw IllegalStateException("题组保存后无法读取")
+                    enqueueGeneratedSupportTasks(savedGroup, paper.title)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Exception) {
+                    questionBankRepository.updateExamPaperSourceStatus(
+                        sourceId = source.id,
+                        status = ExamPaperSourceStatus.FAILED,
+                        error = error.message ?: "出题失败"
+                    )
+                    throw error
+                }
+                repository.updateProgress(
+                    task.id,
+                    index + 1,
+                    sources.size,
+                    "已生成 ${index + 1}/${sources.size}"
+                )
+            }
+
+            questionBankRepository.updateExamPaperStatus(
+                paperId = paper.id,
+                status = ExamPaperStatus.READY_TO_PRACTICE,
+                error = null,
+                completedAt = System.currentTimeMillis()
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            questionBankRepository.updateExamPaperStatus(
+                paperId = paper.id,
+                status = ExamPaperStatus.FAILED,
+                error = error.message ?: "整卷生成失败"
+            )
+            throw error
+        }
+    }
+
+    private suspend fun generateQuestionGroup(
+        articleId: Long,
+        questionType: QuestionType,
+        variant: String?,
+        orderInPaper: Int,
+        startQuestionNumber: Int,
+        sectionLabelOverride: String?
+    ): Pair<com.xty.englishhelper.domain.model.Article, QuestionGroup> {
+        val article = articleRepository.getArticleByIdOnce(articleId)
+            ?: throw IllegalStateException("文章不存在")
+        val paragraphs = articleRepository.getParagraphs(article.id)
+        val config = settingsDataStore.getAiConfig(AiSettingsScope.MAIN)
+        if (config.apiKey.isBlank()) throw IllegalStateException("主模型未配置")
+        val articleText = buildArticleText(article, paragraphs)
+        if (articleText.isBlank()) throw IllegalStateException("文章内容为空，无法出题")
+
+        val scanResult = questionBankAiRepository.generateQuestionsFromArticle(
+            articleTitle = article.title,
+            articleText = articleText,
+            questionType = questionType.name,
+            variant = variant,
+            apiKey = config.apiKey,
+            model = config.model,
+            baseUrl = config.baseUrl,
+            provider = config.provider
+        )
+        val rawGroup = scanResult.questionGroups.firstOrNull()
+            ?: throw IllegalStateException("出题失败：未返回题组")
+        val normalizedGroup = normalizeGeneratedGroup(rawGroup, questionType, variant, article)
+        validateGeneratedGroup(normalizedGroup, questionType, variant)
+
+        val sentenceOptionsJson = if (
+            questionType == QuestionType.SENTENCE_INSERTION ||
+            questionType == QuestionType.COMMENT_OPINION_MATCH ||
+            questionType == QuestionType.SUBHEADING_MATCH ||
+            questionType == QuestionType.INFORMATION_MATCH
+        ) buildSentenceInsertionExtraData(normalizedGroup.sentenceOptions) else null
+        val rawPassageParagraphs = if (
+            questionType == QuestionType.INFORMATION_MATCH &&
+            normalizedGroup.passageParagraphs.isEmpty() &&
+            normalizedGroup.sentenceOptions.isNotEmpty()
+        ) normalizedGroup.sentenceOptions else normalizedGroup.passageParagraphs
+        val passageParagraphs = renumberGeneratedPassage(
+            paragraphs = rawPassageParagraphs,
+            questionType = questionType,
+            startQuestionNumber = startQuestionNumber
+        )
+        val now = System.currentTimeMillis()
+        val group = QuestionGroup(
+            uid = UUID.randomUUID().toString(),
+            examPaperId = 0,
+            questionType = questionType,
+            sectionLabel = sectionLabelOverride
+                ?: normalizedGroup.sectionLabel?.takeIf { it.isNotBlank() }
+                ?: defaultSectionLabel(questionType, variant),
+            orderInPaper = orderInPaper,
+            directions = normalizedGroup.directions,
+            passageText = passageParagraphs.joinToString("\n"),
+            sourceInfo = normalizedGroup.sourceInfo,
+            sourceUrl = normalizedGroup.sourceUrl,
+            sourceVerified = SourceVerifyStatus.VERIFIED,
+            wordCount = normalizedGroup.wordCount,
+            difficultyLevel = normalizedGroup.difficultyLevel?.let { level ->
+                com.xty.englishhelper.domain.model.DifficultyLevel.entries.find { it.name == level }
+            },
+            difficultyScore = normalizedGroup.difficultyScore,
+            createdAt = now,
+            updatedAt = now,
+            paragraphs = passageParagraphs.mapIndexed { index, text ->
+                ArticleParagraph(paragraphIndex = index, text = text)
+            },
+            items = normalizedGroup.questions.mapIndexed { index, question ->
+                QuestionItem(
+                    questionGroupId = 0,
+                    questionNumber = startQuestionNumber + index,
+                    questionText = question.questionText,
+                    optionA = question.optionA.ifBlank { null },
+                    optionB = question.optionB.ifBlank { null },
+                    optionC = question.optionC.ifBlank { null },
+                    optionD = question.optionD.ifBlank { null },
+                    orderInGroup = index,
+                    wordCount = question.wordCount,
+                    difficultyLevel = question.difficultyLevel?.let { level ->
+                        com.xty.englishhelper.domain.model.DifficultyLevel.entries.find { it.name == level }
+                    },
+                    difficultyScore = question.difficultyScore,
+                    extraData = sentenceOptionsJson
+                )
+            }
+        )
+        return article to group
+    }
+
+    private fun renumberGeneratedPassage(
+        paragraphs: List<String>,
+        questionType: QuestionType,
+        startQuestionNumber: Int
+    ): List<String> {
+        if (startQuestionNumber == 1) return paragraphs
+        return paragraphs.map { paragraph ->
+            var result = paragraph
+            if (questionType == QuestionType.CLOZE || questionType == QuestionType.SENTENCE_INSERTION) {
+                result = Regex("__(\\d+)__").replace(result) { match ->
+                    val local = match.groupValues[1].toIntOrNull() ?: return@replace match.value
+                    "__${startQuestionNumber + local - 1}__"
+                }
+            }
+            if (questionType == QuestionType.TRANSLATION) {
+                result = Regex("\\(\\((/)?(\\d+)\\)\\)").replace(result) { match ->
+                    val closing = match.groupValues[1]
+                    val local = match.groupValues[2].toIntOrNull() ?: return@replace match.value
+                    "(($closing${startQuestionNumber + local - 1}))"
+                }
+            }
+            result
+        }
+    }
+
+    private fun enqueueGeneratedSupportTasks(group: QuestionGroup, paperTitle: String) {
+        if (group.questionType == QuestionType.WRITING) {
+            enqueueQuestionWritingSampleSearch(
+                groupId = group.id,
+                paperTitle = paperTitle,
+                questionSnippet = group.items.firstOrNull()?.questionText?.take(300).orEmpty()
+            )
+        } else {
+            enqueueQuestionAnswerGeneration(
+                groupId = group.id,
+                paperTitle = paperTitle,
+                sectionLabel = group.sectionLabel.orEmpty()
+            )
+        }
     }
 
     private suspend fun executeAnswerGenerate(task: BackgroundTask) {

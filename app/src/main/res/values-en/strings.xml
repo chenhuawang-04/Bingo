@@ -424,6 +424,8 @@
     <string name="task_pool_rebuild">Pool Rebuild</string>
     <string name="task_pool_review">Pool Refinement</string>
     <string name="task_question_generate">Question Generate</string>
+    <string name="task_exam_paper_generate">Full Paper Generation</string>
+    <string name="task_subtitle_paper">Paper #</string>
     <string name="task_answer_generate">Answer Generate</string>
     <string name="task_source_verify">Source Verify</string>
     <string name="task_writing_sample">Writing Sample Search</string>

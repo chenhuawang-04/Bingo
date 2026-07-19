@@ -31,6 +31,9 @@ import com.xty.englishhelper.data.local.entity.ParagraphAnalysisCacheEntity
 import com.xty.englishhelper.data.local.entity.CognateEntity
 import com.xty.englishhelper.data.local.entity.DictionaryEntity
 import com.xty.englishhelper.data.local.entity.ExamPaperEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperSourceEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperAnswerDraftEntity
+import com.xty.englishhelper.data.local.entity.ExamPaperPracticeProgressEntity
 import com.xty.englishhelper.data.local.entity.PracticeRecordEntity
 import com.xty.englishhelper.data.local.entity.QuestionGroupEntity
 import com.xty.englishhelper.data.local.entity.QuestionGroupParagraphEntity
@@ -88,6 +91,9 @@ import java.util.UUID
         ArticleParagraphEntity::class,
         ParagraphAnalysisCacheEntity::class,
         ExamPaperEntity::class,
+        ExamPaperSourceEntity::class,
+        ExamPaperAnswerDraftEntity::class,
+        ExamPaperPracticeProgressEntity::class,
         QuestionGroupEntity::class,
         QuestionGroupParagraphEntity::class,
         QuestionItemEntity::class,
@@ -112,7 +118,7 @@ import java.util.UUID
         WordClusterEntity::class,
         WordClusterMemberEntity::class
     ],
-    version = 37,
+    version = 38,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -1335,6 +1341,79 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_cluster_members_word_id` ON `word_cluster_members` (`word_id`)")
+            }
+        }
+
+        val MIGRATION_37_38 = object : Migration(37, 38) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN paper_type TEXT NOT NULL DEFAULT 'IMPORTED'")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN status TEXT NOT NULL DEFAULT 'READY_TO_PRACTICE'")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN day_key TEXT")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN daily_sequence INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN profile TEXT NOT NULL DEFAULT 'ENGLISH_ONE'")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN blueprint_version INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN special_question_type TEXT")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN generation_error TEXT")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN generation_started_at INTEGER")
+                db.execSQL("ALTER TABLE exam_papers ADD COLUMN generation_completed_at INTEGER")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_papers_day_key` ON `exam_papers` (`day_key`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_exam_papers_day_key_daily_sequence` ON `exam_papers` (`day_key`, `daily_sequence`)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `exam_paper_sources` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `uid` TEXT NOT NULL,
+                        `exam_paper_id` INTEGER NOT NULL,
+                        `article_id` INTEGER NOT NULL,
+                        `article_uid` TEXT NOT NULL,
+                        `slot_key` TEXT NOT NULL,
+                        `question_type` TEXT NOT NULL,
+                        `variant` TEXT,
+                        `order_in_paper` INTEGER NOT NULL,
+                        `start_question_number` INTEGER NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `question_group_id` INTEGER,
+                        `error_message` TEXT,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`exam_paper_id`) REFERENCES `exam_papers`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_exam_paper_sources_uid` ON `exam_paper_sources` (`uid`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_exam_paper_sources_exam_paper_id_slot_key` ON `exam_paper_sources` (`exam_paper_id`, `slot_key`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_paper_sources_article_id` ON `exam_paper_sources` (`article_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_paper_sources_question_group_id` ON `exam_paper_sources` (`question_group_id`)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `exam_paper_answer_drafts` (
+                        `exam_paper_id` INTEGER NOT NULL,
+                        `question_item_id` INTEGER NOT NULL,
+                        `user_answer` TEXT NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`exam_paper_id`, `question_item_id`),
+                        FOREIGN KEY(`exam_paper_id`) REFERENCES `exam_papers`(`id`) ON DELETE CASCADE,
+                        FOREIGN KEY(`question_item_id`) REFERENCES `question_items`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_paper_answer_drafts_question_item_id` ON `exam_paper_answer_drafts` (`question_item_id`)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `exam_paper_practice_progress` (
+                        `exam_paper_id` INTEGER NOT NULL,
+                        `question_group_id` INTEGER NOT NULL,
+                        `submitted_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`exam_paper_id`, `question_group_id`),
+                        FOREIGN KEY(`exam_paper_id`) REFERENCES `exam_papers`(`id`) ON DELETE CASCADE,
+                        FOREIGN KEY(`question_group_id`) REFERENCES `question_groups`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_exam_paper_practice_progress_question_group_id` ON `exam_paper_practice_progress` (`question_group_id`)")
             }
         }
     }

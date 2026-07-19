@@ -2,18 +2,46 @@ package com.xty.englishhelper.domain.repository
 
 import com.xty.englishhelper.domain.model.ArticleParagraph
 import com.xty.englishhelper.domain.model.ExamPaper
+import com.xty.englishhelper.domain.model.ExamPaperCollectionResult
+import com.xty.englishhelper.domain.model.ExamPaperProfile
+import com.xty.englishhelper.domain.model.ExamPaperSource
+import com.xty.englishhelper.domain.model.ExamPaperSummary
 import com.xty.englishhelper.domain.model.PracticeRecord
 import com.xty.englishhelper.domain.model.QuestionGroup
 import com.xty.englishhelper.domain.model.QuestionItem
+import com.xty.englishhelper.domain.model.QuestionType
 import kotlinx.coroutines.flow.Flow
 
 interface QuestionBankRepository {
 
     // ── ExamPaper ──
     fun getAllExamPapers(): Flow<List<ExamPaper>>
+    fun getAllExamPaperSummaries(): Flow<List<ExamPaperSummary>>
     suspend fun getExamPaperById(id: Long): ExamPaper?
     suspend fun insertExamPaper(paper: ExamPaper): Long
     suspend fun deleteExamPaper(id: Long)
+    suspend fun collectArticleForPaper(
+        articleId: Long,
+        dayKey: String,
+        profile: ExamPaperProfile,
+        questionType: QuestionType,
+        variant: String?
+    ): ExamPaperCollectionResult
+    fun getExamPaperSources(paperId: Long): Flow<List<ExamPaperSource>>
+    suspend fun getExamPaperSourcesOnce(paperId: Long): List<ExamPaperSource>
+    suspend fun updateExamPaperStatus(
+        paperId: Long,
+        status: com.xty.englishhelper.domain.model.ExamPaperStatus,
+        error: String? = null,
+        startedAt: Long? = null,
+        completedAt: Long? = null
+    )
+    suspend fun updateExamPaperSourceStatus(
+        sourceId: Long,
+        status: com.xty.englishhelper.domain.model.ExamPaperSourceStatus,
+        groupId: Long? = null,
+        error: String? = null
+    )
 
     // ── QuestionGroup ──
     fun getAllGroupsWithPaperTitle(): Flow<List<QuestionGroup>>
@@ -51,6 +79,12 @@ interface QuestionBankRepository {
     suspend fun insertPracticeRecords(records: List<PracticeRecord>)
     suspend fun getCorrectCountByGroup(groupId: Long): Int
     suspend fun getTotalPracticeCountByGroup(groupId: Long): Int
+    suspend fun saveExamPaperAnswerDraft(paperId: Long, itemId: Long, answer: String)
+    suspend fun getExamPaperAnswerDrafts(paperId: Long, groupId: Long): Map<Long, String>
+    suspend fun markExamPaperGroupCompleted(paperId: Long, groupId: Long)
+    suspend fun resetExamPaperGroupProgress(paperId: Long, groupId: Long)
+    fun observeCompletedExamPaperGroupIds(paperId: Long): Flow<List<Long>>
+    suspend fun isExamPaperGroupCompleted(paperId: Long, groupId: Long): Boolean
 
     // ── SourceArticle ──
     suspend fun linkSourceArticle(groupId: Long, articleId: Long)
@@ -60,5 +94,10 @@ interface QuestionBankRepository {
     suspend fun saveScannedPaper(
         paper: ExamPaper,
         groups: List<QuestionGroup>
+    ): Long
+    suspend fun saveGeneratedGroup(
+        paperId: Long,
+        source: ExamPaperSource,
+        group: QuestionGroup
     ): Long
 }

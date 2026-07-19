@@ -16,7 +16,44 @@ data class ExamPaperJson(
     val totalQuestions: Int = 0,
     val createdAt: Long = 0,
     val updatedAt: Long = 0,
+    val paperType: String = "IMPORTED",
+    val status: String = "READY_TO_PRACTICE",
+    val dayKey: String? = null,
+    val dailySequence: Int = 0,
+    val profile: String = "ENGLISH_ONE",
+    val blueprintVersion: Int = 1,
+    val specialQuestionType: String? = null,
+    val generationError: String? = null,
+    val generationStartedAt: Long? = null,
+    val generationCompletedAt: Long? = null,
+    val sources: List<ExamPaperSourceJson> = emptyList(),
+    val answerDrafts: List<ExamPaperAnswerDraftJson> = emptyList(),
+    val completedGroupUids: List<String> = emptyList(),
     val groups: List<QuestionGroupJson> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class ExamPaperAnswerDraftJson(
+    val groupUid: String = "",
+    val questionNumber: Int = 0,
+    val userAnswer: String = "",
+    val updatedAt: Long = 0
+)
+
+@JsonClass(generateAdapter = true)
+data class ExamPaperSourceJson(
+    val uid: String = "",
+    val articleUid: String = "",
+    val slotKey: String = "",
+    val questionType: String = "",
+    val variant: String? = null,
+    val orderInPaper: Int = 0,
+    val startQuestionNumber: Int = 1,
+    val status: String = "COLLECTED",
+    val questionGroupUid: String? = null,
+    val errorMessage: String? = null,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0
 )
 
 @JsonClass(generateAdapter = true)

@@ -16,6 +16,7 @@ import com.xty.englishhelper.ui.screen.guardian.GuardianBrowseScreen
 import com.xty.englishhelper.ui.screen.questionbank.QuestionBankListScreen
 import com.xty.englishhelper.ui.screen.questionbank.QuestionBankScanScreen
 import com.xty.englishhelper.ui.screen.questionbank.QuestionBankReaderScreen
+import com.xty.englishhelper.ui.screen.questionbank.QuestionBankPaperScreen
 import com.xty.englishhelper.ui.screen.plan.PlanScreen
 import com.xty.englishhelper.ui.screen.batchimport.BatchImportScreen
 import com.xty.englishhelper.ui.screen.dictionary.DictionaryScreen
@@ -264,6 +265,25 @@ fun NavGraph(navController: NavHostController) {
                     onScan = { navController.navigate(QuestionBankScanRoute()) },
                     onGroupClick = { groupId ->
                         navController.navigate(QuestionBankReaderRoute(groupId))
+                    },
+                    onPaperClick = { paperId ->
+                        navController.navigate(QuestionBankPaperRoute(paperId))
+                    }
+                )
+            }
+
+            composable<QuestionBankPaperRoute> { backStackEntry ->
+                val route = backStackEntry.toRoute<QuestionBankPaperRoute>()
+                QuestionBankPaperScreen(
+                    onBack = { navController.popBackStack() },
+                    onStartPaper = { groupId, paperId ->
+                        navController.navigate(QuestionBankReaderRoute(groupId, paperId))
+                    },
+                    onGroupClick = { groupId ->
+                        navController.navigate(QuestionBankReaderRoute(groupId))
+                    },
+                    onArticleClick = { articleId ->
+                        navController.navigate(ArticleReaderRoute(articleId))
                     }
                 )
             }
@@ -284,6 +304,11 @@ fun NavGraph(navController: NavHostController) {
                     },
                     onViewArticle = { articleId ->
                         navController.navigate(ArticleReaderRoute(articleId))
+                    },
+                    onNavigatePaperGroup = { groupId, paperId ->
+                        navController.navigate(QuestionBankReaderRoute(groupId, paperId)) {
+                            popUpTo<QuestionBankReaderRoute> { inclusive = true }
+                        }
                     }
                 )
             }

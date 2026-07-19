@@ -514,6 +514,8 @@
     <string name="task_pool_rebuild">词池重建</string>
     <string name="task_pool_review">词池提纯</string>
     <string name="task_question_generate">文章出题</string>
+    <string name="task_exam_paper_generate">整卷自动出题</string>
+    <string name="task_subtitle_paper">试卷 #</string>
     <string name="task_answer_generate">题库答案生成</string>
     <string name="task_source_verify">题库来源验证</string>
     <string name="task_writing_sample">作文范文检索</string>

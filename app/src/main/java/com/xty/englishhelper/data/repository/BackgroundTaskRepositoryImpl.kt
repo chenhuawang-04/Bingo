@@ -8,6 +8,7 @@ import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.AppUpdateCheckPayload
 import com.xty.englishhelper.domain.model.QuestionGeneratePayload
+import com.xty.englishhelper.domain.model.ExamPaperGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionAnswerGeneratePayload
 import com.xty.englishhelper.domain.model.QuestionSourceVerifyPayload
 import com.xty.englishhelper.domain.model.QuestionWritingSamplePayload
@@ -129,6 +130,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
             BackgroundTaskType.WORD_POOL_REVIEW -> json.encodeToString(payload as WordPoolReviewPayload)
             BackgroundTaskType.WORD_PHRASE_ORGANIZE -> json.encodeToString(payload as WordPhraseOrganizePayload)
             BackgroundTaskType.QUESTION_GENERATE -> json.encodeToString(payload as QuestionGeneratePayload)
+            BackgroundTaskType.EXAM_PAPER_GENERATE -> json.encodeToString(payload as ExamPaperGeneratePayload)
             BackgroundTaskType.QUESTION_ANSWER_GENERATE -> json.encodeToString(payload as QuestionAnswerGeneratePayload)
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.encodeToString(payload as QuestionSourceVerifyPayload)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.encodeToString(payload as QuestionWritingSamplePayload)
@@ -148,6 +150,7 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
                 BackgroundTaskType.WORD_POOL_REVIEW -> json.decodeFromString<WordPoolReviewPayload>(raw)
                 BackgroundTaskType.WORD_PHRASE_ORGANIZE -> json.decodeFromString<WordPhraseOrganizePayload>(raw)
                 BackgroundTaskType.QUESTION_GENERATE -> json.decodeFromString<QuestionGeneratePayload>(raw)
+                BackgroundTaskType.EXAM_PAPER_GENERATE -> json.decodeFromString<ExamPaperGeneratePayload>(raw)
                 BackgroundTaskType.QUESTION_ANSWER_GENERATE -> json.decodeFromString<QuestionAnswerGeneratePayload>(raw)
                 BackgroundTaskType.QUESTION_SOURCE_VERIFY -> json.decodeFromString<QuestionSourceVerifyPayload>(raw)
                 BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> json.decodeFromString<QuestionWritingSamplePayload>(raw)
@@ -178,7 +181,6 @@ class BackgroundTaskRepositoryImpl @Inject constructor(
         )
     }
 }
-
 
 
 

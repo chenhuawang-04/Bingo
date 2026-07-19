@@ -88,7 +88,10 @@ data object QuestionBankListRoute
 data class QuestionBankScanRoute(val editMode: Boolean = false)
 
 @Serializable
-data class QuestionBankReaderRoute(val groupId: Long)
+data class QuestionBankReaderRoute(val groupId: Long, val paperId: Long = 0L)
+
+@Serializable
+data class QuestionBankPaperRoute(val paperId: Long)
 
 @Serializable
 data object PlanRoute
