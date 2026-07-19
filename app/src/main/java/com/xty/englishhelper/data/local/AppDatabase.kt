@@ -17,6 +17,7 @@ import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPhraseDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
+import com.xty.englishhelper.data.local.dao.WordClusterDao
 import com.xty.englishhelper.data.local.dao.PlanDao
 import com.xty.englishhelper.data.local.entity.ArticleEntity
 import com.xty.englishhelper.data.local.entity.ArticleCategoryEntity
@@ -60,6 +61,8 @@ import com.xty.englishhelper.data.local.entity.WordPoolEntity
 import com.xty.englishhelper.data.local.entity.WordPoolMemberEntity
 import com.xty.englishhelper.data.local.entity.WordPoolStrategyStateEntity
 import com.xty.englishhelper.data.local.entity.WordStudyStateEntity
+import com.xty.englishhelper.data.local.entity.WordClusterEntity
+import com.xty.englishhelper.data.local.entity.WordClusterMemberEntity
 import java.util.UUID
 
 @Database(
@@ -105,9 +108,11 @@ import java.util.UUID
         WordPhraseTagEntity::class,
         WordPhraseEntity::class,
         WordPhraseTagCrossRef::class,
-        WordPhraseOrganizeMarkEntity::class
+        WordPhraseOrganizeMarkEntity::class,
+        WordClusterEntity::class,
+        WordClusterMemberEntity::class
     ],
-    version = 36,
+    version = 37,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -124,6 +129,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun wordEdgeDao(): WordEdgeDao
     abstract fun brainstormDao(): BrainstormDao
     abstract fun wordPhraseDao(): WordPhraseDao
+    abstract fun wordClusterDao(): WordClusterDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -1296,6 +1302,39 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS `index_word_edges_dictionary_id_confidence` " +
                         "ON `word_edges` (`dictionary_id`, `confidence`)"
                 )
+            }
+        }
+
+        val MIGRATION_36_37 = object : Migration(36, 37) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_clusters` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `dictionary_id` INTEGER NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `normalized_name` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`dictionary_id`) REFERENCES `dictionaries`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_clusters_dictionary_id` ON `word_clusters` (`dictionary_id`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_word_clusters_dictionary_id_normalized_name` ON `word_clusters` (`dictionary_id`, `normalized_name`)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `word_cluster_members` (
+                        `cluster_id` INTEGER NOT NULL,
+                        `word_id` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`cluster_id`, `word_id`),
+                        FOREIGN KEY(`cluster_id`) REFERENCES `word_clusters`(`id`) ON DELETE CASCADE,
+                        FOREIGN KEY(`word_id`) REFERENCES `words`(`id`) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_word_cluster_members_word_id` ON `word_cluster_members` (`word_id`)")
             }
         }
     }

@@ -7,6 +7,7 @@ import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.model.CloudExampleSource
 import com.xty.englishhelper.domain.model.CloudWordExample
+import com.xty.englishhelper.domain.model.WordCluster
 import com.xty.englishhelper.domain.study.Rating
 
 data class StudyUiState(
@@ -49,8 +50,23 @@ data class StudyUiState(
     // 阶段C：揭示答案时展示的记忆钩子（最强关联的关系依据/例句）
     val currentWordHook: BrainstormHook? = null,
     // 阶段C：关联主动回忆选择题（开启且当前词符合条件时，替代翻卡流程）
-    val brainstormQuiz: BrainstormQuiz? = null
+    val brainstormQuiz: BrainstormQuiz? = null,
+    val wordClusters: List<WordCluster> = emptyList(),
+    val allWordClusters: List<WordCluster> = emptyList(),
+    val wordClustersExpanded: Boolean = false,
+    val wordClusterEditorVisible: Boolean = false,
+    val newWordClusterName: String = "",
+    val wordClusterSaving: Boolean = false,
+    val wordClusterError: String? = null,
+    val relatedClusterName: String? = null,
+    val relatedWords: List<WordDetails> = emptyList(),
+    val relatedWordIndex: Int = 0,
+    val relatedWordShowAnswer: Boolean = false,
+    val relatedWordRatings: Map<Long, Rating> = emptyMap()
 )
+
+val StudyUiState.isRelatedClusterReview: Boolean get() = relatedClusterName != null
+val StudyUiState.relatedCurrentWord: WordDetails? get() = relatedWords.getOrNull(relatedWordIndex)
 
 /** 记忆钩子：当前词与某关联词的关系依据 / 例句，揭示答案时展示。 */
 data class BrainstormHook(

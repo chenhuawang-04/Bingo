@@ -90,6 +90,15 @@ fun StudyScreen(
                     onCloudExampleSourceSelected = viewModel::selectCloudExampleSource,
                     onQuizAnswer = viewModel::onQuizAnswer,
                     onQuizContinue = viewModel::onQuizContinue,
+                    onWordClustersExpandedChange = viewModel::setWordClustersExpanded,
+                    onWordClusterEditorVisibleChange = viewModel::showWordClusterEditor,
+                    onNewWordClusterNameChange = viewModel::onNewWordClusterNameChange,
+                    onCreateWordCluster = viewModel::createWordCluster,
+                    onSetCurrentWordInCluster = viewModel::setCurrentWordInCluster,
+                    onStartRelatedClusterReview = viewModel::startRelatedClusterReview,
+                    onRevealRelatedWord = viewModel::revealRelatedWord,
+                    onRateRelatedWord = viewModel::rateRelatedWord,
+                    onExitRelatedClusterReview = viewModel::exitRelatedClusterReview,
                     modifier = Modifier.padding(padding)
                 )
             }

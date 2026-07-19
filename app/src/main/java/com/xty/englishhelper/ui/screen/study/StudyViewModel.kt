@@ -19,6 +19,7 @@ import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
 import com.xty.englishhelper.domain.repository.WordEdgeNeighborPreview
+import com.xty.englishhelper.domain.repository.WordClusterRepository
 import com.xty.englishhelper.domain.study.Rating
 import com.xty.englishhelper.domain.usecase.brainstorm.BuildBrainstormSessionUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.CollectRelatedGroupUseCase
@@ -75,7 +76,8 @@ class StudyViewModel @Inject constructor(
     private val buildBrainstormSession: BuildBrainstormSessionUseCase,
     private val getStudyWordEdgePreviews: GetStudyWordEdgePreviewsUseCase,
     private val searchStudyWordNoteSuggestions: SearchStudyWordNoteSuggestionsUseCase,
-    private val submitStudyWordNote: SubmitStudyWordNoteUseCase
+    private val submitStudyWordNote: SubmitStudyWordNoteUseCase,
+    private val wordClusterRepository: WordClusterRepository
 ) : ViewModel() {
     private companion object {
         const val WORD_NOTE_SUGGESTION_MIN_QUERY_LENGTH = 2
@@ -378,6 +380,7 @@ class StudyViewModel @Inject constructor(
                 emptyList()
             }
             val edgePreviews = buildCurrentWordEdges(entry.word, noteEnabled)
+            val clusters = wordClusterRepository.getClustersForWord(entry.word.id)
 
             // 阶段C：当前词所在簇的掌握进度 + 记忆钩子 + 是否出选择题
             val clusterIdx = brainstormClusterOf[entry.word.id]
@@ -417,7 +420,18 @@ class StudyViewModel @Inject constructor(
                     brainstormQuiz = quiz,
                     cloudExamplesLoading = false,
                     cloudExamples = emptyList(),
-                    cloudExamplesError = null
+                    cloudExamplesError = null,
+                    wordClusters = clusters,
+                    allWordClusters = emptyList(),
+                    wordClustersExpanded = false,
+                    wordClusterEditorVisible = false,
+                    newWordClusterName = "",
+                    wordClusterError = null,
+                    relatedClusterName = null,
+                    relatedWords = emptyList(),
+                    relatedWordIndex = 0,
+                    relatedWordShowAnswer = false,
+                    relatedWordRatings = emptyMap()
                 )
             }
             pendingWordNoteTargetWordIds.clear()
@@ -552,6 +566,109 @@ class StudyViewModel @Inject constructor(
                 _uiState.update { it.copy(error = e.message) }
             }
         }
+    }
+
+    fun setWordClustersExpanded(expanded: Boolean) {
+        _uiState.update { it.copy(wordClustersExpanded = expanded) }
+    }
+
+    fun showWordClusterEditor(show: Boolean) {
+        val word = _uiState.value.currentWord ?: return
+        _uiState.update { it.copy(wordClusterEditorVisible = show, wordClusterError = null) }
+        if (show) viewModelScope.launch {
+            runCatching { wordClusterRepository.getClusters(word.dictionaryId) }
+                .onSuccess { clusters -> _uiState.update { it.copy(allWordClusters = clusters) } }
+                .onFailure { error -> _uiState.update { it.copy(wordClusterError = error.message) } }
+        }
+    }
+
+    fun onNewWordClusterNameChange(value: String) {
+        if (value.length <= 40) _uiState.update { it.copy(newWordClusterName = value, wordClusterError = null) }
+    }
+
+    fun createWordCluster() {
+        val state = _uiState.value
+        val word = state.currentWord ?: return
+        if (state.wordClusterSaving || state.newWordClusterName.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(wordClusterSaving = true, wordClusterError = null) }
+            try {
+                wordClusterRepository.createCluster(word.dictionaryId, state.newWordClusterName, word.id)
+                refreshWordClusters(word)
+                _uiState.update { it.copy(newWordClusterName = "", wordClusterSaving = false) }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                _uiState.update { it.copy(wordClusterSaving = false, wordClusterError = error.message ?: "保存词簇失败") }
+            }
+        }
+    }
+
+    fun setCurrentWordInCluster(clusterId: Long, included: Boolean) {
+        val word = _uiState.value.currentWord ?: return
+        viewModelScope.launch {
+            try {
+                wordClusterRepository.setWordMembership(clusterId, word.id, included)
+                refreshWordClusters(word)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                _uiState.update { it.copy(wordClusterError = error.message ?: "更新词簇失败") }
+            }
+        }
+    }
+
+    private suspend fun refreshWordClusters(word: WordDetails) {
+        val selected = wordClusterRepository.getClustersForWord(word.id)
+        val all = wordClusterRepository.getClusters(word.dictionaryId)
+        _uiState.update { it.copy(wordClusters = selected, allWordClusters = all) }
+    }
+
+    fun startRelatedClusterReview(clusterId: Long) {
+        val word = _uiState.value.currentWord ?: return
+        viewModelScope.launch {
+            try {
+                val review = wordClusterRepository.getClusterReview(clusterId, word.id) ?: return@launch
+                if (review.words.isEmpty()) {
+                    _uiState.update { it.copy(wordClusterError = "这个词簇中还没有其他单词") }
+                    return@launch
+                }
+                _uiState.update {
+                    it.copy(
+                        relatedClusterName = review.cluster.name,
+                        relatedWords = review.words,
+                        relatedWordIndex = 0,
+                        relatedWordShowAnswer = false,
+                        relatedWordRatings = emptyMap(),
+                        wordClusterError = null
+                    )
+                }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                _uiState.update { it.copy(wordClusterError = error.message ?: "无法打开关联词") }
+            }
+        }
+    }
+
+    fun revealRelatedWord() = _uiState.update { it.copy(relatedWordShowAnswer = true) }
+
+    fun rateRelatedWord(rating: Rating) {
+        val state = _uiState.value
+        val word = state.relatedCurrentWord ?: return
+        val ratings = state.relatedWordRatings + (word.id to rating)
+        val nextIndex = state.relatedWordIndex + 1
+        _uiState.update {
+            if (nextIndex >= state.relatedWords.size) {
+                it.copy(relatedWordRatings = ratings, relatedClusterName = null, relatedWords = emptyList(), relatedWordIndex = 0, relatedWordShowAnswer = false)
+            } else {
+                it.copy(relatedWordRatings = ratings, relatedWordIndex = nextIndex, relatedWordShowAnswer = false)
+            }
+        }
+    }
+
+    fun exitRelatedClusterReview() {
+        _uiState.update { it.copy(relatedClusterName = null, relatedWords = emptyList(), relatedWordIndex = 0, relatedWordShowAnswer = false) }
     }
 
     private fun showGoalReachedDialog() {

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +45,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -89,9 +92,29 @@ internal fun StudyingContent(
     onCloudExampleSourceSelected: (CloudExampleSource) -> Unit,
     onQuizAnswer: (Long) -> Unit,
     onQuizContinue: () -> Unit,
+    onWordClustersExpandedChange: (Boolean) -> Unit,
+    onWordClusterEditorVisibleChange: (Boolean) -> Unit,
+    onNewWordClusterNameChange: (String) -> Unit,
+    onCreateWordCluster: () -> Unit,
+    onSetCurrentWordInCluster: (Long, Boolean) -> Unit,
+    onStartRelatedClusterReview: (Long) -> Unit,
+    onRevealRelatedWord: () -> Unit,
+    onRateRelatedWord: (Rating) -> Unit,
+    onExitRelatedClusterReview: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val word = state.currentWord ?: return
+
+    if (state.isRelatedClusterReview) {
+        RelatedClusterReviewContent(
+            state = state,
+            onReveal = onRevealRelatedWord,
+            onRate = onRateRelatedWord,
+            onExit = onExitRelatedClusterReview,
+            modifier = modifier
+        )
+        return
+    }
 
     // 阶段C：关联主动回忆选择题——开启且当前词符合条件时，替代翻卡流程。
     state.brainstormQuiz?.let { quiz ->
@@ -180,6 +203,11 @@ internal fun StudyingContent(
                                 onOpenRelatedWord = onOpenRelatedWord
                             )
                         }
+                        item {
+                            WordClustersCard(state, onWordClustersExpandedChange, onWordClusterEditorVisibleChange,
+                                onNewWordClusterNameChange, onCreateWordCluster, onSetCurrentWordInCluster,
+                                onStartRelatedClusterReview)
+                        }
                         state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                         wordDetailItems(
                             word = word,
@@ -253,6 +281,11 @@ internal fun StudyingContent(
                             onOpenRelatedWord = onOpenRelatedWord
                         )
                     }
+                    item {
+                        WordClustersCard(state, onWordClustersExpandedChange, onWordClusterEditorVisibleChange,
+                            onNewWordClusterNameChange, onCreateWordCluster, onSetCurrentWordInCluster,
+                            onStartRelatedClusterReview)
+                    }
                     state.currentWordHook?.let { hook -> item { HookCard(hook) } }
                     wordDetailItems(
                         word = word,
@@ -272,6 +305,147 @@ internal fun StudyingContent(
                         .padding(16.dp)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun WordClustersCard(
+    state: StudyUiState,
+    onExpandedChange: (Boolean) -> Unit,
+    onEditorVisibleChange: (Boolean) -> Unit,
+    onNameChange: (String) -> Unit,
+    onCreate: () -> Unit,
+    onMembershipChange: (Long, Boolean) -> Unit,
+    onReview: (Long) -> Unit
+) {
+    EhCard {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("词簇", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (state.wordClusters.isEmpty()) "把容易混淆或相关的词放在一起" else "已加入 ${state.wordClusters.size} 个词簇",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            TextButton(onClick = { onEditorVisibleChange(!state.wordClusterEditorVisible) }) {
+                Text(if (state.wordClusterEditorVisible) "完成" else "编辑")
+            }
+            if (state.wordClusters.isNotEmpty()) {
+                IconButton(onClick = { onExpandedChange(!state.wordClustersExpanded) }) {
+                    Icon(if (state.wordClustersExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, "展开词簇")
+                }
+            }
+        }
+
+        AnimatedVisibility(state.wordClustersExpanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                state.wordClusters.forEach { cluster ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(cluster.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            Text("${cluster.memberCount} 词", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = { onReview(cluster.id) }, enabled = cluster.memberCount > 1) { Text("关联背诵") }
+                        }
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(state.wordClusterEditorVisible) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.allWordClusters.forEach { cluster ->
+                    val selected = state.wordClusters.any { it.id == cluster.id }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(checked = selected, onCheckedChange = { onMembershipChange(cluster.id, it) })
+                        Text(cluster.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = state.newWordClusterName,
+                        onValueChange = onNameChange,
+                        label = { Text("新词簇名称") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(onClick = onCreate, enabled = state.newWordClusterName.isNotBlank() && !state.wordClusterSaving) {
+                        Text("创建")
+                    }
+                }
+                state.wordClusterError?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RelatedClusterReviewContent(
+    state: StudyUiState,
+    onReveal: () -> Unit,
+    onRate: (Rating) -> Unit,
+    onExit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val word = state.relatedCurrentWord ?: return
+    val semantic = EhTheme.semanticColors
+    Column(
+        modifier = modifier.fillMaxSize().padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onExit) { Text("返回主卡片") }
+            Spacer(Modifier.weight(1f))
+            Text("${state.relatedWordIndex + 1}/${state.relatedWords.size}", style = MaterialTheme.typography.labelMedium)
+        }
+        Text(state.relatedClusterName.orEmpty(), style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary)
+        Text("关联词浏览 · 不计入复习记录", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.weight(1f))
+        Text(word.spelling, style = MaterialTheme.typography.displaySmall, textAlign = TextAlign.Center)
+        if (word.phonetic.isNotBlank()) Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AnimatedVisibility(state.relatedWordShowAnswer) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                word.meanings.forEach { meaning ->
+                    Text(listOf(meaning.pos, meaning.definition).filter { it.isNotBlank() }.joinToString("  "),
+                        style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+                }
+                if (word.rootExplanation.isNotBlank()) {
+                    Text(word.rootExplanation, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        if (!state.relatedWordShowAnswer) {
+            Button(onClick = onReveal, modifier = Modifier.fillMaxWidth()) { Text("显示答案") }
+        } else {
+            EhStudyRatingBar(
+                options = listOf(
+                    RatingOption("重来", null, semantic.studyAgain),
+                    RatingOption("困难", null, semantic.studyHard),
+                    RatingOption("良好", null, semantic.studyGood),
+                    RatingOption("简单", null, semantic.studyEasy)
+                ),
+                onRate = { onRate(listOf(Rating.Again, Rating.Hard, Rating.Good, Rating.Easy)[it]) },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

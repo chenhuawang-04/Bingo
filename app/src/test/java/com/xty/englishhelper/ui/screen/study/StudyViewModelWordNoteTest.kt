@@ -14,6 +14,7 @@ import com.xty.englishhelper.domain.model.WordNoteOrganizePayload
 import com.xty.englishhelper.domain.model.WordSuggestion
 import com.xty.englishhelper.domain.plan.PlanAutoProgressTracker
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
+import com.xty.englishhelper.domain.repository.WordClusterRepository
 import com.xty.englishhelper.domain.usecase.brainstorm.BuildBrainstormSessionUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.CollectRelatedGroupUseCase
 import com.xty.englishhelper.domain.usecase.brainstorm.GetBrainstormDailyGoalUseCase
@@ -75,6 +76,7 @@ class StudyViewModelWordNoteTest {
         val getStudyWordEdgePreviews = mockk<GetStudyWordEdgePreviewsUseCase>()
         val searchStudyWordNoteSuggestions = mockk<SearchStudyWordNoteSuggestionsUseCase>()
         val submitStudyWordNote = mockk<SubmitStudyWordNoteUseCase>()
+        val wordClusterRepository = mockk<WordClusterRepository>()
 
         every { settingsDataStore.studyWordNoteEnabled } returns MutableStateFlow(true)
         every { settingsDataStore.ttsAutoStudy } returns flowOf(false)
@@ -82,6 +84,7 @@ class StudyViewModelWordNoteTest {
         coEvery { getDueWords.invoke(emptyList(), StudyMode.NORMAL) } returns listOf(currentWord)
         coEvery { getNewWords.invoke(emptyList(), StudyMode.NORMAL) } returns emptyList()
         coEvery { getStudyWordEdgePreviews.invoke(1L, 1L, 1.0) } returns emptyList()
+        coEvery { wordClusterRepository.getClustersForWord(1L) } returns emptyList()
         coEvery { searchStudyWordNoteSuggestions.invoke(any(), any(), any()) } returns emptyList()
         coEvery {
             submitStudyWordNote.invoke(currentWord, "alpha", emptyList(), EdgeType.FAMILY_SAME_ROOT)
@@ -120,7 +123,8 @@ class StudyViewModelWordNoteTest {
             buildBrainstormSession = buildBrainstormSession,
             getStudyWordEdgePreviews = getStudyWordEdgePreviews,
             searchStudyWordNoteSuggestions = searchStudyWordNoteSuggestions,
-            submitStudyWordNote = submitStudyWordNote
+            submitStudyWordNote = submitStudyWordNote,
+            wordClusterRepository = wordClusterRepository
         )
 
         advanceUntilIdle()

@@ -26,6 +26,7 @@ import com.xty.englishhelper.data.repository.WordPoolRepositoryImpl
 import com.xty.englishhelper.data.repository.WordPhraseRepositoryImpl
 import com.xty.englishhelper.data.repository.WordPhraseAiRepositoryImpl
 import com.xty.englishhelper.data.repository.WordRepositoryImpl
+import com.xty.englishhelper.data.repository.WordClusterRepositoryImpl
 import com.xty.englishhelper.domain.repository.AiModelRepository
 import com.xty.englishhelper.domain.repository.AiRepository
 import com.xty.englishhelper.domain.repository.AppUpdateRepository
@@ -52,6 +53,7 @@ import com.xty.englishhelper.domain.repository.WordPoolRepository
 import com.xty.englishhelper.domain.repository.WordPhraseRepository
 import com.xty.englishhelper.domain.repository.WordPhraseAiRepository
 import com.xty.englishhelper.domain.repository.WordRepository
+import com.xty.englishhelper.domain.repository.WordClusterRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -69,6 +71,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindWordRepository(impl: WordRepositoryImpl): WordRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindWordClusterRepository(impl: WordClusterRepositoryImpl): WordClusterRepository
 
     @Binds
     @Singleton

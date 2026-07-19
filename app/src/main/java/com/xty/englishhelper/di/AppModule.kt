@@ -18,6 +18,7 @@ import com.xty.englishhelper.data.local.dao.WordDao
 import com.xty.englishhelper.data.local.dao.WordEdgeDao
 import com.xty.englishhelper.data.local.dao.WordPhraseDao
 import com.xty.englishhelper.data.local.dao.WordPoolDao
+import com.xty.englishhelper.data.local.dao.WordClusterDao
 import com.xty.englishhelper.data.local.dao.PlanDao
 import dagger.Module
 import dagger.Provides
@@ -75,7 +76,8 @@ object AppModule {
                 AppDatabase.MIGRATION_32_33,
                 AppDatabase.MIGRATION_33_34,
                 AppDatabase.MIGRATION_34_35,
-                AppDatabase.MIGRATION_35_36
+                AppDatabase.MIGRATION_35_36,
+                AppDatabase.MIGRATION_36_37
             )
             .build()
     }
@@ -118,6 +120,9 @@ object AppModule {
 
     @Provides
     fun provideWordPhraseDao(db: AppDatabase): WordPhraseDao = db.wordPhraseDao()
+
+    @Provides
+    fun provideWordClusterDao(db: AppDatabase): WordClusterDao = db.wordClusterDao()
 
     @Provides
     @Singleton

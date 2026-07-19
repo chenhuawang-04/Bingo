@@ -25,6 +25,29 @@ class MigrationTest {
     )
 
     @Test
+    fun migrate36To37_createsWordClusterTablesAndCascadesMembership() {
+        val db = helper.createDatabase(testDbName, 36)
+        val now = System.currentTimeMillis()
+        db.execSQL("INSERT INTO dictionaries (id, dictionary_uid, name, description, color, word_count, created_at, updated_at) VALUES (1, 'dict-1', 'Test', '', 0, 1, $now, $now)")
+        db.execSQL("INSERT INTO words (id, dictionary_id, spelling, phonetic, meanings_json, root_explanation, normalized_spelling, word_uid, decomposition_json, inflections_json, created_at, updated_at, entry_type) VALUES (1, 1, 'anchor', '', '[]', '', 'anchor', 'word-1', '[]', '[]', $now, $now, 'word')")
+        db.close()
+
+        val migrated = helper.runMigrationsAndValidate(testDbName, 37, true, AppDatabase.MIGRATION_36_37)
+        migrated.execSQL("INSERT INTO word_clusters (id, dictionary_id, name, normalized_name, created_at, updated_at) VALUES (1, 1, 'Ocean', 'ocean', $now, $now)")
+        migrated.execSQL("INSERT INTO word_cluster_members (cluster_id, word_id, created_at) VALUES (1, 1, $now)")
+        migrated.query("SELECT COUNT(*) FROM word_cluster_members WHERE word_id = 1").use {
+            assertTrue(it.moveToFirst())
+            assertEquals(1, it.getInt(0))
+        }
+        migrated.execSQL("DELETE FROM words WHERE id = 1")
+        migrated.query("SELECT COUNT(*) FROM word_cluster_members").use {
+            assertTrue(it.moveToFirst())
+            assertEquals(0, it.getInt(0))
+        }
+        migrated.close()
+    }
+
+    @Test
     fun migrate2To3_populatesNormalizedSpellingAndWordUid() {
         // Create v2 database
         val db = helper.createDatabase(testDbName, 2)
