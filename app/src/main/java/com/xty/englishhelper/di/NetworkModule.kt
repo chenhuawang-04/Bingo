@@ -25,11 +25,14 @@ import com.xty.englishhelper.data.remote.guardian.GuardianHtmlParser
 import com.xty.englishhelper.data.remote.guardian.GuardianService
 import com.xty.englishhelper.data.remote.guardian.GuardianServiceImpl
 import com.xty.englishhelper.util.Constants
+import com.xty.englishhelper.domain.background.AppResourceCoordinator
+import com.xty.englishhelper.domain.background.ForegroundResourceDemand
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.logging.HttpLoggingInterceptor
@@ -42,6 +45,13 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+
+    @Provides
+    @Singleton
+    fun provideNetworkDispatcher(): Dispatcher = Dispatcher().apply {
+        maxRequests = 8
+        maxRequestsPerHost = 4
+    }
 
     @Provides
     @Singleton
@@ -66,13 +76,30 @@ object NetworkModule {
         }
     }
 
+    private fun OkHttpClient.Builder.trackNetworkResources(): OkHttpClient.Builder {
+        return addInterceptor { chain ->
+            val lease = AppResourceCoordinator.acquireResourceUsage(
+                owner = "network:${chain.request().url.host}",
+                demand = ForegroundResourceDemand(network = 1)
+            )
+            try {
+                chain.proceed(chain.request())
+            } finally {
+                lease.close()
+            }
+        }
+    }
+
     @Provides
     @Singleton
     @Named("anthropic")
     fun provideAnthropicOkHttpClient(
-        aiDebugInterceptor: AiDebugInterceptor
+        aiDebugInterceptor: AiDebugInterceptor,
+        networkDispatcher: Dispatcher
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dispatcher(networkDispatcher)
+            .trackNetworkResources()
             .addInterceptor(AnthropicHeaderInterceptor(Constants.ANTHROPIC_API_VERSION))
             .addInterceptor(aiDebugInterceptor)
             .connectTimeout(60, TimeUnit.SECONDS)
@@ -90,9 +117,12 @@ object NetworkModule {
     @Singleton
     @Named("openai")
     fun provideOpenAiOkHttpClient(
-        aiDebugInterceptor: AiDebugInterceptor
+        aiDebugInterceptor: AiDebugInterceptor,
+        networkDispatcher: Dispatcher
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dispatcher(networkDispatcher)
+            .trackNetworkResources()
             .addInterceptor(aiDebugInterceptor)
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(300, TimeUnit.SECONDS)
@@ -148,8 +178,10 @@ object NetworkModule {
     @Provides
     @Singleton
     @Named("github")
-    fun provideGitHubOkHttpClient(): OkHttpClient {
+    fun provideGitHubOkHttpClient(networkDispatcher: Dispatcher): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dispatcher(networkDispatcher)
+            .trackNetworkResources()
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .addHeader("Accept", "application/vnd.github.v3+json")
@@ -192,8 +224,10 @@ object NetworkModule {
     @Provides
     @Singleton
     @Named("guardian")
-    fun provideGuardianOkHttpClient(): OkHttpClient {
+    fun provideGuardianOkHttpClient(networkDispatcher: Dispatcher): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dispatcher(networkDispatcher)
+            .trackNetworkResources()
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36")
@@ -226,8 +260,10 @@ object NetworkModule {
     @Provides
     @Singleton
     @Named("csmonitor")
-    fun provideCsMonitorOkHttpClient(): OkHttpClient {
+    fun provideCsMonitorOkHttpClient(networkDispatcher: Dispatcher): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dispatcher(networkDispatcher)
+            .trackNetworkResources()
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36")
@@ -260,8 +296,10 @@ object NetworkModule {
     @Provides
     @Singleton
     @Named("atlantic")
-    fun provideAtlanticOkHttpClient(): OkHttpClient {
+    fun provideAtlanticOkHttpClient(networkDispatcher: Dispatcher): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dispatcher(networkDispatcher)
+            .trackNetworkResources()
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .header(
@@ -297,8 +335,10 @@ object NetworkModule {
     @Provides
     @Singleton
     @Named("cambridge")
-    fun provideCambridgeOkHttpClient(): OkHttpClient {
+    fun provideCambridgeOkHttpClient(networkDispatcher: Dispatcher): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dispatcher(networkDispatcher)
+            .trackNetworkResources()
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .header(
@@ -334,8 +374,10 @@ object NetworkModule {
     @Provides
     @Singleton
     @Named("oed")
-    fun provideOedOkHttpClient(): OkHttpClient {
+    fun provideOedOkHttpClient(networkDispatcher: Dispatcher): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dispatcher(networkDispatcher)
+            .trackNetworkResources()
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .header(

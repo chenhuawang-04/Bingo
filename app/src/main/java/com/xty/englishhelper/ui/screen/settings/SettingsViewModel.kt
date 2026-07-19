@@ -380,6 +380,8 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(providerEditor = it.providerEditor.copy(isTesting = false, testResult = result))
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(providerEditor = it.providerEditor.copy(isTesting = false, testResult = "连接失败: ${e.message}"))
@@ -430,6 +432,8 @@ class SettingsViewModel @Inject constructor(
                         modelLoading = it.modelLoading - providerName
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -708,9 +712,13 @@ class SettingsViewModel @Inject constructor(
                     try {
                         val manifest = getCloudManifestUseCase()
                         _uiState.update { it.copy(cloudSync = it.cloudSync.copy(cloudManifest = manifest)) }
-                    } catch (_: Exception) {
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
                     }
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(cloudSync = it.cloudSync.copy(connectionTestResult = "连接失败: ${e.message}")) }
             }

@@ -96,6 +96,8 @@ class StudySetupViewModel @Inject constructor(
                         error = null
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, isLoading = false) }
             }

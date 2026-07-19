@@ -68,6 +68,8 @@ class ArticleListViewModel @Inject constructor(
             try {
                 val cutoff = System.currentTimeMillis() - java.util.concurrent.TimeUnit.DAYS.toMillis(7)
                 articleRepository.deleteUnsavedArticlesBefore(cutoff)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.w("ArticleListVM", "Cleanup unsaved articles failed", e)
             }
@@ -204,6 +206,8 @@ class ArticleListViewModel @Inject constructor(
                 if (id > 0) {
                     selectCategory(id)
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 val msg = e.message ?: "unknown"
                 _uiState.update { it.copy(error = "创建分类失败：$msg") }
@@ -215,6 +219,8 @@ class ArticleListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 articleRepository.updateArticleCategory(articleId, categoryId)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 val msg = e.message ?: "unknown"
                 _uiState.update { it.copy(error = "更新分类失败：$msg") }
@@ -226,6 +232,8 @@ class ArticleListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 deleteArticleUseCase(articleId)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.e("ArticleListVM", "Delete article failed: $articleId", e)
                 val msg = e.message ?: "unknown"
@@ -270,6 +278,8 @@ class ArticleListViewModel @Inject constructor(
                     evaluatedAt = now,
                     modelKey = modelKey
                 )
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 val msg = e.message ?: "unknown"
                 _uiState.update { it.copy(error = "评估失败：$msg") }

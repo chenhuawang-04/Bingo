@@ -154,6 +154,8 @@ class StudyViewModel @Inject constructor(
                 }
                 // NORMAL mode: load directly
                 loadStudyContent()
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, phase = StudyPhase.Finished) }
             }
@@ -333,7 +335,9 @@ class StudyViewModel @Inject constructor(
             } else {
                 showNextWord()
             }
-        } catch (e: Exception) {
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
             _uiState.update { it.copy(error = e.message, phase = StudyPhase.Finished) }
         }
     }
@@ -541,6 +545,8 @@ class StudyViewModel @Inject constructor(
                 }
 
                 showNextWord()
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 isProcessingRating = false
                 _uiState.update { it.copy(error = e.message) }
@@ -863,6 +869,8 @@ class StudyViewModel @Inject constructor(
                         wordNoteError = null
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 if (_uiState.value.currentWord?.id != currentWord.id) return@launch
                 _uiState.update {

@@ -403,6 +403,8 @@ class DictionaryViewModel @Inject constructor(
                     }
                 }.map { it.first }.toSet()
                 _uiState.update { it.copy(outdatedStrategies = outdated) }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (_: Exception) { }
         }
     }

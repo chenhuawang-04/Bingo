@@ -221,6 +221,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     ttsManager.prewarmArticle(contentId, texts)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = "加载失败：${e.message}") }
             }
         }
@@ -382,7 +383,9 @@ class QuestionBankReaderViewModel @Inject constructor(
                             translationFailedParagraphIds = it.translationFailedParagraphIds - paragraph.id
                         )
                     }
-                } catch (_: Exception) {
+                } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
                     _uiState.update {
                         it.copy(
                             translatingParagraphIds = it.translatingParagraphIds - paragraph.id,
@@ -414,6 +417,8 @@ class QuestionBankReaderViewModel @Inject constructor(
                         translationFailedParagraphIds = it.translationFailedParagraphIds - paragraphId
                     )
                 }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (_: Exception) {
                 _uiState.update {
                     it.copy(
@@ -449,6 +454,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(analyzingParagraphId = 0L, error = "分析失败：${e.message}") }
             }
         }
@@ -529,6 +535,8 @@ class QuestionBankReaderViewModel @Inject constructor(
                         if (cw.word == word) cw.copy(analysis = analysis, isAnalyzing = false) else cw
                     })
                 }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (_: Exception) {
                 _uiState.update {
                     it.copy(collectedWords = it.collectedWords.map { cw ->
@@ -581,6 +589,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                 backgroundOrganizeManager.enqueue(wordId, dictionaryId, word)
                 removeCollectedWord(word)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(error = "添加失败：${e.message}") }
             }
         }
@@ -740,6 +749,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                 trackQuestionPracticeProgress()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isSubmitting = false, error = "提交失败：${e.message}") }
             }
         }
@@ -794,6 +804,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isScoringTranslation = false, error = "AI 评分失败：${e.message}") }
             }
         }
@@ -829,6 +840,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isScoringWriting = false, error = "作文批阅失败：${e.message}") }
             }
         }
@@ -877,6 +889,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 if (e is CancellationException) throw e
                 _uiState.update { it.copy(error = "词链扫描失败：${e.message}") }
             }
@@ -995,6 +1008,7 @@ class QuestionBankReaderViewModel @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+                if (e is CancellationException) throw e
             _uiState.update {
                 it.copy(
                     isPreparingWritingPractice = false,
@@ -1050,6 +1064,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                 val updated = repository.getGroupById(groupId)
                 _uiState.update { it.copy(group = updated) }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(error = "更新失败：${e.message}") }
             }
         }
@@ -1072,6 +1087,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     force = true
                 )
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(error = "来源验证任务创建失败：${e.message}") }
             }
         }
@@ -1124,6 +1140,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                 val refreshedItems = repository.getItemsByGroup(groupId)
                 _uiState.update { it.copy(items = refreshedItems, isScanningAnswers = false) }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isScanningAnswers = false, error = "扫描答案失败：${e.message}") }
             }
         }
@@ -1143,6 +1160,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     force = force
                 )
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(error = "范文检索任务创建失败：${e.message}") }
             }
         }
@@ -1181,6 +1199,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                 refreshSourceInfo()
                 _uiState.update { it.copy(isSearchingWritingSource = false) }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isSearchingWritingSource = false, error = "检索来源失败：${e.message}") }
             }
         }
@@ -1241,6 +1260,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     _uiState.update { it.copy(isOcrWriting = false, pendingWritingAutoSubmit = false, error = "作文题不存在") }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isOcrWriting = false, pendingWritingAutoSubmit = false, error = "OCR 失败：${e.message}") }
             }
         }
@@ -1293,6 +1313,7 @@ class QuestionBankReaderViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(error = "保存选项失败：${e.message}") }
             }
         }

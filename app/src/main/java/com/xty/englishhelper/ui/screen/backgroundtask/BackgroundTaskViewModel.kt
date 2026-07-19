@@ -3,6 +3,8 @@ package com.xty.englishhelper.ui.screen.backgroundtask
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xty.englishhelper.domain.background.BackgroundTaskManager
+import com.xty.englishhelper.domain.background.AppResourceCoordinator
+import com.xty.englishhelper.domain.background.AppResourceUsage
 import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
@@ -17,7 +19,8 @@ import javax.inject.Inject
 data class BackgroundTaskUiState(
     val tasks: List<BackgroundTask> = emptyList(),
     val filter: TaskFilter = TaskFilter.ALL,
-    val showHiddenTasks: Boolean = false
+    val showHiddenTasks: Boolean = false,
+    val resourceUsage: AppResourceUsage = AppResourceUsage()
 )
 
 enum class TaskFilter {
@@ -37,6 +40,11 @@ class BackgroundTaskViewModel @Inject constructor(
         viewModelScope.launch {
             repository.observeAllTasks().collect { tasks ->
                 _uiState.update { it.copy(tasks = tasks.sortedByDescending { t -> t.createdAt }) }
+            }
+        }
+        viewModelScope.launch {
+            AppResourceCoordinator.usage.collect { usage ->
+                _uiState.update { it.copy(resourceUsage = usage) }
             }
         }
     }

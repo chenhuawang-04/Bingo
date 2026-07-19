@@ -76,4 +76,4 @@ internal fun fitsResourceBudget(
 }
 
 private fun AppResourceUsage.isIdle(): Boolean =
-    memoryHeavy == 0 && cpuHeavy == 0 && network == 0 && databaseWriter == 0 && exclusiveOwners.isEmpty()
+    memoryHeavy == 0 && cpuHeavy == 0 && network == 0 && databaseWriter == 0 && audio == 0 && exclusiveOwners.isEmpty()

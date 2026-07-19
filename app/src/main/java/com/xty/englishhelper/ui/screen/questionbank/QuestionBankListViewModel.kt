@@ -75,6 +75,8 @@ class QuestionBankListViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 repository.deleteQuestionGroup(groupId)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = "删除失败：${e.message}") }
             }

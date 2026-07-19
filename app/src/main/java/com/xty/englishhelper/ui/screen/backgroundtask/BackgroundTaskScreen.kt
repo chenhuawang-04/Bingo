@@ -96,6 +96,8 @@ fun BackgroundTaskScreen(
                     onSelect = viewModel::setFilter
                 )
 
+                ResourceUsageCard(state.resourceUsage)
+
                 BatchActions(
                     onPauseAll = viewModel::pauseAll,
                     onCancelAll = viewModel::cancelAll,
@@ -145,6 +147,43 @@ fun BackgroundTaskScreen(
                         item { Spacer(Modifier.height(40.dp)) }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResourceUsageCard(usage: com.xty.englishhelper.domain.background.AppResourceUsage) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.task_resource_usage),
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                text = stringResource(
+                    R.string.task_resource_usage_format,
+                    usage.memoryHeavy,
+                    usage.cpuHeavy,
+                    usage.network,
+                    usage.databaseWriter,
+                    usage.audio
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (usage.exclusiveOwners.isNotEmpty()) {
+                Text(
+                    text = stringResource(
+                        R.string.task_resource_exclusive,
+                        usage.exclusiveOwners.joinToString()
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
         }
     }

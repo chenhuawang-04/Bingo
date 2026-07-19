@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xty.englishhelper.domain.background.AppResourceCoordinator
+import com.xty.englishhelper.domain.background.ForegroundResourceDemand
 import com.xty.englishhelper.domain.model.Dictionary
 import com.xty.englishhelper.domain.usecase.dictionary.GetAllDictionariesUseCase
 import com.xty.englishhelper.domain.usecase.importexport.ExportDictionaryUseCase
@@ -15,7 +17,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -42,11 +47,16 @@ class ImportExportViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val json = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
-                    ?: throw IllegalStateException("无法读取文件")
-
-                val message = importDictionaryUseCase(json)
+                val message = AppResourceCoordinator.withResourceObservation(
+                    owner = "dictionary_import",
+                    demand = ForegroundResourceDemand(memoryHeavy = 1, cpuHeavy = 1, databaseWriter = 1)
+                ) {
+                    val json = readText(context, uri)
+                    importDictionaryUseCase(json)
+                }
                 _uiState.update { it.copy(isLoading = false, message = message) }
+            } catch (error: CancellationException) {
+                throw error
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = "导入失败：${e.message}") }
             }
@@ -57,13 +67,17 @@ class ImportExportViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val json = exportDictionaryUseCase(dictionary)
-
-                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
-                    it.write(json)
-                } ?: throw IllegalStateException("无法写入文件")
+                AppResourceCoordinator.withResourceUsage(
+                    owner = "dictionary_export",
+                    demand = ForegroundResourceDemand(memoryHeavy = 1, cpuHeavy = 1)
+                ) {
+                    val json = exportDictionaryUseCase(dictionary)
+                    writeText(context, uri, json)
+                }
 
                 _uiState.update { it.copy(isLoading = false, message = "导出成功") }
+            } catch (error: CancellationException) {
+                throw error
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = "导出失败：${e.message}") }
             }
@@ -74,10 +88,15 @@ class ImportExportViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val json = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
-                    ?: throw IllegalStateException("无法读取文件")
-                val message = importPlanUseCase(json)
+                val message = AppResourceCoordinator.withResourceObservation(
+                    owner = "plan_import",
+                    demand = ForegroundResourceDemand(memoryHeavy = 1, cpuHeavy = 1, databaseWriter = 1)
+                ) {
+                    importPlanUseCase(readText(context, uri))
+                }
                 _uiState.update { it.copy(isLoading = false, message = message) }
+            } catch (error: CancellationException) {
+                throw error
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = "计划导入失败：${e.message}") }
             }
@@ -88,11 +107,15 @@ class ImportExportViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val json = exportPlanUseCase()
-                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
-                    it.write(json)
-                } ?: throw IllegalStateException("无法写入文件")
+                AppResourceCoordinator.withResourceUsage(
+                    owner = "plan_export",
+                    demand = ForegroundResourceDemand(memoryHeavy = 1, cpuHeavy = 1)
+                ) {
+                    writeText(context, uri, exportPlanUseCase())
+                }
                 _uiState.update { it.copy(isLoading = false, message = "计划导出成功") }
+            } catch (error: CancellationException) {
+                throw error
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = "计划导出失败：${e.message}") }
             }
@@ -101,5 +124,28 @@ class ImportExportViewModel @Inject constructor(
 
     fun clearMessage() {
         _uiState.update { it.copy(message = null, error = null) }
+    }
+
+    private suspend fun readText(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+            val result = StringBuilder()
+            val buffer = CharArray(16 * 1024)
+            while (true) {
+                val count = reader.read(buffer)
+                if (count < 0) break
+                require(result.length + count <= MAX_IMPORT_CHARS) { "导入文件过大" }
+                result.append(buffer, 0, count)
+            }
+            result.toString()
+        } ?: throw IllegalStateException("无法读取文件")
+    }
+
+    private suspend fun writeText(context: Context, uri: Uri, text: String) = withContext(Dispatchers.IO) {
+        context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(text) }
+            ?: throw IllegalStateException("无法写入文件")
+    }
+
+    private companion object {
+        const val MAX_IMPORT_CHARS = 50 * 1024 * 1024
     }
 }

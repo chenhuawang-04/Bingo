@@ -77,6 +77,8 @@ class AddWordViewModel @Inject constructor(
                         selectedUnitIds = initialSelected
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.w("AddWordVM", "Units loading failed", e)
             }
@@ -101,6 +103,8 @@ class AddWordViewModel @Inject constructor(
                         inflections = word.inflections
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
             }
@@ -302,6 +306,8 @@ class AddWordViewModel @Inject constructor(
                         inflections = result.inflections.ifEmpty { it.inflections }
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -364,6 +370,8 @@ class AddWordViewModel @Inject constructor(
                 settingsDataStore.setLastSelectedUnitIds(dictionaryId, selectedIds)
 
                 _uiState.update { it.copy(isSaving = false, savedSuccessfully = true) }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSaving = false, error = "保存失败：${e.message}") }
             }
@@ -420,6 +428,8 @@ class AddWordViewModel @Inject constructor(
                 backgroundOrganizeManager.enqueue(savedWordId, dictionaryId, state.spelling.trim(), force = true)
 
                 _uiState.update { it.copy(isSaving = false, savedSuccessfully = true) }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSaving = false, error = "保存失败：${e.message}") }
             }

@@ -6,6 +6,8 @@ import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.xty.englishhelper.domain.background.AppResourceCoordinator
+import com.xty.englishhelper.domain.background.ForegroundResourceDemand
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -28,48 +30,53 @@ class OedAwsWafWebViewSolver @Inject constructor(
     private val solveMutex = Mutex()
 
     override suspend fun ensureCookie(seedUrl: String): String? = solveMutex.withLock {
-        withContext(Dispatchers.Main) {
-            val initialCookie = CookieManager.getInstance().getCookie(OED_BASE)
-            if (containsAwsWafCookie(initialCookie)) return@withContext initialCookie
+        AppResourceCoordinator.withResourceUsage(
+            owner = "oed_waf_webview",
+            demand = ForegroundResourceDemand(memoryHeavy = 1, network = 1)
+        ) {
+            withContext(Dispatchers.Main) {
+                val initialCookie = CookieManager.getInstance().getCookie(OED_BASE)
+                if (containsAwsWafCookie(initialCookie)) return@withContext initialCookie
 
-            suspendCancellableCoroutine { continuation ->
-                val webView = WebView(context)
-                val timeoutHandler = Handler(Looper.getMainLooper())
-                var finished = false
+                suspendCancellableCoroutine { continuation ->
+                    val webView = WebView(context)
+                    val timeoutHandler = Handler(Looper.getMainLooper())
+                    var finished = false
 
-                fun complete(cookie: String?) {
-                    if (finished) return
-                    finished = true
-                    timeoutHandler.removeCallbacksAndMessages(null)
-                    webView.stopLoading()
-                    webView.destroy()
-                    if (continuation.isActive) continuation.resume(cookie)
-                }
+                    fun complete(cookie: String?) {
+                        if (finished) return
+                        finished = true
+                        timeoutHandler.removeCallbacksAndMessages(null)
+                        webView.stopLoading()
+                        webView.destroy()
+                        if (continuation.isActive) continuation.resume(cookie)
+                    }
 
-                webView.settings.javaScriptEnabled = true
-                webView.settings.domStorageEnabled = true
-                webView.settings.userAgentString = BROWSER_UA
+                    webView.settings.javaScriptEnabled = true
+                    webView.settings.domStorageEnabled = true
+                    webView.settings.userAgentString = BROWSER_UA
 
-                val cookieManager = CookieManager.getInstance()
-                cookieManager.setAcceptCookie(true)
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
 
-                webView.webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        val cookie = cookieManager.getCookie(OED_BASE)
-                        if (containsAwsWafCookie(cookie)) {
-                            complete(cookie)
+                    webView.webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            val cookie = cookieManager.getCookie(OED_BASE)
+                            if (containsAwsWafCookie(cookie)) {
+                                complete(cookie)
+                            }
                         }
                     }
-                }
 
-                timeoutHandler.postDelayed({
-                    val cookie = cookieManager.getCookie(OED_BASE)
-                    complete(cookie)
-                }, TIMEOUT_MS)
+                    timeoutHandler.postDelayed({
+                        val cookie = cookieManager.getCookie(OED_BASE)
+                        complete(cookie)
+                    }, TIMEOUT_MS)
 
-                webView.loadUrl(seedUrl)
-                continuation.invokeOnCancellation {
-                    timeoutHandler.post { complete(null) }
+                    webView.loadUrl(seedUrl)
+                    continuation.invokeOnCancellation {
+                        timeoutHandler.post { complete(null) }
+                    }
                 }
             }
         }

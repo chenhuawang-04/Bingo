@@ -59,6 +59,8 @@ class PlanViewModel @Inject constructor(
             try {
                 repository.ensureDefaultTemplate()
                 repository.ensureDayRecords(todayStart)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message ?: "初始化计划失败") }
             } finally {

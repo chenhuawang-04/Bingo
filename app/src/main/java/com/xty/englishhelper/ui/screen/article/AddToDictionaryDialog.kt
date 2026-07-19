@@ -65,6 +65,8 @@ fun AddToDictionaryDialog(
             unitLoadError = null
             try {
                 units = onLoadUnits(selectedDictId)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (_: Exception) {
                 units = emptyList()
                 unitLoadError = context.getString(R.string.article_load_units_failed)

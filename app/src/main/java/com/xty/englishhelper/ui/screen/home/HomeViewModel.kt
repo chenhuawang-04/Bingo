@@ -102,6 +102,8 @@ class HomeViewModel @Inject constructor(
                         )
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.w("HomeViewModel", "Failed to load dashboard stats", e)
             }
@@ -218,7 +220,9 @@ class HomeViewModel @Inject constructor(
                             }
                         )
                         totalClassified += classified
-                    } catch (e: Exception) {
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
                         Log.w("HomeViewModel", "Failed to classify dictionary: ${dict.name}", e)
                         failedDictionaries.add(dict.name)
                     }
@@ -234,6 +238,8 @@ class HomeViewModel @Inject constructor(
                         classificationProgress = message
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.w("HomeViewModel", "Entry type classification failed", e)
                 _uiState.update {

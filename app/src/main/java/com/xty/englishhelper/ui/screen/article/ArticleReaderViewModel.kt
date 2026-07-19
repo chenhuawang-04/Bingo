@@ -215,7 +215,9 @@ class ArticleReaderViewModel @Inject constructor(
                         lastLoadedParseStatus = article.parseStatus
                         lastLoadedContentHash = contentFingerprint
                         dataLoaded = true
-                    } catch (e: Exception) {
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
                         Log.w("ArticleReaderVM", "Data loading failed for articleId=$articleId", e)
                     }
                 }
@@ -378,7 +380,9 @@ class ArticleReaderViewModel @Inject constructor(
             viewModelScope.launch {
                 try {
                     repository.updateWordCount(articleId, wordCount)
-                } catch (_: Exception) { }
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (_: Exception) { }
             }
         }
     }
@@ -390,7 +394,9 @@ class ArticleReaderViewModel @Inject constructor(
                 _uiState.update { it.copy(article = article) }
                 loadArticleData()
             }
-        } catch (e: Exception) {
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
             Log.w("ArticleReaderVM", "Loading failure for articleId=$articleId", e)
         }
     }
@@ -399,6 +405,8 @@ class ArticleReaderViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 parseArticle(targetId)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.w("ArticleReaderVM", logMessage, e)
             }
@@ -410,6 +418,8 @@ class ArticleReaderViewModel @Inject constructor(
             try {
                 val stats = getStatistics(articleId)
                 _uiState.update { it.copy(statistics = stats) }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.w("ArticleReaderVM", "Stats loading failed for articleId=$articleId", e)
             }
@@ -486,7 +496,9 @@ class ArticleReaderViewModel @Inject constructor(
                             translationFailedParagraphIds = it.translationFailedParagraphIds - paragraph.id
                         )
                     }
-                } catch (e: Exception) {
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
                     _uiState.update {
                         it.copy(
                             translatingParagraphIds = it.translatingParagraphIds - paragraph.id,
@@ -519,6 +531,8 @@ class ArticleReaderViewModel @Inject constructor(
                         translationFailedParagraphIds = it.translationFailedParagraphIds - paragraphId
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (_: Exception) {
                 _uiState.update {
                     it.copy(
@@ -567,6 +581,8 @@ class ArticleReaderViewModel @Inject constructor(
                         if (it.word.equals(word, ignoreCase = true)) it.copy(analysis = analysis, isAnalyzing = false) else it
                     })
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (_: Exception) {
                 _uiState.update { state ->
                     state.copy(collectedWords = state.collectedWords.map {
@@ -625,6 +641,8 @@ class ArticleReaderViewModel @Inject constructor(
 
                 // Remove from notebook
                 removeCollectedWord(word)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(analyzeError = "加入词典失败：${e.message}") }
             }
@@ -659,6 +677,8 @@ class ArticleReaderViewModel @Inject constructor(
                         expandedParagraphIds = it.expandedParagraphIds + paragraphId
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(analyzingParagraphId = 0L, analyzeError = "分析失败：${e.message}") }
             }
@@ -695,6 +715,8 @@ class ArticleReaderViewModel @Inject constructor(
                         isAnalyzing = 0L
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(isAnalyzing = 0L, analyzeError = "分析失败：${e.message}") }
             }
@@ -710,6 +732,8 @@ class ArticleReaderViewModel @Inject constructor(
                     parseArticle(articleId)
                 }
                 _uiState.update { it.copy(isSavingToLocal = false) }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isSavingToLocal = false, analyzeError = "保存失败：${e.message}")
@@ -805,6 +829,8 @@ class ArticleReaderViewModel @Inject constructor(
                 }
                 _generateMessage.emit(message)
                 _uiState.update { it.copy(isGeneratingQuestions = false) }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(isGeneratingQuestions = false, generateError = "出题失败：${e.message}") }
             }

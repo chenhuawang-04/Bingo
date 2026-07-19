@@ -11,6 +11,9 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.background.AppResourceCoordinator
+import com.xty.englishhelper.domain.background.ForegroundResourceDemand
+import com.xty.englishhelper.domain.background.ResourceLease
 import com.xty.englishhelper.domain.model.TtsMode
 import com.xty.englishhelper.domain.model.TtsState
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -19,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,8 +36,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.io.File
 import java.security.MessageDigest
@@ -54,6 +57,7 @@ class TtsManager @Inject constructor(
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var focusRequest: AudioFocusRequest? = null
     private val hasAudioFocus = AtomicBoolean(false)
+    private var audioResourceLease: ResourceLease? = null
 
     private val _state = MutableStateFlow(TtsState())
     val state: StateFlow<TtsState> = _state.asStateFlow()
@@ -94,7 +98,9 @@ class TtsManager @Inject constructor(
     fun prewarmArticle(articleId: Long, paragraphs: List<String>) {
         if (paragraphs.isEmpty()) return
         val sessionId = articleSessionId(articleId)
-        prewarmJobs.remove(sessionId)?.cancel()
+        prewarmJobs.values.forEach { it.cancel() }
+        prewarmJobs.clear()
+        cacheBypass.clear()
         val total = paragraphs.size
         _state.update {
             it.copy(
@@ -104,43 +110,58 @@ class TtsManager @Inject constructor(
                 prewarmTotal = total
             )
         }
-        val job = ioScope.launch {
+        val job = ioScope.launch(start = CoroutineStart.LAZY) {
             val progress = AtomicInteger(0)
             try {
-                state.first { it.isReady }
-                val config = settingsDataStore.getTtsConfig()
-                val cacheDir = articleCacheDir(articleId, config)
-                if (!cacheDir.exists()) {
-                    cacheDir.mkdirs()
-                }
-                val concurrency = config.prewarmConcurrency.coerceIn(1, 6)
-                val retryCount = config.prewarmRetry.coerceIn(0, 5)
-                val semaphore = Semaphore(concurrency)
+                AppResourceCoordinator.withResourceUsage(
+                    owner = "tts_prewarm:$articleId",
+                    demand = ForegroundResourceDemand(cpuHeavy = 1, network = 1)
+                ) {
+                    val ready = withTimeoutOrNull(TTS_READY_TIMEOUT_MS) {
+                        state.first { it.isReady || it.error != null }
+                    }?.isReady == true
+                    if (!ready) return@withResourceUsage
 
-                coroutineScope {
-                    paragraphs.forEachIndexed { index, text ->
-                        launch {
-                            semaphore.withPermit {
-                                prewarmParagraph(articleId, index, text, config, retryCount)
-                            }
-                            val done = progress.incrementAndGet().coerceAtMost(total)
-                            _state.update { current ->
-                                if (current.prewarmSessionId != sessionId) {
-                                    current
-                                } else {
-                                    current.copy(
-                                        isPrewarming = done < total,
-                                        prewarmDone = done,
-                                        prewarmTotal = total
-                                    )
+                    val config = settingsDataStore.getTtsConfig()
+                    val cacheDir = articleCacheDir(articleId, config)
+                    pruneTtsCache(preserveDirectory = cacheDir)
+                    if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+                        return@withResourceUsage
+                    }
+                    val concurrency = config.prewarmConcurrency.coerceIn(1, 6).coerceAtMost(total)
+                    val retryCount = config.prewarmRetry.coerceIn(0, 5)
+                    val nextIndex = AtomicInteger(0)
+
+                    coroutineScope {
+                        repeat(concurrency) {
+                            launch {
+                                while (true) {
+                                    val index = nextIndex.getAndIncrement()
+                                    if (index >= total) break
+                                    prewarmParagraph(articleId, index, paragraphs[index], config, retryCount)
+                                    val done = progress.incrementAndGet().coerceAtMost(total)
+                                    _state.update { current ->
+                                        if (current.prewarmSessionId != sessionId) {
+                                            current
+                                        } else {
+                                            current.copy(
+                                                isPrewarming = done < total,
+                                                prewarmDone = done,
+                                                prewarmTotal = total
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (_: Exception) {
                 // Best-effort prewarm, ignore failures.
             } finally {
+                pruneTtsCache(preserveDirectory = null)
                 val done = progress.get().coerceAtMost(total)
                 _state.update { current ->
                     if (current.prewarmSessionId != sessionId) {
@@ -155,8 +176,9 @@ class TtsManager @Inject constructor(
                 }
             }
         }
-        job.invokeOnCompletion { prewarmJobs.remove(sessionId) }
+        job.invokeOnCompletion { prewarmJobs.remove(sessionId, job) }
         prewarmJobs[sessionId] = job
+        job.start()
     }
 
     suspend fun speakWord(wordId: Long, text: String, localeOverride: String? = null) {
@@ -338,7 +360,7 @@ class TtsManager @Inject constructor(
         val cacheKey = "${articleId}_${index}"
         while (attempt < maxAttempts) {
             coroutineContext.ensureActive()
-            waitUntilNotSpeaking()
+            if (!waitUntilNotSpeaking()) return
             val utteranceId = "prewarm_${articleId}_${index}_${System.currentTimeMillis()}_$attempt"
             val success = synthesizeToFile(text, file, utteranceId, config)
             if (success && file.exists() && file.length() > 0) {
@@ -457,6 +479,12 @@ class TtsManager @Inject constructor(
             requestLegacyAudioFocus()
         }
         hasAudioFocus.set(granted)
+        if (granted && audioResourceLease == null) {
+            audioResourceLease = AppResourceCoordinator.acquireResourceUsage(
+                owner = "tts_playback",
+                demand = ForegroundResourceDemand(audio = 1)
+            )
+        }
         return granted
     }
 
@@ -468,6 +496,8 @@ class TtsManager @Inject constructor(
             abandonLegacyAudioFocus()
         }
         hasAudioFocus.set(false)
+        audioResourceLease?.close()
+        audioResourceLease = null
     }
 
     @Suppress("DEPRECATION")
@@ -526,24 +556,30 @@ class TtsManager @Inject constructor(
             currentMediaFile = file
             val player = MediaPlayer()
             mediaPlayer = player
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                player.setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-            }
-            player.setDataSource(file.absolutePath)
-            player.setOnCompletionListener {
-                onMediaCompleted()
-            }
-            player.setOnErrorListener { _, _, _ ->
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    player.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                }
+                player.setDataSource(file.absolutePath)
+                player.setOnPreparedListener { prepared ->
+                    if (mediaPlayer === prepared && !paused) prepared.start()
+                }
+                player.setOnCompletionListener {
+                    onMediaCompleted()
+                }
+                player.setOnErrorListener { _, _, _ ->
+                    onMediaError()
+                    true
+                }
+                player.prepareAsync()
+            } catch (_: Exception) {
                 onMediaError()
-                true
             }
-            player.prepare()
-            player.start()
         }
     }
 
@@ -593,6 +629,7 @@ class TtsManager @Inject constructor(
 
     private fun stopMediaPlayer() {
         mediaPlayer?.run {
+            setOnPreparedListener(null)
             setOnCompletionListener(null)
             setOnErrorListener(null)
             try {
@@ -606,9 +643,12 @@ class TtsManager @Inject constructor(
         currentMediaFile = null
     }
 
-    private suspend fun waitUntilNotSpeaking() {
-        if (!_state.value.isSpeaking) return
-        state.first { !it.isSpeaking }
+    private suspend fun waitUntilNotSpeaking(): Boolean {
+        if (!_state.value.isSpeaking) return true
+        return withTimeoutOrNull(PREWARM_SPEAKING_WAIT_TIMEOUT_MS) {
+            state.first { !it.isSpeaking }
+            true
+        } ?: false
     }
 
     private suspend fun synthesizeToFile(
@@ -639,11 +679,39 @@ class TtsManager @Inject constructor(
             prewarmCallbacks.remove(utteranceId)
             return false
         }
-        val success = withTimeoutOrNull(20000) { deferred.await() } ?: false
-        if (!success) {
+        return try {
+            withTimeoutOrNull(20_000L) { deferred.await() } ?: false
+        } finally {
             prewarmCallbacks.remove(utteranceId)
         }
-        return success
+    }
+
+    private fun pruneTtsCache(preserveDirectory: File?) {
+        val root = File(appContext.cacheDir, "tts")
+        if (!root.exists()) return
+        val files = root.walkTopDown()
+            .filter { file ->
+                file.isFile && (
+                    preserveDirectory == null ||
+                        !file.toPath().startsWith(preserveDirectory.toPath())
+                    )
+            }
+            .sortedBy { it.lastModified() }
+            .toList()
+        var totalBytes = root.walkTopDown().filter(File::isFile).sumOf(File::length)
+        for (file in files) {
+            if (totalBytes <= MAX_TTS_CACHE_BYTES) break
+            val length = file.length()
+            if (file.delete()) totalBytes -= length
+        }
+        root.walkBottomUp()
+            .filter { it.isDirectory && it != root && it.listFiles().isNullOrEmpty() }
+            .forEach(File::delete)
+    }
+
+    private companion object {
+        const val TTS_READY_TIMEOUT_MS = 15_000L
+        const val PREWARM_SPEAKING_WAIT_TIMEOUT_MS = 30_000L
+        const val MAX_TTS_CACHE_BYTES = 200L * 1024 * 1024
     }
 }
-

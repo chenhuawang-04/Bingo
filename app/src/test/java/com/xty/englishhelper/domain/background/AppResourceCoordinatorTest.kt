@@ -84,4 +84,49 @@ class AppResourceCoordinatorTest {
         }
         assertEquals(AppResourceUsage(), AppResourceCoordinator.usage.value)
     }
+
+    @Test
+    fun `resource leases release exactly once`() {
+        val lease = AppResourceCoordinator.acquireResourceUsage(
+            owner = "network-test",
+            demand = ForegroundResourceDemand(network = 1)
+        )
+        assertEquals(1, AppResourceCoordinator.usage.value.network)
+
+        lease.close()
+        lease.close()
+
+        assertEquals(AppResourceUsage(), AppResourceCoordinator.usage.value)
+    }
+
+    @Test
+    fun `cpu heavy foreground operations are admission controlled`() = runTest {
+        val active = AtomicInteger(0)
+        val peak = AtomicInteger(0)
+
+        val first = async {
+            AppResourceCoordinator.withResourceUsage(
+                owner = "cpu-first",
+                demand = ForegroundResourceDemand(cpuHeavy = 1)
+            ) {
+                peak.updateAndGet { maxOf(it, active.incrementAndGet()) }
+                delay(10)
+                active.decrementAndGet()
+            }
+        }
+        val second = async {
+            AppResourceCoordinator.withResourceUsage(
+                owner = "cpu-second",
+                demand = ForegroundResourceDemand(cpuHeavy = 1)
+            ) {
+                peak.updateAndGet { maxOf(it, active.incrementAndGet()) }
+                active.decrementAndGet()
+            }
+        }
+        first.await()
+        second.await()
+
+        assertEquals(1, peak.get())
+        assertEquals(AppResourceUsage(), AppResourceCoordinator.usage.value)
+    }
 }

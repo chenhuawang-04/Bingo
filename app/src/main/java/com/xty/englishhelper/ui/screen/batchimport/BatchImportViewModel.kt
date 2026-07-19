@@ -177,6 +177,8 @@ class BatchImportViewModel @Inject constructor(
                         extractedWords = extracted
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(isExtracting = false, error = "AI 提取失败：${e.message}") }
             }
@@ -244,6 +246,8 @@ class BatchImportViewModel @Inject constructor(
                 }
                 settingsDataStore.setLastSelectedUnitIds(dictionaryId, _uiState.value.selectedUnitIds)
                 _uiState.update { it.copy(isImporting = false, importDone = true) }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(isImporting = false, error = "导入失败：${e.message}") }
             }

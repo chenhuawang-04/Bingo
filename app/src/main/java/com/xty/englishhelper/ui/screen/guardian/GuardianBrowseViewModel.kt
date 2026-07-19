@@ -291,6 +291,8 @@ class GuardianBrowseViewModel @Inject constructor(
                 detailJob = viewModelScope.launch {
                     loadArticleDetails(hydrated, source)
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.e("GuardianBrowseVM", "Failed to load section: $section", e)
                 _uiState.update { it.copy(isLoading = false, error = "加载失败：${e.message}") }
@@ -327,7 +329,9 @@ class GuardianBrowseViewModel @Inject constructor(
                                 }
                             }
                             maybeEvaluateVisibleArticles(source = source, sectionKey = _uiState.value.selectedSection)
-                        } catch (e: Exception) {
+                        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
                             Log.w("GuardianBrowseVM", "Detail load failed: ${item.url}", e)
                             _uiState.update { state ->
                                 state.updateSourceArticle(item.url) { current ->
@@ -495,6 +499,8 @@ class GuardianBrowseViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(isLoadingArticle = false) }
                 onNavigate(articleId)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.e("GuardianBrowseVM", "Failed to open article: ${article.url}", e)
                 _uiState.update { it.copy(isLoadingArticle = false, error = "文章加载失败：${e.message}") }
@@ -621,6 +627,8 @@ class GuardianBrowseViewModel @Inject constructor(
                 }
 
                 updateItemScore(url, result.score, result.reason, now)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 Log.w("GuardianBrowseVM", "Suitability evaluation failed: $url", e)
                 if (force) {

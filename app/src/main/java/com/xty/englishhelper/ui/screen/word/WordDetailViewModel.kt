@@ -95,7 +95,9 @@ class WordDetailViewModel @Inject constructor(
                     try {
                         val examples = getWordExamples(wordId)
                         _uiState.update { it.copy(examples = examples) }
-                    } catch (e: Exception) {
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
                         Log.w("WordDetailVM", "Examples loading failed for wordId=$wordId", e)
                     }
 
@@ -103,14 +105,18 @@ class WordDetailViewModel @Inject constructor(
                     try {
                         val pools = getWordPools(wordId)
                         _uiState.update { it.copy(pools = pools) }
-                    } catch (e: Exception) {
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
                         Log.w("WordDetailVM", "Pools loading failed for wordId=$wordId", e)
                     }
 
                     try {
                         val phrases = wordPhraseRepository.getPhrasesForWord(wordId)
                         _uiState.update { it.copy(phrases = phrases) }
-                    } catch (e: Exception) {
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
                         Log.w("WordDetailVM", "Phrases loading failed for wordId=$wordId", e)
                     }
 
@@ -126,6 +132,8 @@ class WordDetailViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, isLoading = false) }
             }

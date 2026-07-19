@@ -5,6 +5,8 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.background.AppResourceCoordinator
+import com.xty.englishhelper.domain.background.ForegroundResourceDemand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -33,8 +35,13 @@ class ImageCompressionManager @Inject constructor(
         config: SettingsDataStore.ImageCompressionConfig
     ): ByteArray {
         if (!config.enabled) return bytes
-        return withContext(Dispatchers.Default) {
-            ImageCompressor.compress(bytes, config.targetBytes)
+        return AppResourceCoordinator.withResourceUsage(
+            owner = "image_compress",
+            demand = ForegroundResourceDemand(memoryHeavy = 1, cpuHeavy = 1)
+        ) {
+            withContext(Dispatchers.Default) {
+                ImageCompressor.compress(bytes, config.targetBytes)
+            }
         }
     }
 
@@ -44,9 +51,14 @@ class ImageCompressionManager @Inject constructor(
     ): List<ByteArray> {
         if (bytes.isEmpty()) return bytes
         if (!config.enabled) return bytes
-        return withContext(Dispatchers.Default) {
-            buildList(bytes.size) {
-                bytes.forEach { add(ImageCompressor.compress(it, config.targetBytes)) }
+        return AppResourceCoordinator.withResourceUsage(
+            owner = "image_compress_batch",
+            demand = ForegroundResourceDemand(memoryHeavy = 1, cpuHeavy = 1)
+        ) {
+            withContext(Dispatchers.Default) {
+                buildList(bytes.size) {
+                    bytes.forEach { add(ImageCompressor.compress(it, config.targetBytes)) }
+                }
             }
         }
     }
@@ -57,20 +69,36 @@ class ImageCompressionManager @Inject constructor(
         reader: suspend (T) -> ByteArray?
     ): List<ByteArray> {
         if (items.isEmpty()) return emptyList()
+        require(items.size <= MAX_BATCH_ITEMS) { "图片数量过多，最多支持 $MAX_BATCH_ITEMS 张" }
 
-        val results = ArrayList<ByteArray>(items.size)
-        for (item in items) {
-            val rawBytes = withContext(Dispatchers.IO) { reader(item) } ?: continue
-            val finalBytes = if (config.enabled) {
-                withContext(Dispatchers.Default) {
-                    ImageCompressor.compress(rawBytes, config.targetBytes)
+        return AppResourceCoordinator.withResourceUsage(
+            owner = "image_read_compress_batch",
+            demand = ForegroundResourceDemand(memoryHeavy = 1, cpuHeavy = if (config.enabled) 1 else 0)
+        ) {
+            val results = ArrayList<ByteArray>(items.size)
+            var accumulatedBytes = 0L
+            for (item in items) {
+                val rawBytes = withContext(Dispatchers.IO) { reader(item) } ?: continue
+                require(rawBytes.size <= MAX_SOURCE_BYTES) { "单个图片文件过大" }
+                val finalBytes = if (config.enabled) {
+                    withContext(Dispatchers.Default) {
+                        ImageCompressor.compress(rawBytes, config.targetBytes)
+                    }
+                } else {
+                    rawBytes
                 }
-            } else {
-                rawBytes
+                accumulatedBytes += finalBytes.size
+                require(accumulatedBytes <= MAX_BATCH_RESULT_BYTES) { "图片批次过大，请减少图片数量" }
+                results.add(finalBytes)
             }
-            results.add(finalBytes)
+            results
         }
-        return results
+    }
+
+    private companion object {
+        const val MAX_BATCH_ITEMS = 50
+        const val MAX_SOURCE_BYTES = 30 * 1024 * 1024
+        const val MAX_BATCH_RESULT_BYTES = 80L * 1024 * 1024
     }
 }
 

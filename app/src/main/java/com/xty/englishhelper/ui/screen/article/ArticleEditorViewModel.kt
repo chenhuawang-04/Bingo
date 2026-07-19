@@ -247,6 +247,8 @@ class ArticleEditorViewModel @Inject constructor(
                         paragraphs = paragraphs
                     )
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(isOcrLoading = false, error = "AI 识别失败：${e.message}") }
             }
@@ -316,12 +318,16 @@ class ArticleEditorViewModel @Inject constructor(
                 viewModelScope.launch(Dispatchers.IO) {
                     try {
                         parseArticle(savedId)
-                    } catch (e: Exception) {
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
                         Log.w("ArticleEditorVM", "Parse failed for articleId=$savedId", e)
                     }
                 }
 
                 _uiState.update { it.copy(isSaving = false, savedSuccessfully = true, savedArticleId = savedId) }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSaving = false, error = "保存失败：${e.message}") }
             }

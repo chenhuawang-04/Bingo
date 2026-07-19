@@ -522,6 +522,9 @@
     <string name="task_app_update_check">应用更新检查</string>
     <string name="task_show_hidden">显示隐藏任务（%d）</string>
     <string name="task_hide_hidden">隐藏系统任务</string>
+    <string name="task_resource_usage">实时资源占用</string>
+    <string name="task_resource_usage_format">内存重型 %1$d · CPU 重型 %2$d · 网络 %3$d · 数据库写入 %4$d · 音频 %5$d</string>
+    <string name="task_resource_exclusive">独占任务：%s</string>
     <string name="task_unknown">未知任务</string>
     <string name="task_pause_all">全部暂停</string>
     <string name="task_stop_all">全部停止</string>

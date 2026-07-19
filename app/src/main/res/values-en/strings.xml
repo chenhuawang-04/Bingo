@@ -432,6 +432,9 @@
     <string name="task_app_update_check">App Update Check</string>
     <string name="task_show_hidden">Show hidden tasks (%d)</string>
     <string name="task_hide_hidden">Hide system tasks</string>
+    <string name="task_resource_usage">Live resource usage</string>
+    <string name="task_resource_usage_format">Memory-heavy %1$d · CPU-heavy %2$d · Network %3$d · DB writers %4$d · Audio %5$d</string>
+    <string name="task_resource_exclusive">Exclusive owner: %s</string>
     <string name="task_unknown">Unknown Task</string>
     <string name="task_pause_all">Pause All</string>
     <string name="task_stop_all">Stop All</string>

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,7 +40,7 @@ class BackgroundOrganizeManager @Inject constructor(
     private val _organizingWordIds = MutableStateFlow<Set<Long>>(emptySet())
     val organizingWordIds: StateFlow<Set<Long>> = _organizingWordIds.asStateFlow()
 
-    private val taskIdByWordId = mutableMapOf<Long, Long>()
+    private val taskIdByWordId = ConcurrentHashMap<Long, Long>()
 
     init {
         scope.launch {

@@ -115,6 +115,8 @@ class QuestionBankScanViewModel @Inject constructor(
                     }
                 }
                 doScan(compressed)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(phase = ScanPhase.SELECT, isScanning = false, error = "PDF处理失败：${e.message}")
@@ -141,6 +143,8 @@ class QuestionBankScanViewModel @Inject constructor(
                     }
                 }
                 doScan(compressed)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(phase = ScanPhase.SELECT, isScanning = false, error = "读取图片失败：${e.message}")
@@ -219,7 +223,9 @@ class QuestionBankScanViewModel @Inject constructor(
                     }
                 )
             }
-        } catch (e: Exception) {
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
             _uiState.update {
                 it.copy(phase = ScanPhase.SELECT, isScanning = false, error = "扫描失败：${e.message}")
             }
@@ -369,6 +375,8 @@ class QuestionBankScanViewModel @Inject constructor(
 
                 _uiState.update { it.copy(isSaving = false) }
                 _savedPaperId.emit(paperId)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSaving = false, error = "保存失败：${e.message}") }
             }
@@ -403,6 +411,8 @@ class QuestionBankScanViewModel @Inject constructor(
                         }
                     }
                 }
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
             } catch (_: Exception) { }
         }
     }
