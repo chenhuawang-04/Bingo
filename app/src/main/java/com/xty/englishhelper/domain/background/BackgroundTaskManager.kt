@@ -1,6 +1,8 @@
 package com.xty.englishhelper.domain.background
 
+import com.xty.englishhelper.BuildConfig
 import com.xty.englishhelper.data.preferences.SettingsDataStore
+import com.xty.englishhelper.domain.model.AppUpdateCheckPayload
 import com.xty.englishhelper.domain.model.AiModelSnapshot
 import com.xty.englishhelper.domain.model.AiSettingsScope
 import com.xty.englishhelper.domain.model.ArticleParagraph
@@ -10,6 +12,7 @@ import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.priority
 import com.xty.englishhelper.domain.model.EdgeType
 import com.xty.englishhelper.domain.model.RebuildMode
 import com.xty.englishhelper.domain.model.ExamPaper
@@ -33,6 +36,7 @@ import com.xty.englishhelper.domain.model.WordOrganizePayload
 import com.xty.englishhelper.domain.model.ArticleSourceTypeV2
 import com.xty.englishhelper.domain.model.ArticleParseStatus
 import com.xty.englishhelper.domain.repository.BackgroundTaskRepository
+import com.xty.englishhelper.domain.repository.AppUpdateRepository
 import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.ArticleAiRepository
 import com.xty.englishhelper.domain.repository.AtlanticRepository
@@ -56,6 +60,7 @@ import com.xty.englishhelper.domain.usecase.pool.RebuildWordPoolsUseCase
 import com.xty.englishhelper.domain.model.PoolStrategy
 import com.xty.englishhelper.domain.article.SmartParagraphSplitter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -93,6 +98,9 @@ internal data class PoolTaskMutexKey(
 private const val EDGE_WRITE_MUTEX = "__EDGE_WRITE__"
 private const val WORD_PHRASE_PAGE_SIZE = 50
 private const val WORD_PHRASE_TAG_PROMPT_LIMIT = 80
+private const val APP_UPDATE_CHECK_DEDUPE_KEY = "system:app-update-check"
+private const val APP_UPDATE_CHECK_MAX_ATTEMPTS = 3
+private val APP_UPDATE_RETRY_DELAYS_MS = longArrayOf(1_000L, 3_000L)
 
 internal fun poolTaskMutexKey(task: BackgroundTask): PoolTaskMutexKey? {
     return when (task.type) {
@@ -119,25 +127,33 @@ internal fun selectLaunchablePendingTasks(
     pendingTasks: List<BackgroundTask>,
     runningTasks: Collection<BackgroundTask>,
     slots: Int,
-    resourceBudget: TaskResourceBudget = TaskResourceBudget()
+    resourceBudget: TaskResourceBudget = TaskResourceBudget(),
+    foregroundUsage: AppResourceUsage = AppResourceUsage()
 ): List<BackgroundTask> {
     if (slots <= 0) return emptyList()
     val occupiedKeys = runningTasks.mapNotNull(::poolTaskMutexKey).toMutableSet()
     val selected = mutableListOf<BackgroundTask>()
-    pendingTasks.forEach { task ->
-        if (selected.size >= slots) return@forEach
-        val mutexKey = poolTaskMutexKey(task)
-        if (mutexKey != null && mutexKey in occupiedKeys) return@forEach
-        if (!fitsResourceBudget(runningTasks, selected, task, resourceBudget)) return@forEach
-        selected += task
-        if (mutexKey != null) occupiedKeys += mutexKey
-    }
+    pendingTasks
+        .sortedWith(
+            compareByDescending<BackgroundTask> { it.type.priority.weight }
+                .thenBy { it.createdAt }
+                .thenBy { it.id }
+        )
+        .forEach { task ->
+            if (selected.size >= slots) return@forEach
+            val mutexKey = poolTaskMutexKey(task)
+            if (mutexKey != null && mutexKey in occupiedKeys) return@forEach
+            if (!fitsResourceBudget(runningTasks, selected, task, resourceBudget, foregroundUsage)) return@forEach
+            selected += task
+            if (mutexKey != null) occupiedKeys += mutexKey
+        }
     return selected
 }
 
 @Singleton
 class BackgroundTaskManager @Inject constructor(
     private val repository: BackgroundTaskRepository,
+    private val appUpdateRepository: AppUpdateRepository,
     private val questionBankRepository: QuestionBankRepository,
     private val questionBankAiRepository: QuestionBankAiRepository,
     private val articleRepository: ArticleRepository,
@@ -169,29 +185,58 @@ class BackgroundTaskManager @Inject constructor(
     private val managedResumeDelayMs = 10L * 60 * 1000  // 终止 10 分钟后自动续传
     @Volatile
     private var maxConcurrency = 2
-    @Volatile
-    private var started = false
+    private val started = AtomicBoolean(false)
 
     init {
         scope.launch {
             settingsDataStore.backgroundTaskConcurrency.collect { value ->
                 maxConcurrency = value.coerceIn(1, 6)
-                if (started) {
+                if (started.get()) {
                     schedule()
                 }
+            }
+        }
+        scope.launch {
+            AppResourceCoordinator.usage.collect {
+                if (started.get()) schedule()
             }
         }
     }
 
     fun start() {
-        if (started) return
-        started = true
+        if (!started.compareAndSet(false, true)) return
         scope.launch {
             repository.updateStatusByStatus(BackgroundTaskStatus.RUNNING, BackgroundTaskStatus.PENDING)
             migrateLegacyWordOrganizeTasks()
             scheduleManagedResumesOnStart()
+            enqueueAppUpdateCheckIfEnabled()
             schedule()
         }
+    }
+
+    fun enqueueAppUpdateCheck(force: Boolean = true) {
+        scope.launch {
+            enqueueAppUpdateCheckInternal(force)
+        }
+    }
+
+    private suspend fun enqueueAppUpdateCheckIfEnabled() {
+        if (settingsDataStore.getAutoUpdateCheckEnabled()) {
+            enqueueAppUpdateCheckInternal(force = true)
+        }
+    }
+
+    private suspend fun enqueueAppUpdateCheckInternal(force: Boolean): BackgroundTaskEnqueueResult {
+        val payload = AppUpdateCheckPayload(
+            currentVersion = BuildConfig.VERSION_NAME,
+            includePrereleases = settingsDataStore.getIncludePrereleaseUpdates()
+        )
+        return enqueueTaskInternal(
+            type = BackgroundTaskType.APP_UPDATE_CHECK,
+            payload = payload,
+            dedupeKey = APP_UPDATE_CHECK_DEDUPE_KEY,
+            force = force
+        )
     }
 
     fun enqueueWordOrganize(
@@ -632,7 +677,8 @@ class BackgroundTaskManager @Inject constructor(
             val launchableTasks = selectLaunchablePendingTasks(
                 pendingTasks = pendingTasks,
                 runningTasks = runningTaskInfos.values,
-                slots = slots
+                slots = slots,
+                foregroundUsage = AppResourceCoordinator.usage.value
             )
             launchableTasks.forEach { launchTask(it) }
         }
@@ -657,7 +703,7 @@ class BackgroundTaskManager @Inject constructor(
             return
         }
         runningTaskInfos[task.id] = task
-        val job = scope.launch {
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             repository.incrementAttempt(task.id)
             repository.updateStatus(task.id, BackgroundTaskStatus.RUNNING, null)
             try {
@@ -684,6 +730,7 @@ class BackgroundTaskManager @Inject constructor(
             }
         }
         runningJobs[task.id] = job
+        job.start()
     }
 
     private suspend fun executeTask(task: BackgroundTask) {
@@ -698,9 +745,60 @@ class BackgroundTaskManager @Inject constructor(
             BackgroundTaskType.QUESTION_SOURCE_VERIFY -> executeSourceVerify(task)
             BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> executeWritingSampleSearch(task)
             BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> executeOnlineArticleScanScore(task)
+            BackgroundTaskType.APP_UPDATE_CHECK -> executeAppUpdateCheck(task)
             BackgroundTaskType.CLOUD_SYNC -> executeCloudSync(task)
             BackgroundTaskType.UNKNOWN -> throw IllegalStateException("未知任务类型")
         }
+    }
+
+    private suspend fun executeAppUpdateCheck(task: BackgroundTask) {
+        val payload = task.payload as? AppUpdateCheckPayload
+            ?: throw IllegalStateException("任务参数缺失")
+        repository.updateProgress(task.id, 0, 1, "正在检查 GitHub Release")
+        val update = retryUpdateCheck {
+            appUpdateRepository.checkForUpdate(
+                currentVersion = payload.currentVersion,
+                includePrereleases = payload.includePrereleases
+            )
+        }
+        val checkedAt = System.currentTimeMillis()
+        val resultPayload = payload.copy(
+            checkedAt = checkedAt,
+            latestVersion = update?.latestVersion,
+            releaseName = update?.releaseName,
+            releaseUrl = update?.releaseUrl,
+            updateAvailable = update?.updateAvailable == true
+        )
+        repository.updatePayload(task.id, BackgroundTaskType.APP_UPDATE_CHECK, resultPayload)
+        settingsDataStore.recordUpdateCheckResult(
+            checkedAt = checkedAt,
+            latestVersion = update?.latestVersion,
+            releaseUrl = update?.releaseUrl,
+            updateAvailable = update?.updateAvailable == true
+        )
+        val message = when {
+            update == null -> "未找到可用发布版本"
+            update.updateAvailable -> "发现新版本 ${update.latestVersion}"
+            else -> "当前已是最新版本"
+        }
+        repository.updateProgress(task.id, 1, 1, message)
+    }
+
+    private suspend fun <T> retryUpdateCheck(block: suspend () -> T): T {
+        var lastFailure: Exception? = null
+        repeat(APP_UPDATE_CHECK_MAX_ATTEMPTS) { attempt ->
+            try {
+                return block()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                lastFailure = error
+                if (attempt < APP_UPDATE_CHECK_MAX_ATTEMPTS - 1) {
+                    delay(APP_UPDATE_RETRY_DELAYS_MS[attempt])
+                }
+            }
+        }
+        throw lastFailure ?: IllegalStateException("更新检查失败")
     }
 
     private suspend fun executeWordOrganize(task: BackgroundTask) {

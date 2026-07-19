@@ -12,6 +12,12 @@ class PoolEdgeWriteCoordinator @Inject constructor() {
 
     suspend fun <T> withLock(dictionaryId: Long, block: suspend () -> T): T {
         val mutex = mutexes.computeIfAbsent(dictionaryId) { Mutex() }
-        return mutex.withLock { block() }
+        return mutex.withLock {
+            AppResourceCoordinator.withResourceUsage(
+                owner = "pool_edge_write:$dictionaryId",
+                demand = ForegroundResourceDemand(databaseWriter = 1),
+                block = block
+            )
+        }
     }
 }

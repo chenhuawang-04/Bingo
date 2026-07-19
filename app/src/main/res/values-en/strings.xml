@@ -429,6 +429,9 @@
     <string name="task_writing_sample">Writing Sample Search</string>
     <string name="task_online_scan">Online Article Scoring</string>
     <string name="task_cloud_sync">Cloud Sync</string>
+    <string name="task_app_update_check">App Update Check</string>
+    <string name="task_show_hidden">Show hidden tasks (%d)</string>
+    <string name="task_hide_hidden">Hide system tasks</string>
     <string name="task_unknown">Unknown Task</string>
     <string name="task_pause_all">Pause All</string>
     <string name="task_stop_all">Stop All</string>
@@ -618,6 +621,17 @@
     <string name="task_subtitle_group">Group </string>
     <string name="task_subtitle_word_pair">%1$s ↔ %2$s</string>
     <string name="task_subtitle_scan_format">Full scan, rescore after %dh</string>
+    <string name="task_subtitle_update_available">New version %s is available</string>
+    <string name="task_subtitle_update_current">Version %s is up to date</string>
+    <string name="task_subtitle_update_pending">Checking GitHub Releases</string>
+    <string name="settings_auto_update_check">Check for updates at startup</string>
+    <string name="settings_auto_update_check_desc">Check GitHub Releases on every app startup; the task is hidden by default.</string>
+    <string name="settings_include_prerelease_updates">Include prerelease updates</string>
+    <string name="settings_include_prerelease_updates_desc">Include prereleases when enabled. When disabled, drafts and all test releases are excluded.</string>
+    <string name="settings_check_update_now">Check now</string>
+    <string name="settings_open_release_page">Open GitHub release</string>
+    <string name="settings_update_available">New version available: %s</string>
+    <string name="settings_update_current">Latest release: %s (up to date)</string>
     <string name="task_subtitle_task_id">Task %d</string>
     <!-- ==================== Pool Build Detail ==================== -->
     <string name="pool_build_detail_title">Pool Build Details</string>

@@ -132,7 +132,7 @@ class BackgroundTaskManagerSelectionTest {
             slots = 3
         )
 
-        assertEquals(listOf(11L), selected.map { it.id })
+        assertEquals(listOf(14L, 13L), selected.map { it.id })
     }
 
     @Test

@@ -27,8 +27,44 @@ enum class BackgroundTaskType {
     QUESTION_SOURCE_VERIFY,
     QUESTION_WRITING_SAMPLE_SEARCH,
     ONLINE_ARTICLE_SCAN_SCORE,
+    APP_UPDATE_CHECK,
     CLOUD_SYNC
 }
+
+enum class BackgroundTaskVisibility {
+    VISIBLE,
+    HIDDEN
+}
+
+enum class BackgroundTaskPriority(val weight: Int) {
+    MAINTENANCE(0),
+    NORMAL(10),
+    USER_INITIATED(20),
+    CRITICAL(30)
+}
+
+val BackgroundTaskType.visibility: BackgroundTaskVisibility
+    get() = when (this) {
+        BackgroundTaskType.APP_UPDATE_CHECK -> BackgroundTaskVisibility.HIDDEN
+        else -> BackgroundTaskVisibility.VISIBLE
+    }
+
+val BackgroundTaskType.priority: BackgroundTaskPriority
+    get() = when (this) {
+        BackgroundTaskType.CLOUD_SYNC -> BackgroundTaskPriority.CRITICAL
+        BackgroundTaskType.WORD_ORGANIZE,
+        BackgroundTaskType.WORD_NOTE_ORGANIZE,
+        BackgroundTaskType.QUESTION_GENERATE,
+        BackgroundTaskType.QUESTION_ANSWER_GENERATE,
+        BackgroundTaskType.QUESTION_SOURCE_VERIFY,
+        BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> BackgroundTaskPriority.USER_INITIATED
+        BackgroundTaskType.APP_UPDATE_CHECK,
+        BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> BackgroundTaskPriority.MAINTENANCE
+        else -> BackgroundTaskPriority.NORMAL
+    }
+
+val BackgroundTask.isHiddenByDefault: Boolean
+    get() = type.visibility == BackgroundTaskVisibility.HIDDEN
 
 enum class BackgroundTaskStatus {
     PENDING,
@@ -43,6 +79,5 @@ enum class RebuildMode {
     FULL,        // Delete all existing data, rebuild from scratch
     INCREMENTAL  // Resume from last progress, keep existing pools during rebuild
 }
-
 
 

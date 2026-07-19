@@ -16,7 +16,8 @@ import javax.inject.Inject
 
 data class BackgroundTaskUiState(
     val tasks: List<BackgroundTask> = emptyList(),
-    val filter: TaskFilter = TaskFilter.ALL
+    val filter: TaskFilter = TaskFilter.ALL,
+    val showHiddenTasks: Boolean = false
 )
 
 enum class TaskFilter {
@@ -42,6 +43,10 @@ class BackgroundTaskViewModel @Inject constructor(
 
     fun setFilter(filter: TaskFilter) {
         _uiState.update { it.copy(filter = filter) }
+    }
+
+    fun toggleHiddenTasks() {
+        _uiState.update { it.copy(showHiddenTasks = !it.showHiddenTasks) }
     }
 
     fun pauseAll() {

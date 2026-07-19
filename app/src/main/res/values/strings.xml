@@ -432,6 +432,14 @@
     <string name="settings_bg_concurrency">后台并发</string>
     <string name="settings_bg_concurrency_hint">建议 2-4，过高可能挤占 OCR 与朗读资源</string>
     <string name="settings_open_bg_task_mgmt">打开后台任务管理</string>
+    <string name="settings_auto_update_check">启动时自动检查更新</string>
+    <string name="settings_auto_update_check_desc">每次启动时通过 GitHub Release 检查新版本；任务默认隐藏。</string>
+    <string name="settings_include_prerelease_updates">检查测试版更新</string>
+    <string name="settings_include_prerelease_updates_desc">开启后包含 prerelease；关闭时仅检查正式发布，并排除草稿和测试版本。</string>
+    <string name="settings_check_update_now">立即检查更新</string>
+    <string name="settings_open_release_page">打开 GitHub 发布页</string>
+    <string name="settings_update_available">发现新版本：%s</string>
+    <string name="settings_update_current">最新发布版本：%s（当前无需更新）</string>
     <string name="settings_online_reading_desc">设置默认阅读源与在线文章详情并发加载数量。</string>
     <string name="settings_default_source">默认来源</string>
     <string name="settings_detail_concurrency">详情并发</string>
@@ -511,6 +519,9 @@
     <string name="task_writing_sample">作文范文检索</string>
     <string name="task_online_scan">在线文章批量评分</string>
     <string name="task_cloud_sync">云同步</string>
+    <string name="task_app_update_check">应用更新检查</string>
+    <string name="task_show_hidden">显示隐藏任务（%d）</string>
+    <string name="task_hide_hidden">隐藏系统任务</string>
     <string name="task_unknown">未知任务</string>
     <string name="task_pause_all">全部暂停</string>
     <string name="task_stop_all">全部停止</string>
@@ -1242,5 +1253,8 @@
     <string name="task_subtitle_group">题组 </string>
     <string name="task_subtitle_word_pair">%1$s ↔ %2$s</string>
     <string name="task_subtitle_scan_format">全来源全栏目扫描，重评间隔 %dh</string>
+    <string name="task_subtitle_update_available">发现新版本 %s</string>
+    <string name="task_subtitle_update_current">当前版本 %s 已是最新版本</string>
+    <string name="task_subtitle_update_pending">检查 GitHub Release</string>
     <string name="task_subtitle_task_id">任务 %d</string>
 </resources>

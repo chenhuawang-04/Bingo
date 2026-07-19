@@ -47,6 +47,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.xty.englishhelper.R
 import com.xty.englishhelper.domain.model.BackgroundTask
 import com.xty.englishhelper.domain.model.BackgroundTaskPayload
+import com.xty.englishhelper.domain.model.AppUpdateCheckPayload
 import com.xty.englishhelper.domain.model.BackgroundTaskStatus
 import com.xty.englishhelper.domain.model.BackgroundTaskType
 import com.xty.englishhelper.domain.model.OnlineArticleScanScorePayload
@@ -59,6 +60,7 @@ import com.xty.englishhelper.domain.model.WordPhraseOrganizePayload
 import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import com.xty.englishhelper.domain.model.WordPoolReviewPayload
 import com.xty.englishhelper.domain.model.WordOrganizePayload
+import com.xty.englishhelper.domain.model.isHiddenByDefault
 import com.xty.englishhelper.ui.components.topbar.AppTopBarBackButton
 import com.xty.englishhelper.ui.components.topbar.AppTopBarEffect
 import com.xty.englishhelper.ui.designsystem.components.EhMaxWidthContainer
@@ -102,9 +104,27 @@ fun BackgroundTaskScreen(
                     onClearFinished = viewModel::clearFinished
                 )
 
+                val hiddenCount = state.tasks.count { it.isHiddenByDefault }
+                if (hiddenCount > 0) {
+                    AssistChip(
+                        onClick = viewModel::toggleHiddenTasks,
+                        label = {
+                            Text(
+                                if (state.showHiddenTasks) {
+                                    stringResource(R.string.task_hide_hidden)
+                                } else {
+                                    stringResource(R.string.task_show_hidden, hiddenCount)
+                                }
+                            )
+                        }
+                    )
+                }
+
                 HorizontalDivider()
 
-                val filtered = state.tasks.filter(viewModel::matchesFilter)
+                val filtered = state.tasks
+                    .filter { state.showHiddenTasks || !it.isHiddenByDefault }
+                    .filter(viewModel::matchesFilter)
                 if (filtered.isEmpty()) {
                     Text(
                         stringResource(R.string.task_no_tasks),
@@ -355,6 +375,7 @@ private fun taskTitle(task: BackgroundTask): String {
         BackgroundTaskType.QUESTION_SOURCE_VERIFY -> stringResource(R.string.task_source_verify)
         BackgroundTaskType.QUESTION_WRITING_SAMPLE_SEARCH -> stringResource(R.string.task_writing_sample)
         BackgroundTaskType.ONLINE_ARTICLE_SCAN_SCORE -> stringResource(R.string.task_online_scan)
+        BackgroundTaskType.APP_UPDATE_CHECK -> stringResource(R.string.task_app_update_check)
         BackgroundTaskType.CLOUD_SYNC -> stringResource(R.string.task_cloud_sync)
         BackgroundTaskType.UNKNOWN -> stringResource(R.string.task_unknown)
     }
@@ -440,6 +461,17 @@ private fun taskSubtitle(task: BackgroundTask): String {
         }
         is OnlineArticleScanScorePayload -> {
             stringResource(R.string.task_subtitle_scan_format, payload.rescoreAfterHours)
+        }
+        is AppUpdateCheckPayload -> when {
+            payload.latestVersion == null -> stringResource(R.string.task_subtitle_update_pending)
+            payload.updateAvailable -> stringResource(
+                R.string.task_subtitle_update_available,
+                payload.latestVersion
+            )
+            else -> stringResource(
+                R.string.task_subtitle_update_current,
+                payload.currentVersion
+            )
         }
         else -> stringResource(R.string.task_subtitle_task_id, task.id)
     }

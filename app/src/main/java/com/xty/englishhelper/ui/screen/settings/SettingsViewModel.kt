@@ -146,6 +146,31 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            settingsDataStore.autoUpdateCheckEnabled.collect { value ->
+                _uiState.update { it.copy(autoUpdateCheckEnabled = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.includePrereleaseUpdates.collect { value ->
+                _uiState.update { it.copy(includePrereleaseUpdates = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.latestUpdateVersion.collect { value ->
+                _uiState.update { it.copy(latestUpdateVersion = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.latestUpdateUrl.collect { value ->
+                _uiState.update { it.copy(latestUpdateUrl = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsDataStore.updateAvailable.collect { value ->
+                _uiState.update { it.copy(updateAvailable = value) }
+            }
+        }
+        viewModelScope.launch {
             settingsDataStore.poolWindowSize.collect { value ->
                 _uiState.update { it.copy(poolWindowSize = value) }
             }
@@ -560,6 +585,20 @@ class SettingsViewModel @Inject constructor(
         val clamped = value.coerceIn(1, 6)
         _uiState.update { it.copy(backgroundTaskConcurrency = clamped) }
         viewModelScope.launch { settingsDataStore.setBackgroundTaskConcurrency(clamped) }
+    }
+
+    fun onAutoUpdateCheckEnabledChange(value: Boolean) {
+        _uiState.update { it.copy(autoUpdateCheckEnabled = value) }
+        viewModelScope.launch { settingsDataStore.setAutoUpdateCheckEnabled(value) }
+    }
+
+    fun onIncludePrereleaseUpdatesChange(value: Boolean) {
+        _uiState.update { it.copy(includePrereleaseUpdates = value) }
+        viewModelScope.launch { settingsDataStore.setIncludePrereleaseUpdates(value) }
+    }
+
+    fun checkForUpdatesNow() {
+        backgroundTaskManager.enqueueAppUpdateCheck(force = true)
     }
 
     fun onTtsPrewarmConcurrencyChange(value: Int) {

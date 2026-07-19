@@ -110,3 +110,13 @@ data class SyncTaskPayload(
     val triggeredBy: String = "manual"
 ) : BackgroundTaskPayload
 
+@Serializable
+data class AppUpdateCheckPayload(
+    val currentVersion: String,
+    val includePrereleases: Boolean = false,
+    val checkedAt: Long = 0L,
+    val latestVersion: String? = null,
+    val releaseName: String? = null,
+    val releaseUrl: String? = null,
+    val updateAvailable: Boolean = false
+) : BackgroundTaskPayload

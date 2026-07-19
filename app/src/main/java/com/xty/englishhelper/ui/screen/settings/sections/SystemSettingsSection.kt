@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.xty.englishhelper.R
@@ -167,6 +168,7 @@ private fun LocaleCard(state: SettingsUiState, viewModel: SettingsViewModel) {
 @Composable
 private fun BackgroundTaskCard(state: SettingsUiState, viewModel: SettingsViewModel) {
     val spacing = LocalEhSpacing.current
+    val uriHandler = LocalUriHandler.current
 
     var input by remember { mutableStateOf(state.backgroundTaskConcurrency.toString()) }
 
@@ -197,6 +199,47 @@ private fun BackgroundTaskCard(state: SettingsUiState, viewModel: SettingsViewMo
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_auto_update_check),
+                description = stringResource(R.string.settings_auto_update_check_desc),
+                checked = state.autoUpdateCheckEnabled,
+                onCheckedChange = viewModel::onAutoUpdateCheckEnabledChange
+            )
+
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_include_prerelease_updates),
+                description = stringResource(R.string.settings_include_prerelease_updates_desc),
+                checked = state.includePrereleaseUpdates,
+                onCheckedChange = viewModel::onIncludePrereleaseUpdatesChange
+            )
+
+            if (state.latestUpdateVersion.isNotBlank()) {
+                Text(
+                    text = if (state.updateAvailable) {
+                        stringResource(R.string.settings_update_available, state.latestUpdateVersion)
+                    } else {
+                        stringResource(R.string.settings_update_current, state.latestUpdateVersion)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (state.updateAvailable) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+
+            Button(onClick = viewModel::checkForUpdatesNow) {
+                Text(stringResource(R.string.settings_check_update_now))
+            }
+            if (state.updateAvailable && state.latestUpdateUrl.isNotBlank()) {
+                Button(onClick = { uriHandler.openUri(state.latestUpdateUrl) }) {
+                    Text(stringResource(R.string.settings_open_release_page))
+                }
+            }
+
+            HorizontalDivider()
 
             SettingsTextFieldRow(
                 title = stringResource(R.string.settings_bg_concurrency),

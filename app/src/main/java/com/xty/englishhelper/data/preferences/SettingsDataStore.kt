@@ -64,6 +64,12 @@ class SettingsDataStore @Inject constructor(
         val IMAGE_COMPRESSION_ENABLED = booleanPreferencesKey("image_compression_enabled")
         val IMAGE_COMPRESSION_TARGET_BYTES = intPreferencesKey("image_compression_target_bytes")
         val BACKGROUND_TASK_CONCURRENCY = intPreferencesKey("background_task_concurrency")
+        val AUTO_UPDATE_CHECK_ENABLED = booleanPreferencesKey("auto_update_check_enabled")
+        val INCLUDE_PRERELEASE_UPDATES = booleanPreferencesKey("include_prerelease_updates")
+        val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
+        val LATEST_UPDATE_VERSION = stringPreferencesKey("latest_update_version")
+        val LATEST_UPDATE_URL = stringPreferencesKey("latest_update_url")
+        val UPDATE_AVAILABLE = booleanPreferencesKey("update_available")
 
         val GITHUB_OWNER = stringPreferencesKey("github_owner")
         val GITHUB_REPO = stringPreferencesKey("github_repo")
@@ -127,6 +133,10 @@ class SettingsDataStore @Inject constructor(
     private val maxImageCompressionTargetBytes = 4 * 1024 * 1024
     private val nonSyncablePreferenceKeys = setOf(
         LAST_SYNC_AT.name,
+        LAST_UPDATE_CHECK_AT.name,
+        LATEST_UPDATE_VERSION.name,
+        LATEST_UPDATE_URL.name,
+        UPDATE_AVAILABLE.name,
         API_KEY.name,
         "github_pat"
     )
@@ -164,6 +174,30 @@ class SettingsDataStore @Inject constructor(
 
     val backgroundTaskConcurrency: Flow<Int> = dataStore.data.map { prefs ->
         (prefs[BACKGROUND_TASK_CONCURRENCY] ?: 2).coerceIn(1, 6)
+    }
+
+    val autoUpdateCheckEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[AUTO_UPDATE_CHECK_ENABLED] ?: true
+    }
+
+    val includePrereleaseUpdates: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[INCLUDE_PRERELEASE_UPDATES] ?: false
+    }
+
+    val lastUpdateCheckAt: Flow<Long> = dataStore.data.map { prefs ->
+        prefs[LAST_UPDATE_CHECK_AT] ?: 0L
+    }
+
+    val latestUpdateVersion: Flow<String> = dataStore.data.map { prefs ->
+        prefs[LATEST_UPDATE_VERSION].orEmpty()
+    }
+
+    val latestUpdateUrl: Flow<String> = dataStore.data.map { prefs ->
+        prefs[LATEST_UPDATE_URL].orEmpty()
+    }
+
+    val updateAvailable: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[UPDATE_AVAILABLE] ?: false
     }
 
     val onlineReadingSource: Flow<String> = dataStore.data.map { prefs ->
@@ -273,6 +307,38 @@ class SettingsDataStore @Inject constructor(
     suspend fun setBackgroundTaskConcurrency(value: Int) {
         editSyncablePreferences { prefs ->
             prefs[BACKGROUND_TASK_CONCURRENCY] = value.coerceIn(1, 6)
+        }
+    }
+
+    suspend fun setAutoUpdateCheckEnabled(value: Boolean) {
+        editSyncablePreferences { prefs -> prefs[AUTO_UPDATE_CHECK_ENABLED] = value }
+    }
+
+    suspend fun setIncludePrereleaseUpdates(value: Boolean) {
+        editSyncablePreferences { prefs -> prefs[INCLUDE_PRERELEASE_UPDATES] = value }
+    }
+
+    suspend fun getAutoUpdateCheckEnabled(): Boolean {
+        return dataStore.data.first()[AUTO_UPDATE_CHECK_ENABLED] ?: true
+    }
+
+    suspend fun getIncludePrereleaseUpdates(): Boolean {
+        return dataStore.data.first()[INCLUDE_PRERELEASE_UPDATES] ?: false
+    }
+
+    suspend fun recordUpdateCheckResult(
+        checkedAt: Long,
+        latestVersion: String?,
+        releaseUrl: String?,
+        updateAvailable: Boolean
+    ) {
+        dataStore.edit { prefs ->
+            prefs[LAST_UPDATE_CHECK_AT] = checkedAt
+            prefs[UPDATE_AVAILABLE] = updateAvailable
+            if (latestVersion.isNullOrBlank()) prefs.remove(LATEST_UPDATE_VERSION)
+            else prefs[LATEST_UPDATE_VERSION] = latestVersion
+            if (releaseUrl.isNullOrBlank()) prefs.remove(LATEST_UPDATE_URL)
+            else prefs[LATEST_UPDATE_URL] = releaseUrl
         }
     }
 
@@ -1018,6 +1084,8 @@ class SettingsDataStore @Inject constructor(
         register(IMAGE_COMPRESSION_ENABLED)
         register(IMAGE_COMPRESSION_TARGET_BYTES)
         register(BACKGROUND_TASK_CONCURRENCY)
+        register(AUTO_UPDATE_CHECK_ENABLED)
+        register(INCLUDE_PRERELEASE_UPDATES)
         register(GITHUB_OWNER)
         register(GITHUB_REPO)
         register(GITHUB_CONFIG_SYNC_ENABLED)

@@ -1,5 +1,9 @@
 package com.xty.englishhelper.domain.background
 
+import com.xty.englishhelper.domain.model.BackgroundTask
+import com.xty.englishhelper.domain.model.BackgroundTaskStatus
+import com.xty.englishhelper.domain.model.BackgroundTaskType
+import com.xty.englishhelper.domain.model.WordPoolRebuildPayload
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
@@ -32,6 +36,7 @@ class AppResourceCoordinatorTest {
 
         assertEquals(1, peak.get())
         assertNull(AppResourceCoordinator.memoryHeavyOwner.value)
+        assertEquals(AppResourceUsage(), AppResourceCoordinator.usage.value)
     }
 
     @Test
@@ -43,5 +48,40 @@ class AppResourceCoordinatorTest {
         }
 
         assertNull(AppResourceCoordinator.memoryHeavyOwner.value)
+        assertEquals(AppResourceUsage(), AppResourceCoordinator.usage.value)
+    }
+
+    @Test
+    fun `foreground usage is visible to background resource budgeting`() = runTest {
+        AppResourceCoordinator.withResourceUsage(
+            owner = "foreground-write",
+            demand = ForegroundResourceDemand(databaseWriter = 1)
+        ) {
+            val candidate = BackgroundTask(
+                id = 1,
+                type = BackgroundTaskType.WORD_POOL_REBUILD,
+                status = BackgroundTaskStatus.PENDING,
+                payload = WordPoolRebuildPayload(dictionaryId = 1, strategy = "BALANCED"),
+                progressCurrent = 0,
+                progressTotal = 0,
+                progressMessage = null,
+                attempt = 0,
+                errorMessage = null,
+                createdAt = 1,
+                updatedAt = 1,
+                dedupeKey = "pool:1"
+            )
+            assertEquals(1, AppResourceCoordinator.usage.value.databaseWriter)
+            assertEquals(
+                emptyList<Long>(),
+                selectLaunchablePendingTasks(
+                    pendingTasks = listOf(candidate),
+                    runningTasks = emptyList(),
+                    slots = 1,
+                    foregroundUsage = AppResourceCoordinator.usage.value
+                ).map { it.id }
+            )
+        }
+        assertEquals(AppResourceUsage(), AppResourceCoordinator.usage.value)
     }
 }

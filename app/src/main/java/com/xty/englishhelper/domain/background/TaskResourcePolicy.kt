@@ -51,6 +51,8 @@ internal fun BackgroundTask.resourceDemand(): TaskResourceDemand = when (type) {
         network = 1
     )
 
+    BackgroundTaskType.APP_UPDATE_CHECK -> TaskResourceDemand(network = 1)
+
     BackgroundTaskType.UNKNOWN -> TaskResourceDemand(exclusive = true)
 }
 
@@ -58,16 +60,20 @@ internal fun fitsResourceBudget(
     runningTasks: Collection<BackgroundTask>,
     selectedTasks: Collection<BackgroundTask>,
     candidate: BackgroundTask,
-    budget: TaskResourceBudget = TaskResourceBudget()
+    budget: TaskResourceBudget = TaskResourceBudget(),
+    foregroundUsage: AppResourceUsage = AppResourceUsage()
 ): Boolean {
     val active = runningTasks + selectedTasks
     val candidateDemand = candidate.resourceDemand()
-    if (candidateDemand.exclusive) return active.isEmpty()
-    if (active.any { it.resourceDemand().exclusive }) return false
+    if (candidateDemand.exclusive) return active.isEmpty() && foregroundUsage.isIdle()
+    if (active.any { it.resourceDemand().exclusive } || foregroundUsage.exclusiveOwners.isNotEmpty()) return false
 
     val activeDemands = active.map { it.resourceDemand() }
-    return activeDemands.sumOf { it.memoryHeavy } + candidateDemand.memoryHeavy <= budget.memoryHeavy &&
-        activeDemands.sumOf { it.cpuHeavy } + candidateDemand.cpuHeavy <= budget.cpuHeavy &&
-        activeDemands.sumOf { it.network } + candidateDemand.network <= budget.network &&
-        activeDemands.sumOf { it.databaseWriter } + candidateDemand.databaseWriter <= budget.databaseWriter
+    return foregroundUsage.memoryHeavy + activeDemands.sumOf { it.memoryHeavy } + candidateDemand.memoryHeavy <= budget.memoryHeavy &&
+        foregroundUsage.cpuHeavy + activeDemands.sumOf { it.cpuHeavy } + candidateDemand.cpuHeavy <= budget.cpuHeavy &&
+        foregroundUsage.network + activeDemands.sumOf { it.network } + candidateDemand.network <= budget.network &&
+        foregroundUsage.databaseWriter + activeDemands.sumOf { it.databaseWriter } + candidateDemand.databaseWriter <= budget.databaseWriter
 }
+
+private fun AppResourceUsage.isIdle(): Boolean =
+    memoryHeavy == 0 && cpuHeavy == 0 && network == 0 && databaseWriter == 0 && exclusiveOwners.isEmpty()

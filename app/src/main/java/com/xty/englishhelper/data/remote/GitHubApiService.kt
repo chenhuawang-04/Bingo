@@ -5,6 +5,7 @@ import com.xty.englishhelper.data.remote.dto.GitHubDeleteRequest
 import com.xty.englishhelper.data.remote.dto.GitHubPutRequest
 import com.xty.englishhelper.data.remote.dto.GitHubPutResponse
 import com.xty.englishhelper.data.remote.dto.GitHubRepoResponse
+import com.xty.englishhelper.data.remote.dto.GitHubReleaseResponse
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -13,9 +14,17 @@ import retrofit2.http.HTTP
 import retrofit2.http.Header
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 import retrofit2.http.Url
 
 interface GitHubApiService {
+
+    @GET("repos/{owner}/{repo}/releases")
+    suspend fun getReleases(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("per_page") perPage: Int = 20
+    ): Response<List<GitHubReleaseResponse>>
 
     @GET("repos/{owner}/{repo}")
     suspend fun getRepo(
