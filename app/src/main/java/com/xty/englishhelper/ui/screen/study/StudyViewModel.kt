@@ -334,7 +334,6 @@ class StudyViewModel @Inject constructor(
                         stats = StudyStats(totalWords = 0)
                     )
                 }
-                speakRelatedWordIfEnabled(review.words.first())
             } else {
                 showNextWord()
             }
@@ -644,6 +643,7 @@ class StudyViewModel @Inject constructor(
                         wordClusterError = null
                     )
                 }
+                speakRelatedWordIfEnabled(review.words.first())
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
