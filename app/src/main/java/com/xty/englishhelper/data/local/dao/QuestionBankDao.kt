@@ -37,8 +37,8 @@ interface QuestionBankDao {
     @Query("SELECT * FROM exam_papers WHERE day_key = :dayKey AND profile = :profile AND status = 'COLLECTING' ORDER BY daily_sequence DESC LIMIT 1")
     suspend fun getCollectingPaperByDay(dayKey: String, profile: String): ExamPaperEntity?
 
-    @Query("SELECT COUNT(*) FROM exam_papers WHERE day_key = :dayKey AND paper_type = 'COMPOSED'")
-    suspend fun getComposedPaperCountByDay(dayKey: String): Int
+    @Query("SELECT COALESCE(MAX(daily_sequence), 0) FROM exam_papers WHERE day_key = :dayKey AND paper_type = 'COMPOSED'")
+    suspend fun getMaxComposedPaperSequenceByDay(dayKey: String): Int
 
     @Query("""
         SELECT ep.*,
@@ -184,7 +184,10 @@ interface QuestionBankDao {
 
     @Query("""
         UPDATE exam_paper_sources
-        SET status = :status, question_group_id = :groupId, error_message = :error, updated_at = :updatedAt
+        SET status = :status,
+            question_group_id = COALESCE(:groupId, question_group_id),
+            error_message = :error,
+            updated_at = :updatedAt
         WHERE id = :sourceId
     """)
     suspend fun updateExamPaperSourceStatus(

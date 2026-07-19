@@ -1283,29 +1283,42 @@ class BackgroundTaskManager @Inject constructor(
         try {
             sources.sortedBy { it.orderInPaper }.forEachIndexed { index, source ->
                 val existingGroup = source.questionGroupId?.let { questionBankRepository.getGroupById(it) }
-                if (source.status == ExamPaperSourceStatus.GENERATED && existingGroup != null) {
-                    repository.updateProgress(task.id, index + 1, sources.size, "已恢复 ${index + 1}/${sources.size}")
-                    return@forEachIndexed
-                }
-
                 questionBankRepository.updateExamPaperSourceStatus(
                     sourceId = source.id,
                     status = ExamPaperSourceStatus.GENERATING,
                     error = null
                 )
                 try {
-                    val (_, group) = generateQuestionGroup(
-                        articleId = source.articleId,
-                        questionType = source.questionType,
-                        variant = source.variant,
-                        orderInPaper = source.orderInPaper,
-                        startQuestionNumber = source.startQuestionNumber,
-                        sectionLabelOverride = blueprint.slots.firstOrNull { it.key == source.slotKey }?.sectionLabel
-                    )
-                    val groupId = questionBankRepository.saveGeneratedGroup(paper.id, source, group)
+                    val groupId = if (existingGroup != null) {
+                        existingGroup.id
+                    } else {
+                        val (_, group) = generateQuestionGroup(
+                            articleId = source.articleId,
+                            questionType = source.questionType,
+                            variant = source.variant,
+                            orderInPaper = source.orderInPaper,
+                            startQuestionNumber = source.startQuestionNumber,
+                            sectionLabelOverride = blueprint.slots.firstOrNull { it.key == source.slotKey }?.sectionLabel
+                        )
+                        questionBankRepository.saveGeneratedGroup(paper.id, source, group)
+                    }
                     val savedGroup = questionBankRepository.getGroupById(groupId)
                         ?: throw IllegalStateException("题组保存后无法读取")
-                    enqueueGeneratedSupportTasks(savedGroup, paper.title)
+                    if (savedGroup.questionType == QuestionType.WRITING) {
+                        enqueueQuestionWritingSampleSearch(
+                            groupId = savedGroup.id,
+                            paperTitle = paper.title,
+                            questionSnippet = savedGroup.items.firstOrNull()?.questionText?.take(300).orEmpty()
+                        )
+                    } else if (!savedGroup.hasAiAnswer) {
+                        generateAnswersForGroup(savedGroup.id)
+                    }
+                    questionBankRepository.updateExamPaperSourceStatus(
+                        sourceId = source.id,
+                        status = ExamPaperSourceStatus.GENERATED,
+                        groupId = groupId,
+                        error = null
+                    )
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (error: Exception) {
@@ -1478,17 +1491,26 @@ class BackgroundTaskManager @Inject constructor(
 
     private suspend fun executeAnswerGenerate(task: BackgroundTask) {
         val payload = task.payload as? QuestionAnswerGeneratePayload ?: throw IllegalStateException("任务参数缺失")
-        val group = questionBankRepository.getGroupById(payload.groupId) ?: throw IllegalStateException("题组不存在")
+        generateAnswersForGroup(payload.groupId) { done, total ->
+            repository.updateProgress(task.id, done, total)
+        }
+    }
+
+    private suspend fun generateAnswersForGroup(
+        groupId: Long,
+        onProgress: suspend (done: Int, total: Int) -> Unit = { _, _ -> }
+    ) {
+        val group = questionBankRepository.getGroupById(groupId) ?: throw IllegalStateException("题组不存在")
         val items = questionBankRepository.getItemsByGroup(group.id)
         if (items.isEmpty()) {
-            repository.updateProgress(task.id, 0, 0)
+            onProgress(0, 0)
             return
         }
         val config = settingsDataStore.getFastAiConfig()
         if (config.apiKey.isBlank()) {
             throw IllegalStateException("快速模型未配置")
         }
-        repository.updateProgress(task.id, 0, items.size)
+        onProgress(0, items.size)
         val passageForAnswer = if (group.questionType == QuestionType.PARAGRAPH_ORDER) {
             buildString {
                 if (!group.directions.isNullOrBlank()) {
@@ -1510,9 +1532,10 @@ class BackgroundTaskManager @Inject constructor(
             config.providerName,
             config.provider
         )
-        var done = 0
+        val answeredItemIds = mutableSetOf<Long>()
         for (result in results) {
             val item = items.find { it.questionNumber == result.questionNumber } ?: continue
+            if (result.answer.isBlank() || !answeredItemIds.add(item.id)) continue
             questionBankRepository.updateAnswer(
                 item.id,
                 result.answer,
@@ -1521,10 +1544,12 @@ class BackgroundTaskManager @Inject constructor(
                 result.difficultyLevel,
                 result.difficultyScore
             )
-            done += 1
-            repository.updateProgress(task.id, done, items.size)
+            onProgress(answeredItemIds.size, items.size)
         }
-        repository.updateProgress(task.id, items.size, items.size)
+        if (answeredItemIds.size != items.size) {
+            throw IllegalStateException("答案生成不完整：${answeredItemIds.size}/${items.size}")
+        }
+        onProgress(items.size, items.size)
         questionBankRepository.markHasAiAnswer(group.id)
     }
 

@@ -94,7 +94,7 @@ class QuestionBankRepositoryImpl @Inject constructor(
                     profile = profile,
                     specialQuestionType = specialQuestionType ?: ExamPaperBlueprint.rotatingSpecialType(year)
                 )
-                val sequence = dao.getComposedPaperCountByDay(dayKey) + 1
+                val sequence = dao.getMaxComposedPaperSequenceByDay(dayKey) + 1
                 val paper = ExamPaper(
                     uid = UUID.randomUUID().toString(),
                     title = ExamPaperBlueprint.dailyPaperTitle(dayKey, sequence),
