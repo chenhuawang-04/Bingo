@@ -10,15 +10,32 @@ import com.xty.englishhelper.data.local.entity.WordClusterMemberEntity
 
 @Dao
 interface WordClusterDao {
-    @Query("SELECT * FROM word_clusters WHERE dictionary_id = :dictionaryId ORDER BY normalized_name")
-    suspend fun getClusters(dictionaryId: Long): List<WordClusterEntity>
+    @Query("""
+        SELECT c.id, c.dictionary_id AS dictionaryId, c.name, COUNT(m.word_id) AS memberCount
+        FROM word_clusters c LEFT JOIN word_cluster_members m ON m.cluster_id = c.id
+        WHERE c.dictionary_id = :dictionaryId
+        GROUP BY c.id ORDER BY c.normalized_name
+    """)
+    suspend fun getClusters(dictionaryId: Long): List<WordClusterProjection>
 
     @Query("""
-        SELECT c.* FROM word_clusters c
+        SELECT c.id, c.dictionary_id AS dictionaryId, c.name, COUNT(all_members.word_id) AS memberCount
+        FROM word_clusters c
         INNER JOIN word_cluster_members m ON m.cluster_id = c.id
-        WHERE m.word_id = :wordId ORDER BY c.normalized_name
+        LEFT JOIN word_cluster_members all_members ON all_members.cluster_id = c.id
+        WHERE m.word_id = :wordId
+        GROUP BY c.id ORDER BY c.normalized_name
     """)
-    suspend fun getClustersForWord(wordId: Long): List<WordClusterEntity>
+    suspend fun getClustersForWord(wordId: Long): List<WordClusterProjection>
+
+    @Query("""
+        SELECT c.id, c.dictionary_id AS dictionaryId, c.name, COUNT(all_members.word_id) AS memberCount
+        FROM word_clusters c
+        INNER JOIN word_cluster_members member ON member.cluster_id = c.id AND member.word_id = :wordId
+        LEFT JOIN word_cluster_members all_members ON all_members.cluster_id = c.id
+        WHERE c.id = :clusterId GROUP BY c.id
+    """)
+    suspend fun getClusterForMember(clusterId: Long, wordId: Long): WordClusterProjection?
 
     @Query("SELECT word_id FROM word_cluster_members WHERE cluster_id = :clusterId ORDER BY created_at, word_id")
     suspend fun getMemberIds(clusterId: Long): List<Long>
@@ -42,3 +59,10 @@ interface WordClusterDao {
         return id
     }
 }
+
+data class WordClusterProjection(
+    val id: Long,
+    val dictionaryId: Long,
+    val name: String,
+    val memberCount: Int
+)

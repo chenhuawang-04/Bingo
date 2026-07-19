@@ -11,3 +11,8 @@ data class WordClusterReview(
     val cluster: WordCluster,
     val words: List<WordDetails>
 )
+
+data class WordClusterBackup(
+    val name: String,
+    val memberWordUids: List<String>
+)

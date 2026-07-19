@@ -19,6 +19,7 @@ import com.xty.englishhelper.domain.model.WordPoolBackup
 import com.xty.englishhelper.domain.model.WordPoolStrategyBackup
 import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
 import com.xty.englishhelper.domain.model.WordStudyState
+import com.xty.englishhelper.domain.model.WordClusterBackup
 import com.xty.englishhelper.domain.repository.DictionaryImportExporter
 import java.util.UUID
 import javax.inject.Inject
@@ -40,7 +41,8 @@ class JsonImportExporter @Inject constructor(
         studyStates: List<WordStudyState>,
         wordIdToUid: Map<Long, String>,
         wordPhraseSnapshot: WordPhraseSyncSnapshot,
-        poolBackup: DictionaryPoolBackup
+        poolBackup: DictionaryPoolBackup,
+        wordClusters: List<WordClusterBackup>
     ): String = adapter.toJson(
         exportToModel(
             dictionary,
@@ -50,7 +52,8 @@ class JsonImportExporter @Inject constructor(
             studyStates,
             wordIdToUid,
             wordPhraseSnapshot,
-            poolBackup
+            poolBackup,
+            wordClusters
         )
     )
 
@@ -62,7 +65,8 @@ class JsonImportExporter @Inject constructor(
         studyStates: List<WordStudyState>,
         wordIdToUid: Map<Long, String>,
         wordPhraseSnapshot: WordPhraseSyncSnapshot,
-        poolBackup: DictionaryPoolBackup
+        poolBackup: DictionaryPoolBackup,
+        wordClusters: List<WordClusterBackup> = emptyList()
     ): DictionaryJsonModel {
         words.forEach { word ->
             require(word.wordUid.isNotBlank()) {
@@ -85,7 +89,7 @@ class JsonImportExporter @Inject constructor(
             name = dictionary.name,
             description = dictionary.description,
             color = dictionary.color,
-            schemaVersion = 12,
+            schemaVersion = 13,
             createdAt = dictionary.createdAt,
             updatedAt = dictionary.updatedAt,
             words = words.map { word ->
@@ -149,7 +153,8 @@ class JsonImportExporter @Inject constructor(
             },
             wordEdges = poolBackup.edges.map { edge -> edge.toJsonModel() },
             phraseTags = wordPhraseSnapshot.toPhraseTagJsonModels(),
-            wordPhrases = wordPhraseSnapshot.toWordPhraseJsonModels()
+            wordPhrases = wordPhraseSnapshot.toWordPhraseJsonModels(),
+            wordClusters = wordClusters.map { WordClusterJsonModel(it.name, it.memberWordUids) }
         )
     }
 
@@ -157,8 +162,8 @@ class JsonImportExporter @Inject constructor(
         val parsedModel = adapter.fromJson(json) ?: throw IllegalArgumentException("Invalid JSON")
 
         // Validate schema version
-        if (parsedModel.schemaVersion !in listOf(4, 5, 6, 7, 8, 9, 10, 11, 12)) {
-            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4 至 12）")
+        if (parsedModel.schemaVersion !in 4..13) {
+            throw IllegalArgumentException("不支持的文件格式（需要 schemaVersion: 4 至 13）")
         }
 
         // Validate no empty spellings
@@ -283,7 +288,8 @@ class JsonImportExporter @Inject constructor(
                 phraseTags = model.phraseTags,
                 wordPhrases = model.wordPhrases
             ),
-            poolBackup = poolBackup
+            poolBackup = poolBackup,
+            wordClusters = model.wordClusters.map { WordClusterBackup(it.name, it.memberWordUids) }
         )
     }
 

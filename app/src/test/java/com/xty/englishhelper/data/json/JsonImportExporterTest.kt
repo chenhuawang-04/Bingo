@@ -20,6 +20,7 @@ import com.xty.englishhelper.domain.model.WordPhraseSyncItem
 import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
 import com.xty.englishhelper.domain.model.WordPhraseTag
 import com.xty.englishhelper.domain.model.WordStudyState
+import com.xty.englishhelper.domain.model.WordClusterBackup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -157,7 +158,7 @@ class JsonImportExporterTest {
         )
 
         // Verify schemaVersion in JSON
-        assertTrue(json.contains("\"schemaVersion\": 12"))
+        assertTrue(json.contains("\"schemaVersion\": 13"))
 
         val result = exporter.importFromJson(json)
 
@@ -300,10 +301,10 @@ class JsonImportExporterTest {
     }
 
     @Test
-    fun `export produces schemaVersion 12`() {
+    fun `export produces schemaVersion 13`() {
         val dictionary = Dictionary(name = "Test", description = "")
         val json = exporter.exportToJson(dictionary, emptyList(), emptyList(), emptyMap(), emptyList(), emptyMap())
-        assertTrue(json.contains("\"schemaVersion\": 12"))
+        assertTrue(json.contains("\"schemaVersion\": 13"))
     }
 
     @Test
@@ -758,5 +759,28 @@ class JsonImportExporterTest {
         } catch (e: IllegalArgumentException) {
             assertTrue(e.message!!.contains("confidence") || e.message!!.contains("来源"))
         }
+    }
+
+    @Test
+    fun `word clusters survive export and import without study state`() {
+        val dictionary = Dictionary(id = 1L, name = "Test")
+        val words = listOf(
+            WordDetails(id = 1L, dictionaryId = 1L, spelling = "sea", wordUid = "uid-sea"),
+            WordDetails(id = 2L, dictionaryId = 1L, spelling = "ocean", wordUid = "uid-ocean")
+        )
+        val json = exporter.exportToJson(
+            dictionary = dictionary,
+            words = words,
+            units = emptyList(),
+            unitWordMap = emptyMap(),
+            studyStates = emptyList(),
+            wordIdToUid = words.associate { it.id to it.wordUid },
+            wordClusters = listOf(WordClusterBackup("Ocean", listOf("uid-sea", "uid-ocean")))
+        )
+
+        val imported = exporter.importFromJson(json)
+
+        assertEquals(listOf(WordClusterBackup("Ocean", listOf("uid-sea", "uid-ocean"))), imported.wordClusters)
+        assertTrue(imported.studyStates.isEmpty())
     }
 }

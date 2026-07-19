@@ -7,6 +7,7 @@ import com.xty.englishhelper.domain.model.StudyUnit
 import com.xty.englishhelper.domain.model.WordDetails
 import com.xty.englishhelper.domain.model.WordPhraseSyncSnapshot
 import com.xty.englishhelper.domain.model.WordStudyState
+import com.xty.englishhelper.domain.model.WordClusterBackup
 
 /**
  * Domain-layer abstraction for dictionary import/export serialization.
@@ -41,7 +42,8 @@ interface DictionaryImportExporter {
         val units: List<ImportedUnit>,
         val studyStates: List<ImportedStudyState>,
         val wordPhraseSnapshot: WordPhraseSyncSnapshot = WordPhraseSyncSnapshot(),
-        val poolBackup: DictionaryPoolBackup = DictionaryPoolBackup()
+        val poolBackup: DictionaryPoolBackup = DictionaryPoolBackup(),
+        val wordClusters: List<WordClusterBackup> = emptyList()
     )
 
     fun exportToJson(
@@ -52,7 +54,8 @@ interface DictionaryImportExporter {
         studyStates: List<WordStudyState>,
         wordIdToUid: Map<Long, String>,
         wordPhraseSnapshot: WordPhraseSyncSnapshot = WordPhraseSyncSnapshot(),
-        poolBackup: DictionaryPoolBackup = DictionaryPoolBackup()
+        poolBackup: DictionaryPoolBackup = DictionaryPoolBackup(),
+        wordClusters: List<WordClusterBackup> = emptyList()
     ): String
 
     fun importFromJson(json: String): ImportResult
