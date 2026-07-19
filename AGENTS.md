@@ -1,51 +1,33 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository is a single-module Android app (`:app`) built with Kotlin and Jetpack Compose.
+This is a single-module Android application (`:app`) built with Kotlin and Jetpack Compose. Production code lives under `app/src/main/java/com/xty/englishhelper/`:
 
-- `app/src/main/java/com/xty/englishhelper/`: production code by layer:
-  - `data/` (Room, Retrofit, repository implementations, sync)
-  - `domain/` (models, repository contracts, use cases, engines)
-  - `ui/` (Compose screens/components, navigation, design tokens)
-  - `di/` (Hilt modules), `util/` (shared utilities)
-- `app/src/test/java/`: JVM unit tests (default fast feedback loop).
-- `app/src/androidTest/java/`: instrumentation tests (including migration coverage).
-- `app/schemas/`: Room schema snapshots; update when schema changes.
-- `docs/`: architecture notes, design decisions, and developer docs.
+- `data/`: Room, Retrofit, sync logic, and repository implementations.
+- `domain/`: models, repository contracts, use cases, and business engines.
+- `ui/`: Compose screens, reusable components, navigation, and design tokens.
+- `di/` and `util/`: Hilt modules and shared utilities.
+
+Android resources and localized strings are in `app/src/main/res/`. JVM tests mirror production packages under `app/src/test/java/`; device tests and Room migration tests belong in `app/src/androidTest/java/`. Keep Room schema snapshots in `app/schemas/` and architecture notes in `docs/`.
 
 ## Build, Test, and Development Commands
-Run from the repository root:
+Use Android Studio Hedgehog or newer, JDK 17, and Android SDK 35. Run commands from the repository root:
 
-- `.\gradlew.bat assembleDebug`: build the debug APK.
-- `.\gradlew.bat testDebugUnitTest`: run JVM unit tests in `app/src/test`.
-- `.\gradlew.bat connectedDebugAndroidTest`: run instrumentation tests on a device/emulator.
-- `.\gradlew.bat lintDebug`: run Android lint checks.
+- `./gradlew assembleDebug` — build the debug APK.
+- `./gradlew testDebugUnitTest` — run the fast JVM test suite.
+- `./gradlew connectedDebugAndroidTest` — run device/emulator instrumentation tests.
+- `./gradlew lintDebug` — run Android lint using `app/lint-baseline.xml`.
 
-Use Android Studio for interactive debugging, Layout Inspector, and Compose previews.
+On Windows, replace `./gradlew` with `.\gradlew.bat`. Use Android Studio for deployment, Compose previews, and interactive debugging.
 
 ## Coding Style & Naming Conventions
-- Use Kotlin idioms and null-safety; prefer small, focused functions.
-- Indentation: 4 spaces; keep code readable and composables simple.
-- Respect layering (`data` -> `domain` -> `ui`); avoid cross-layer shortcuts.
-- Naming patterns:
-  - UI: `*ViewModel`, `*Screen`, `*UiState`
-  - Domain contracts: `*Repository`
-  - Data implementations: `*RepositoryImpl`
-  - Business actions: `*UseCase` / grouped `*UseCases`
+Use four-space indentation, Kotlin idioms, and explicit null-safety. Keep functions focused and composables small. Preserve layer boundaries: domain code defines contracts, data code implements them, and UI code interacts through ViewModels/use cases. Follow established suffixes: `*Screen`, `*ViewModel`, `*UiState`, `*Repository`, `*RepositoryImpl`, `*UseCase`, and grouped `*UseCases`. Run lint before submitting; no separate formatter is configured.
 
 ## Testing Guidelines
-- Frameworks: JUnit4, MockK, `kotlinx-coroutines-test`, Room testing.
-- Mirror source package paths under test directories.
-- Test class names should end with `Test` (for example, `PlanProgressRulesTest`).
-- Add tests for behavior changes in parsers, planners, repositories, and ViewModels.
-- For DB migration/schema changes, add instrumentation migration tests and refresh `app/schemas`.
+Tests use JUnit 4, MockK, `kotlinx-coroutines-test`, and Room testing. Name classes with a `Test` suffix, for example `PlanProgressRulesTest`, and keep package paths aligned with source. Add focused coverage for changes to parsers, planners, repositories, use cases, and ViewModels. Database changes require migration tests plus refreshed schema snapshots. Run unit tests for every change and instrumentation tests for Room or Android-specific behavior.
 
 ## Commit & Pull Request Guidelines
-- Follow Conventional Commits used in history:
-  - `feat(scope): ...`, `fix(scope): ...`, `refactor: ...`, `test: ...`, `docs: ...`
-- Keep commits focused, buildable, and paired with relevant tests.
-- PRs should include:
-  - concise summary and affected modules
-  - linked issue/task (if available)
-  - test evidence (`testDebugUnitTest`, lint output, UI screenshots when applicable)
-  - notes on schema/API/config changes and migration impact
+Follow the repository's Conventional Commit style, such as `feat(scope): ...`, `fix(scope): ...`, `refactor: ...`, `test: ...`, or `docs: ...`. Keep each commit focused and buildable. Pull requests should summarize affected areas, link the relevant issue, report test/lint results, and include screenshots for UI changes. Call out schema, API, configuration, and migration impact explicitly.
+
+## Security & Configuration
+Do not commit `local.properties`, keystores, API keys, or credentials. Release signing reads `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` from the environment.
