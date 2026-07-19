@@ -27,6 +27,8 @@ import com.xty.englishhelper.domain.repository.ArticleRepository
 import com.xty.englishhelper.domain.repository.ParagraphAnalysisCacheData
 import com.xty.englishhelper.domain.repository.WordExample
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -456,22 +458,24 @@ class ScanWordLinksUseCase @Inject constructor(
         val allWords = repository.getAllWordsForMatching()
         if (allWords.isEmpty()) return emptyList()
 
-        val wordRefs = allWords.map { WordRef(it.wordId, it.dictionaryId, it.normalizedSpelling) }
-        val inflectionMap = allWords.associate { it.wordId to it.inflections }
-        val matcher = DictionaryMatcher(wordRefs, inflectionMap)
+        return withContext(Dispatchers.Default) {
+            val wordRefs = allWords.map { WordRef(it.wordId, it.dictionaryId, it.normalizedSpelling) }
+            val inflectionMap = allWords.associate { it.wordId to it.inflections }
+            val matcher = DictionaryMatcher(wordRefs, inflectionMap)
 
-        val allSpans = paragraphs.flatMap { SentenceSplitter.split(it.text) }
-        val tokens = ArticleTokenizer.tokenize(allSpans)
-        val matches = matcher.match(tokens)
+            val allSpans = paragraphs.flatMap { SentenceSplitter.split(it.text) }
+            val tokens = ArticleTokenizer.tokenize(allSpans)
+            val matches = matcher.match(tokens)
 
-        return matches.map { match ->
-            ArticleWordLink(
-                articleId = 0,
-                sentenceId = 0,
-                wordId = match.wordId,
-                dictionaryId = match.dictionaryId,
-                matchedToken = match.matchedToken
-            )
+            matches.map { match ->
+                ArticleWordLink(
+                    articleId = 0,
+                    sentenceId = 0,
+                    wordId = match.wordId,
+                    dictionaryId = match.dictionaryId,
+                    matchedToken = match.matchedToken
+                )
+            }
         }
     }
 }

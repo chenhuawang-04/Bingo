@@ -924,9 +924,7 @@ class QuestionBankReaderViewModel @Inject constructor(
         val paraWithContentId = paragraphs.map { it.copy(articleId = contentId) }
         viewModelScope.launch {
             try {
-                val links = withContext(Dispatchers.Default) {
-                    scanWordLinks(paraWithContentId)
-                }
+                val links = scanWordLinks(paraWithContentId)
                 val linkMap = links.groupBy { it.matchedToken.lowercase() }
                 _uiState.update {
                     it.copy(
